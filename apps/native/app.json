@@ -1,0 +1,17 @@
+{
+	"expo": {
+		"scheme": "news-app",
+		"userInterfaceStyle": "automatic",
+		"orientation": "default",
+		"web": {
+			"bundler": "metro"
+		},
+		"name": "news-app",
+		"slug": "news-app",
+		"plugins": ["expo-font"],
+		"experiments": {
+			"typedRoutes": true,
+			"reactCompiler": true
+		}
+	}
+}
