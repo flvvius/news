@@ -1,2 +1,5 @@
 
 .env.local
+
+_generated/
+node_modules/

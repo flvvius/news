@@ -15,23 +15,13 @@ import type { ConvexQueryClient } from "@convex-dev/react-query";
 import type { ConvexReactClient } from "convex/react";
 
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest, getCookie } from "@tanstack/react-start/server";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import {
-	fetchSession,
-	getCookieName,
-} from "@convex-dev/better-auth/react-start";
 import { authClient } from "@/lib/auth-client";
-import { createAuth } from "@news-app/backend/convex/auth";
+import { getToken } from "@/lib/auth-server";
 
 const fetchAuth = createServerFn({ method: "GET" }).handler(async () => {
-	const { session } = await fetchSession(getRequest());
-	const sessionCookieName = getCookieName(createAuth);
-	const token = getCookie(sessionCookieName);
-	return {
-		userId: session?.user.id,
-		token,
-	};
+	const token = await getToken();
+	return { token };
 });
 
 export interface RouterAppContext {
@@ -51,7 +41,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "My App",
+				title: "News App",
 			},
 		],
 		links: [
@@ -64,11 +54,11 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 	component: RootDocument,
 	beforeLoad: async (ctx) => {
-		const { userId, token } = await fetchAuth();
+		const { token } = await fetchAuth();
 		if (token) {
 			ctx.context.convexQueryClient.serverHttpClient?.setAuth(token);
 		}
-		return { userId, token };
+		return { token };
 	},
 });
 

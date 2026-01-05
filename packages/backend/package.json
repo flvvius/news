@@ -16,6 +16,6 @@
     "convex": "catalog:",
     "better-auth": "catalog:",
     "@convex-dev/better-auth": "catalog:",
-    "@better-auth/expo": "1.3.27"
+    "@better-auth/expo": "1.4.9"
   }
 }
