@@ -7,6 +7,7 @@ import { query } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
 import { v } from "convex/values";
 import authConfig from "./auth.config";
+import { crossDomain } from "@convex-dev/better-auth/plugins";
 
 const siteUrl = process.env.SITE_URL!;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "mybettertapp://";
@@ -22,12 +23,19 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       enabled: true,
       requireEmailVerification: false,
     },
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      },
+    },
     plugins: [
       expo(),
       convex({
         authConfig,
         jwksRotateOnTokenGenerationError: true,
       }),
+      crossDomain({ siteUrl }),
     ],
   });
 }
