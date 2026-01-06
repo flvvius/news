@@ -113,9 +113,6 @@ export default defineSchema({
       articlesRead: v.number(),
       biasBalance: v.number(), // -100 (Left Bubble) to +100 (Right Bubble)
     }),
-
-    // Auth Metadata (for Better-Auth or generic use)
-    emailVerified: v.optional(v.boolean()),
   }).index("by_email", ["email"]),
 
   // =========================================================================
