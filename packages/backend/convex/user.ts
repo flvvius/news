@@ -1,50 +1,12 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
+import { ConvexError } from "convex/values";
 
-export const getOrCreateUser = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return null;
-    }
-
-    const authUser = await authComponent.safeGetAuthUser(ctx);
-    if (!authUser) {
-      return null;
-    }
-
-    const userId = authUser._id;
-
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", userId))
-      .unique();
-
-    if (existingUser) {
-      return existingUser;
-    }
-
-    const newUserId = await ctx.db.insert("users", {
-      authUserId: userId,
-      email: authUser.email ?? "",
-      profile: {
-        name: authUser.name ?? undefined,
-        avatar: authUser.image ?? undefined,
-      },
-      stats: {
-        currentStreak: 0,
-        longestStreak: 0,
-        articlesRead: 0,
-        biasBalance: 0,
-      },
-    });
-
-    return await ctx.db.get(newUserId);
-  },
-});
-
+/**
+ * Get the current user's full profile.
+ * Returns null if not authenticated.
+ */
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
@@ -53,11 +15,9 @@ export const getCurrentUser = query({
       return null;
     }
 
-    const userId = authUser._id;
-
     const user = await ctx.db
       .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", userId))
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
       .unique();
 
     if (!user) {
@@ -65,10 +25,12 @@ export const getCurrentUser = query({
     }
 
     return {
-      // Auth data
-      authUserId: authUser.userId,
+      // Auth metadata
+      authUserId: authUser._id,
       email: authUser.email,
       emailVerified: authUser.emailVerified,
+      name: authUser.name,
+      image: authUser.image,
       // Custom data
       _id: user._id,
       profile: user.profile,
@@ -78,6 +40,10 @@ export const getCurrentUser = query({
   },
 });
 
+/**
+ * Update the current user's profile.
+ * Throws ConvexError if not authenticated or user not found.
+ */
 export const updateProfile = mutation({
   args: {
     profile: v.object({
@@ -91,18 +57,16 @@ export const updateProfile = mutation({
   handler: async (ctx, args) => {
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) {
-      throw new Error("Not authenticated");
+      throw new ConvexError("Not authenticated");
     }
-
-    const userId = authUser._id;
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", userId))
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
       .unique();
 
     if (!user) {
-      throw new Error("User not found");
+      throw new ConvexError("User not found - please refresh and try again");
     }
 
     await ctx.db.patch(user._id, {
@@ -113,6 +77,10 @@ export const updateProfile = mutation({
   },
 });
 
+/**
+ * Update the current user's private context (for personalized insights).
+ * Throws ConvexError if not authenticated or user not found.
+ */
 export const updatePrivateContext = mutation({
   args: {
     privateContext: v.object({
@@ -125,18 +93,16 @@ export const updatePrivateContext = mutation({
   handler: async (ctx, args) => {
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) {
-      throw new Error("Not authenticated");
+      throw new ConvexError("Not authenticated");
     }
-
-    const userId = authUser._id;
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", userId))
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
       .unique();
 
     if (!user) {
-      throw new Error("User not found");
+      throw new ConvexError("User not found - please refresh and try again");
     }
 
     await ctx.db.patch(user._id, {

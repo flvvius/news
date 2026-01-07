@@ -8,9 +8,8 @@ import {
   AuthLoading,
   Unauthenticated,
   useQuery,
-  useMutation,
 } from "convex/react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/dashboard")({
   component: RouteComponent,
@@ -18,12 +17,11 @@ export const Route = createFileRoute("/dashboard")({
 
 function RouteComponent() {
   const [showSignIn, setShowSignIn] = useState(false);
-  const privateData = useQuery(api.privateData.get);
 
   return (
     <>
       <Authenticated>
-        <AuthenticatedDashboard privateData={privateData} />
+        <AuthenticatedDashboard />
       </Authenticated>
       <Unauthenticated>
         {showSignIn ? (
@@ -33,42 +31,37 @@ function RouteComponent() {
         )}
       </Unauthenticated>
       <AuthLoading>
-        <div>Loading...</div>
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        </div>
       </AuthLoading>
     </>
   );
 }
 
-function AuthenticatedDashboard({ privateData }: { privateData: any }) {
-  const getOrCreateUser = useMutation(api.user.getOrCreateUser);
+function AuthenticatedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
-  const [userSetupAttempted, setUserSetupAttempted] = useState(false);
+  const privateData = useQuery(api.privateData.get);
 
-  useEffect(() => {
-    if (currentUser === null && !userSetupAttempted) {
-      setUserSetupAttempted(true);
-
-      const attemptCreateUser = async () => {
-        const result = await getOrCreateUser();
-        if (result === null) {
-          setTimeout(async () => {
-            try {
-              await getOrCreateUser();
-            } catch (err) {
-              console.error("Failed to create user after retry:", err);
-            }
-          }, 1000);
-        }
-      };
-
-      attemptCreateUser().catch(console.error);
-    }
-  }, [currentUser, getOrCreateUser, userSetupAttempted]);
+  if (currentUser === undefined) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h1>Dashboard</h1>
-      <p>privateData: {privateData?.message}</p>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+      {currentUser && (
+        <p className="text-muted-foreground mb-4">
+          Welcome, {currentUser.profile?.name || currentUser.email}!
+        </p>
+      )}
+      <p className="text-sm text-muted-foreground">
+        privateData: {privateData?.message}
+      </p>
       <UserMenu />
     </div>
   );

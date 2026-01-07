@@ -6,8 +6,6 @@ import z from "zod";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { useMutation } from "convex/react";
-import { api } from "@news-app/backend/convex/_generated/api";
 
 export default function SignUpForm({
   onSwitchToSignIn,
@@ -17,7 +15,6 @@ export default function SignUpForm({
   const navigate = useNavigate({
     from: "/",
   });
-  const getOrCreateUser = useMutation(api.user.getOrCreateUser);
 
   const form = useForm({
     defaultValues: {
@@ -33,11 +30,8 @@ export default function SignUpForm({
           name: value.name,
         },
         {
-          onSuccess: async () => {
-            await getOrCreateUser();
-            navigate({
-              to: "/dashboard",
-            });
+          onSuccess: () => {
+            navigate({ to: "/dashboard" });
             toast.success("Sign up successful");
           },
           onError: (error) => {

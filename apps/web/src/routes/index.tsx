@@ -1,14 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { convexQuery, useConvexAuth } from "@convex-dev/react-query";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@news-app/backend/convex/_generated/api";
+import { useConvexAuth } from "@convex-dev/react-query";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
 });
 
 function HomeComponent() {
-  const healthCheck = useQuery(convexQuery(api.healthCheck.get, {}));
   const { isLoading, isAuthenticated } = useConvexAuth();
 
   if (isLoading) {
