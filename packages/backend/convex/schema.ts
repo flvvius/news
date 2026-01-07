@@ -84,12 +84,13 @@ export default defineSchema({
   // 5. USERS (Profile + Privacy)
   // =========================================================================
   users: defineTable({
+    authUserId: v.string(),
     email: v.string(),
 
     // Public Profile (Safe to render in UI)
     profile: v.object({
       name: v.optional(v.string()),
-	  age: v.optional(v.number()),
+      age: v.optional(v.number()),
       avatar: v.optional(v.string()),
       job: v.optional(v.string()),
       location: v.optional(v.string()),
@@ -109,11 +110,13 @@ export default defineSchema({
     // Gamification Stats
     stats: v.object({
       currentStreak: v.number(),
-	  longestStreak: v.number(),
+      longestStreak: v.number(),
       articlesRead: v.number(),
       biasBalance: v.number(), // -100 (Left Bubble) to +100 (Right Bubble)
     }),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    .index("by_auth_user_id", ["authUserId"]),
 
   // =========================================================================
   // 6. USER INSIGHTS ("So What?" results)
