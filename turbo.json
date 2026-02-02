@@ -5,7 +5,17 @@
 		"build": {
 			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": ["dist/**"]
+			"outputs": ["dist/**"],
+			"env": [
+				"VITE_CONVEX_URL",
+				"VITE_CONVEX_SITE_URL",
+				"EXPO_PUBLIC_CONVEX_SITE_URL",
+				"CONVEX_URL",
+				"CONVEX_DEPLOYMENT",
+				"BETTER_AUTH_SECRET",
+				"SITE_URL",
+				"NATIVE_APP_URL"
+			]
 		},
 		"lint": {
 			"dependsOn": ["^lint"]
