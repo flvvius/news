@@ -64,6 +64,7 @@ Left        Left       Right       Right
 | ----------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | `title`                       | `string`                      | The event headline (e.g., `"Federal Reserve Raises Interest Rates to 5.5%"`).              |
 | `slug`                        | `string`                      | URL-friendly identifier for routing (e.g., `"fed-raises-rates-2024"`).                     |
+| `imageUrl`                    | `string?`                     | Optional event thumbnail URL for feed cards and sharing previews.                          |
 | `perspectiveSummaries`        | `object`                      | AI-generated summaries from different political viewpoints.                                |
 | `perspectiveSummaries.center` | `string`                      | **Required**. Neutral/factual summary of the event.                                        |
 | `perspectiveSummaries.left`   | `string?`                     | Optional. How left-leaning sources frame this story.                                       |

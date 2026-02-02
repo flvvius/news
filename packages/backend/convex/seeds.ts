@@ -70,6 +70,8 @@ export const seedDB = internalMutation({
     const eventFedRates = await ctx.db.insert("events", {
       title: "Federal Reserve Raises Interest Rates to 5.5%",
       slug: "fed-raises-rates-2026",
+      imageUrl:
+        "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
         center:
           "The Federal Reserve raised interest rates by 0.25% to combat persistent inflation, bringing the federal funds rate to 5.5%. This marks the highest level in over two decades.",
@@ -90,6 +92,8 @@ export const seedDB = internalMutation({
     const eventAIRegulations = await ctx.db.insert("events", {
       title: "Congress Proposes Comprehensive AI Regulation Framework",
       slug: "ai-regulations-congress-2026",
+      imageUrl:
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
         center:
           "A bipartisan bill introduced in Congress aims to establish the first comprehensive regulatory framework for AI systems, requiring transparency in training data and mandatory safety audits for high-risk applications.",

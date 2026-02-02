@@ -28,6 +28,8 @@ export default defineSchema({
     title: v.string(),
     slug: v.string(),
 
+    imageUrl: v.optional(v.string()),
+
     perspectiveSummaries: v.object({
       center: v.string(),
       left: v.optional(v.string()),
@@ -69,7 +71,7 @@ export default defineSchema({
     status: v.union(
       v.literal("unprocessed"),
       v.literal("clustered"),
-      v.literal("discarded")
+      v.literal("discarded"),
     ),
     publishedAt: v.string(),
   })
@@ -104,7 +106,7 @@ export default defineSchema({
         concerns: v.array(v.string()), // ["Inflation", "Housing"]
         interests: v.array(v.string()),
         politicalLeaning: v.optional(v.string()),
-      })
+      }),
     ),
 
     // Gamification Stats
@@ -150,7 +152,7 @@ export default defineSchema({
       v.literal("bookmark"),
       v.literal("dismiss"),
       v.literal("share"),
-      v.literal("feedback_bias")
+      v.literal("feedback_bias"),
     ),
 
     context: v.object({
