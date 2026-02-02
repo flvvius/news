@@ -9,7 +9,7 @@ import {
   Unauthenticated,
   useQuery,
 } from "convex/react";
-import { useState } from "react";
+import { use, useState } from "react";
 
 export const Route = createFileRoute("/dashboard")({
   component: RouteComponent,
@@ -42,7 +42,7 @@ function RouteComponent() {
 function AuthenticatedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
   const privateData = useQuery(api.privateData.get);
-
+  
   if (currentUser === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
