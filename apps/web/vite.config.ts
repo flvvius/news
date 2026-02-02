@@ -5,5 +5,12 @@ import tailwindcss from "@tailwindcss/vite";
 import viteReact from "@vitejs/plugin-react";
 
 export default defineConfig({
-	plugins: [tsconfigPaths(), tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    tsconfigPaths(),
+    tailwindcss(),
+    tanstackStart({
+      target: "vercel",
+    }),
+    viteReact(),
+  ],
 });
