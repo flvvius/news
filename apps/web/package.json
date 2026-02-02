@@ -24,6 +24,7 @@
     "convex": "catalog:",
     "lucide-react": "^0.525.0",
     "next-themes": "^0.4.6",
+    "nitro": "npm:nitro-nightly@3.0.1-20260202-124820-1954b824",
     "radix-ui": "^1.4.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
