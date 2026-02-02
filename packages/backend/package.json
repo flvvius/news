@@ -2,6 +2,7 @@
   "name": "@news-app/backend",
   "version": "1.0.0",
   "scripts": {
+    "build": "convex codegen",
     "dev": "convex dev",
     "dev:setup": "convex dev --configure --until-success"
   },
