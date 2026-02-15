@@ -1,6 +1,12 @@
 {
   "name": "@news-app/backend",
   "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./convex/_generated/api": "./convex/_generated/api.js",
+    "./convex/_generated/api.d.ts": "./convex/_generated/api.d.ts",
+    "./convex/_generated/dataModel": "./convex/_generated/dataModel.d.ts"
+  },
   "scripts": {
     "build": "convex codegen",
     "dev": "convex dev",
