@@ -5,14 +5,52 @@ import { query } from "./_generated/server";
 export const getPublishedEvents = query({
   args: {
     paginationOpts: paginationOptsValidator,
+    topicId: v.optional(v.id("topics")),
   },
   handler: async (ctx, args) => {
-    const queryBuilder = ctx.db
+    let events = await ctx.db
       .query("events")
       .withIndex("by_topic_recency", (q) => q.eq("status", "published"))
-      .order("desc");
+      .order("desc")
+      .paginate(args.paginationOpts);
 
-    return await queryBuilder.paginate(args.paginationOpts);
+    // Filter by topic if provided
+    if (args.topicId) {
+      const topicId = args.topicId;
+      events = {
+        ...events,
+        page: events.page.filter((event) => event.topicIds.includes(topicId)),
+      };
+    }
+
+    // Enrich each event with article count and sources
+    const enrichedPage = await Promise.all(
+      events.page.map(async (event) => {
+        const articles = await ctx.db
+          .query("articles")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const articleCount = articles.length;
+
+        // Get unique sources (with deduplication)
+        const sourceIds = Array.from(new Set(articles.map((a) => a.sourceId)));
+        const sources = await Promise.all(
+          sourceIds.map((id) => ctx.db.get(id)),
+        );
+
+        return {
+          ...event,
+          articleCount,
+          sources: sources.filter((s) => s !== null),
+        };
+      }),
+    );
+
+    return {
+      ...events,
+      page: enrichedPage,
+    };
   },
 });
 

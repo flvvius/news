@@ -196,7 +196,7 @@ importers:
         specifier: npm:nitro-nightly@3.0.1-20260202-124820-1954b824
         version: nitro-nightly@3.0.1-20260202-124820-1954b824(lru-cache@11.2.4)(vite@7.3.0(@types/node@24.10.4)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
       radix-ui:
-        specifier: ^1.4.2
+        specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.1.17))(@types/react@19.1.17)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react:
         specifier: 19.1.0

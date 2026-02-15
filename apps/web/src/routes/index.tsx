@@ -22,7 +22,7 @@ function HomeComponent() {
     loadMore,
   } = usePaginatedQuery(
     api.events.getPublishedEvents,
-    {},
+    selectedTopic === "all" ? {} : { topicId: selectedTopic },
     { initialNumItems: 6 },
   );
 
@@ -33,12 +33,6 @@ function HomeComponent() {
     });
     return map;
   }, [topics]);
-
-  const filteredEvents = useMemo(() => {
-    if (!events) return [];
-    if (selectedTopic === "all") return events;
-    return events.filter((event) => event.topicIds.includes(selectedTopic));
-  }, [events, selectedTopic]);
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -79,7 +73,7 @@ function HomeComponent() {
             <div className="text-sm text-muted-foreground">Loading…</div>
           )}
 
-          {filteredEvents.map((event) => (
+          {events?.map((event) => (
             <EventCard
               key={event._id}
               event={event}
@@ -87,11 +81,12 @@ function HomeComponent() {
             />
           ))}
 
-          {status !== "LoadingFirstPage" && filteredEvents.length === 0 && (
-            <div className="text-sm text-muted-foreground">
-              No events found.
-            </div>
-          )}
+          {status !== "LoadingFirstPage" &&
+            (!events || events.length === 0) && (
+              <div className="text-sm text-muted-foreground">
+                No events found.
+              </div>
+            )}
         </div>
 
         {status === "CanLoadMore" && (
