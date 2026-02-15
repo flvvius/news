@@ -1,0 +1,92 @@
+# CodeRabbit Configuration
+# Optimized for pnpm monorepo with React Native, Web, and Convex backend
+
+language: en-US
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: assertive # More thorough reviews for better code quality
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT REVIEW"
+      - "DRAFT"
+    drafts: false
+    base_branches:
+      - main
+      - master
+      - develop
+  
+  # Path-specific instructions for monorepo
+  path_instructions:
+    - path: "apps/native/**"
+      instructions: |
+        - Focus on React Native best practices
+        - Check for proper Expo compatibility
+        - Verify mobile performance considerations
+        - Review React hooks usage and mobile UX patterns
+    
+    - path: "apps/web/**"
+      instructions: |
+        - Focus on web performance and accessibility
+        - Check TanStack Router usage patterns
+        - Verify proper React patterns and hooks
+        - Review responsive design considerations
+    
+    - path: "packages/backend/**"
+      instructions: |
+        - Focus on Convex best practices
+        - Review database schema changes carefully
+        - Check for proper error handling
+        - Verify authentication and authorization logic
+    
+    - path: "**/*.{ts,tsx}"
+      instructions: |
+        - Enforce TypeScript best practices
+        - Check for proper type safety (avoid 'any' types)
+        - Verify proper error handling
+        - Review for potential runtime errors
+    
+    - path: "**/components/**"
+      instructions: |
+        - Review component reusability
+        - Check for proper prop types
+        - Verify accessibility (a11y) standards
+        - Review component composition patterns
+
+  # Tools configuration
+  tools:
+    biome:
+      enabled: true
+    shellcheck:
+      enabled: true
+    ruff:
+      enabled: false # Python not in use
+    
+  # Files/patterns to ignore
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.next/**"
+    - "!**/.turbo/**"
+    - "!**/_generated/**"
+    - "!**/pnpm-lock.yaml"
+    - "!**/package-lock.json"
+    - "!**/yarn.lock"
+    - "!**/*.min.js"
+    - "!**/*.bundle.js"
+    - "!**/routeTree.gen.ts"
+
+chat:
+  auto_reply: true
