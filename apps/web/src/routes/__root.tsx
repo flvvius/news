@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { SITE } from "@/lib/seo";
 
 import {
   HeadContent,
@@ -33,21 +34,33 @@ export interface RouterAppContext {
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "Biviant",
-      },
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: SITE.title },
+      { name: "description", content: SITE.description },
+      // Open Graph defaults (child routes override title/description)
+      { property: "og:site_name", content: SITE.name },
+      { property: "og:type", content: "website" },
+      { property: "og:title", content: SITE.title },
+      { property: "og:description", content: SITE.description },
+      { property: "og:image", content: SITE.ogImage },
+      // Twitter / X
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: SITE.title },
+      { name: "twitter:description", content: SITE.description },
+      { name: "twitter:image", content: SITE.ogImage },
+      // PWA / browser chrome
+      { name: "theme-color", content: "#0f172a" },
     ],
     links: [
+      { rel: "stylesheet", href: appCss },
+      // Inter font — preload most critical weight (self-hosted)
       {
-        rel: "stylesheet",
-        href: appCss,
+        rel: "preload",
+        href: "/fonts/inter-latin-wght-normal.woff2",
+        as: "font",
+        type: "font/woff2",
+        crossOrigin: "anonymous",
       },
     ],
   }),
@@ -80,7 +93,9 @@ function RootDocument() {
         <body>
           <div className="grid h-svh grid-rows-[auto_1fr]">
             <Header />
-            <Outlet />
+            <main>
+              <Outlet />
+            </main>
           </div>
           <Toaster richColors />
           <TanStackRouterDevtools position="bottom-left" />

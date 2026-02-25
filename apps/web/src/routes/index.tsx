@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
+import { SITE } from "@/lib/seo";
 import { useMutation, useQuery } from "convex/react";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,29 @@ function WaitlistForm({
 }
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      {
+        title: `${SITE.name} — Stop Reading the News Blind`,
+      },
+      {
+        name: "description",
+        content:
+          "Every story has a left version, a right version, and what actually happened. Biviant shows you all three, scores every source for bias and reliability, and tells you exactly how it affects your life.",
+      },
+      {
+        property: "og:title",
+        content: `${SITE.name} — Stop Reading the News Blind`,
+      },
+      {
+        property: "og:description",
+        content:
+          "Every story has a left version, a right version, and what actually happened. Biviant shows you all three.",
+      },
+      { property: "og:url", content: SITE.url },
+    ],
+    links: [{ rel: "canonical", href: SITE.url }],
+  }),
   component: LandingPage,
 });
 
@@ -140,6 +164,20 @@ function LandingPage() {
 
   return (
     <div className="flex flex-col">
+      {/* Structured data — visible to search engines */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: SITE.name,
+            url: SITE.url,
+            description: SITE.description,
+          }),
+        }}
+      />
+
       {/* Hero Section */}
       <section className="border-b bg-linear-to-b from-background to-muted/20">
         <div className="container mx-auto max-w-5xl px-4 py-16 md:py-24">

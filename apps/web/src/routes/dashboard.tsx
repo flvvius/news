@@ -9,9 +9,15 @@ import {
   Unauthenticated,
   useQuery,
 } from "convex/react";
-import { use, useState } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/dashboard")({
+  head: () => ({
+    meta: [
+      { title: "Dashboard — Biviant" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: RouteComponent,
 });
 
@@ -42,7 +48,7 @@ function RouteComponent() {
 function AuthenticatedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
   const privateData = useQuery(api.privateData.get);
-  
+
   if (currentUser === undefined) {
     return (
       <div className="flex items-center justify-center h-full">

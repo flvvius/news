@@ -10,6 +10,12 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/unsubscribe")({
   validateSearch: searchSchema,
+  head: () => ({
+    meta: [
+      { title: "Unsubscribe — Biviant" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: UnsubscribePage,
 });
 

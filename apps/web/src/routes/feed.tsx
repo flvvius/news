@@ -5,8 +5,27 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
+import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
+  head: () => ({
+    meta: [
+      { title: `News Feed — ${SITE.name}` },
+      {
+        name: "description",
+        content:
+          "Browse today's top stories from multiple political perspectives. Filter by topic and track the same story across sources.",
+      },
+      { property: "og:title", content: `News Feed — ${SITE.name}` },
+      {
+        property: "og:description",
+        content:
+          "Browse today's top stories from multiple political perspectives.",
+      },
+      { property: "og:url", content: `${SITE.url}/feed` },
+    ],
+    links: [{ rel: "canonical", href: `${SITE.url}/feed` }],
+  }),
   component: FeedComponent,
 });
 
