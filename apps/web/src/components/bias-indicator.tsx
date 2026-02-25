@@ -7,13 +7,13 @@ const BiasIndicator = ({ bias, size = "md" }: BiasIndicatorProps) => {
   // Normalize bias to a 0-100 scale for positioning
   const position = ((bias + 5) / 10) * 100;
 
-  // Determine color based on bias
+  // Determine color based on bias — muted, non-political palette
   const getColor = (biasValue: number) => {
-    if (biasValue < -2) return "bg-blue-500";
-    if (biasValue < -0.5) return "bg-blue-400";
-    if (biasValue <= 0.5) return "bg-gray-500";
-    if (biasValue <= 2) return "bg-red-400";
-    return "bg-red-500";
+    if (biasValue < -2) return "bg-bias-left";
+    if (biasValue < -0.5) return "bg-bias-left-muted";
+    if (biasValue <= 0.5) return "bg-bias-center";
+    if (biasValue <= 2) return "bg-bias-right-muted";
+    return "bg-bias-right";
   };
 
   // Determine label
@@ -40,7 +40,7 @@ const BiasIndicator = ({ bias, size = "md" }: BiasIndicatorProps) => {
   return (
     <div className="flex items-center gap-2">
       <div
-        className={`relative rounded-full bg-gradient-to-r from-blue-500 via-gray-300 to-red-500 ${sizeClasses[size]}`}
+        className={`relative rounded-full bg-bias-track ${sizeClasses[size]}`}
       >
         <div
           className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-background ${getColor(bias)} ${dotSizeClasses[size]}`}

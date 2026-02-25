@@ -87,21 +87,21 @@ function EventDetailPage() {
 
                 {event.perspectiveSummaries.left && (
                   <TabsContent value="left" className="mt-4">
-                    <p className="text-sm leading-relaxed">
+                    <p className="text-sm leading-relaxed max-w-[65ch]">
                       {event.perspectiveSummaries.left}
                     </p>
                   </TabsContent>
                 )}
 
                 <TabsContent value="center" className="mt-4">
-                  <p className="text-sm leading-relaxed">
+                  <p className="text-sm leading-relaxed max-w-[65ch]">
                     {event.perspectiveSummaries.center}
                   </p>
                 </TabsContent>
 
                 {event.perspectiveSummaries.right && (
                   <TabsContent value="right" className="mt-4">
-                    <p className="text-sm leading-relaxed">
+                    <p className="text-sm leading-relaxed max-w-[65ch]">
                       {event.perspectiveSummaries.right}
                     </p>
                   </TabsContent>
@@ -115,7 +115,7 @@ function EventDetailPage() {
               <CardTitle>Summary</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm leading-relaxed">
+              <p className="text-sm leading-relaxed max-w-[65ch]">
                 {event.perspectiveSummaries.center}
               </p>
             </CardContent>
@@ -129,7 +129,9 @@ function EventDetailPage() {
               <CardTitle>What This Means</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm leading-relaxed">{event.globalImpact}</p>
+              <p className="text-sm leading-relaxed max-w-[65ch]">
+                {event.globalImpact}
+              </p>
             </CardContent>
           </Card>
         )}

@@ -37,7 +37,7 @@ export default function SignUpForm({
           onError: (error) => {
             toast.error(error.error.message || error.error.statusText);
           },
-        }
+        },
       );
     },
     validators: {
@@ -74,7 +74,7 @@ export default function SignUpForm({
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-red-500">
+                  <p key={error?.message} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}
@@ -97,7 +97,7 @@ export default function SignUpForm({
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-red-500">
+                  <p key={error?.message} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}
@@ -120,7 +120,7 @@ export default function SignUpForm({
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-red-500">
+                  <p key={error?.message} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}

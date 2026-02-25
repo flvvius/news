@@ -58,7 +58,7 @@ function WaitlistForm({
       </div>
       {message && (
         <p
-          className={`text-sm mt-2 ${status === "error" ? "text-red-500" : "text-green-600"}`}
+          className={`text-sm mt-2 ${status === "error" ? "text-destructive" : "text-success"}`}
         >
           {message}
         </p>
@@ -141,13 +141,13 @@ function LandingPage() {
   return (
     <div className="flex flex-col">
       {/* Hero Section */}
-      <section className="border-b bg-gradient-to-b from-background to-muted/20">
+      <section className="border-b bg-linear-to-b from-background to-muted/20">
         <div className="container mx-auto max-w-5xl px-4 py-16 md:py-24">
           <div className="flex flex-col items-center text-center gap-6">
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
               Stop Reading the News Blind
             </h1>
-            <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl">
+            <p className="text-xl md:text-2xl text-muted-foreground max-w-[65ch] leading-relaxed">
               Every story has a left version, a right version, and what actually
               happened. Biviant shows you all three, scores every source for
               bias and reliability, and tells you exactly how it affects your
@@ -241,7 +241,7 @@ function LandingPage() {
             <h2 className="text-3xl font-bold">
               News That&apos;s Actually About You
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl">
+            <p className="text-lg text-muted-foreground max-w-[55ch] leading-relaxed">
               Biviant doesn&apos;t just tell you what happened — it tells you
               what it means for&nbsp;you.
             </p>
@@ -323,7 +323,7 @@ function LandingPage() {
             <h2 className="text-3xl font-bold">
               You Deserve to Know the Whole Story
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl">
+            <p className="text-lg text-muted-foreground max-w-[55ch] leading-relaxed">
               Most news apps optimize for engagement. Biviant optimizes for
               understanding. Join the waitlist and be first to try a news
               experience built around clarity, not clicks.
