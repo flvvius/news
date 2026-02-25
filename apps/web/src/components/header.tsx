@@ -8,7 +8,7 @@ export default function Header() {
   ] as const;
 
   return (
-    <div>
+    <header>
       <div className="flex flex-row items-center justify-between px-6 py-4">
         <Link to="/" className="text-xl font-bold">
           Biviant
@@ -28,6 +28,6 @@ export default function Header() {
         </nav>
       </div>
       <hr />
-    </div>
+    </header>
   );
 }
