@@ -9,9 +9,15 @@ import {
   Unauthenticated,
   useQuery,
 } from "convex/react";
-import { use, useState } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/dashboard")({
+  head: () => ({
+    meta: [
+      { title: "Dashboard — Biviant" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: RouteComponent,
 });
 

@@ -1,3 +1,9 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /unsubscribe
+
+Sitemap: https://biviant.com/sitemap.xml

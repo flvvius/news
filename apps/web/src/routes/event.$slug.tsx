@@ -5,8 +5,51 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
+import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/event/$slug")({
+  loader: async ({ context, params }) => {
+    // Fetch event data server-side so head() can set dynamic meta tags for SEO.
+    // serverHttpClient is only available during SSR — returns null on client nav.
+    const httpClient = context.convexQueryClient.serverHttpClient;
+    if (!httpClient) return null;
+    try {
+      return await httpClient.query(api.events.getEventBySlug, {
+        slug: params.slug,
+      });
+    } catch {
+      return null;
+    }
+  },
+  head: ({ loaderData, params }) => {
+    const title = loaderData?.event?.title
+      ? `${loaderData.event.title} — ${SITE.name}`
+      : `Event — ${SITE.name}`;
+    const description =
+      loaderData?.event?.perspectiveSummaries?.center?.slice(0, 155) ??
+      "Read this story from multiple perspectives on Biviant.";
+    const imageUrl = loaderData?.event?.imageUrl;
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:type", content: "article" },
+        { property: "og:url", content: `${SITE.url}/event/${params.slug}` },
+        ...(imageUrl
+          ? [
+              { property: "og:image", content: imageUrl },
+              { name: "twitter:image", content: imageUrl },
+            ]
+          : []),
+      ],
+      links: [
+        { rel: "canonical", href: `${SITE.url}/event/${params.slug}` },
+      ],
+    };
+  },
   component: EventDetailPage,
 });
 

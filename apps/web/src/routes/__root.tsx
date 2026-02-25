@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { SITE } from "@/lib/seo";
 
 import {
   HeadContent,
@@ -33,21 +34,36 @@ export interface RouterAppContext {
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "Biviant",
-      },
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: SITE.title },
+      { name: "description", content: SITE.description },
+      // Open Graph defaults (child routes override title/description)
+      { property: "og:site_name", content: SITE.name },
+      { property: "og:type", content: "website" },
+      { property: "og:title", content: SITE.title },
+      { property: "og:description", content: SITE.description },
+      { property: "og:image", content: SITE.ogImage },
+      // Twitter / X
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: SITE.title },
+      { name: "twitter:description", content: SITE.description },
+      { name: "twitter:image", content: SITE.ogImage },
+      // PWA / browser chrome
+      { name: "theme-color", content: "#0f172a" },
     ],
     links: [
+      { rel: "stylesheet", href: appCss },
+      // Inter font — preconnect + load
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      {
+        rel: "preconnect",
+        href: "https://fonts.gstatic.com",
+        crossOrigin: "anonymous",
+      },
       {
         rel: "stylesheet",
-        href: appCss,
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
       },
     ],
   }),
@@ -80,7 +96,9 @@ function RootDocument() {
         <body>
           <div className="grid h-svh grid-rows-[auto_1fr]">
             <Header />
-            <Outlet />
+            <main>
+              <Outlet />
+            </main>
           </div>
           <Toaster richColors />
           <TanStackRouterDevtools position="bottom-left" />
