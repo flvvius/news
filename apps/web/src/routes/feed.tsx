@@ -49,6 +49,7 @@ function FeedComponent() {
             type="button"
             onClick={() => setSelectedTopic("all")}
             variant={selectedTopic === "all" ? "default" : "outline"}
+            aria-pressed={selectedTopic === "all"}
             size="sm"
             className="rounded-full"
           >
@@ -60,6 +61,7 @@ function FeedComponent() {
               type="button"
               onClick={() => setSelectedTopic(topic._id)}
               variant={selectedTopic === topic._id ? "default" : "outline"}
+              aria-pressed={selectedTopic === topic._id}
               size="sm"
               className="rounded-full"
             >
