@@ -42,6 +42,8 @@ export const Route = createFileRoute("/event/$slug")({
         { property: "og:description", content: description },
         { property: "og:type", content: "article" },
         { property: "og:url", content: `${SITE.url}/event/${params.slug}` },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
         ...(imageUrl
           ? [
               { property: "og:image", content: imageUrl },
