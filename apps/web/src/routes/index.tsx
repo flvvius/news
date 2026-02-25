@@ -34,6 +34,7 @@ function WaitlistForm({
         <Input
           type="text"
           placeholder="Your name (optional)"
+          aria-label="Your name (optional)"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           className="flex-1"
@@ -43,6 +44,7 @@ function WaitlistForm({
           <Input
             type="email"
             placeholder="Enter your email"
+            aria-label="Email address"
             value={email}
             onChange={(e) => onEmailChange(e.target.value)}
             required
