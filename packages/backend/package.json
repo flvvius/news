@@ -20,9 +20,10 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "convex": "catalog:",
-    "better-auth": "catalog:",
+    "@better-auth/expo": "1.4.9",
     "@convex-dev/better-auth": "catalog:",
-    "@better-auth/expo": "1.4.9"
+    "better-auth": "catalog:",
+    "convex": "catalog:",
+    "resend": "^6.9.2"
   }
 }
