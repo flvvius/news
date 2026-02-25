@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import EventCard from "@/components/feed/event-card";
@@ -8,22 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
 function WaitlistForm({
-  name,
   email,
+  name,
   status,
   message,
-  onNameChange,
   onEmailChange,
+  onNameChange,
   onSubmit,
   className,
-  buttonText = "Join Waitlist",
+  buttonText = "Get Early Access",
 }: {
-  name: string;
   email: string;
+  name: string;
   status: "idle" | "loading" | "success" | "error";
   message: string;
-  onNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
+  onNameChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   className?: string;
   buttonText?: string;
@@ -31,15 +31,6 @@ function WaitlistForm({
   return (
     <form onSubmit={onSubmit} className={className}>
       <div className="flex flex-col gap-3">
-        <Input
-          type="text"
-          placeholder="Your name (optional)"
-          aria-label="Your name (optional)"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          className="flex-1"
-          disabled={status === "loading"}
-        />
         <div className="flex gap-2">
           <Input
             type="email"
@@ -55,6 +46,15 @@ function WaitlistForm({
             {status === "loading" ? "Joining..." : buttonText}
           </Button>
         </div>
+        <Input
+          type="text"
+          placeholder="Your name (optional)"
+          aria-label="Your name (optional)"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          className="flex-1"
+          disabled={status === "loading"}
+        />
       </div>
       {message && (
         <p
@@ -145,28 +145,29 @@ function LandingPage() {
         <div className="container mx-auto max-w-5xl px-4 py-16 md:py-24">
           <div className="flex flex-col items-center text-center gap-6">
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
-              See Every Side of the Story
+              Stop Reading the News Blind
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl">
-              Break out of your news bubble. Get the same story from left,
-              center, and right perspectives — all in one place.
+              Every story has a left version, a right version, and what actually
+              happened. Biviant shows you all three, scores every source for
+              bias and reliability, and tells you exactly how it affects your
+              life.
             </p>
 
             {/* Email Capture */}
             <WaitlistForm
-              name={name}
               email={email}
+              name={name}
               status={status}
               message={message}
-              onNameChange={setName}
               onEmailChange={setEmail}
+              onNameChange={setName}
               onSubmit={handleSubmit}
               className="w-full max-w-md mt-4"
-              buttonText="Join Waitlist"
             />
 
             <p className="text-sm text-muted-foreground">
-              Free during beta • No credit card required
+              Free during beta · No credit card required
             </p>
           </div>
         </div>
@@ -183,10 +184,13 @@ function LandingPage() {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary">
                     1
                   </div>
-                  <h3 className="font-semibold text-lg">We Gather the News</h3>
+                  <h3 className="font-semibold text-lg">
+                    One Story, Every Angle
+                  </h3>
                   <p className="text-sm text-muted-foreground">
-                    Our AI scans trusted sources across the political spectrum —
-                    from NPR to Fox News, NYT to WSJ.
+                    When a story breaks, Biviant collects coverage from across
+                    the political spectrum and groups it into one event. No more
+                    Googling to see what the other side is saying.
                   </p>
                 </div>
               </CardContent>
@@ -198,10 +202,11 @@ function LandingPage() {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary">
                     2
                   </div>
-                  <h3 className="font-semibold text-lg">We Cluster Stories</h3>
+                  <h3 className="font-semibold text-lg">Know Who to Trust</h3>
                   <p className="text-sm text-muted-foreground">
-                    Articles about the same event are automatically grouped
-                    together, regardless of political bias.
+                    Every source gets a bias score from far-left to far-right
+                    and a reliability score from tabloid to wire service. You
+                    always know exactly where your information is coming from.
                   </p>
                 </div>
               </CardContent>
@@ -213,10 +218,14 @@ function LandingPage() {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary">
                     3
                   </div>
-                  <h3 className="font-semibold text-lg">You See Every Angle</h3>
+                  <h3 className="font-semibold text-lg">
+                    See Why It Matters to You
+                  </h3>
                   <p className="text-sm text-muted-foreground">
-                    Read how the left, center, and right are covering the same
-                    story. Make up your own mind.
+                    Biviant doesn&apos;t just summarize the news — it tells you
+                    how each story affects you personally, based on your job,
+                    your location, and what you care about. The &ldquo;so
+                    what?&rdquo; that other news apps never answer.
                   </p>
                 </div>
               </CardContent>
@@ -225,20 +234,73 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* Personal Impact — key differentiator */}
+      <section className="border-b bg-muted/10">
+        <div className="container mx-auto max-w-4xl px-4 py-16">
+          <div className="flex flex-col items-center text-center gap-6">
+            <h2 className="text-3xl font-bold">
+              News That&apos;s Actually About You
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl">
+              Biviant doesn&apos;t just tell you what happened — it tells you
+              what it means for&nbsp;you.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-6 mt-4 w-full max-w-2xl text-left">
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold mb-2">Personal Impact</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Based on your profile, every story comes with a breakdown of
+                    how it affects you. A new tax bill? You&apos;ll know exactly
+                    how it hits your bracket. A tech regulation? You&apos;ll see
+                    what it means for your industry.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold mb-2">Actionable Tips</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Every insight comes with a clear next step — not just
+                    &ldquo;be informed,&rdquo; but what you can actually do
+                    about it.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold mb-2">Bias Balance Tracker</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Biviant tracks your reading habits and shows you when
+                    you&apos;re drifting into a bubble — so you can course
+                    correct before it becomes a blind spot.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold mb-2">Reading Streaks</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Build a daily habit of balanced reading. Streaks keep you
+                    coming back and help you stay consistently informed.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Feed Preview */}
       <section className="bg-muted/30">
         <div className="container mx-auto max-w-4xl px-4 py-16">
           <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Today's Events</h2>
-                <p className="text-sm text-muted-foreground">
-                  See what's happening now
-                </p>
-              </div>
-              <Link to="/feed">
-                <Button variant="outline">View All →</Button>
-              </Link>
+            <div className="text-center">
+              <h2 className="text-2xl font-bold">See How It Actually Looks</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Real stories, real perspectives. This is what your daily feed
+                looks like on Biviant.
+              </p>
             </div>
 
             <div className="grid gap-4">
@@ -250,36 +312,33 @@ function LandingPage() {
                 />
               ))}
             </div>
-
-            <div className="text-center">
-              <Link to="/feed">
-                <Button size="lg">Explore All Stories</Button>
-              </Link>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Social Proof / CTA */}
+      {/* Bottom CTA */}
       <section className="border-t">
         <div className="container mx-auto max-w-3xl px-4 py-16">
           <div className="flex flex-col items-center text-center gap-6">
-            <h2 className="text-3xl font-bold">News Without the Noise</h2>
-            <p className="text-lg text-muted-foreground">
-              Join thousands of readers who want the full story, not just one
-              side of it.
+            <h2 className="text-3xl font-bold">
+              You Deserve to Know the Whole Story
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl">
+              Most news apps optimize for engagement. Biviant optimizes for
+              understanding. Join the waitlist and be first to try a news
+              experience built around clarity, not clicks.
             </p>
 
             <WaitlistForm
-              name={name}
               email={email}
+              name={name}
               status={status}
               message={message}
-              onNameChange={setName}
               onEmailChange={setEmail}
+              onNameChange={setName}
               onSubmit={handleSubmit}
               className="w-full max-w-md"
-              buttonText="Get Early Access"
+              buttonText="Claim Your Spot"
             />
           </div>
         </div>
