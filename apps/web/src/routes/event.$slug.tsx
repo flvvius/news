@@ -17,7 +17,11 @@ export const Route = createFileRoute("/event/$slug")({
       return await httpClient.query(api.events.getEventBySlug, {
         slug: params.slug,
       });
-    } catch {
+    } catch (error) {
+      console.error(
+        `[SSR] Failed to load event (slug: ${params.slug}):`,
+        error,
+      );
       return null;
     }
   },
@@ -45,9 +49,7 @@ export const Route = createFileRoute("/event/$slug")({
             ]
           : []),
       ],
-      links: [
-        { rel: "canonical", href: `${SITE.url}/event/${params.slug}` },
-      ],
+      links: [{ rel: "canonical", href: `${SITE.url}/event/${params.slug}` }],
     };
   },
   component: EventDetailPage,

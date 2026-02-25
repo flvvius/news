@@ -54,16 +54,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      // Inter font — preconnect + load
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      // Inter font — preload most critical weight (self-hosted)
       {
-        rel: "preconnect",
-        href: "https://fonts.gstatic.com",
+        rel: "preload",
+        href: "/fonts/inter-latin-wght-normal.woff2",
+        as: "font",
+        type: "font/woff2",
         crossOrigin: "anonymous",
-      },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
       },
     ],
   }),
