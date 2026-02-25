@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -15,6 +16,7 @@ export const sendWelcomeEmail = internalAction({
     email: v.string(),
     name: v.optional(v.string()),
     position: v.number(),
+    waitlistId: v.id("waitlist"),
   },
   handler: async (ctx, args) => {
     try {
@@ -39,6 +41,11 @@ export const sendWelcomeEmail = internalAction({
         console.error("Resend error:", error);
         throw new Error(`Failed to send email: ${error.message}`);
       }
+
+      // Only mark lastEmailSentAt after a confirmed successful send
+      await ctx.runMutation(internal.waitlist.markEmailSent, {
+        waitlistId: args.waitlistId,
+      });
 
       console.log("Welcome email sent:", data);
       return { success: true, emailId: data?.id };

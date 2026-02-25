@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
@@ -6,6 +6,64 @@ import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+
+function WaitlistForm({
+  name,
+  email,
+  status,
+  message,
+  onNameChange,
+  onEmailChange,
+  onSubmit,
+  className,
+  buttonText = "Join Waitlist",
+}: {
+  name: string;
+  email: string;
+  status: "idle" | "loading" | "success" | "error";
+  message: string;
+  onNameChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  className?: string;
+  buttonText?: string;
+}) {
+  return (
+    <form onSubmit={onSubmit} className={className}>
+      <div className="flex flex-col gap-3">
+        <Input
+          type="text"
+          placeholder="Your name (optional)"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          className="flex-1"
+          disabled={status === "loading"}
+        />
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            placeholder="Enter your email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            required
+            className="flex-1"
+            disabled={status === "loading"}
+          />
+          <Button type="submit" size="lg" disabled={status === "loading"}>
+            {status === "loading" ? "Joining..." : buttonText}
+          </Button>
+        </div>
+      </div>
+      {message && (
+        <p
+          className={`text-sm mt-2 ${status === "error" ? "text-red-500" : "text-green-600"}`}
+        >
+          {message}
+        </p>
+      )}
+    </form>
+  );
+}
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -18,6 +76,13 @@ function LandingPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [message, setMessage] = useState("");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const addToWaitlist = useMutation(api.waitlist.addToWaitlist);
 
@@ -59,7 +124,8 @@ function LandingPage() {
       setStatus("error");
     }
 
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setStatus("idle");
       setMessage("");
     }, 10000); // Show success message for 10 seconds
@@ -85,43 +151,17 @@ function LandingPage() {
             </p>
 
             {/* Email Capture */}
-            <form onSubmit={handleSubmit} className="w-full max-w-md mt-4">
-              <div className="flex flex-col gap-3">
-                <Input
-                  type="text"
-                  placeholder="Your name (optional)"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="flex-1"
-                  disabled={status === "loading"}
-                />
-                <div className="flex gap-2">
-                  <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="flex-1"
-                    disabled={status === "loading"}
-                  />
-                  <Button
-                    type="submit"
-                    size="lg"
-                    disabled={status === "loading"}
-                  >
-                    {status === "loading" ? "Joining..." : "Join Waitlist"}
-                  </Button>
-                </div>
-              </div>
-              {message && (
-                <p
-                  className={`text-sm mt-2 ${status === "error" ? "text-red-500" : "text-green-600"}`}
-                >
-                  {message}
-                </p>
-              )}
-            </form>
+            <WaitlistForm
+              name={name}
+              email={email}
+              status={status}
+              message={message}
+              onNameChange={setName}
+              onEmailChange={setEmail}
+              onSubmit={handleSubmit}
+              className="w-full max-w-md mt-4"
+              buttonText="Join Waitlist"
+            />
 
             <p className="text-sm text-muted-foreground">
               Free during beta • No credit card required
@@ -228,43 +268,17 @@ function LandingPage() {
               side of it.
             </p>
 
-            <form onSubmit={handleSubmit} className="w-full max-w-md">
-              <div className="flex flex-col gap-3">
-                <Input
-                  type="text"
-                  placeholder="Your name (optional)"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="flex-1"
-                  disabled={status === "loading"}
-                />
-                <div className="flex gap-2">
-                  <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="flex-1"
-                    disabled={status === "loading"}
-                  />
-                  <Button
-                    type="submit"
-                    size="lg"
-                    disabled={status === "loading"}
-                  >
-                    {status === "loading" ? "Joining..." : "Get Early Access"}
-                  </Button>
-                </div>
-              </div>
-              {message && (
-                <p
-                  className={`text-sm mt-2 ${status === "error" ? "text-red-500" : "text-green-600"}`}
-                >
-                  {message}
-                </p>
-              )}
-            </form>
+            <WaitlistForm
+              name={name}
+              email={email}
+              status={status}
+              message={message}
+              onNameChange={setName}
+              onEmailChange={setEmail}
+              onSubmit={handleSubmit}
+              className="w-full max-w-md"
+              buttonText="Get Early Access"
+            />
           </div>
         </div>
       </section>

@@ -199,9 +199,6 @@ export default defineSchema({
 
     // Invite management
     inviteCode: v.optional(v.string()), // Unique token for signup link
-
-    // Compliance
-    unsubscribed: v.boolean(), // Default: false
   })
     .index("by_email", ["email"])
     .index("by_status", ["status", "createdAt"])

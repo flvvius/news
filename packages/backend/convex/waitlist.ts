@@ -1,6 +1,7 @@
-import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { v, ConvexError } from "convex/values";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { authComponent } from "./auth";
 
 export const addToWaitlist = mutation({
   args: {
@@ -32,12 +33,12 @@ export const addToWaitlist = mutation({
     }
 
     // Calculate position (max position + 1, or 1 if first)
-    const allWaitlist = await ctx.db.query("waitlist").collect();
-    const maxPosition =
-      allWaitlist.length > 0
-        ? Math.max(...allWaitlist.map((w) => w.position))
-        : 0;
-    const position = maxPosition + 1;
+    const highest = await ctx.db
+      .query("waitlist")
+      .withIndex("by_position")
+      .order("desc")
+      .first();
+    const position = (highest?.position ?? 0) + 1;
 
     // Add to waitlist
     const waitlistId = await ctx.db.insert("waitlist", {
@@ -47,7 +48,6 @@ export const addToWaitlist = mutation({
       referralSource: args.referralSource,
       createdAt: Date.now(),
       status: "pending",
-      unsubscribed: false,
     });
 
     // Schedule welcome email (only if RESEND_API_KEY is set)
@@ -56,11 +56,7 @@ export const addToWaitlist = mutation({
         email: normalizedEmail,
         name: args.name,
         position,
-      });
-
-      // Update lastEmailSentAt
-      await ctx.db.patch(waitlistId, {
-        lastEmailSentAt: Date.now(),
+        waitlistId,
       });
     }
 
@@ -70,6 +66,19 @@ export const addToWaitlist = mutation({
       position,
       waitlistId,
     };
+  },
+});
+
+/**
+ * Internal mutation to mark lastEmailSentAt after a successful send.
+ * Called from the sendWelcomeEmail action.
+ */
+export const markEmailSent = internalMutation({
+  args: { waitlistId: v.id("waitlist") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.waitlistId, {
+      lastEmailSentAt: Date.now(),
+    });
   },
 });
 
@@ -89,7 +98,6 @@ export const unsubscribe = mutation({
     }
 
     await ctx.db.patch(record._id, {
-      unsubscribed: true,
       status: "unsubscribed",
     });
 
@@ -100,6 +108,21 @@ export const unsubscribe = mutation({
 export const getWaitlistStats = query({
   args: {},
   handler: async (ctx) => {
+    // Admin-only: require authentication and admin email
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!adminEmails.includes(authUser.email.toLowerCase())) {
+      throw new ConvexError("Unauthorized: admin access required");
+    }
+
     const total = await ctx.db.query("waitlist").collect();
     const pending = total.filter((w) => w.status === "pending").length;
     const invited = total.filter((w) => w.status === "invited").length;
