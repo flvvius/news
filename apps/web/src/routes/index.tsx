@@ -90,6 +90,7 @@ function LandingPage() {
                 <Input
                   type="text"
                   placeholder="Your name (optional)"
+                  aria-label="Your name (optional)"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="flex-1"
@@ -99,6 +100,7 @@ function LandingPage() {
                   <Input
                     type="email"
                     placeholder="Enter your email"
+                    aria-label="Email address"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
