@@ -13,7 +13,7 @@ export default function Header() {
         <Link to="/" className="text-xl font-bold">
           Biviant
         </Link>
-        <nav className="flex gap-6">
+        <nav aria-label="Primary" className="flex gap-6">
           {links.map(({ to, label }) => {
             return (
               <Link
