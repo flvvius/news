@@ -1,4 +1,4 @@
-# U-News
+# Biviant
 
 A bias-aware news aggregation platform that clusters articles into events and provides personalized insights.
 

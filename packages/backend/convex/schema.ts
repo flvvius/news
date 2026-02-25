@@ -169,4 +169,40 @@ export default defineSchema({
     }),
     timestamp: v.number(),
   }).index("by_user", ["userId"]),
+
+  // =========================================================================
+  // 8. WAITLIST (Early Access Email Collection)
+  // =========================================================================
+  waitlist: defineTable({
+    // Core fields
+    email: v.string(),
+    name: v.optional(v.string()), // For personalization in emails
+    position: v.number(), // Their spot in line (#1, #2, etc.)
+
+    // Attribution
+    referralSource: v.optional(v.string()), // "twitter", "producthunt", "friend", etc.
+
+    // Status tracking
+    status: v.union(
+      v.literal("pending"),
+      v.literal("invited"),
+      v.literal("converted"),
+      v.literal("bounced"),
+      v.literal("unsubscribed"),
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    invitedAt: v.optional(v.number()),
+    convertedAt: v.optional(v.number()),
+    lastEmailSentAt: v.optional(v.number()),
+
+    // Invite management
+    inviteCode: v.optional(v.string()), // Unique token for signup link
+  })
+    .index("by_email", ["email"])
+    .index("by_status", ["status", "createdAt"])
+    .index("by_invite_code", ["inviteCode"])
+    .index("by_position", ["position"])
+    .index("by_status_last_email", ["status", "lastEmailSentAt"]),
 });
