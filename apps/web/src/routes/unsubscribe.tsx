@@ -35,7 +35,7 @@ function UnsubscribePage() {
     unsubscribe({ email })
       .then(() => setStatus("done"))
       .catch(() => setStatus("error"));
-  }, [email]);
+  }, [email, unsubscribe, status]);
 
   if (!email) {
     return (

@@ -75,15 +75,15 @@ function DrawerLayout() {
 			<Drawer.Screen
 				name="todos"
 				options={{
-					headerTitle: "Todos",
+					headerTitle: "Bookmarks",
 					drawerLabel: ({ color, focused }) => (
 						<Text style={{ color: focused ? color : themeColorForeground }}>
-							Todos
+							Bookmarks
 						</Text>
 					),
 					drawerIcon: ({ size, color, focused }) => (
 						<Ionicons
-							name="checkbox-outline"
+							name="bookmark-outline"
 							size={size}
 							color={focused ? color : themeColorForeground}
 						/>

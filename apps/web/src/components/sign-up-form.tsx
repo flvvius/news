@@ -73,8 +73,8 @@ export default function SignUpForm({
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-destructive text-sm">
+                {field.state.meta.errors.map((error, i) => (
+                  <p key={i} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}
@@ -96,8 +96,8 @@ export default function SignUpForm({
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-destructive text-sm">
+                {field.state.meta.errors.map((error, i) => (
+                  <p key={i} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}
@@ -119,8 +119,8 @@ export default function SignUpForm({
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-destructive text-sm">
+                {field.state.meta.errors.map((error, i) => (
+                  <p key={i} className="text-destructive text-sm">
                     {error?.message}
                   </p>
                 ))}

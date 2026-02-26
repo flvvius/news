@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { SITE } from "@/lib/seo";
@@ -9,28 +9,68 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
 function WaitlistForm({
-  email,
-  name,
-  status,
-  message,
-  onEmailChange,
-  onNameChange,
-  onSubmit,
   className,
   buttonText = "Get Early Access",
 }: {
-  email: string;
-  name: string;
-  status: "idle" | "loading" | "success" | "error";
-  message: string;
-  onEmailChange: (value: string) => void;
-  onNameChange: (value: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
   className?: string;
   buttonText?: string;
 }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [message, setMessage] = useState("");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addToWaitlist = useMutation(api.waitlist.addToWaitlist);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus("loading");
+
+    try {
+      const result = await addToWaitlist({
+        email,
+        name: name.trim() || undefined,
+      });
+
+      if (result.alreadyExists) {
+        setMessage(
+          `You're already on the waitlist at position #${result.position}!`,
+        );
+        setStatus("success");
+      } else {
+        setMessage(
+          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
+        );
+        setStatus("success");
+        setEmail("");
+        setName("");
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again.",
+      );
+      setStatus("error");
+    }
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setStatus("idle");
+      setMessage("");
+    }, 10_000);
+  };
+
   return (
-    <form onSubmit={onSubmit} className={className}>
+    <form onSubmit={handleSubmit} className={className}>
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
           <Input
@@ -38,7 +78,7 @@ function WaitlistForm({
             placeholder="Enter your email"
             aria-label="Email address"
             value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             required
             className="flex-1"
             disabled={status === "loading"}
@@ -52,7 +92,7 @@ function WaitlistForm({
           placeholder="Your name (optional)"
           aria-label="Your name (optional)"
           value={name}
-          onChange={(e) => onNameChange(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           className="flex-1"
           disabled={status === "loading"}
         />
@@ -96,71 +136,19 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPage() {
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [message, setMessage] = useState("");
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const addToWaitlist = useMutation(api.waitlist.addToWaitlist);
-
   // Get a few events for preview
   const events = useQuery(api.events.getPublishedEvents, {
     paginationOpts: { numItems: 3, cursor: null },
   });
   const topics = useQuery(api.topics.getTopics);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setStatus("loading");
-
-    try {
-      const result = await addToWaitlist({
-        email,
-        name: name.trim() || undefined,
-      });
-
-      if (result.alreadyExists) {
-        setMessage(
-          `You're already on the waitlist at position #${result.position}!`,
-        );
-        setStatus("success");
-      } else {
-        setMessage(
-          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
-        );
-        setStatus("success");
-        setEmail("");
-        setName("");
-      }
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again.",
-      );
-      setStatus("error");
-    }
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setStatus("idle");
-      setMessage("");
-    }, 10000); // Show success message for 10 seconds
-  };
-
-  const topicNamesById: Record<string, string> = {};
-  topics?.forEach((topic) => {
-    topicNamesById[topic._id] = topic.displayName;
-  });
+  const topicNamesById = useMemo(() => {
+    const map: Record<string, string> = {};
+    topics?.forEach((topic) => {
+      map[topic._id] = topic.displayName;
+    });
+    return map;
+  }, [topics]);
 
   return (
     <div className="flex flex-col">
@@ -193,16 +181,7 @@ function LandingPage() {
             </p>
 
             {/* Email Capture */}
-            <WaitlistForm
-              email={email}
-              name={name}
-              status={status}
-              message={message}
-              onEmailChange={setEmail}
-              onNameChange={setName}
-              onSubmit={handleSubmit}
-              className="w-full max-w-md mt-4"
-            />
+            <WaitlistForm className="w-full max-w-md mt-4" />
 
             <p className="text-sm text-muted-foreground">
               Free during beta · No credit card required
@@ -368,13 +347,6 @@ function LandingPage() {
             </p>
 
             <WaitlistForm
-              email={email}
-              name={name}
-              status={status}
-              message={message}
-              onEmailChange={setEmail}
-              onNameChange={setName}
-              onSubmit={handleSubmit}
               className="w-full max-w-md"
               buttonText="Claim Your Spot"
             />

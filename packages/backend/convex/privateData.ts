@@ -5,9 +5,7 @@ export const get = query({
 	handler: async (ctx) => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (identity === null) {
-			return {
-				message: "Not authenticated",
-			};
+			return null;
 		}
 		return {
 			message: "This is private",
