@@ -2,6 +2,7 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import BookmarkButton from "@/components/bookmark-button";
 
 type EventCardProps = {
   event: {
@@ -102,12 +103,15 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
               )}
             </div>
 
-            {event.articleCount !== undefined && (
-              <span className="text-xs text-muted-foreground">
-                {event.articleCount}{" "}
-                {event.articleCount === 1 ? "article" : "articles"}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {event.articleCount !== undefined && (
+                <span className="text-xs text-muted-foreground">
+                  {event.articleCount}{" "}
+                  {event.articleCount === 1 ? "article" : "articles"}
+                </span>
+              )}
+              <BookmarkButton eventId={event._id} size="sm" />
+            </div>
           </div>
         </CardContent>
       </Card>

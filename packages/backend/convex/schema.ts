@@ -168,7 +168,10 @@ export default defineSchema({
       extras: v.optional(v.any()),
     }),
     timestamp: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "type"])
+    .index("by_user_event_type", ["userId", "eventId", "type"]),
 
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
