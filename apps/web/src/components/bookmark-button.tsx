@@ -81,7 +81,7 @@ export default function BookmarkButton({
     <Button
       type="button"
       variant="ghost"
-      size={size === "sm" ? "icon" : "icon"}
+      size="icon"
       className={cn("shrink-0", bookmarked && "text-primary", className)}
       disabled={toggle.isPending}
       onClick={handleClick}

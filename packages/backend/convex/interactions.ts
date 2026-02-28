@@ -1,5 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 
 // ---------------------------------------------------------------------------
@@ -7,13 +9,13 @@ import { authComponent } from "./auth";
 // ---------------------------------------------------------------------------
 
 /** Resolve the internal users._id for the currently-authenticated user. */
-async function requireUserId(ctx: { db: any; auth: any }) {
-  const authUser = await authComponent.safeGetAuthUser(ctx as any);
+async function requireUserId(ctx: QueryCtx) {
+  const authUser = await authComponent.safeGetAuthUser(ctx);
   if (!authUser) throw new ConvexError("Not authenticated");
 
   const user = await ctx.db
     .query("users")
-    .withIndex("by_auth_user_id", (q: any) => q.eq("authUserId", authUser._id))
+    .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
     .unique();
   if (!user) throw new ConvexError("User profile not found");
 
@@ -89,23 +91,23 @@ export const toggleBookmark = mutation({
  * Looks at all bookmark/unbookmark entries and picks the most recent one.
  */
 async function resolveBookmarkStatus(
-  ctx: { db: any },
-  userId: any,
-  eventId: any,
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  eventId: Id<"events">,
 ): Promise<boolean> {
   // Fetch the most recent bookmark or unbookmark for this user+event.
   // The index prefix is (userId, eventId) — we collect both types and pick
-  // the latest by timestamp.
+  // the latest. .order("desc") sorts by _creationTime (newest first).
   const recent = await ctx.db
     .query("interactions")
-    .withIndex("by_user_event_type", (q: any) =>
+    .withIndex("by_user_event_type", (q) =>
       q.eq("userId", userId).eq("eventId", eventId),
     )
     .order("desc")
     .collect();
 
   const latest = recent.find(
-    (r: any) => r.type === "bookmark" || r.type === "unbookmark",
+    (r) => r.type === "bookmark" || r.type === "unbookmark",
   );
 
   return latest?.type === "bookmark";
@@ -148,9 +150,11 @@ export const getBookmarkedEvents = query({
     if (!user) return [];
 
     // Collect all bookmark + unbookmark interactions, then resolve per-event.
+    // .order("desc") sorts by _creationTime (newest first) so the first
+    // occurrence per event in the loop below is the latest interaction.
     const allBookmarkInteractions = await ctx.db
       .query("interactions")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
 
