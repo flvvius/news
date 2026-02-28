@@ -76,7 +76,9 @@ export default function Home() {
           <Pressable
             onPress={() => setShowSignIn((prev) => !prev)}
             accessibilityRole="button"
-            accessibilityLabel={showSignIn ? "Switch to Sign Up" : "Switch to Sign In"}
+            accessibilityLabel={
+              showSignIn ? "Switch to Sign Up" : "Switch to Sign In"
+            }
             className="mt-4 p-2"
           >
             <Text className="text-muted text-center text-sm">
