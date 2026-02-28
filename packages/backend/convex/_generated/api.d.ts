@@ -13,6 +13,7 @@ import type * as emails from "../emails.js";
 import type * as events from "../events.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as interactions from "../interactions.js";
 import type * as privateData from "../privateData.js";
 import type * as seeds from "../seeds.js";
 import type * as topics from "../topics.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  interactions: typeof interactions;
   privateData: typeof privateData;
   seeds: typeof seeds;
   topics: typeof topics;

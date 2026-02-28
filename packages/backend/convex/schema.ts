@@ -150,6 +150,7 @@ export default defineSchema({
       v.literal("view"),
       v.literal("click_source"),
       v.literal("bookmark"),
+      v.literal("unbookmark"),
       v.literal("dismiss"),
       v.literal("share"),
       v.literal("feedback_bias"),
@@ -168,7 +169,10 @@ export default defineSchema({
       extras: v.optional(v.any()),
     }),
     timestamp: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "type"])
+    .index("by_user_event_type", ["userId", "eventId", "type"]),
 
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)

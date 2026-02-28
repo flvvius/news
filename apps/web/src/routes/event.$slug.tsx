@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
+import BookmarkButton from "@/components/bookmark-button";
 import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/event/$slug")({
@@ -102,7 +103,10 @@ function EventDetailPage() {
 
         {/* Event header */}
         <div>
-          <h1 className="text-3xl font-bold mb-4">{event.title}</h1>
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-3xl font-bold mb-4">{event.title}</h1>
+            <BookmarkButton eventId={event._id} />
+          </div>
           {event.imageUrl && (
             <div className="overflow-hidden rounded-lg border mb-4">
               <img
