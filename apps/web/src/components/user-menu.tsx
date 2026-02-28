@@ -27,7 +27,9 @@ export default function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline">{user?.profile?.name ?? user?.email}</Button>
+        <Button variant="outline" aria-label="User menu">
+          {user?.profile?.name || user?.email || "Account"}
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="bg-card">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>

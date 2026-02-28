@@ -26,6 +26,14 @@ function UnsubscribePage() {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     "idle",
   );
+  const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (email !== lastEmail) {
+      setStatus("idle");
+      setLastEmail(email);
+    }
+  }, [email, lastEmail]);
 
   useEffect(() => {
     if (!email || status !== "idle") return;

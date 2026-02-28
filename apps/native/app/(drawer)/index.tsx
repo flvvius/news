@@ -1,4 +1,4 @@
-import { Text, View, Pressable } from "react-native";
+import { Alert, Text, View, Pressable } from "react-native";
 import { Container } from "@/components/container";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -10,66 +10,79 @@ import { Card, Chip, useThemeColor } from "heroui-native";
 import { useState } from "react";
 
 export default function Home() {
-	const healthCheck = useQuery(api.healthCheck.get);
-	const { isAuthenticated } = useConvexAuth();
-	const user = useQuery(api.user.getCurrentUser, isAuthenticated ? {} : "skip");
-	const mutedColor = useThemeColor("muted");
-	const successColor = useThemeColor("success");
-	const dangerColor = useThemeColor("danger");
+  const healthCheck = useQuery(api.healthCheck.get);
+  const { isAuthenticated } = useConvexAuth();
+  const user = useQuery(api.user.getCurrentUser, isAuthenticated ? {} : "skip");
+  const mutedColor = useThemeColor("muted");
+  const successColor = useThemeColor("success");
+  const dangerColor = useThemeColor("danger");
 
-	const isConnected = healthCheck === "OK";
-	const isLoading = healthCheck === undefined;
-	const [showSignIn, setShowSignIn] = useState(true);
+  const isConnected = healthCheck === "OK";
+  const isLoading = healthCheck === undefined;
+  const [showSignIn, setShowSignIn] = useState(true);
 
-	return (
-		<Container className="p-6">
-			<View className="py-4 mb-6">
-				<Text className="text-4xl font-bold text-foreground mb-2">
-					Biviant
-				</Text>
-				<View className="flex-row items-center gap-2 mb-4">
-					<Chip
-						variant="secondary"
-						color={isLoading ? "default" : isConnected ? "success" : "danger"}
-						size="sm"
-					>
-						<Chip.Label>
-							{isLoading ? "Connecting..." : isConnected ? "Connected" : "Offline"}
-						</Chip.Label>
-					</Chip>
-				</View>
-			</View>
+  return (
+    <Container className="p-6">
+      <View className="py-4 mb-6">
+        <Text className="text-4xl font-bold text-foreground mb-2">Biviant</Text>
+        <View className="flex-row items-center gap-2 mb-4">
+          <Chip
+            variant="secondary"
+            color={isLoading ? "default" : isConnected ? "success" : "danger"}
+            size="sm"
+          >
+            <Chip.Label>
+              {isLoading
+                ? "Connecting..."
+                : isConnected
+                  ? "Connected"
+                  : "Offline"}
+            </Chip.Label>
+          </Chip>
+        </View>
+      </View>
 
-			{isAuthenticated ? (
-				<View>
-					<Card variant="secondary" className="p-4 mb-4">
-						<Card.Title className="mb-2">Welcome back</Card.Title>
-						<Card.Description>
-							{user?.profile?.name ?? user?.email ?? "Loading..."}
-						</Card.Description>
-					</Card>
-					<Pressable
-						onPress={() => authClient.signOut()}
-						className="bg-danger/10 p-4 rounded-lg active:opacity-70"
-					>
-						<Text className="text-danger font-medium text-center">
-							Sign Out
-						</Text>
-					</Pressable>
-				</View>
-			) : (
-				<View>
-					{showSignIn ? <SignIn /> : <SignUp />}
-					<Pressable
-						onPress={() => setShowSignIn(!showSignIn)}
-						className="mt-4 p-2"
-					>
-						<Text className="text-muted text-center text-sm">
-							{showSignIn ? "Need an account? Sign Up" : "Already have an account? Sign In"}
-						</Text>
-					</Pressable>
-				</View>
-			)}
-		</Container>
-	);
+      {isAuthenticated ? (
+        <View>
+          <Card variant="secondary" className="p-4 mb-4">
+            <Card.Title className="mb-2">Welcome back</Card.Title>
+            <Card.Description>
+              {user?.profile?.name ?? user?.email ?? "Loading..."}
+            </Card.Description>
+          </Card>
+          <Pressable
+            onPress={async () => {
+              try {
+                await authClient.signOut();
+              } catch (error) {
+                Alert.alert(
+                  "Sign Out Failed",
+                  "Something went wrong. Please try again.",
+                );
+              }
+            }}
+            className="bg-danger/10 p-4 rounded-lg active:opacity-70"
+          >
+            <Text className="text-danger font-medium text-center">
+              Sign Out
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View>
+          {showSignIn ? <SignIn /> : <SignUp />}
+          <Pressable
+            onPress={() => setShowSignIn(!showSignIn)}
+            className="mt-4 p-2"
+          >
+            <Text className="text-muted text-center text-sm">
+              {showSignIn
+                ? "Need an account? Sign Up"
+                : "Already have an account? Sign In"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+    </Container>
+  );
 }

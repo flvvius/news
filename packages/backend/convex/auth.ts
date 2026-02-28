@@ -42,7 +42,7 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           const appUser = await ctx.db
             .query("users")
             .withIndex("by_auth_user_id", (q) =>
-              q.eq("authUserId", newAuthUser._id)
+              q.eq("authUserId", newAuthUser._id),
             )
             .unique();
 

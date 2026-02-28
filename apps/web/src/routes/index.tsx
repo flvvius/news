@@ -35,8 +35,9 @@ function WaitlistForm({
     setStatus("loading");
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const result = await addToWaitlist({
-        email,
+        email: normalizedEmail,
         name: name.trim() || undefined,
       });
 
@@ -54,11 +55,8 @@ function WaitlistForm({
         setName("");
       }
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again.",
-      );
+      console.error("Waitlist submission failed:", error);
+      setMessage("Something went wrong. Please try again.");
       setStatus("error");
     }
 
@@ -99,6 +97,9 @@ function WaitlistForm({
       </div>
       {message && (
         <p
+          role={status === "error" ? "alert" : "status"}
+          aria-live={status === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
           className={`text-sm mt-2 ${status === "error" ? "text-destructive" : "text-success"}`}
         >
           {message}
