@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
@@ -23,7 +23,6 @@ export const Route = createFileRoute("/unsubscribe")({
 function UnsubscribePage() {
   const { email } = Route.useSearch();
   const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
-  const requestIdRef = useRef(0);
 
   const unsubscribe = useMutation({
     mutationFn: useConvexMutation(api.waitlist.unsubscribe),
@@ -47,18 +46,7 @@ function UnsubscribePage() {
     )
       return;
 
-    const currentId = ++requestIdRef.current;
-    unsubscribe.mutate(
-      { email },
-      {
-        onSuccess: () => {
-          if (currentId !== requestIdRef.current) return;
-        },
-        onError: () => {
-          if (currentId !== requestIdRef.current) return;
-        },
-      },
-    );
+    unsubscribe.mutate({ email });
   }, [
     email,
     unsubscribe.isPending,

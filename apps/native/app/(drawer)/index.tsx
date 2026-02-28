@@ -6,16 +6,13 @@ import { authClient } from "@/lib/auth-client";
 import { SignIn } from "@/components/sign-in";
 import { SignUp } from "@/components/sign-up";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, Chip, useThemeColor } from "heroui-native";
+import { Card, Chip } from "heroui-native";
 import { useState } from "react";
 
 export default function Home() {
   const healthCheck = useQuery(api.healthCheck.get);
   const { isAuthenticated } = useConvexAuth();
   const user = useQuery(api.user.getCurrentUser, isAuthenticated ? {} : "skip");
-  const mutedColor = useThemeColor("muted");
-  const successColor = useThemeColor("success");
-  const dangerColor = useThemeColor("danger");
 
   const isConnected = healthCheck === "OK";
   const isLoading = healthCheck === undefined;

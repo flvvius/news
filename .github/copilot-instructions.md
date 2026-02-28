@@ -4,7 +4,7 @@
 
 **Rule:** Never use `useMutation` from `convex/react` directly in web app components. Always wrap Convex mutations with TanStack Query's `useMutation` + `useConvexMutation`.
 
-**Why:** Convex's `useMutation` returns a bare async function with no built-in state tracking. TanStack Query's `useMutation` provides `isPending`, `isSuccess`, `isError`, `error`, `reset()`, automatic deduplication of in-flight calls, and retry logic — eliminating manual state management for loading/error/success flows.
+**Why:** Convex's `useMutation` returns a bare async function with no built-in state tracking. TanStack Query's `useMutation` provides `isPending`, `isSuccess`, `isError`, `error`, `reset()`, and retry logic — eliminating manual state management for loading/error/success flows. Note that `useMutation` does **not** deduplicate concurrent calls by default; if you need to prevent parallel duplicate writes, implement guards at the UI level (e.g., `disabled={isPending}` on submit buttons) or use server-side idempotency.
 
 **Pattern:**
 
