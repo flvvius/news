@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation } from "convex/react";
+import { useMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { z } from "zod";
 
@@ -21,35 +22,49 @@ export const Route = createFileRoute("/unsubscribe")({
 
 function UnsubscribePage() {
   const { email } = Route.useSearch();
-  const unsubscribe = useMutation(api.waitlist.unsubscribe);
-
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
-    "idle",
-  );
   const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
   const requestIdRef = useRef(0);
 
+  const unsubscribe = useMutation({
+    mutationFn: useConvexMutation(api.waitlist.unsubscribe),
+  });
+
+  // Reset mutation state when email changes so it re-fires
   useEffect(() => {
     if (email !== lastEmail) {
-      setStatus("idle");
+      unsubscribe.reset();
       setLastEmail(email);
     }
   }, [email, lastEmail]);
 
+  // Auto-fire unsubscribe when ready
   useEffect(() => {
-    if (!email || status !== "idle") return;
+    if (
+      !email ||
+      unsubscribe.isPending ||
+      unsubscribe.isSuccess ||
+      unsubscribe.isError
+    )
+      return;
 
     const currentId = ++requestIdRef.current;
-    setStatus("loading");
-
-    unsubscribe({ email })
-      .then(() => {
-        if (currentId === requestIdRef.current) setStatus("done");
-      })
-      .catch(() => {
-        if (currentId === requestIdRef.current) setStatus("error");
-      });
-  }, [email, unsubscribe, status]);
+    unsubscribe.mutate(
+      { email },
+      {
+        onSuccess: () => {
+          if (currentId !== requestIdRef.current) return;
+        },
+        onError: () => {
+          if (currentId !== requestIdRef.current) return;
+        },
+      },
+    );
+  }, [
+    email,
+    unsubscribe.isPending,
+    unsubscribe.isSuccess,
+    unsubscribe.isError,
+  ]);
 
   if (!email) {
     return (
@@ -63,15 +78,17 @@ function UnsubscribePage() {
     );
   }
 
-  if (status === "loading") {
+  if (unsubscribe.isPending) {
     return (
       <PageShell>
-        <p className="text-muted-foreground">Unsubscribing...</p>
+        <p className="text-muted-foreground" role="status" aria-live="polite">
+          Unsubscribing...
+        </p>
       </PageShell>
     );
   }
 
-  if (status === "error") {
+  if (unsubscribe.isError) {
     return (
       <PageShell>
         <h1 className="text-2xl font-bold text-foreground">

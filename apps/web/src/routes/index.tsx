@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { SITE } from "@/lib/seo";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
+import { useMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,12 +19,31 @@ function WaitlistForm({
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
   const [message, setMessage] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addToWaitlist = useMutation(api.waitlist.addToWaitlist);
+
+  const addToWaitlist = useMutation({
+    mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
+    onSuccess: (result) => {
+      if (result.alreadyExists) {
+        setMessage(
+          `You're already on the waitlist at position #${result.position}!`,
+        );
+      } else {
+        setMessage(
+          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
+        );
+        setEmail("");
+        setName("");
+      }
+      scheduleReset();
+    },
+    onError: (error) => {
+      console.error("Waitlist submission failed:", error);
+      setMessage("Something went wrong. Please try again.");
+      scheduleReset();
+    },
+  });
 
   useEffect(() => {
     return () => {
@@ -30,46 +51,33 @@ function WaitlistForm({
     };
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const scheduleReset = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      addToWaitlist.reset();
+      setMessage("");
+    }, 10_000);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setStatus("loading");
-
-    try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const result = await addToWaitlist({
-        email: normalizedEmail,
-        name: name.trim() || undefined,
-      });
-
-      if (result.alreadyExists) {
-        setMessage(
-          `You're already on the waitlist at position #${result.position}!`,
-        );
-        setStatus("success");
-      } else {
-        setMessage(
-          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
-        );
-        setStatus("success");
-        setEmail("");
-        setName("");
-      }
-    } catch (error) {
-      console.error("Waitlist submission failed:", error);
-      setMessage("Something went wrong. Please try again.");
-      setStatus("error");
-    }
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setStatus("idle");
-      setMessage("");
-    }, 10_000);
+    const normalizedEmail = email.trim().toLowerCase();
+    addToWaitlist.mutate({
+      email: normalizedEmail,
+      name: name.trim() || undefined,
+    });
   };
+
+  const isPending = addToWaitlist.isPending;
+  const status = addToWaitlist.isError
+    ? "error"
+    : addToWaitlist.isSuccess
+      ? "success"
+      : "idle";
 
   return (
     <form onSubmit={handleSubmit} className={className}>
@@ -83,10 +91,10 @@ function WaitlistForm({
             onChange={(e) => setEmail(e.target.value)}
             required
             className="flex-1"
-            disabled={status === "loading"}
+            disabled={isPending}
           />
-          <Button type="submit" size="lg" disabled={status === "loading"}>
-            {status === "loading" ? "Joining..." : buttonText}
+          <Button type="submit" size="lg" disabled={isPending}>
+            {isPending ? "Joining..." : buttonText}
           </Button>
         </div>
         <Input
@@ -96,7 +104,7 @@ function WaitlistForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="flex-1"
-          disabled={status === "loading"}
+          disabled={isPending}
         />
       </div>
       {message && (

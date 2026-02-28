@@ -20,6 +20,7 @@ export default function Home() {
   const isConnected = healthCheck === "OK";
   const isLoading = healthCheck === undefined;
   const [showSignIn, setShowSignIn] = useState(true);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   return (
     <Container className="p-6">
@@ -52,6 +53,8 @@ export default function Home() {
           </Card>
           <Pressable
             onPress={async () => {
+              if (isSigningOut) return;
+              setIsSigningOut(true);
               try {
                 await authClient.signOut();
               } catch (error) {
@@ -59,14 +62,18 @@ export default function Home() {
                   "Sign Out Failed",
                   "Something went wrong. Please try again.",
                 );
+              } finally {
+                setIsSigningOut(false);
               }
             }}
+            disabled={isSigningOut}
             accessibilityRole="button"
             accessibilityLabel="Sign Out"
-            className="bg-danger/10 p-4 rounded-lg active:opacity-70"
+            accessibilityState={{ disabled: isSigningOut }}
+            className={`bg-danger/10 p-4 rounded-lg active:opacity-70 ${isSigningOut ? "opacity-50" : ""}`}
           >
             <Text className="text-danger font-medium text-center">
-              Sign Out
+              {isSigningOut ? "Signing Out..." : "Sign Out"}
             </Text>
           </Pressable>
         </View>
