@@ -61,6 +61,8 @@ export default function Home() {
                 );
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Sign Out"
             className="bg-danger/10 p-4 rounded-lg active:opacity-70"
           >
             <Text className="text-danger font-medium text-center">
@@ -72,7 +74,9 @@ export default function Home() {
         <View>
           {showSignIn ? <SignIn /> : <SignUp />}
           <Pressable
-            onPress={() => setShowSignIn(!showSignIn)}
+            onPress={() => setShowSignIn((prev) => !prev)}
+            accessibilityRole="button"
+            accessibilityLabel={showSignIn ? "Switch to Sign Up" : "Switch to Sign In"}
             className="mt-4 p-2"
           >
             <Text className="text-muted text-center text-sm">

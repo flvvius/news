@@ -1,17 +1,23 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { cn } from "@/lib/utils";
 
-const Toaster = ({ theme = "system", ...props }: ToasterProps) => {
+const defaultStyle = {
+  "--normal-bg": "var(--popover)",
+  "--normal-text": "var(--popover-foreground)",
+  "--normal-border": "var(--border)",
+} as React.CSSProperties;
+
+const Toaster = ({
+  theme = "system",
+  className,
+  style,
+  ...props
+}: ToasterProps) => {
   return (
     <Sonner
       theme={theme}
-      className="toaster group"
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-        } as React.CSSProperties
-      }
+      className={cn("toaster group", className)}
+      style={{ ...defaultStyle, ...style }}
       {...props}
     />
   );

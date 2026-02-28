@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -27,6 +27,7 @@ function UnsubscribePage() {
     "idle",
   );
   const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (email !== lastEmail) {
@@ -38,11 +39,16 @@ function UnsubscribePage() {
   useEffect(() => {
     if (!email || status !== "idle") return;
 
+    const currentId = ++requestIdRef.current;
     setStatus("loading");
 
     unsubscribe({ email })
-      .then(() => setStatus("done"))
-      .catch(() => setStatus("error"));
+      .then(() => {
+        if (currentId === requestIdRef.current) setStatus("done");
+      })
+      .catch(() => {
+        if (currentId === requestIdRef.current) setStatus("error");
+      });
   }, [email, unsubscribe, status]);
 
   if (!email) {

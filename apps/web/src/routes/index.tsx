@@ -32,6 +32,10 @@ function WaitlistForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setStatus("loading");
 
     try {
