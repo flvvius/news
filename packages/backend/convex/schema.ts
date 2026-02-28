@@ -150,6 +150,7 @@ export default defineSchema({
       v.literal("view"),
       v.literal("click_source"),
       v.literal("bookmark"),
+      v.literal("unbookmark"),
       v.literal("dismiss"),
       v.literal("share"),
       v.literal("feedback_bias"),
