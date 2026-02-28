@@ -12,7 +12,7 @@ import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 
 export default function UserMenu() {
-  const user = useQuery(api.auth.getCurrentUser);
+  const user = useQuery(api.user.getCurrentUser);
 
   const handleSignOut = async () => {
     await authClient.signOut({
@@ -27,7 +27,9 @@ export default function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline">{user?.name}</Button>
+        <Button variant="outline" aria-label="User menu">
+          {user?.profile?.name || user?.email || "Account"}
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="bg-card">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>

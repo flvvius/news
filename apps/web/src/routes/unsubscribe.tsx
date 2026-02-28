@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation } from "convex/react";
+import { useMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { z } from "zod";
 
@@ -21,21 +22,37 @@ export const Route = createFileRoute("/unsubscribe")({
 
 function UnsubscribePage() {
   const { email } = Route.useSearch();
-  const unsubscribe = useMutation(api.waitlist.unsubscribe);
+  const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
 
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
-    "idle",
-  );
+  const unsubscribe = useMutation({
+    mutationFn: useConvexMutation(api.waitlist.unsubscribe),
+  });
 
+  // Reset mutation state when email changes so it re-fires
   useEffect(() => {
-    if (!email || status !== "idle") return;
+    if (email !== lastEmail) {
+      unsubscribe.reset();
+      setLastEmail(email);
+    }
+  }, [email, lastEmail]);
 
-    setStatus("loading");
+  // Auto-fire unsubscribe when ready
+  useEffect(() => {
+    if (
+      !email ||
+      unsubscribe.isPending ||
+      unsubscribe.isSuccess ||
+      unsubscribe.isError
+    )
+      return;
 
-    unsubscribe({ email })
-      .then(() => setStatus("done"))
-      .catch(() => setStatus("error"));
-  }, [email]);
+    unsubscribe.mutate({ email });
+  }, [
+    email,
+    unsubscribe.isPending,
+    unsubscribe.isSuccess,
+    unsubscribe.isError,
+  ]);
 
   if (!email) {
     return (
@@ -49,15 +66,17 @@ function UnsubscribePage() {
     );
   }
 
-  if (status === "loading") {
+  if (unsubscribe.isPending) {
     return (
       <PageShell>
-        <p className="text-muted-foreground">Unsubscribing...</p>
+        <p className="text-muted-foreground" role="status" aria-live="polite">
+          Unsubscribing...
+        </p>
       </PageShell>
     );
   }
 
-  if (status === "error") {
+  if (unsubscribe.isError) {
     return (
       <PageShell>
         <h1 className="text-2xl font-bold text-foreground">

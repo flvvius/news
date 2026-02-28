@@ -7,14 +7,12 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
-import { query } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
-import { v } from "convex/values";
 import authConfig from "./auth.config";
 import { crossDomain } from "@convex-dev/better-auth/plugins";
 
 const siteUrl = process.env.SITE_URL!;
-const nativeAppUrl = process.env.NATIVE_APP_URL || "mybettertapp://";
+const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -44,7 +42,7 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           const appUser = await ctx.db
             .query("users")
             .withIndex("by_auth_user_id", (q) =>
-              q.eq("authUserId", newAuthUser._id)
+              q.eq("authUserId", newAuthUser._id),
             )
             .unique();
 
@@ -100,11 +98,3 @@ function createAuth(ctx: GenericCtx<DataModel>) {
 }
 
 export { createAuth };
-
-export const getCurrentUser = query({
-  args: {},
-  returns: v.any(),
-  handler: async function (ctx, args) {
-    return authComponent.getAuthUser(ctx);
-  },
-});

@@ -98,7 +98,9 @@ function RootDocument() {
             </main>
           </div>
           <Toaster richColors />
-          <TanStackRouterDevtools position="bottom-left" />
+          {import.meta.env.DEV && (
+            <TanStackRouterDevtools position="bottom-left" />
+          )}
           <Scripts />
         </body>
       </html>

@@ -77,7 +77,7 @@ function EventDetailPage() {
           <p className="text-muted-foreground mb-4">
             The event you're looking for doesn't exist.
           </p>
-          <Link to="/">
+          <Link to="/feed">
             <Button>Back to feed</Button>
           </Link>
         </div>
@@ -94,7 +94,7 @@ function EventDetailPage() {
       <div className="flex flex-col gap-6">
         {/* Back button */}
         <Link
-          to="/"
+          to="/feed"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
           ← Back to feed

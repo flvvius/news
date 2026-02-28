@@ -25,6 +25,15 @@ export const addToWaitlist = mutation({
       .first();
 
     if (existing) {
+      if (existing.status === "unsubscribed") {
+        await ctx.db.patch(existing._id, { status: "pending" });
+        return {
+          success: true,
+          alreadyExists: false,
+          position: existing.position,
+        };
+      }
+
       return {
         success: true,
         alreadyExists: true,
