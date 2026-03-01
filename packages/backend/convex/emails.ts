@@ -20,6 +20,11 @@ interface EmailConfig {
   physicalAddress: string;
 }
 
+/** Check that a value is a non-empty string after trimming. */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
 /** Fetch all email-related config in one round-trip. */
 async function getEmailConfig(ctx: ActionCtx): Promise<EmailConfig> {
   const cfg = await ctx.runQuery(internal.config.getBatch, {
@@ -31,22 +36,18 @@ async function getEmailConfig(ctx: ActionCtx): Promise<EmailConfig> {
     ],
   });
   return {
-    fromAddress:
-      typeof cfg.email_from_address === "string"
-        ? cfg.email_from_address
-        : DEFAULT_FROM_ADDRESS,
-    replyTo:
-      typeof cfg.email_reply_to === "string"
-        ? cfg.email_reply_to
-        : DEFAULT_REPLY_TO,
-    unsubBase:
-      typeof cfg.unsubscribe_base_url === "string"
-        ? cfg.unsubscribe_base_url
-        : DEFAULT_UNSUB_BASE,
-    physicalAddress:
-      typeof cfg.email_physical_address === "string"
-        ? cfg.email_physical_address
-        : DEFAULT_PHYSICAL_ADDRESS,
+    fromAddress: isNonEmptyString(cfg.email_from_address)
+      ? cfg.email_from_address
+      : DEFAULT_FROM_ADDRESS,
+    replyTo: isNonEmptyString(cfg.email_reply_to)
+      ? cfg.email_reply_to
+      : DEFAULT_REPLY_TO,
+    unsubBase: isNonEmptyString(cfg.unsubscribe_base_url)
+      ? cfg.unsubscribe_base_url
+      : DEFAULT_UNSUB_BASE,
+    physicalAddress: isNonEmptyString(cfg.email_physical_address)
+      ? cfg.email_physical_address
+      : DEFAULT_PHYSICAL_ADDRESS,
   };
 }
 

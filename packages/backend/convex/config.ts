@@ -39,10 +39,26 @@ export async function getConfig<T>(
 // Public queries
 // ---------------------------------------------------------------------------
 
+// Keys that are safe for unauthenticated client-side reads.
+// All other keys require admin access via the `list` query.
+const CLIENT_SAFE_KEYS = new Set([
+  "bias_thresholds",
+  "bookmark_debounce_ms",
+  "event_card_max_sources",
+  "feed_page_size",
+  "landing_preview_count",
+  "waitlist_toast_dismiss_ms",
+]);
+
 /** Get a single config value (for client-side reactive reads). */
 export const get = query({
   args: { key: v.string() },
   handler: async (ctx, args) => {
+    if (!CLIENT_SAFE_KEYS.has(args.key)) {
+      // Non-allowlisted keys require admin access
+      await requireAdmin(ctx);
+    }
+
     const row = await ctx.db
       .query("config")
       .withIndex("by_key", (q) => q.eq("key", args.key))

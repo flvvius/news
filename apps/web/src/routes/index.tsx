@@ -170,13 +170,17 @@ function LandingPage() {
     key: "event_card_max_sources",
   });
   const rawMaxSources = Number(maxSourcesConfig?.value);
+  const MAX_EVENT_CARD_SOURCES = 10;
   const maxSources = Number.isFinite(rawMaxSources)
-    ? Math.max(0, Math.floor(rawMaxSources))
+    ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))
     : 5;
 
-  const events = useQuery(api.events.getPublishedEvents, {
-    paginationOpts: { numItems: previewCount, cursor: null },
-  });
+  const events = useQuery(
+    api.events.getPublishedEvents,
+    previewCountConfig !== undefined
+      ? { paginationOpts: { numItems: previewCount, cursor: null } }
+      : "skip",
+  );
   const topics = useQuery(api.topics.getTopics);
 
   const topicNamesById = useMemo(() => {
