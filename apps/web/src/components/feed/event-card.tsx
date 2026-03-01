@@ -1,6 +1,4 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
-import { api } from "@news-app/backend/convex/_generated/api";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,16 +23,17 @@ type EventCardProps = {
     }>;
   };
   topicNamesById: Record<string, string>;
+  /** Max source logos to display. Pre-validated by the parent. */
+  maxSources?: number;
 };
 
-const EventCard = ({ event, topicNamesById }: EventCardProps) => {
+const EventCard = ({
+  event,
+  topicNamesById,
+  maxSources = 5,
+}: EventCardProps) => {
   const topics = event.topicIds.map((id) => topicNamesById[id]).filter(Boolean);
   const primaryTopic = topics[0] ?? "General";
-
-  const maxSourcesConfig = useQuery(api.config.get, {
-    key: "event_card_max_sources",
-  });
-  const maxSources = (maxSourcesConfig?.value as number) ?? 5;
 
   return (
     <Link to="/event/$slug" params={{ slug: event.slug }} className="block">

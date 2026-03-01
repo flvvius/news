@@ -33,9 +33,18 @@ function FeedComponent() {
   const topics = useQuery(api.topics.getTopics);
   const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
   const rawPageSize = Number(pageSizeConfig?.value);
+  const MAX_FEED_PAGE_SIZE = 50;
   const pageSize = Number.isFinite(rawPageSize)
-    ? Math.max(1, Math.floor(rawPageSize))
+    ? Math.min(MAX_FEED_PAGE_SIZE, Math.max(1, Math.floor(rawPageSize)))
     : 6;
+
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const maxSources = Number.isFinite(rawMaxSources)
+    ? Math.max(0, Math.floor(rawMaxSources))
+    : 5;
 
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
@@ -105,6 +114,7 @@ function FeedComponent() {
               key={event._id}
               event={event}
               topicNamesById={topicNamesById}
+              maxSources={maxSources}
             />
           ))}
 

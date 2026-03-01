@@ -25,7 +25,10 @@ function WaitlistForm({
   const toastDismissConfig = useQuery(api.config.get, {
     key: "waitlist_toast_dismiss_ms",
   });
-  const toastDismissMs = (toastDismissConfig?.value as number) ?? 10_000;
+  const rawDismiss = Number(toastDismissConfig?.value);
+  const toastDismissMs = Number.isFinite(rawDismiss)
+    ? Math.max(1, Math.floor(rawDismiss))
+    : 10_000;
 
   const addToWaitlist = useMutation({
     mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
@@ -158,7 +161,18 @@ function LandingPage() {
   const previewCountConfig = useQuery(api.config.get, {
     key: "landing_preview_count",
   });
-  const previewCount = (previewCountConfig?.value as number) ?? 3;
+  const rawPreview = Number(previewCountConfig?.value);
+  const previewCount = Number.isFinite(rawPreview)
+    ? Math.max(1, Math.floor(rawPreview))
+    : 3;
+
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const maxSources = Number.isFinite(rawMaxSources)
+    ? Math.max(0, Math.floor(rawMaxSources))
+    : 5;
 
   const events = useQuery(api.events.getPublishedEvents, {
     paginationOpts: { numItems: previewCount, cursor: null },
@@ -349,6 +363,7 @@ function LandingPage() {
                   key={event._id}
                   event={event}
                   topicNamesById={topicNamesById}
+                  maxSources={maxSources}
                 />
               ))}
             </div>

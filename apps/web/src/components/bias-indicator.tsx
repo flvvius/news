@@ -1,19 +1,31 @@
-import { useQuery } from "convex/react";
-import { api } from "@news-app/backend/convex/_generated/api";
-
 type BiasIndicatorProps = {
   bias: number; // -5 (Left) to +5 (Right)
   size?: "sm" | "md" | "lg";
+  /** Validated thresholds from config — pass from parent to avoid per-instance subscriptions. */
+  thresholds?: number[];
 };
 
 const DEFAULT_THRESHOLDS = [-2, -0.5, 0.5, 2];
 
-const BiasIndicator = ({ bias, size = "md" }: BiasIndicatorProps) => {
-  const thresholdsConfig = useQuery(api.config.get, {
-    key: "bias_thresholds",
-  });
-  const thresholds =
-    (thresholdsConfig?.value as number[]) ?? DEFAULT_THRESHOLDS;
+function validateThresholds(raw: unknown): number[] {
+  if (
+    !Array.isArray(raw) ||
+    raw.length < 4 ||
+    !raw.slice(0, 4).every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
+    return DEFAULT_THRESHOLDS;
+  }
+  // Ensure ascending order for the first 4 values
+  const sorted = (raw.slice(0, 4) as number[]).sort((a, b) => a - b);
+  return sorted;
+}
+
+const BiasIndicator = ({
+  bias,
+  size = "md",
+  thresholds: thresholdsProp,
+}: BiasIndicatorProps) => {
+  const thresholds = validateThresholds(thresholdsProp ?? DEFAULT_THRESHOLDS);
 
   // Normalize bias to a 0-100 scale for positioning
   const position = ((bias + 5) / 10) * 100;

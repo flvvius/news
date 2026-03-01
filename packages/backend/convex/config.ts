@@ -64,6 +64,8 @@ export const get = query({
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx);
+
     const rows = await ctx.db.query("config").collect();
     return rows.map((row) => ({
       ...row,

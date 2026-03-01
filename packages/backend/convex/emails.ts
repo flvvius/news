@@ -31,11 +31,22 @@ async function getEmailConfig(ctx: ActionCtx): Promise<EmailConfig> {
     ],
   });
   return {
-    fromAddress: (cfg.email_from_address as string) ?? DEFAULT_FROM_ADDRESS,
-    replyTo: (cfg.email_reply_to as string) ?? DEFAULT_REPLY_TO,
-    unsubBase: (cfg.unsubscribe_base_url as string) ?? DEFAULT_UNSUB_BASE,
+    fromAddress:
+      typeof cfg.email_from_address === "string"
+        ? cfg.email_from_address
+        : DEFAULT_FROM_ADDRESS,
+    replyTo:
+      typeof cfg.email_reply_to === "string"
+        ? cfg.email_reply_to
+        : DEFAULT_REPLY_TO,
+    unsubBase:
+      typeof cfg.unsubscribe_base_url === "string"
+        ? cfg.unsubscribe_base_url
+        : DEFAULT_UNSUB_BASE,
     physicalAddress:
-      (cfg.email_physical_address as string) ?? DEFAULT_PHYSICAL_ADDRESS,
+      typeof cfg.email_physical_address === "string"
+        ? cfg.email_physical_address
+        : DEFAULT_PHYSICAL_ADDRESS,
   };
 }
 
