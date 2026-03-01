@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   query,
   mutation,
@@ -6,6 +6,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
+import { authComponent } from "./auth";
 
 // ---------------------------------------------------------------------------
 // Server-side helper — use from any query or mutation handler
@@ -47,7 +48,15 @@ export const get = query({
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .unique();
     if (!row) return null;
-    return { ...row, value: JSON.parse(row.value) };
+    try {
+      return { ...row, value: JSON.parse(row.value) };
+    } catch (e) {
+      console.error(
+        `[config.get] Failed to parse value for key "${args.key}":`,
+        e,
+      );
+      return null;
+    }
   },
 });
 
@@ -102,6 +111,25 @@ export const getBatch = internalQuery({
 // Mutations
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Auth helper — reuse the same ADMIN_EMAILS pattern from waitlist.ts
+// ---------------------------------------------------------------------------
+
+async function requireAdmin(ctx: QueryCtx) {
+  const authUser = await authComponent.safeGetAuthUser(ctx);
+  if (!authUser) {
+    throw new ConvexError("Not authenticated");
+  }
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (!adminEmails.includes(authUser.email.toLowerCase())) {
+    throw new ConvexError("Unauthorized: admin access required");
+  }
+  return authUser;
+}
+
 /** Upsert a config key. Creates the row if it doesn't exist; patches if it does. */
 export const set = mutation({
   args: {
@@ -110,6 +138,17 @@ export const set = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    // Validate that the value is parseable JSON before storing
+    try {
+      JSON.parse(args.value);
+    } catch {
+      throw new ConvexError(
+        `Invalid config value for key "${args.key}": value must be valid JSON`,
+      );
+    }
+
     const existing = await ctx.db
       .query("config")
       .withIndex("by_key", (q) => q.eq("key", args.key))
@@ -138,6 +177,8 @@ export const set = mutation({
 export const remove = mutation({
   args: { key: v.string() },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const existing = await ctx.db
       .query("config")
       .withIndex("by_key", (q) => q.eq("key", args.key))

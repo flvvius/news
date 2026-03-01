@@ -28,8 +28,8 @@ export default function BookmarkButton({
   const debounceConfig = useQuery(api.config.get, {
     key: "bookmark_debounce_ms",
   });
-  const debounceMs =
-    typeof debounceConfig?.value === "number" ? debounceConfig.value : 800;
+  const raw = Number(debounceConfig?.value);
+  const debounceMs = Number.isFinite(raw) ? Math.max(1, Math.floor(raw)) : 800;
   const lastClickRef = useRef(0);
 
   // Reactive bookmark status — returns false for unauthenticated users

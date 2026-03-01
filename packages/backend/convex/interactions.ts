@@ -45,7 +45,20 @@ export const toggleBookmark = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const now = Date.now();
-    const cooldownMs = await getConfig(ctx, "bookmark_cooldown_ms", 5_000);
+
+    const rawCooldown = await getConfig(ctx, "bookmark_cooldown_ms", 5_000);
+    const cooldownMs =
+      typeof rawCooldown === "number" &&
+      Number.isFinite(rawCooldown) &&
+      rawCooldown >= 0 &&
+      rawCooldown <= 60_000
+        ? Math.floor(rawCooldown)
+        : 5_000;
+    if (cooldownMs !== rawCooldown) {
+      console.warn(
+        `[toggleBookmark] Invalid bookmark_cooldown_ms config (${String(rawCooldown)}), using default 5000`,
+      );
+    }
 
     // Find the most recent bookmark/unbookmark for this user+event.
     const recentRows = await ctx.db
