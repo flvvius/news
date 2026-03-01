@@ -22,6 +22,11 @@ function WaitlistForm({
   const [message, setMessage] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const toastDismissConfig = useQuery(api.config.get, {
+    key: "waitlist_toast_dismiss_ms",
+  });
+  const toastDismissMs = (toastDismissConfig?.value as number) ?? 10_000;
+
   const addToWaitlist = useMutation({
     mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
     onSuccess: (result) => {
@@ -56,7 +61,7 @@ function WaitlistForm({
     timerRef.current = setTimeout(() => {
       addToWaitlist.reset();
       setMessage("");
-    }, 10_000);
+    }, toastDismissMs);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -150,8 +155,13 @@ export const Route = createFileRoute("/")({
 
 function LandingPage() {
   // Get a few events for preview
+  const previewCountConfig = useQuery(api.config.get, {
+    key: "landing_preview_count",
+  });
+  const previewCount = (previewCountConfig?.value as number) ?? 3;
+
   const events = useQuery(api.events.getPublishedEvents, {
-    paginationOpts: { numItems: 3, cursor: null },
+    paginationOpts: { numItems: previewCount, cursor: null },
   });
   const topics = useQuery(api.topics.getTopics);
 

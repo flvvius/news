@@ -1,27 +1,38 @@
+import { useQuery } from "convex/react";
+import { api } from "@news-app/backend/convex/_generated/api";
+
 type BiasIndicatorProps = {
   bias: number; // -5 (Left) to +5 (Right)
   size?: "sm" | "md" | "lg";
 };
 
+const DEFAULT_THRESHOLDS = [-2, -0.5, 0.5, 2];
+
 const BiasIndicator = ({ bias, size = "md" }: BiasIndicatorProps) => {
+  const thresholdsConfig = useQuery(api.config.get, {
+    key: "bias_thresholds",
+  });
+  const thresholds =
+    (thresholdsConfig?.value as number[]) ?? DEFAULT_THRESHOLDS;
+
   // Normalize bias to a 0-100 scale for positioning
   const position = ((bias + 5) / 10) * 100;
 
   // Determine color based on bias — muted, non-political palette
   const getColor = (biasValue: number) => {
-    if (biasValue < -2) return "bg-bias-left";
-    if (biasValue < -0.5) return "bg-bias-left-muted";
-    if (biasValue <= 0.5) return "bg-bias-center";
-    if (biasValue <= 2) return "bg-bias-right-muted";
+    if (biasValue < thresholds[0]) return "bg-bias-left";
+    if (biasValue < thresholds[1]) return "bg-bias-left-muted";
+    if (biasValue <= thresholds[2]) return "bg-bias-center";
+    if (biasValue <= thresholds[3]) return "bg-bias-right-muted";
     return "bg-bias-right";
   };
 
   // Determine label
   const getLabel = (biasValue: number) => {
-    if (biasValue < -2) return "Left";
-    if (biasValue < -0.5) return "Lean Left";
-    if (biasValue <= 0.5) return "Center";
-    if (biasValue <= 2) return "Lean Right";
+    if (biasValue < thresholds[0]) return "Left";
+    if (biasValue < thresholds[1]) return "Lean Left";
+    if (biasValue <= thresholds[2]) return "Center";
+    if (biasValue <= thresholds[3]) return "Lean Right";
     return "Right";
   };
 

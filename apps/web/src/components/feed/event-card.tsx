@@ -1,4 +1,6 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
+import { api } from "@news-app/backend/convex/_generated/api";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +30,11 @@ type EventCardProps = {
 const EventCard = ({ event, topicNamesById }: EventCardProps) => {
   const topics = event.topicIds.map((id) => topicNamesById[id]).filter(Boolean);
   const primaryTopic = topics[0] ?? "General";
+
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const maxSources = (maxSourcesConfig?.value as number) ?? 5;
 
   return (
     <Link to="/event/$slug" params={{ slug: event.slug }} className="block">
@@ -86,7 +93,7 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
             <div className="flex items-center gap-2">
               {event.sources && event.sources.length > 0 && (
                 <div className="flex -space-x-2">
-                  {event.sources.slice(0, 5).map((source) => (
+                  {event.sources.slice(0, maxSources).map((source) => (
                     <div
                       key={source._id}
                       className="h-8 w-8 rounded-full border-2 border-background bg-muted overflow-hidden"

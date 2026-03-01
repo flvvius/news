@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import {
+  query,
+  mutation,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
@@ -61,6 +66,35 @@ export const list = query({
         }
       })(),
     }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Internal queries (for use by actions via ctx.runQuery)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch multiple config values in a single round-trip.
+ * Returns a Record of key → parsed value (missing keys are omitted).
+ */
+export const getBatch = internalQuery({
+  args: { keys: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const result: Record<string, unknown> = {};
+    for (const key of args.keys) {
+      const row = await ctx.db
+        .query("config")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .unique();
+      if (row) {
+        try {
+          result[key] = JSON.parse(row.value);
+        } catch {
+          result[key] = row.value;
+        }
+      }
+    }
+    return result;
   },
 });
 
@@ -144,6 +178,53 @@ export const seedDefaults = internalMutation({
         value: 6,
         description:
           "Number of events loaded per page in the feed (initial + load-more batch size).",
+      },
+      // Email settings
+      {
+        key: "email_from_address",
+        value: "Biviant <hello@biviant.com>",
+        description:
+          'Sender address for transactional emails (RFC 5322 "From" header).',
+      },
+      {
+        key: "email_reply_to",
+        value: "hello@biviant.com",
+        description: "Reply-To address for transactional emails.",
+      },
+      {
+        key: "email_physical_address",
+        value: "Biviant, Bucharest, Romania",
+        description:
+          "CAN-SPAM required physical address shown in email footers.",
+      },
+      {
+        key: "unsubscribe_base_url",
+        value: "https://biviant.com/unsubscribe",
+        description:
+          "Base URL for one-click unsubscribe links in emails (email param is appended).",
+      },
+      // Client-side UI settings
+      {
+        key: "landing_preview_count",
+        value: 3,
+        description: "Number of event preview cards shown on the landing page.",
+      },
+      {
+        key: "waitlist_toast_dismiss_ms",
+        value: 10000,
+        description:
+          "Duration (ms) before the waitlist success/error message auto-dismisses.",
+      },
+      {
+        key: "event_card_max_sources",
+        value: 5,
+        description: "Maximum number of source logos shown on an event card.",
+      },
+      {
+        key: "bias_thresholds",
+        value: [-2, -0.5, 0.5, 2],
+        description:
+          "Bias indicator boundaries: [leftMax, leanLeftMax, leanRightMin, rightMin]. Values outside the outer pair are labeled Left/Right.",
       },
     ];
 
