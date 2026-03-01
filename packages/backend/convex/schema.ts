@@ -209,4 +209,14 @@ export default defineSchema({
     .index("by_invite_code", ["inviteCode"])
     .index("by_position", ["position"])
     .index("by_status_last_email", ["status", "lastEmailSentAt"]),
+
+  // =========================================================================
+  // 9. CONFIG (Runtime-Tunable Key-Value Store)
+  // =========================================================================
+  config: defineTable({
+    key: v.string(),
+    value: v.string(), // JSON-encoded for flexibility
+    description: v.string(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 });

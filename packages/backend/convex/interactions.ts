@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
+import { getConfig } from "./config";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,15 +27,12 @@ async function requireUserId(ctx: QueryCtx) {
 // Bookmarks
 // ---------------------------------------------------------------------------
 
-// Rapid toggles within this window patch the last row instead of inserting.
-const BOOKMARK_COOLDOWN_MS = 5_000;
-
 /**
  * Toggle a bookmark on an event.
  *
  * Deduplication strategy (cooldown dedup):
- * - If the last bookmark/unbookmark for this user+event is within
- *   BOOKMARK_COOLDOWN_MS, **patch** that row (type + timestamp).
+ * - If the last bookmark/unbookmark for this user+event is within the
+ *   `bookmark_cooldown_ms` config window, **patch** that row (type + timestamp).
  * - Otherwise, **insert** a new row.
  *
  * This bounds storage to at most 1 row per cooldown window per user+event
@@ -47,6 +45,7 @@ export const toggleBookmark = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const now = Date.now();
+    const cooldownMs = await getConfig(ctx, "bookmark_cooldown_ms", 5_000);
 
     // Find the most recent bookmark/unbookmark for this user+event.
     const recentRows = await ctx.db
@@ -64,7 +63,7 @@ export const toggleBookmark = mutation({
     const isCurrentlyBookmarked = latest?.type === "bookmark";
     const nextType = isCurrentlyBookmarked ? "unbookmark" : "bookmark";
 
-    if (latest && now - latest.timestamp < BOOKMARK_COOLDOWN_MS) {
+    if (latest && now - latest.timestamp < cooldownMs) {
       // Within cooldown — patch the existing row instead of inserting.
       await ctx.db.patch(latest._id, {
         type: nextType,

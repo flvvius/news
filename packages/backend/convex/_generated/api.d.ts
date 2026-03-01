@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as config from "../config.js";
 import type * as emails from "../emails.js";
 import type * as events from "../events.js";
 import type * as healthCheck from "../healthCheck.js";
@@ -28,6 +29,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  config: typeof config;
   emails: typeof emails;
   events: typeof events;
   healthCheck: typeof healthCheck;

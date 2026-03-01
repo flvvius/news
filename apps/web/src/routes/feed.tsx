@@ -31,6 +31,10 @@ export const Route = createFileRoute("/feed")({
 
 function FeedComponent() {
   const topics = useQuery(api.topics.getTopics);
+  const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
+  const pageSize =
+    typeof pageSizeConfig?.value === "number" ? pageSizeConfig.value : 6;
+
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
@@ -112,7 +116,7 @@ function FeedComponent() {
 
         {status === "CanLoadMore" && (
           <div>
-            <Button type="button" onClick={() => loadMore(6)} variant="outline">
+            <Button type="button" onClick={() => loadMore(pageSize)} variant="outline">
               Load more
             </Button>
           </div>

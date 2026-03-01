@@ -24,7 +24,12 @@ export default function BookmarkButton({
   const { isAuthenticated } = useConvexAuth();
 
   // Client-side debounce — prevents rapid-fire mutation calls.
-  const DEBOUNCE_MS = 800;
+  // Value is tunable via the `bookmark_debounce_ms` config key.
+  const debounceConfig = useQuery(api.config.get, {
+    key: "bookmark_debounce_ms",
+  });
+  const debounceMs =
+    typeof debounceConfig?.value === "number" ? debounceConfig.value : 800;
   const lastClickRef = useRef(0);
 
   // Reactive bookmark status — returns false for unauthenticated users
@@ -67,12 +72,12 @@ export default function BookmarkButton({
 
       // Client-side debounce guard
       const now = Date.now();
-      if (now - lastClickRef.current < DEBOUNCE_MS) return;
+      if (now - lastClickRef.current < debounceMs) return;
       lastClickRef.current = now;
 
       toggle.mutate({ eventId });
     },
-    [isAuthenticated, toggle, eventId],
+    [isAuthenticated, toggle, eventId, debounceMs],
   );
 
   const bookmarked = isBookmarked === true;
