@@ -162,8 +162,9 @@ function LandingPage() {
     key: "landing_preview_count",
   });
   const rawPreview = Number(previewCountConfig?.value);
+  const MAX_LANDING_PREVIEW_COUNT = 20;
   const previewCount = Number.isFinite(rawPreview)
-    ? Math.max(1, Math.floor(rawPreview))
+    ? Math.min(MAX_LANDING_PREVIEW_COUNT, Math.max(1, Math.floor(rawPreview)))
     : 3;
 
   const maxSourcesConfig = useQuery(api.config.get, {
