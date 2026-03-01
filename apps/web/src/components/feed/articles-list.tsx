@@ -1,4 +1,6 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
+import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BiasIndicator from "@/components/bias-indicator";
 
@@ -21,6 +23,13 @@ type ArticlesListProps = {
 };
 
 const ArticlesList = ({ articles }: ArticlesListProps) => {
+  // Single subscription for the whole list — passed down to each BiasIndicator
+  const thresholdsConfig = useQuery(api.config.get, {
+    key: "bias_thresholds",
+  });
+  const thresholds =
+    (thresholdsConfig?.value as number[] | undefined) ?? undefined;
+
   return (
     <Card>
       <CardHeader>
@@ -57,7 +66,11 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                       <span className="text-sm text-muted-foreground">
                         {article.source.name}
                       </span>
-                      <BiasIndicator bias={article.source.baseBias} size="sm" />
+                      <BiasIndicator
+                        bias={article.source.baseBias}
+                        size="sm"
+                        thresholds={thresholds}
+                      />
                     </>
                   )}
                   <span className="text-xs text-muted-foreground">

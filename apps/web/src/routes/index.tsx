@@ -22,6 +22,14 @@ function WaitlistForm({
   const [message, setMessage] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const toastDismissConfig = useQuery(api.config.get, {
+    key: "waitlist_toast_dismiss_ms",
+  });
+  const rawDismiss = Number(toastDismissConfig?.value);
+  const toastDismissMs = Number.isFinite(rawDismiss)
+    ? Math.max(1, Math.floor(rawDismiss))
+    : 10_000;
+
   const addToWaitlist = useMutation({
     mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
     onSuccess: (result) => {
@@ -56,7 +64,7 @@ function WaitlistForm({
     timerRef.current = setTimeout(() => {
       addToWaitlist.reset();
       setMessage("");
-    }, 10_000);
+    }, toastDismissMs);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -150,9 +158,30 @@ export const Route = createFileRoute("/")({
 
 function LandingPage() {
   // Get a few events for preview
-  const events = useQuery(api.events.getPublishedEvents, {
-    paginationOpts: { numItems: 3, cursor: null },
+  const previewCountConfig = useQuery(api.config.get, {
+    key: "landing_preview_count",
   });
+  const rawPreview = Number(previewCountConfig?.value);
+  const MAX_LANDING_PREVIEW_COUNT = 20;
+  const previewCount = Number.isFinite(rawPreview)
+    ? Math.min(MAX_LANDING_PREVIEW_COUNT, Math.max(1, Math.floor(rawPreview)))
+    : 3;
+
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const MAX_EVENT_CARD_SOURCES = 10;
+  const maxSources = Number.isFinite(rawMaxSources)
+    ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))
+    : 5;
+
+  const events = useQuery(
+    api.events.getPublishedEvents,
+    previewCountConfig !== undefined
+      ? { paginationOpts: { numItems: previewCount, cursor: null } }
+      : "skip",
+  );
   const topics = useQuery(api.topics.getTopics);
 
   const topicNamesById = useMemo(() => {
@@ -339,6 +368,7 @@ function LandingPage() {
                   key={event._id}
                   event={event}
                   topicNamesById={topicNamesById}
+                  maxSources={maxSources}
                 />
               ))}
             </div>

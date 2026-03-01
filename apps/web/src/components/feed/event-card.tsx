@@ -23,9 +23,15 @@ type EventCardProps = {
     }>;
   };
   topicNamesById: Record<string, string>;
+  /** Max source logos to display. Pre-validated by the parent. */
+  maxSources?: number;
 };
 
-const EventCard = ({ event, topicNamesById }: EventCardProps) => {
+const EventCard = ({
+  event,
+  topicNamesById,
+  maxSources = 5,
+}: EventCardProps) => {
   const topics = event.topicIds.map((id) => topicNamesById[id]).filter(Boolean);
   const primaryTopic = topics[0] ?? "General";
 
@@ -86,7 +92,7 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
             <div className="flex items-center gap-2">
               {event.sources && event.sources.length > 0 && (
                 <div className="flex -space-x-2">
-                  {event.sources.slice(0, 5).map((source) => (
+                  {event.sources.slice(0, maxSources).map((source) => (
                     <div
                       key={source._id}
                       className="h-8 w-8 rounded-full border-2 border-background bg-muted overflow-hidden"

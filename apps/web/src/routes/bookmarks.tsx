@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button";
 import { SITE } from "@/lib/seo";
 import { Bookmark } from "lucide-react";
 
+/** Validate and clamp a config value to a non-negative integer. */
+function safePositiveInt(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+}
+
 export const Route = createFileRoute("/bookmarks")({
   head: () => ({
     meta: [
@@ -56,6 +62,10 @@ function BookmarksPage() {
 function BookmarksContent() {
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const maxSources = safePositiveInt(maxSourcesConfig?.value, 5);
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -100,6 +110,7 @@ function BookmarksContent() {
                 key={event._id}
                 event={event}
                 topicNamesById={topicNamesById}
+                maxSources={maxSources}
               />
             ))}
           </div>

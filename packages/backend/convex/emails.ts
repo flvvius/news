@@ -1,12 +1,55 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const UNSUB_BASE = "https://biviant.com/unsubscribe";
-const PHYSICAL_ADDRESS = "Biviant, Bucharest, Romania";
+// Hardcoded fallbacks — overridden at runtime via the config table
+const DEFAULT_UNSUB_BASE = "https://biviant.com/unsubscribe";
+const DEFAULT_PHYSICAL_ADDRESS = "Biviant, Bucharest, Romania";
+const DEFAULT_FROM_ADDRESS = "Biviant <hello@biviant.com>";
+const DEFAULT_REPLY_TO = "hello@biviant.com";
+
+/** Shape returned by getEmailConfig — keeps template function signatures clean. */
+interface EmailConfig {
+  fromAddress: string;
+  replyTo: string;
+  unsubBase: string;
+  physicalAddress: string;
+}
+
+/** Check that a value is a non-empty string after trimming. */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+/** Fetch all email-related config in one round-trip. */
+async function getEmailConfig(ctx: ActionCtx): Promise<EmailConfig> {
+  const cfg = await ctx.runQuery(internal.config.getBatch, {
+    keys: [
+      "email_from_address",
+      "email_reply_to",
+      "email_physical_address",
+      "unsubscribe_base_url",
+    ],
+  });
+  return {
+    fromAddress: isNonEmptyString(cfg.email_from_address)
+      ? cfg.email_from_address
+      : DEFAULT_FROM_ADDRESS,
+    replyTo: isNonEmptyString(cfg.email_reply_to)
+      ? cfg.email_reply_to
+      : DEFAULT_REPLY_TO,
+    unsubBase: isNonEmptyString(cfg.unsubscribe_base_url)
+      ? cfg.unsubscribe_base_url
+      : DEFAULT_UNSUB_BASE,
+    physicalAddress: isNonEmptyString(cfg.email_physical_address)
+      ? cfg.email_physical_address
+      : DEFAULT_PHYSICAL_ADDRESS,
+  };
+}
 
 /**
  * Send welcome email to new waitlist signups
@@ -20,12 +63,13 @@ export const sendWelcomeEmail = internalAction({
   },
   handler: async (ctx, args) => {
     try {
+      const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
-      const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(args.email)}`;
+      const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
 
       const { data, error } = await resend.emails.send({
-        from: "Biviant <hello@biviant.com>",
-        replyTo: "hello@biviant.com",
+        from: emailCfg.fromAddress,
+        replyTo: emailCfg.replyTo,
         to: [args.email],
         subject: `You're #${args.position} on the Biviant waitlist`,
         headers: {
@@ -33,8 +77,18 @@ export const sendWelcomeEmail = internalAction({
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           "X-Entity-Ref-ID": `welcome-${args.position}-${Date.now()}`,
         },
-        html: getWelcomeEmailHTML(firstName, args.position, args.email),
-        text: getWelcomeEmailText(firstName, args.position, args.email),
+        html: getWelcomeEmailHTML(
+          firstName,
+          args.position,
+          args.email,
+          emailCfg,
+        ),
+        text: getWelcomeEmailText(
+          firstName,
+          args.position,
+          args.email,
+          emailCfg,
+        ),
       });
 
       if (error) {
@@ -67,13 +121,14 @@ export const sendInviteEmail = internalAction({
   },
   handler: async (ctx, args) => {
     try {
+      const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
       const inviteUrl = `https://biviant.com/signup?code=${args.inviteCode}`;
-      const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(args.email)}`;
+      const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
 
       const { data, error } = await resend.emails.send({
-        from: "Biviant <hello@biviant.com>",
-        replyTo: "hello@biviant.com",
+        from: emailCfg.fromAddress,
+        replyTo: emailCfg.replyTo,
         to: [args.email],
         subject: "Your Biviant early access is ready",
         headers: {
@@ -81,8 +136,8 @@ export const sendInviteEmail = internalAction({
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           "X-Entity-Ref-ID": `invite-${args.inviteCode}-${Date.now()}`,
         },
-        html: getInviteEmailHTML(firstName, inviteUrl, args.email),
-        text: getInviteEmailText(firstName, inviteUrl, args.email),
+        html: getInviteEmailHTML(firstName, inviteUrl, args.email, emailCfg),
+        text: getInviteEmailText(firstName, inviteUrl, args.email, emailCfg),
       });
 
       if (error) {
@@ -105,8 +160,9 @@ function getWelcomeEmailHTML(
   firstName: string,
   position: number,
   email: string,
+  cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(email)}`;
+  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="https://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -229,7 +285,7 @@ function getWelcomeEmailHTML(
                     <p style="margin:0 0 8px 0;">
                       <a href="https://biviant.com" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
                     </p>
-                    <p style="margin:0 0 8px 0; font-size:12px;">${PHYSICAL_ADDRESS}</p>
+                    <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">
                       <a href="${unsubUrl}" style="color:#6b7280; text-decoration:underline;">Unsubscribe</a>
                     </p>
@@ -251,8 +307,9 @@ function getWelcomeEmailText(
   firstName: string,
   position: number,
   email: string,
+  cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(email)}`;
+  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `Hi ${firstName},
 
@@ -271,7 +328,7 @@ Share Biviant with friends who are tired of their news bubble: https://biviant.c
 
 ---
 See every side of the story.
-${PHYSICAL_ADDRESS}
+${cfg.physicalAddress}
 
 Unsubscribe: ${unsubUrl}`;
 }
@@ -280,8 +337,9 @@ function getInviteEmailHTML(
   firstName: string,
   inviteUrl: string,
   email: string,
+  cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(email)}`;
+  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="https://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -390,7 +448,7 @@ function getInviteEmailHTML(
                     <p style="margin:0 0 8px 0;">
                       <a href="https://biviant.com" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
                     </p>
-                    <p style="margin:0 0 8px 0; font-size:12px;">${PHYSICAL_ADDRESS}</p>
+                    <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">
                       <a href="${unsubUrl}" style="color:#6b7280; text-decoration:underline;">Unsubscribe</a>
                     </p>
@@ -412,8 +470,9 @@ function getInviteEmailText(
   firstName: string,
   inviteUrl: string,
   email: string,
+  cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${UNSUB_BASE}?email=${encodeURIComponent(email)}`;
+  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `Hi ${firstName},
 
@@ -431,7 +490,7 @@ This invite link is unique to you and expires in 7 days.
 
 ---
 See every side of the story.
-${PHYSICAL_ADDRESS}
+${cfg.physicalAddress}
 
 Unsubscribe: ${unsubUrl}`;
 }

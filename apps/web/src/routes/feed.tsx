@@ -31,6 +31,22 @@ export const Route = createFileRoute("/feed")({
 
 function FeedComponent() {
   const topics = useQuery(api.topics.getTopics);
+  const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
+  const rawPageSize = Number(pageSizeConfig?.value);
+  const MAX_FEED_PAGE_SIZE = 50;
+  const pageSize = Number.isFinite(rawPageSize)
+    ? Math.min(MAX_FEED_PAGE_SIZE, Math.max(1, Math.floor(rawPageSize)))
+    : 6;
+
+  const maxSourcesConfig = useQuery(api.config.get, {
+    key: "event_card_max_sources",
+  });
+  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const MAX_EVENT_CARD_SOURCES = 10;
+  const maxSources = Number.isFinite(rawMaxSources)
+    ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))
+    : 5;
+
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
@@ -42,7 +58,7 @@ function FeedComponent() {
   } = usePaginatedQuery(
     api.events.getPublishedEvents,
     selectedTopic === "all" ? {} : { topicId: selectedTopic },
-    { initialNumItems: 6 },
+    { initialNumItems: pageSize },
   );
 
   const topicNamesById = useMemo(() => {
@@ -99,6 +115,7 @@ function FeedComponent() {
               key={event._id}
               event={event}
               topicNamesById={topicNamesById}
+              maxSources={maxSources}
             />
           ))}
 
@@ -112,7 +129,11 @@ function FeedComponent() {
 
         {status === "CanLoadMore" && (
           <div>
-            <Button type="button" onClick={() => loadMore(6)} variant="outline">
+            <Button
+              type="button"
+              onClick={() => loadMore(pageSize)}
+              variant="outline"
+            >
               Load more
             </Button>
           </div>
