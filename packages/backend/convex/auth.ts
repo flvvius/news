@@ -79,6 +79,14 @@ function createAuth(ctx: GenericCtx<DataModel>) {
     baseURL: siteUrl,
     trustedOrigins: [siteUrl, nativeAppUrl],
     database: authComponent.adapter(ctx),
+    session: {
+      expiresIn: 60 * 60 * 24 * 7, // 7 days
+      updateAge: 60 * 60 * 24, // refresh session token once per day
+      cookieCache: {
+        enabled: true,
+        maxAge: 7 * 60, // cache session in signed cookie for 5 min — skips DB on repeated get-session calls
+      },
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
