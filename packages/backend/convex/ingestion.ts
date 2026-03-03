@@ -240,13 +240,17 @@ export const articleExistsByCanonicalUrl = internalQuery({
 export const findExistingCanonicalUrls = internalQuery({
   args: { urls: v.array(v.string()) },
   handler: async (ctx, { urls }) => {
+    const results = await Promise.all(
+      urls.map((url) =>
+        ctx.db
+          .query("articles")
+          .withIndex("by_canonical_url", (q) => q.eq("canonicalUrl", url))
+          .first(),
+      ),
+    );
     const existing = new Set<string>();
-    for (const url of urls) {
-      const found = await ctx.db
-        .query("articles")
-        .withIndex("by_canonical_url", (q) => q.eq("canonicalUrl", url))
-        .first();
-      if (found) existing.add(url);
+    for (let i = 0; i < urls.length; i++) {
+      if (results[i]) existing.add(urls[i]!);
     }
     return [...existing];
   },
@@ -622,6 +626,7 @@ export const ingestAllFeeds = internalAction({
 
       const failedFeedNames = new Set(failedFeeds.map((f) => f.feed));
       const feedsToRetry = ALL_FEEDS.filter((f) => failedFeedNames.has(f.name));
+      const retrySuccesses = new Set<string>();
 
       for (const feed of feedsToRetry) {
         const retryResult = await ctx.runAction(
@@ -640,18 +645,15 @@ export const ingestAllFeeds = internalAction({
 
         if (!retryResult.error) {
           retryInserted += retryResult.inserted;
+          retrySuccesses.add(feed.name);
           console.log(
             `[ingestion] Retry succeeded for ${feed.name}: ${retryResult.inserted} articles`,
           );
         }
       }
 
-      // Recount failures after retry
-      failedFeeds = failedFeeds.filter((f) => {
-        const retried = feedsToRetry.find((feed) => feed.name === f.feed);
-        // If the retry succeeded, remove from failedFeeds
-        return !retried || results.find((r) => r.feed === f.feed)?.error;
-      });
+      // Remove feeds that succeeded on retry
+      failedFeeds = failedFeeds.filter((f) => !retrySuccesses.has(f.feed));
     }
 
     if (failedFeeds.length > 0) {

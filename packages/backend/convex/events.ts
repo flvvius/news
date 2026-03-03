@@ -29,6 +29,21 @@ export const getPublishedEvents = query({
       };
     }
 
+    // Batch-load topic IDs for all events in the page to avoid N+1 queries
+    const eventIds = events.page.map((e) => e._id);
+    const allEventTopicRows = await Promise.all(
+      eventIds.map((eventId) =>
+        ctx.db
+          .query("eventTopics")
+          .withIndex("by_event", (q) => q.eq("eventId", eventId))
+          .collect(),
+      ),
+    );
+    const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
+    for (let i = 0; i < eventIds.length; i++) {
+      topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
+    }
+
     // Enrich each event with article count, sources, and topic IDs
     const enrichedPage = await Promise.all(
       events.page.map(async (event) => {
@@ -45,12 +60,10 @@ export const getPublishedEvents = query({
           sourceIds.map((id) => ctx.db.get(id)),
         );
 
-        // Load topic IDs from junction table
-        const eventTopicRows = await ctx.db
-          .query("eventTopics")
-          .withIndex("by_event", (q) => q.eq("eventId", event._id))
-          .collect();
-        const topicIds = eventTopicRows.map((r) => r.topicId);
+        // Read topic IDs from pre-loaded lookup
+        const topicIds = (topicsByEventId.get(event._id) ?? []).map(
+          (r) => r.topicId,
+        );
 
         return {
           ...event,

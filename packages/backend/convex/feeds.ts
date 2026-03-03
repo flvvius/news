@@ -127,7 +127,7 @@ const LEFT: FeedEntry[] = [
     reliabilityScore: 7,
   },
   {
-    url: "http://rss.cnn.com/rss/cnn_topstories.rss",
+    url: "https://rss.cnn.com/rss/cnn_topstories.rss",
     name: "CNN",
     domain: "cnn.com",
     mbfc: {

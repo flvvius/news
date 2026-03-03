@@ -57,7 +57,7 @@ interface MBFCSearchResult {
  * Map MBFC bias categories to numeric baseBias (-5 to +5).
  * This is the core mapping that replaces hand-coded political labeling.
  */
-const MBFC_BIAS_TO_NUMERIC: Record<string, number> = {
+const MBFC_BIAS_TO_NUMERIC: Record<string, number | null> = {
   left: -4,
   "left-center": -2,
   center: 0,
@@ -67,10 +67,10 @@ const MBFC_BIAS_TO_NUMERIC: Record<string, number> = {
   right: 4,
   "extreme-left": -5,
   "extreme-right": 5,
-  // Questionable sources / satire
-  questionable: 0,
-  satire: 0,
-  "conspiracy-pseudoscience": 0,
+  // These categories are unreliable — null signals "do not map to a bias score"
+  questionable: null,
+  satire: null,
+  "conspiracy-pseudoscience": null,
 };
 
 /**
@@ -251,7 +251,14 @@ export const enrichSource = internalAction({
     const biasCategory = normalizeBiasCategory(result.bias_rating);
     const factualRating = normalizeFactualRating(result.factual_reporting);
 
-    const numericBias = MBFC_BIAS_TO_NUMERIC[biasCategory] ?? 0;
+    const biasLookup = MBFC_BIAS_TO_NUMERIC[biasCategory];
+    // null = unreliable category (questionable/satire/conspiracy) — default to 0 but log warning
+    if (biasLookup === null) {
+      console.warn(
+        `[mbfc] ${domain}: category "${biasCategory}" is flagged as unreliable — defaulting baseBias to 0`,
+      );
+    }
+    const numericBias = biasLookup ?? 0;
     const reliabilityScore = MBFC_FACTUAL_TO_RELIABILITY[factualRating] ?? 5;
 
     await ctx.runMutation(internal.mbfc.updateSourceMbfc, {

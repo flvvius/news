@@ -20,7 +20,10 @@ type EventCardProps = {
       name: string;
       logoUrl?: string;
       baseBias: number;
-      [key: string]: unknown;
+      reliabilityScore: number;
+      mbfcCategory?: string;
+      mbfcFactual?: string;
+      mbfcCredibility?: string;
     }>;
   };
   topicNamesById: Record<string, string>;

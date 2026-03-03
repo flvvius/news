@@ -15,7 +15,10 @@ type Article = {
     name: string;
     logoUrl?: string;
     baseBias: number;
-    [key: string]: unknown;
+    reliabilityScore: number;
+    mbfcCategory?: string;
+    mbfcFactual?: string;
+    mbfcCredibility?: string;
   } | null;
 };
 
@@ -91,6 +94,7 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                   href={article.canonicalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="Read original (opens in a new tab)"
                   className="text-sm text-primary hover:underline inline-flex items-center gap-1"
                 >
                   Read original

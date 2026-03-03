@@ -22,17 +22,25 @@ export const getUnprocessedArticles = internalQuery({
       .take(limit);
 
     // Also fetch source data for each article (for bias score)
-    const enriched = await Promise.all(
-      articles.map(async (article) => {
-        const source = await ctx.db.get(article.sourceId);
-        return {
-          _id: article._id,
-          title: article.title,
-          rssSnippet: article.rssSnippet ?? "",
-          sourceBaseBias: source?.baseBias ?? 0,
-        };
-      }),
-    );
+    const enriched = (
+      await Promise.all(
+        articles.map(async (article) => {
+          const source = await ctx.db.get(article.sourceId);
+          if (!source) {
+            console.error(
+              `[enrichment] Missing source ${article.sourceId} for article ${article._id} — skipping`,
+            );
+            return null;
+          }
+          return {
+            _id: article._id,
+            title: article.title,
+            rssSnippet: article.rssSnippet ?? "",
+            sourceBaseBias: source.baseBias,
+          };
+        }),
+      )
+    ).filter((a) => a !== null);
 
     return enriched;
   },

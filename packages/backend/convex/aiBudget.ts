@@ -16,7 +16,7 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
 // Cost rates (USD per token) — update when pricing changes
@@ -130,7 +130,7 @@ export const logUsage = internalMutation({
  * Get today's AI usage summary grouped by model.
  * Useful for admin dashboards. Public query (no auth required for now).
  */
-export const getTodaysUsage = query({
+export const getTodaysUsage = internalQuery({
   args: {},
   handler: async (ctx) => {
     const today = new Date().toISOString().split("T")[0]!;

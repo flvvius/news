@@ -4,6 +4,10 @@
  *
  * Safe to run multiple times (idempotent — patches existing rows).
  * Can be deleted after running.
+ *
+ * NOTE: These migrations use .collect() which loads entire tables into memory.
+ * This is fine for small datasets (<10K rows). For larger tables, refactor to
+ * use cursor-based pagination with a progress doc keyed by migration name.
  */
 
 import { internalMutation } from "./_generated/server";
@@ -69,7 +73,14 @@ export const migrateArticlesSchemaV2 = internalMutation({
       // 1. Convert publishedAt string → number
       if (typeof article.publishedAt === "string") {
         const parsed = new Date(article.publishedAt).getTime();
-        patch.publishedAt = Number.isNaN(parsed) ? Date.now() : parsed;
+        if (Number.isNaN(parsed)) {
+          console.warn(
+            `[migration] Article ${article._id}: unparseable publishedAt "${article.publishedAt}" — skipping field`,
+          );
+          // Don't overwrite with Date.now() — leave for manual review
+        } else {
+          patch.publishedAt = parsed;
+        }
       }
 
       // 2. Move summary to rssSnippet (for unprocessed articles, summary was just the RSS snippet)
@@ -176,26 +187,34 @@ export const migrateEventTopicsToJunction = internalMutation({
         continue;
       }
 
-      // Check if junction rows already exist for this event
+      // Check which junction rows already exist for this event
       const existing = await ctx.db
         .query("eventTopics")
         .withIndex("by_event", (q) => q.eq("eventId", event._id))
         .collect();
 
-      if (existing.length > 0) {
-        skipped++;
-        continue;
-      }
+      const existingTopicIds = new Set(
+        existing.map((r) => r.topicId as string),
+      );
 
+      let insertedForEvent = 0;
       for (const topicId of topicIds) {
-        await ctx.db.insert("eventTopics", {
-          eventId: event._id,
-          topicId: topicId as any,
-        });
-        created++;
+        if (!existingTopicIds.has(topicId)) {
+          await ctx.db.insert("eventTopics", {
+            eventId: event._id,
+            topicId: topicId as any,
+          });
+          insertedForEvent++;
+        }
       }
 
-      // Clear the legacy field
+      if (insertedForEvent > 0) {
+        created += insertedForEvent;
+      } else {
+        skipped++;
+      }
+
+      // Clear the legacy field (idempotent — safe to re-run)
       await ctx.db.patch(event._id, { topicIds: undefined } as any);
     }
 
@@ -349,6 +368,8 @@ export const migrateUserStats = internalMutation({
         .first();
 
       if (existing) {
+        // Destination exists — still clear legacy field for idempotency
+        await ctx.db.patch(user._id, { stats: undefined } as any);
         skipped++;
         continue;
       }
@@ -410,6 +431,8 @@ export const migrateUserPrivateContext = internalMutation({
         .first();
 
       if (existing) {
+        // Destination exists — still clear legacy field for idempotency
+        await ctx.db.patch(user._id, { privateContext: undefined } as any);
         skipped++;
         continue;
       }

@@ -60,7 +60,8 @@ export default defineSchema({
     topicId: v.id("topics"),
   })
     .index("by_event", ["eventId"])
-    .index("by_topic", ["topicId"]),
+    .index("by_topic", ["topicId"])
+    .index("by_event_topic", ["eventId", "topicId"]),
 
   // =========================================================================
   // 3b. EVENT EMBEDDINGS (Hot/cold split — avoids ~12KB bandwidth per read)

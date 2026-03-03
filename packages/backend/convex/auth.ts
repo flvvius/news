@@ -64,7 +64,25 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           .unique();
 
         if (appUser) {
-          // todo: check if i want soft delete (+ manage related data - insights, etc)
+          // Clean up related userStats so no orphaned rows remain
+          const stats = await ctx.db
+            .query("userStats")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .unique();
+          if (stats) {
+            await ctx.db.delete(stats._id);
+          }
+
+          // Clean up related userPrivateContext
+          const privateCtx = await ctx.db
+            .query("userPrivateContext")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .unique();
+          if (privateCtx) {
+            await ctx.db.delete(privateCtx._id);
+          }
+
+          // todo: check if i want soft delete (+ manage related data - insights, interactions, etc)
           await ctx.db.delete(appUser._id);
         }
       },
@@ -84,7 +102,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       updateAge: 60 * 60 * 24, // refresh session token once per day
       cookieCache: {
         enabled: true,
-        maxAge: 7 * 60, // cache session in signed cookie for 5 min — skips DB on repeated get-session calls
+        maxAge: 7 * 60, // cache session in signed cookie for 7 min — skips DB on repeated get-session calls
       },
     },
     emailAndPassword: {

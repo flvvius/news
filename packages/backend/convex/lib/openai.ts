@@ -12,11 +12,10 @@
  *
  * Environment variables:
  *   OPENAI_API_KEY     — Required
- *   POSTHOG_API_KEY    — Required (project API key from posthog.com)
+ *   POSTHOG_API_KEY    — Optional (project API key from posthog.com).
+ *                        When unset, falls back to a plain OpenAI client
+ *                        so the pipeline continues to work in dev environments.
  *   POSTHOG_HOST       — Optional (defaults to "https://us.i.posthog.com")
- *
- * When POSTHOG_API_KEY is not set, falls back to a plain OpenAI client
- * so the pipeline doesn't break in dev environments.
  */
 
 import { PostHog } from "posthog-node";
@@ -85,6 +84,6 @@ export async function getOpenAI(): Promise<
  */
 export async function shutdownPostHog(): Promise<void> {
   if (_phClient) {
-    await _phClient.flush();
+    await _phClient.shutdown();
   }
 }

@@ -126,7 +126,9 @@ function EventDetailPage() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="center" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList
+                  className={`grid w-full grid-cols-${[event.perspectiveSummaries?.left, true, event.perspectiveSummaries?.right].filter(Boolean).length}`}
+                >
                   {event.perspectiveSummaries?.left && (
                     <TabsTrigger value="left">Left</TabsTrigger>
                   )}
