@@ -33,7 +33,7 @@ export interface FeedEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Wire services & centrist outlets
+// Wire services & centrist / left-center outlets
 // ---------------------------------------------------------------------------
 const CENTER: FeedEntry[] = [
   {

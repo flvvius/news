@@ -19,16 +19,45 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
-// Cost rates (USD per token) — update when pricing changes
+// Cost rates (USD per token) — update when pricing changes.
+// Override at runtime via the "model_rates" key in the config table
+// (JSON string of Record<string, { input: number; output: number }>).
 // ---------------------------------------------------------------------------
 
-/** Known model pricing as of 2025. Add new models as needed. */
-const MODEL_RATES: Record<string, { input: number; output: number }> = {
+/** Default model pricing as of 2025. Add new models as needed. */
+const DEFAULT_MODEL_RATES: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini": { input: 0.00000015, output: 0.0000006 },
   "gpt-4o": { input: 0.0000025, output: 0.00001 },
   "text-embedding-3-small": { input: 0.00000002, output: 0 },
   "text-embedding-3-large": { input: 0.00000013, output: 0 },
 };
+
+/**
+ * Mutable rates map, initialised from DEFAULT_MODEL_RATES.
+ * Call {@link setModelRates} to override (e.g. after reading from a config
+ * table or env var at startup).
+ */
+let MODEL_RATES: Record<string, { input: number; output: number }> = {
+  ...DEFAULT_MODEL_RATES,
+};
+
+/**
+ * Replace the active rate card.
+ * Pass `null` to reset to the built-in defaults.
+ */
+export function setModelRates(
+  rates: Record<string, { input: number; output: number }> | null,
+): void {
+  MODEL_RATES = rates ? { ...rates } : { ...DEFAULT_MODEL_RATES };
+}
+
+/** Return the currently active rate card (read-only copy). */
+export function getModelRates(): Record<
+  string,
+  { input: number; output: number }
+> {
+  return { ...MODEL_RATES };
+}
 
 /** Calculate cost in USD for a given model and token counts. */
 export function calculateCost(

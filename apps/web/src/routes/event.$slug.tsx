@@ -65,7 +65,14 @@ function EventDetailPage() {
   if (eventData === undefined) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="text-sm text-muted-foreground"
+        >
+          Loading...
+        </div>
       </div>
     );
   }
@@ -127,7 +134,7 @@ function EventDetailPage() {
             <CardContent>
               <Tabs defaultValue="center" className="w-full">
                 <TabsList
-                  className={`grid w-full grid-cols-${[event.perspectiveSummaries?.left, true, event.perspectiveSummaries?.right].filter(Boolean).length}`}
+                  className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[[event.perspectiveSummaries?.left, true, event.perspectiveSummaries?.right].filter(Boolean).length] ?? "grid-cols-3"}`}
                 >
                   {event.perspectiveSummaries?.left && (
                     <TabsTrigger value="left">Left</TabsTrigger>

@@ -255,6 +255,11 @@ export const migrateEventEmbeddings = internalMutation({
         .first();
 
       if (existing) {
+        // Destination exists — still clear legacy fields for idempotency
+        await ctx.db.patch(event._id, {
+          embedding: undefined,
+          embeddingVersion: undefined,
+        } as any);
         skipped++;
         continue;
       }
@@ -309,6 +314,8 @@ export const migrateArticleEmbeddings = internalMutation({
         .first();
 
       if (existing) {
+        // Destination exists — still clear legacy field for idempotency
+        await ctx.db.patch(article._id, { embedding: undefined } as any);
         skipped++;
         continue;
       }

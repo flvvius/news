@@ -163,8 +163,8 @@ export default defineSchema({
   userPrivateContext: defineTable({
     userId: v.id("users"),
     incomeBracket: v.optional(v.string()),
-    concerns: v.array(v.string()), // ["Inflation", "Housing"]
-    interests: v.array(v.string()),
+    concerns: v.optional(v.array(v.string())), // ["Inflation", "Housing"]
+    interests: v.optional(v.array(v.string())),
     politicalLeaning: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 

@@ -8,24 +8,62 @@ export const getPublishedEvents = query({
     topicId: v.optional(v.id("topics")),
   },
   handler: async (ctx, args) => {
-    let events = await ctx.db
+    // When filtering by topic, collect matching IDs first and over-fetch
+    // events pages until we have a full page of filtered results.
+    let matchingEventIds: Set<string> | null = null;
+    if (args.topicId) {
+      const eventTopicRows = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_topic", (q) => q.eq("topicId", args.topicId!))
+        .collect();
+      matchingEventIds = new Set(eventTopicRows.map((r) => r.eventId));
+    }
+
+    // Eagerly fetch the base paginated result so we can derive the type,
+    // then optionally refine when topic-filtering is active.
+    const basePagination = await ctx.db
       .query("events")
       .withIndex("by_status_recency", (q) => q.eq("status", "published"))
       .order("desc")
       .paginate(args.paginationOpts);
 
-    // Filter by topic if provided (via junction table)
-    if (args.topicId) {
-      const topicId = args.topicId;
-      // Get all eventIds that have this topic
-      const eventTopicRows = await ctx.db
-        .query("eventTopics")
-        .withIndex("by_topic", (q) => q.eq("topicId", topicId))
-        .collect();
-      const matchingEventIds = new Set(eventTopicRows.map((r) => r.eventId));
+    let events = basePagination;
+
+    if (matchingEventIds !== null) {
+      // Over-fetch pages until we fill the requested page size or exhaust data
+      const targetSize = args.paginationOpts.numItems;
+
+      const filteredPage: typeof basePagination.page = [];
+      for (const event of basePagination.page) {
+        if (matchingEventIds.has(event._id)) {
+          filteredPage.push(event);
+        }
+      }
+
+      let isDone = basePagination.isDone;
+      let continueCursor = basePagination.continueCursor;
+
+      while (filteredPage.length < targetSize && !isDone) {
+        const batch = await ctx.db
+          .query("events")
+          .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+          .order("desc")
+          .paginate({ ...args.paginationOpts, cursor: continueCursor });
+
+        for (const event of batch.page) {
+          if (matchingEventIds.has(event._id)) {
+            filteredPage.push(event);
+          }
+        }
+
+        isDone = batch.isDone;
+        continueCursor = batch.continueCursor;
+      }
+
       events = {
-        ...events,
-        page: events.page.filter((event) => matchingEventIds.has(event._id)),
+        page: filteredPage.slice(0, targetSize),
+        isDone,
+        continueCursor,
       };
     }
 

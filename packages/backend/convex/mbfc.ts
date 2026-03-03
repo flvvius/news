@@ -291,7 +291,12 @@ export const enrichAllSources = internalAction({
   args: {},
   handler: async (
     ctx,
-  ): Promise<{ enriched: number; failed?: number; total: number }> => {
+  ): Promise<{
+    enriched: number;
+    failed?: number;
+    total: number;
+    incomplete?: boolean;
+  }> => {
     const sources = await ctx.runQuery(internal.mbfc.getSourcesNeedingMbfc, {});
 
     if (sources.length === 0) {
@@ -299,12 +304,29 @@ export const enrichAllSources = internalAction({
       return { enriched: 0, total: 0 };
     }
 
-    console.log(`[mbfc] Enriching ${sources.length} sources`);
+    // Cap the number of sources per run to avoid Convex action timeout (~10 min)
+    const maxBatch = 40;
+    const safetyMarginMs = 45_000; // stop 45s before estimated timeout
+    const startTime = Date.now();
+    const maxRuntime = 9 * 60 * 1000 - safetyMarginMs; // ~9 min budget
+
+    console.log(
+      `[mbfc] Enriching up to ${Math.min(sources.length, maxBatch)} of ${sources.length} sources`,
+    );
 
     let enriched = 0;
     let failed = 0;
 
     for (const source of sources) {
+      if (enriched + failed >= maxBatch) {
+        console.log(`[mbfc] Reached batch cap (${maxBatch}), stopping early`);
+        break;
+      }
+      if (Date.now() - startTime > maxRuntime) {
+        console.log("[mbfc] Approaching time limit, stopping early");
+        break;
+      }
+
       try {
         await ctx.runAction(internal.mbfc.enrichSource, {
           sourceId: source._id,
@@ -322,10 +344,13 @@ export const enrichAllSources = internalAction({
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
+    const processed = enriched + failed;
+    const incomplete = processed < sources.length;
+
     console.log(
-      `[mbfc] Enrichment complete: ${enriched} enriched, ${failed} failed out of ${sources.length}`,
+      `[mbfc] Enrichment ${incomplete ? "partial" : "complete"}: ${enriched} enriched, ${failed} failed out of ${sources.length}`,
     );
 
-    return { enriched, failed, total: sources.length };
+    return { enriched, failed, total: sources.length, incomplete };
   },
 });

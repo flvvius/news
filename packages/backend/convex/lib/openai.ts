@@ -5,7 +5,7 @@
  *
  * Usage in actions:
  *   import { getOpenAI, shutdownPostHog } from "./lib/openai";
- *   const openai = getOpenAI();
+ *   const openai = await getOpenAI();
  *   const response = await openai.embeddings.create({ ... });
  *   // PostHog automatically records token usage, cost, model, latency
  *   await shutdownPostHog(); // flush before action ends
@@ -85,5 +85,8 @@ export async function getOpenAI(): Promise<
 export async function shutdownPostHog(): Promise<void> {
   if (_phClient) {
     await _phClient.shutdown();
+    _phClient = null;
   }
+  // Clear cached OpenAI client so getOpenAI() creates a fresh instance next time
+  _openai = null;
 }
