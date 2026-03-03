@@ -88,7 +88,7 @@ function EventDetailPage() {
 
   const { event, articles } = eventData;
   const hasPerspectives =
-    event.perspectiveSummaries.left || event.perspectiveSummaries.right;
+    event.perspectiveSummaries?.left || event.perspectiveSummaries?.right;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -127,16 +127,16 @@ function EventDetailPage() {
             <CardContent>
               <Tabs defaultValue="center" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
-                  {event.perspectiveSummaries.left && (
+                  {event.perspectiveSummaries?.left && (
                     <TabsTrigger value="left">Left</TabsTrigger>
                   )}
                   <TabsTrigger value="center">Center</TabsTrigger>
-                  {event.perspectiveSummaries.right && (
+                  {event.perspectiveSummaries?.right && (
                     <TabsTrigger value="right">Right</TabsTrigger>
                   )}
                 </TabsList>
 
-                {event.perspectiveSummaries.left && (
+                {event.perspectiveSummaries?.left && (
                   <TabsContent value="left" className="mt-4">
                     <p className="text-sm leading-relaxed max-w-[65ch]">
                       {event.perspectiveSummaries.left}
@@ -146,11 +146,11 @@ function EventDetailPage() {
 
                 <TabsContent value="center" className="mt-4">
                   <p className="text-sm leading-relaxed max-w-[65ch]">
-                    {event.perspectiveSummaries.center}
+                    {event.perspectiveSummaries?.center ?? "Summary pending…"}
                   </p>
                 </TabsContent>
 
-                {event.perspectiveSummaries.right && (
+                {event.perspectiveSummaries?.right && (
                   <TabsContent value="right" className="mt-4">
                     <p className="text-sm leading-relaxed max-w-[65ch]">
                       {event.perspectiveSummaries.right}
@@ -167,7 +167,7 @@ function EventDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.perspectiveSummaries.center}
+                {event.perspectiveSummaries?.center ?? "Summary pending…"}
               </p>
             </CardContent>
           </Card>

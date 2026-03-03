@@ -21,19 +21,22 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
       onCreate: async (ctx, authUser) => {
-        await ctx.db.insert("users", {
+        const userId = await ctx.db.insert("users", {
           authUserId: authUser._id,
           email: authUser.email,
           profile: {
             name: authUser.name ?? undefined,
             avatar: authUser.image ?? undefined,
           },
-          stats: {
-            currentStreak: 0,
-            longestStreak: 0,
-            articlesRead: 0,
-            biasBalance: 0,
-          },
+        });
+
+        // Initialize stats in the separate userStats table
+        await ctx.db.insert("userStats", {
+          userId,
+          currentStreak: 0,
+          longestStreak: 0,
+          articlesRead: 0,
+          biasBalance: 0,
         });
       },
 

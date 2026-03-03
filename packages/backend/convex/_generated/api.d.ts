@@ -8,13 +8,22 @@
  * @module
  */
 
+import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
 import type * as config from "../config.js";
+import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
+import type * as enrichment from "../enrichment.js";
+import type * as enrichmentNode from "../enrichmentNode.js";
 import type * as events from "../events.js";
+import type * as feeds from "../feeds.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as ingestion from "../ingestion.js";
 import type * as interactions from "../interactions.js";
+import type * as lib_openai from "../lib/openai.js";
+import type * as mbfc from "../mbfc.js";
+import type * as migrations from "../migrations.js";
 import type * as privateData from "../privateData.js";
 import type * as seeds from "../seeds.js";
 import type * as topics from "../topics.js";
@@ -28,13 +37,22 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiBudget: typeof aiBudget;
   auth: typeof auth;
   config: typeof config;
+  crons: typeof crons;
   emails: typeof emails;
+  enrichment: typeof enrichment;
+  enrichmentNode: typeof enrichmentNode;
   events: typeof events;
+  feeds: typeof feeds;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  ingestion: typeof ingestion;
   interactions: typeof interactions;
+  "lib/openai": typeof lib_openai;
+  mbfc: typeof mbfc;
+  migrations: typeof migrations;
   privateData: typeof privateData;
   seeds: typeof seeds;
   topics: typeof topics;

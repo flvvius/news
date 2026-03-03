@@ -10,20 +10,26 @@ export const getPublishedEvents = query({
   handler: async (ctx, args) => {
     let events = await ctx.db
       .query("events")
-      .withIndex("by_topic_recency", (q) => q.eq("status", "published"))
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
       .order("desc")
       .paginate(args.paginationOpts);
 
-    // Filter by topic if provided
+    // Filter by topic if provided (via junction table)
     if (args.topicId) {
       const topicId = args.topicId;
+      // Get all eventIds that have this topic
+      const eventTopicRows = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+        .collect();
+      const matchingEventIds = new Set(eventTopicRows.map((r) => r.eventId));
       events = {
         ...events,
-        page: events.page.filter((event) => event.topicIds.includes(topicId)),
+        page: events.page.filter((event) => matchingEventIds.has(event._id)),
       };
     }
 
-    // Enrich each event with article count and sources
+    // Enrich each event with article count, sources, and topic IDs
     const enrichedPage = await Promise.all(
       events.page.map(async (event) => {
         const articles = await ctx.db
@@ -39,8 +45,16 @@ export const getPublishedEvents = query({
           sourceIds.map((id) => ctx.db.get(id)),
         );
 
+        // Load topic IDs from junction table
+        const eventTopicRows = await ctx.db
+          .query("eventTopics")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+        const topicIds = eventTopicRows.map((r) => r.topicId);
+
         return {
           ...event,
+          topicIds,
           articleCount,
           sources: sources.filter((s) => s !== null),
         };
@@ -66,6 +80,13 @@ export const getEventBySlug = query({
       return null;
     }
 
+    // Load topic IDs from junction table
+    const eventTopicRows = await ctx.db
+      .query("eventTopics")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+    const topicIds = eventTopicRows.map((r) => r.topicId);
+
     const articles = await ctx.db
       .query("articles")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
@@ -82,7 +103,7 @@ export const getEventBySlug = query({
     );
 
     return {
-      event,
+      event: { ...event, topicIds },
       articles: articlesWithSources,
     };
   },

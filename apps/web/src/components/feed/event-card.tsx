@@ -10,16 +10,17 @@ type EventCardProps = {
     slug: string;
     title: string;
     imageUrl?: string;
-    perspectiveSummaries: {
-      center: string;
+    perspectiveSummaries?: {
+      center?: string;
     };
-    topicIds: Id<"topics">[];
+    topicIds?: Id<"topics">[];
     articleCount?: number;
     sources?: Array<{
       _id: Id<"sources">;
       name: string;
-      logoUrl: string;
+      logoUrl?: string;
       baseBias: number;
+      [key: string]: unknown;
     }>;
   };
   topicNamesById: Record<string, string>;
@@ -32,7 +33,9 @@ const EventCard = ({
   topicNamesById,
   maxSources = 5,
 }: EventCardProps) => {
-  const topics = event.topicIds.map((id) => topicNamesById[id]).filter(Boolean);
+  const topics = (event.topicIds ?? [])
+    .map((id) => topicNamesById[id])
+    .filter(Boolean);
   const primaryTopic = topics[0] ?? "General";
 
   return (
@@ -85,7 +88,7 @@ const EventCard = ({
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground line-clamp-3">
-            {event.perspectiveSummaries.center}
+            {event.perspectiveSummaries?.center ?? "Summary pending…"}
           </p>
 
           <div className="flex items-center justify-between pt-2 border-t">
@@ -98,11 +101,17 @@ const EventCard = ({
                       className="h-8 w-8 rounded-full border-2 border-background bg-muted overflow-hidden"
                       title={source.name}
                     >
-                      <img
-                        src={source.logoUrl}
-                        alt={source.name}
-                        className="h-full w-full object-cover"
-                      />
+                      {source.logoUrl ? (
+                        <img
+                          src={source.logoUrl}
+                          alt={source.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-xs font-medium">
+                          {source.name.charAt(0)}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

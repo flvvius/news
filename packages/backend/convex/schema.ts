@@ -18,7 +18,13 @@ export default defineSchema({
     name: v.string(), // "The New York Times"
     baseBias: v.number(), // -5 (Left) to +5 (Right)
     reliabilityScore: v.number(), // 1-10 (10 = Academic/Reuters, 1 = Tabloid)
-    logoUrl: v.string(),
+    logoUrl: v.optional(v.string()),
+
+    // MBFC (Media Bias/Fact Check) enrichment — populated via RapidAPI
+    mbfcCategory: v.optional(v.string()), // "left", "left-center", "center", "right-center", "right", "unrated"
+    mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
+    mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"
+    mbfcLastChecked: v.optional(v.number()), // Timestamp of last MBFC lookup
   }).index("by_domain", ["domain"]),
 
   // =========================================================================
@@ -30,24 +36,45 @@ export default defineSchema({
 
     imageUrl: v.optional(v.string()),
 
-    perspectiveSummaries: v.object({
-      center: v.string(),
-      left: v.optional(v.string()),
-      right: v.optional(v.string()),
-    }),
-    globalImpact: v.string(), // The "Consensus So What?" for guest users
-
-    topicIds: v.array(v.id("topics")),
-    embedding: v.array(v.number()),
-    embeddingVersion: v.number(),
+    perspectiveSummaries: v.optional(
+      v.object({
+        center: v.optional(v.string()),
+        left: v.optional(v.string()),
+        right: v.optional(v.string()),
+      }),
+    ),
+    globalImpact: v.optional(v.string()), // The "Consensus So What?" for guest users
 
     status: v.union(v.literal("processing"), v.literal("published")),
     firstPublishedAt: v.number(),
-    lastSummarizedAt: v.number(),
+    lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
   })
-    .vectorIndex("by_embedding", { vectorField: "embedding", dimensions: 1536 })
     .index("by_slug", ["slug"])
-    .index("by_topic_recency", ["status", "firstPublishedAt"]),
+    .index("by_status_recency", ["status", "firstPublishedAt"]),
+
+  // =========================================================================
+  // 3a. EVENT TOPICS (Junction — replaces events.topicIds array)
+  // =========================================================================
+  eventTopics: defineTable({
+    eventId: v.id("events"),
+    topicId: v.id("topics"),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_topic", ["topicId"]),
+
+  // =========================================================================
+  // 3b. EVENT EMBEDDINGS (Hot/cold split — avoids ~12KB bandwidth per read)
+  // =========================================================================
+  eventEmbeddings: defineTable({
+    eventId: v.id("events"),
+    embedding: v.array(v.number()),
+    version: v.number(), // Embedding model version for reprocessing tracking
+  })
+    .index("by_event", ["eventId"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+    }),
 
   // =========================================================================
   // 4. ARTICLES (The Evidence)
@@ -60,30 +87,46 @@ export default defineSchema({
     url: v.string(),
     canonicalUrl: v.string(),
 
-    summary: v.string(),
+    // Populated by enrichment pipeline, not at ingestion time
+    summary: v.optional(v.string()),
+    rssSnippet: v.optional(v.string()), // Raw snippet from RSS feed
 
     // Feed THIS to the Event Synthesizer (cheap tokens), not the full text.
     atomicFacts: v.optional(v.array(v.string())), // ["Vote count: 60-40", "Passed on: Tuesday", "Opposition: GOP"]
 
-    aiBiasScore: v.number(),
-    embedding: v.optional(v.array(v.number())),
+    // Populated by enrichment pipeline (AI bias detection)
+    aiBiasScore: v.optional(v.number()),
 
     status: v.union(
       v.literal("unprocessed"),
+      v.literal("enriched"),
       v.literal("clustered"),
       v.literal("discarded"),
     ),
-    publishedAt: v.string(),
+    publishedAt: v.number(), // Epoch ms (consistent with all other timestamps)
   })
     .index("by_event", ["eventId"])
     .index("by_canonical_url", ["canonicalUrl"])
+    .index("by_status", ["status"])
+    .index("by_source", ["sourceId"])
+    .index("by_published", ["publishedAt"]),
+
+  // =========================================================================
+  // 4a. ARTICLE EMBEDDINGS (Hot/cold split — avoids ~12KB bandwidth per read)
+  // =========================================================================
+  articleEmbeddings: defineTable({
+    articleId: v.id("articles"),
+    embedding: v.array(v.number()),
+    version: v.number(), // Embedding model version for reprocessing tracking
+  })
+    .index("by_article", ["articleId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: 1536,
+      dimensions: 512,
     }),
 
   // =========================================================================
-  // 5. USERS (Profile + Privacy)
+  // 5. USERS (Profile only — stats & private context in separate tables)
   // =========================================================================
   users: defineTable({
     authUserId: v.string(),
@@ -97,28 +140,32 @@ export default defineSchema({
       job: v.optional(v.string()),
       location: v.optional(v.string()),
     }),
-
-    // 🔒 Private Context (Strict RLS required)
-    // Used for the "Personal Impact" generation
-    privateContext: v.optional(
-      v.object({
-        incomeBracket: v.optional(v.string()),
-        concerns: v.array(v.string()), // ["Inflation", "Housing"]
-        interests: v.array(v.string()),
-        politicalLeaning: v.optional(v.string()),
-      }),
-    ),
-
-    // Gamification Stats
-    stats: v.object({
-      currentStreak: v.number(),
-      longestStreak: v.number(),
-      articlesRead: v.number(),
-      biasBalance: v.number(), // -100 (Left Bubble) to +100 (Right Bubble)
-    }),
   })
     .index("by_email", ["email"])
     .index("by_auth_user_id", ["authUserId"]),
+
+  // =========================================================================
+  // 5a. USER STATS (Hot table — updated on every interaction)
+  // =========================================================================
+  userStats: defineTable({
+    userId: v.id("users"),
+    currentStreak: v.number(),
+    longestStreak: v.number(),
+    articlesRead: v.number(),
+    biasBalance: v.number(), // -100 (Left Bubble) to +100 (Right Bubble)
+    lastActiveAt: v.optional(v.number()),
+  }).index("by_user", ["userId"]),
+
+  // =========================================================================
+  // 5b. USER PRIVATE CONTEXT (Structurally isolated — strict RLS required)
+  // =========================================================================
+  userPrivateContext: defineTable({
+    userId: v.id("users"),
+    incomeBracket: v.optional(v.string()),
+    concerns: v.array(v.string()), // ["Inflation", "Housing"]
+    interests: v.array(v.string()),
+    politicalLeaning: v.optional(v.string()),
+  }).index("by_user", ["userId"]),
 
   // =========================================================================
   // 6. USER INSIGHTS ("So What?" results)
@@ -136,7 +183,10 @@ export default defineSchema({
     generatedAt: v.number(),
     expiresAt: v.number(), // Delete rows older than ~30 days
     lastNotifiedAt: v.optional(v.number()),
-  }).index("by_user_event", ["userId", "eventId"]),
+  })
+    .index("by_user_event", ["userId", "eventId"])
+    .index("by_user", ["userId"])
+    .index("by_expires_at", ["expiresAt"]),
 
   // =========================================================================
   // 7. INTERACTIONS (The Immutable Log)
@@ -156,23 +206,33 @@ export default defineSchema({
       v.literal("feedback_bias"),
     ),
 
-    context: v.object({
-      biasRating: v.number(),
-      sourceReliability: v.number(),
-    }),
+    context: v.optional(
+      v.object({
+        biasRating: v.number(),
+        sourceReliability: v.number(),
+      }),
+    ),
 
     metadata: v.object({
       timeSpentSeconds: v.optional(v.number()), // For "read" events
       scrollDepthPercentage: v.optional(v.number()), // 0.0 to 1.0
       deviceType: v.optional(v.string()), // "mobile", "desktop"
 
-      extras: v.optional(v.any()),
+      extras: v.optional(
+        v.object({
+          feedbackText: v.optional(v.string()),
+          errorMessage: v.optional(v.string()),
+          experimentVariant: v.optional(v.string()),
+        }),
+      ),
     }),
     timestamp: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_user_type", ["userId", "type"])
-    .index("by_user_event_type", ["userId", "eventId", "type"]),
+    .index("by_user_event_type", ["userId", "eventId", "type"])
+    .index("by_event", ["eventId"])
+    .index("by_timestamp", ["timestamp"]),
 
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
@@ -211,7 +271,22 @@ export default defineSchema({
     .index("by_status_last_email", ["status", "lastEmailSentAt"]),
 
   // =========================================================================
-  // 9. CONFIG (Runtime-Tunable Key-Value Store)
+  // 9. INGESTION META (Feed Health Tracking)
+  // =========================================================================
+  ingestionMeta: defineTable({
+    feedUrl: v.string(),
+    sourceId: v.id("sources"), // Every feed belongs to a source
+    lastIngestedAt: v.optional(v.number()),
+    lastSuccessAt: v.optional(v.number()),
+    consecutiveFailures: v.number(),
+    lastError: v.optional(v.string()),
+    articleCount: v.number(), // Total articles ingested from this feed
+  })
+    .index("by_feed_url", ["feedUrl"])
+    .index("by_source", ["sourceId"]),
+
+  // =========================================================================
+  // 10. CONFIG (Runtime-Tunable Key-Value Store)
   // =========================================================================
   config: defineTable({
     key: v.string(),
@@ -219,4 +294,23 @@ export default defineSchema({
     description: v.string(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // =========================================================================
+  // 11. AI USAGE (Cost Tracking & Budget Enforcement)
+  // =========================================================================
+  // Budget limit stored in config table: key="ai_daily_budget_usd"
+  aiUsage: defineTable({
+    date: v.string(), // "YYYY-MM-DD" for daily grouping
+    model: v.string(), // "gpt-4o-mini", "text-embedding-3-small"
+    operation: v.string(), // "summarize_event", "generate_embedding", "bias_detection"
+    eventId: v.optional(v.id("events")),
+    articleId: v.optional(v.id("articles")),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    costUsd: v.number(), // Pre-calculated
+    timestamp: v.number(),
+  })
+    .index("by_date", ["date"])
+    .index("by_date_model", ["date", "model"])
+    .index("by_operation", ["operation", "date"]),
 });

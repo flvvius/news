@@ -7,14 +7,15 @@ import BiasIndicator from "@/components/bias-indicator";
 type Article = {
   _id: Id<"articles">;
   title: string;
-  summary: string;
+  summary?: string;
   canonicalUrl: string;
-  publishedAt: string;
+  publishedAt: number;
   source: {
     _id: Id<"sources">;
     name: string;
-    logoUrl: string;
+    logoUrl?: string;
     baseBias: number;
+    [key: string]: unknown;
   } | null;
 };
 

@@ -24,6 +24,18 @@ export const getCurrentUser = query({
       return null;
     }
 
+    // Load stats from separate table
+    const stats = await ctx.db
+      .query("userStats")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
+    // Load private context from separate table
+    const privateContext = await ctx.db
+      .query("userPrivateContext")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
     return {
       // Auth metadata
       authUserId: authUser._id,
@@ -34,8 +46,27 @@ export const getCurrentUser = query({
       // Custom data
       _id: user._id,
       profile: user.profile,
-      privateContext: user.privateContext,
-      stats: user.stats,
+      privateContext: privateContext
+        ? {
+            incomeBracket: privateContext.incomeBracket,
+            concerns: privateContext.concerns,
+            interests: privateContext.interests,
+            politicalLeaning: privateContext.politicalLeaning,
+          }
+        : undefined,
+      stats: stats
+        ? {
+            currentStreak: stats.currentStreak,
+            longestStreak: stats.longestStreak,
+            articlesRead: stats.articlesRead,
+            biasBalance: stats.biasBalance,
+          }
+        : {
+            currentStreak: 0,
+            longestStreak: 0,
+            articlesRead: 0,
+            biasBalance: 0,
+          },
     };
   },
 });
@@ -79,6 +110,7 @@ export const updateProfile = mutation({
 
 /**
  * Update the current user's private context (for personalized insights).
+ * Writes to the separate userPrivateContext table.
  * Throws ConvexError if not authenticated or user not found.
  */
 export const updatePrivateContext = mutation({
@@ -105,10 +137,21 @@ export const updatePrivateContext = mutation({
       throw new ConvexError("User not found - please refresh and try again");
     }
 
-    await ctx.db.patch(user._id, {
-      privateContext: args.privateContext,
-    });
+    // Upsert into userPrivateContext table
+    const existing = await ctx.db
+      .query("userPrivateContext")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
 
-    return await ctx.db.get(user._id);
+    if (existing) {
+      await ctx.db.patch(existing._id, args.privateContext);
+    } else {
+      await ctx.db.insert("userPrivateContext", {
+        userId: user._id,
+        ...args.privateContext,
+      });
+    }
+
+    return { success: true };
   },
 });
