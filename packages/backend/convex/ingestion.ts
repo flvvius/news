@@ -582,6 +582,13 @@ export const ingestAllFeeds = internalAction({
     feedsProcessed: number;
     failedFeeds: number;
   }> => {
+    // Kill-switch: skip entire run when pipeline is paused
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[ingestion] Pipeline paused — skipping ingestAllFeeds");
+      return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
+    }
+
     console.log(
       `[ingestion] Starting batch ingest of ${ALL_FEEDS.length} feeds`,
     );

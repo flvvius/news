@@ -47,6 +47,7 @@ const CLIENT_SAFE_KEYS = new Set([
   "event_card_max_sources",
   "feed_page_size",
   "landing_preview_count",
+  "pipeline_paused",
   "waitlist_toast_dismiss_ms",
 ]);
 
@@ -93,6 +94,70 @@ export const list = query({
         }
       })(),
     }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Pipeline Kill-Switch
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns `true` when the automatic processing pipeline is paused.
+ * Actions should call this via `ctx.runQuery` at the very top of their handler
+ * and return early when paused.
+ *
+ * Toggle with:  npx convex run config:togglePipeline
+ * Or set directly: npx convex run config:set '{"key":"pipeline_paused","value":"true"}'
+ */
+export const isPipelinePaused = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<boolean> => {
+    return getConfig(ctx, "pipeline_paused", false);
+  },
+});
+
+/**
+ * One-command toggle: flips `pipeline_paused` between true and false.
+ * Requires admin auth.
+ *
+ *   npx convex run config:togglePipeline          # flip
+ *   npx convex run config:togglePipeline '{"pause":true}'   # force pause
+ *   npx convex run config:togglePipeline '{"pause":false}'  # force resume
+ */
+export const togglePipeline = mutation({
+  args: {
+    pause: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const currentlyPaused = await getConfig(ctx, "pipeline_paused", false);
+    const newValue = args.pause ?? !currentlyPaused;
+
+    const existing = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", "pipeline_paused"))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: JSON.stringify(newValue),
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("config", {
+        key: "pipeline_paused",
+        value: JSON.stringify(newValue),
+        description:
+          "When true, all automatic processing (ingestion, enrichment, MBFC) is paused.",
+        updatedAt: Date.now(),
+      });
+    }
+
+    console.log(
+      `[config] Pipeline ${newValue ? "⏸ PAUSED" : "▶ RESUMED"} by admin`,
+    );
+    return { paused: newValue };
   },
 });
 
@@ -284,6 +349,12 @@ export const seedDefaults = internalMutation({
         value: [-2, -0.5, 0.5, 2],
         description:
           "Bias indicator boundaries: [leftMax, leanLeftMax, leanRightMin, rightMin]. Values outside the outer pair are labeled Left/Right.",
+      },
+      {
+        key: "pipeline_paused",
+        value: false,
+        description:
+          "When true, all automatic processing (ingestion, enrichment, MBFC) is paused. Toggle via config:togglePipeline.",
       },
     ];
 

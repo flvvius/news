@@ -297,6 +297,13 @@ export const enrichAllSources = internalAction({
     total: number;
     incomplete?: boolean;
   }> => {
+    // Kill-switch: skip entire run when pipeline is paused
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[mbfc] Pipeline paused — skipping enrichAllSources");
+      return { enriched: 0, total: 0 };
+    }
+
     const sources = await ctx.runQuery(internal.mbfc.getSourcesNeedingMbfc, {});
 
     if (sources.length === 0) {

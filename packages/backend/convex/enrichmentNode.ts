@@ -81,6 +81,13 @@ export const enrichUnprocessedArticles = internalAction({
     error?: string;
     skipped: boolean;
   }> => {
+    // Kill-switch: skip entire run when pipeline is paused
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[enrichment] Pipeline paused — skipping enrichment");
+      return { enriched: 0, failed: 0, skipped: true };
+    }
+
     // 0. Check AI budget before making any API calls
     const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
     if (!budget.allowed) {
