@@ -33,6 +33,9 @@ const MBFC_API_BASE = `https://${MBFC_API_HOST}`;
 /** How often to refresh MBFC data (7 days in milliseconds) */
 const MBFC_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Number of source records to inspect per MBFC enrichment run. */
+const MBFC_SOURCE_BATCH_SIZE = 40;
+
 // ---------------------------------------------------------------------------
 // MBFC API Types
 // ---------------------------------------------------------------------------
@@ -48,6 +51,10 @@ interface MBFCSearchResult {
   traffic_popularity?: string;
   mbfc_credibility_rating?: string;
 }
+
+type MBFCLookupResult =
+  | { found: true; data: MBFCSearchResult }
+  | { found: false };
 
 // ---------------------------------------------------------------------------
 // MBFC Bias → Numeric Mapping
@@ -101,18 +108,56 @@ function normalizeFactualRating(raw: string | undefined): string {
 
 /** Find sources that need MBFC enrichment (unrated or stale). */
 export const getSourcesNeedingMbfc = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const allSources = await ctx.db.query("sources").collect();
-    const now = Date.now();
+  args: {
+    limit: v.optional(v.number()),
+    uncheckedCursor: v.optional(v.union(v.string(), v.null())),
+    staleCursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { limit, uncheckedCursor, staleCursor }) => {
+    const batchSize = Math.max(
+      1,
+      Math.floor(limit ?? MBFC_SOURCE_BATCH_SIZE),
+    );
+    const cutoff = Date.now() - MBFC_REFRESH_INTERVAL_MS;
 
-    return allSources.filter((source) => {
-      // Never checked
-      if (!source.mbfcLastChecked) return true;
-      // Stale (older than refresh interval)
-      if (now - source.mbfcLastChecked > MBFC_REFRESH_INTERVAL_MS) return true;
-      return false;
-    });
+    const unchecked = await ctx.db
+      .query("sources")
+      .withIndex("by_mbfc_last_checked", (q) =>
+        q.eq("mbfcLastChecked", undefined),
+      )
+      .paginate({
+        numItems: batchSize,
+        cursor: uncheckedCursor ?? null,
+      });
+
+    let sources = unchecked.page;
+    let staleDone = false;
+    let nextStaleCursor = staleCursor ?? null;
+
+    const remaining = batchSize - sources.length;
+    if (remaining > 0) {
+      const stale = await ctx.db
+        .query("sources")
+        .withIndex("by_mbfc_last_checked", (q) =>
+          q.gt("mbfcLastChecked", 0).lte("mbfcLastChecked", cutoff),
+        )
+        .paginate({
+          numItems: remaining,
+          cursor: staleCursor ?? null,
+        });
+
+      sources = [...sources, ...stale.page];
+      staleDone = stale.isDone;
+      nextStaleCursor = stale.continueCursor;
+    }
+
+    return {
+      sources,
+      uncheckedCursor: unchecked.continueCursor,
+      staleCursor: nextStaleCursor,
+      uncheckedDone: unchecked.isDone,
+      staleDone,
+    };
   },
 });
 
@@ -169,15 +214,15 @@ export const markSourceUnrated = internalMutation({
 
 /**
  * Look up a single domain against the MBFC Data API.
- * Returns the MBFC data or null if not found.
+ * Returns found=false only when the domain is legitimately absent from MBFC.
+ * API/config/transient failures throw so callers do not mark sources unrated.
  */
 export const lookupDomain = internalAction({
   args: { domain: v.string() },
-  handler: async (_ctx, { domain }): Promise<MBFCSearchResult | null> => {
+  handler: async (_ctx, { domain }): Promise<MBFCLookupResult> => {
     const apiKey = process.env.RAPIDAPI_KEY;
     if (!apiKey) {
-      console.warn("[mbfc] RAPIDAPI_KEY not set, skipping MBFC lookup");
-      return null;
+      throw new Error("RAPIDAPI_KEY not set; skipping MBFC lookup");
     }
 
     try {
@@ -194,14 +239,11 @@ export const lookupDomain = internalAction({
       );
 
       if (response.status === 404) {
-        return null; // Domain not in MBFC database
+        return { found: false }; // Domain not in MBFC database
       }
 
       if (!response.ok) {
-        console.error(
-          `[mbfc] API error for ${domain}: HTTP ${response.status}`,
-        );
-        return null;
+        throw new Error(`MBFC API error for ${domain}: HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -214,14 +256,19 @@ export const lookupDomain = internalAction({
             r.domain?.toLowerCase().replace(/^www\./, "") ===
             domain.toLowerCase(),
         );
-        return exactMatch ?? data[0] ?? null;
+        const match = exactMatch ?? data[0];
+        return match ? { found: true, data: match } : { found: false };
       }
 
-      return data as MBFCSearchResult;
+      if (!data) {
+        return { found: false };
+      }
+
+      return { found: true, data: data as MBFCSearchResult };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error(`[mbfc] Failed to lookup ${domain}: ${message}`);
-      return null;
+      throw error;
     }
   },
 });
@@ -239,15 +286,16 @@ export const enrichSource = internalAction({
     domain: v.string(),
   },
   handler: async (ctx, { sourceId, domain }) => {
-    const result = await ctx.runAction(internal.mbfc.lookupDomain, { domain });
+    const lookup = await ctx.runAction(internal.mbfc.lookupDomain, { domain });
 
-    if (!result) {
+    if (!lookup.found) {
       // Domain not found — mark as unrated
       await ctx.runMutation(internal.mbfc.markSourceUnrated, { sourceId });
       console.log(`[mbfc] ${domain}: not found in MBFC, marked unrated`);
       return { status: "unrated" as const, domain };
     }
 
+    const result = lookup.data;
     const biasCategory = normalizeBiasCategory(result.bias_rating);
     const factualRating = normalizeFactualRating(result.factual_reporting);
 
@@ -304,7 +352,11 @@ export const enrichAllSources = internalAction({
       return { enriched: 0, total: 0 };
     }
 
-    const sources = await ctx.runQuery(internal.mbfc.getSourcesNeedingMbfc, {});
+    const sourceBatch = await ctx.runQuery(
+      internal.mbfc.getSourcesNeedingMbfc,
+      { limit: MBFC_SOURCE_BATCH_SIZE },
+    );
+    const sources = sourceBatch.sources;
 
     if (sources.length === 0) {
       console.log("[mbfc] All sources up to date, nothing to enrich");
@@ -312,7 +364,7 @@ export const enrichAllSources = internalAction({
     }
 
     // Cap the number of sources per run to avoid Convex action timeout (~10 min)
-    const maxBatch = 40;
+    const maxBatch = MBFC_SOURCE_BATCH_SIZE;
     const safetyMarginMs = 45_000; // stop 45s before estimated timeout
     const startTime = Date.now();
     const maxRuntime = 9 * 60 * 1000 - safetyMarginMs; // ~9 min budget
@@ -352,7 +404,10 @@ export const enrichAllSources = internalAction({
     }
 
     const processed = enriched + failed;
-    const incomplete = processed < sources.length;
+    const incomplete =
+      processed < sources.length ||
+      !sourceBatch.uncheckedDone ||
+      !sourceBatch.staleDone;
 
     console.log(
       `[mbfc] Enrichment ${incomplete ? "partial" : "complete"}: ${enriched} enriched, ${failed} failed out of ${sources.length}`,

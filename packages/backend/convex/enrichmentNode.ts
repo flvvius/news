@@ -16,6 +16,7 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getOpenAI, shutdownPostHog } from "./lib/openai";
+import { randomUUID } from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -23,6 +24,9 @@ import { getOpenAI, shutdownPostHog } from "./lib/openai";
 
 /** How many articles to enrich per cron run (cost control) */
 const BATCH_SIZE = 50;
+
+/** How long a claimed article can remain processing before another run retries it. */
+const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 
 /** OpenAI embedding model — cheap & effective for clustering */
 const EMBEDDING_MODEL = "text-embedding-3-small";
@@ -97,10 +101,16 @@ export const enrichUnprocessedArticles = internalAction({
       return { enriched: 0, failed: 0, skipped: true };
     }
 
-    // 1. Fetch unprocessed articles
-    const articles = await ctx.runQuery(
-      internal.enrichment.getUnprocessedArticles,
-      { limit: BATCH_SIZE },
+    const runId = randomUUID();
+
+    // 1. Atomically claim unprocessed or expired-lease articles for this run.
+    const articles = await ctx.runMutation(
+      internal.enrichment.claimUnprocessedArticles,
+      {
+        limit: BATCH_SIZE,
+        runId,
+        leaseExpiresAt: Date.now() + ARTICLE_LEASE_TTL_MS,
+      },
     );
 
     if (articles.length === 0) {
@@ -127,13 +137,18 @@ export const enrichUnprocessedArticles = internalAction({
       // 3.5 Log AI usage for cost tracking
       const { calculateCost } = await import("./aiBudget");
       const cost = calculateCost(EMBEDDING_MODEL, tokensUsed, 0);
-      await ctx.runMutation(internal.aiBudget.logUsage, {
+      const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
         model: EMBEDDING_MODEL,
         operation: "generate_embedding",
         inputTokens: tokensUsed,
         outputTokens: 0,
         costUsd: cost,
       });
+      if (!usage.allowed) {
+        console.warn(
+          `[enrichment] AI budget would be exceeded by this run ($${usage.spentUsd}/$${usage.dailyLimitUsd}); usage was not recorded.`,
+        );
+      }
 
       // 4. Update each article
       let enriched = 0;
@@ -144,19 +159,39 @@ export const enrichUnprocessedArticles = internalAction({
         const embedding = embeddings[i];
 
         if (embedding) {
-          await ctx.runMutation(internal.enrichment.markArticleEnriched, {
-            articleId: article._id,
-            embedding,
-            aiBiasScore: article.sourceBaseBias,
-            version: EMBEDDING_VERSION,
-          });
-          enriched++;
+          const result = await ctx.runMutation(
+            internal.enrichment.markArticleEnriched,
+            {
+              articleId: article._id,
+              embedding,
+              aiBiasScore: article.sourceBaseBias,
+              version: EMBEDDING_VERSION,
+              runId,
+            },
+          );
+          if (result.updated) {
+            enriched++;
+          } else {
+            console.warn(
+              `[enrichment] Article ${article._id} lease no longer belongs to run ${runId}; leaving it unchanged`,
+            );
+          }
         } else {
           // Embedding generation failed for this article — discard it
-          await ctx.runMutation(internal.enrichment.markArticleDiscarded, {
-            articleId: article._id,
-          });
-          failed++;
+          const result = await ctx.runMutation(
+            internal.enrichment.markArticleDiscarded,
+            {
+              articleId: article._id,
+              runId,
+            },
+          );
+          if (result.updated) {
+            failed++;
+          } else {
+            console.warn(
+              `[enrichment] Article ${article._id} lease no longer belongs to run ${runId}; leaving it unchanged`,
+            );
+          }
           console.warn(
             `[enrichment] No embedding for article ${article._id}, discarded`,
           );

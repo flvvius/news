@@ -33,6 +33,10 @@ const MAX_ARTICLES_PER_FEED = 25;
 /** User-Agent for RSS fetches. Be a good citizen. */
 const USER_AGENT = "Biviant/1.0 (news aggregator; +https://biviant.com)";
 
+/** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
+const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
+const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -394,6 +398,70 @@ export const upsertIngestionMeta = internalMutation({
   },
 });
 
+/** Acquire a short-lived run lock if no live owner currently holds it. */
+export const acquirePipelineLock = internalMutation({
+  args: {
+    key: v.string(),
+    owner: v.string(),
+    expiresAt: v.number(),
+  },
+  handler: async (ctx, { key, owner, expiresAt }) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("pipelineLocks")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+
+    if (existing && existing.expiresAt > now) {
+      return {
+        acquired: false,
+        owner: existing.owner,
+        expiresAt: existing.expiresAt,
+      };
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        owner,
+        acquiredAt: now,
+        updatedAt: now,
+        expiresAt,
+      });
+    } else {
+      await ctx.db.insert("pipelineLocks", {
+        key,
+        owner,
+        acquiredAt: now,
+        updatedAt: now,
+        expiresAt,
+      });
+    }
+
+    return { acquired: true, owner, expiresAt };
+  },
+});
+
+/** Release a run lock only if this run still owns it. */
+export const releasePipelineLock = internalMutation({
+  args: {
+    key: v.string(),
+    owner: v.string(),
+  },
+  handler: async (ctx, { key, owner }) => {
+    const existing = await ctx.db
+      .query("pipelineLocks")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+
+    if (!existing || existing.owner !== owner) {
+      return { released: false };
+    }
+
+    await ctx.db.delete(existing._id);
+    return { released: true };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Main Ingestion Action
 // ---------------------------------------------------------------------------
@@ -427,26 +495,28 @@ export const ingestSingleFeed = internalAction({
     },
   ): Promise<{ inserted: number; skipped: number; error?: string }> => {
     let articlesInserted = 0;
-
-    // Ensure source exists first — needed for all ingestionMeta updates
-    const existingSource = await ctx.runQuery(
-      internal.ingestion.getSourceByDomain,
-      { domain: feedDomain },
-    );
-
-    const sourceId: Id<"sources"> = existingSource
-      ? existingSource._id
-      : await ctx.runMutation(internal.ingestion.createSource, {
-          domain: feedDomain,
-          name: feedName,
-          baseBias,
-          reliabilityScore,
-          mbfcCategory,
-          mbfcFactual,
-          mbfcCredibility,
-        });
+    let sourceId: Id<"sources"> | null = null;
 
     try {
+      // Ensure source exists first — needed for ingestionMeta updates.
+      const existingSource = await ctx.runQuery(
+        internal.ingestion.getSourceByDomain,
+        { domain: feedDomain },
+      );
+
+      const resolvedSourceId: Id<"sources"> = existingSource
+        ? existingSource._id
+        : await ctx.runMutation(internal.ingestion.createSource, {
+            domain: feedDomain,
+            name: feedName,
+            baseBias,
+            reliabilityScore,
+            mbfcCategory,
+            mbfcFactual,
+            mbfcCredibility,
+          });
+      sourceId = resolvedSourceId;
+
       // 1. Fetch RSS XML
       const response = await fetch(feedUrl, {
         headers: { "User-Agent": USER_AGENT },
@@ -466,7 +536,7 @@ export const ingestSingleFeed = internalAction({
           feedUrl,
           success: true,
           articleCount: 0,
-          sourceId,
+          sourceId: resolvedSourceId,
         });
         return { inserted: 0, skipped: 0 };
       }
@@ -488,30 +558,34 @@ export const ingestSingleFeed = internalAction({
       });
 
       // 3. Batch dedup check
-      const canonicalUrls = recentArticles.map((a) => a.canonicalUrl);
+      const dedupedRecentArticles = Array.from(
+        new Map(recentArticles.map((a) => [a.canonicalUrl, a])).values(),
+      );
+      const canonicalUrls = dedupedRecentArticles.map((a) => a.canonicalUrl);
       const existingUrls = await ctx.runQuery(
         internal.ingestion.findExistingCanonicalUrls,
         { urls: canonicalUrls },
       );
       const existingSet = new Set(existingUrls);
 
-      const newArticles = recentArticles.filter(
+      const newArticles = dedupedRecentArticles.filter(
         (a) => !existingSet.has(a.canonicalUrl),
       );
+      const skippedArticles = recentArticles.length - newArticles.length;
 
       if (newArticles.length === 0) {
         await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
           feedUrl,
           success: true,
           articleCount: 0,
-          sourceId,
+          sourceId: resolvedSourceId,
         });
-        return { inserted: 0, skipped: recentArticles.length };
+        return { inserted: 0, skipped: skippedArticles };
       }
 
       // 4. Build article records (no placeholder summary/aiBiasScore — enrichment pipeline fills those)
       const articleRecords = newArticles.map((a) => ({
-        sourceId: sourceId,
+        sourceId: resolvedSourceId,
         title: a.title,
         url: a.url,
         canonicalUrl: a.canonicalUrl,
@@ -537,28 +611,30 @@ export const ingestSingleFeed = internalAction({
         feedUrl,
         success: true,
         articleCount: articlesInserted,
-        sourceId,
+        sourceId: resolvedSourceId,
       });
 
       console.log(
-        `[ingestion] ${feedName}: ${articlesInserted} new, ${existingSet.size} deduped`,
+        `[ingestion] ${feedName}: ${articlesInserted} new, ${skippedArticles} skipped`,
       );
 
       return {
         inserted: articlesInserted,
-        skipped: existingSet.size,
+        skipped: skippedArticles,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error(`[ingestion] Failed to ingest ${feedUrl}: ${message}`);
 
-      await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
-        feedUrl,
-        success: false,
-        articleCount: 0,
-        error: message,
-        sourceId,
-      });
+      if (sourceId) {
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: false,
+          articleCount: 0,
+          error: message,
+          sourceId,
+        });
+      }
 
       return { inserted: 0, skipped: 0, error: message };
     }
@@ -582,96 +658,127 @@ export const ingestAllFeeds = internalAction({
     feedsProcessed: number;
     failedFeeds: number;
   }> => {
-    // Kill-switch: skip entire run when pipeline is paused
-    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
-    if (paused) {
-      console.log("[ingestion] Pipeline paused — skipping ingestAllFeeds");
+    const lockOwner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
+      key: INGEST_ALL_FEEDS_LOCK_KEY,
+      owner: lockOwner,
+      expiresAt: Date.now() + INGEST_ALL_FEEDS_LOCK_TTL_MS,
+    });
+
+    if (!lock.acquired) {
+      console.log(
+        `[ingestion] ingestAllFeeds already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
+      );
       return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
     }
 
-    console.log(
-      `[ingestion] Starting batch ingest of ${ALL_FEEDS.length} feeds`,
-    );
-    const results: Array<{
-      feed: string;
-      inserted: number;
-      error?: string;
-    }> = [];
-
-    for (const feed of ALL_FEEDS) {
-      const result = await ctx.runAction(internal.ingestion.ingestSingleFeed, {
-        feedUrl: feed.url,
-        feedName: feed.name,
-        feedDomain: feed.domain,
-        baseBias: feed.baseBias,
-        reliabilityScore: feed.reliabilityScore,
-        mbfcCategory: feed.mbfc.category,
-        mbfcFactual: feed.mbfc.factual,
-        mbfcCredibility: feed.mbfc.credibility,
-      });
-
-      results.push({
-        feed: feed.name,
-        inserted: result.inserted,
-        error: result.error,
-      });
-    }
-
-    const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
-    let failedFeeds = results.filter((r) => r.error);
-
-    console.log(
-      `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed`,
-    );
-
-    // Retry failed feeds once after a short delay (helps with transient errors)
-    let retryInserted = 0;
-    if (failedFeeds.length > 0) {
-      console.log(`[ingestion] Retrying ${failedFeeds.length} failed feeds...`);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      const failedFeedNames = new Set(failedFeeds.map((f) => f.feed));
-      const feedsToRetry = ALL_FEEDS.filter((f) => failedFeedNames.has(f.name));
-      const retrySuccesses = new Set<string>();
-
-      for (const feed of feedsToRetry) {
-        const retryResult = await ctx.runAction(
-          internal.ingestion.ingestSingleFeed,
-          {
-            feedUrl: feed.url,
-            feedName: feed.name,
-            feedDomain: feed.domain,
-            baseBias: feed.baseBias,
-            reliabilityScore: feed.reliabilityScore,
-            mbfcCategory: feed.mbfc.category,
-            mbfcFactual: feed.mbfc.factual,
-            mbfcCredibility: feed.mbfc.credibility,
-          },
-        );
-
-        if (!retryResult.error) {
-          retryInserted += retryResult.inserted;
-          retrySuccesses.add(feed.name);
-          console.log(
-            `[ingestion] Retry succeeded for ${feed.name}: ${retryResult.inserted} articles`,
-          );
-        }
+    try {
+      // Kill-switch: skip entire run when pipeline is paused
+      const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+      if (paused) {
+        console.log("[ingestion] Pipeline paused — skipping ingestAllFeeds");
+        return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
       }
 
-      // Remove feeds that succeeded on retry
-      failedFeeds = failedFeeds.filter((f) => !retrySuccesses.has(f.feed));
-    }
-
-    if (failedFeeds.length > 0) {
-      console.warn(
-        `[ingestion] Failed feeds: ${failedFeeds.map((f) => `${f.feed}: ${f.error}`).join("; ")}`,
+      console.log(
+        `[ingestion] Starting batch ingest of ${ALL_FEEDS.length} feeds`,
       );
-    }
+      const results: Array<{
+        feed: string;
+        inserted: number;
+        error?: string;
+      }> = [];
 
-    return {
-      totalInserted: totalInserted + retryInserted,
-      feedsProcessed: results.length,
-      failedFeeds: failedFeeds.length,
-    };
+      for (const feed of ALL_FEEDS) {
+        const result = await ctx.runAction(internal.ingestion.ingestSingleFeed, {
+          feedUrl: feed.url,
+          feedName: feed.name,
+          feedDomain: feed.domain,
+          baseBias: feed.baseBias,
+          reliabilityScore: feed.reliabilityScore,
+          mbfcCategory: feed.mbfc.category,
+          mbfcFactual: feed.mbfc.factual,
+          mbfcCredibility: feed.mbfc.credibility,
+        });
+
+        results.push({
+          feed: feed.name,
+          inserted: result.inserted,
+          error: result.error,
+        });
+      }
+
+      const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
+      let failedFeeds = results.filter((r) => r.error);
+
+      console.log(
+        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed`,
+      );
+
+      // Retry failed feeds once after a short delay (helps with transient errors)
+      let retryInserted = 0;
+      if (failedFeeds.length > 0) {
+        console.log(
+          `[ingestion] Retrying ${failedFeeds.length} failed feeds...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        const failedFeedNames = new Set(failedFeeds.map((f) => f.feed));
+        const feedsToRetry = ALL_FEEDS.filter((f) =>
+          failedFeedNames.has(f.name),
+        );
+        const retrySuccesses = new Set<string>();
+
+        for (const feed of feedsToRetry) {
+          const retryResult = await ctx.runAction(
+            internal.ingestion.ingestSingleFeed,
+            {
+              feedUrl: feed.url,
+              feedName: feed.name,
+              feedDomain: feed.domain,
+              baseBias: feed.baseBias,
+              reliabilityScore: feed.reliabilityScore,
+              mbfcCategory: feed.mbfc.category,
+              mbfcFactual: feed.mbfc.factual,
+              mbfcCredibility: feed.mbfc.credibility,
+            },
+          );
+
+          if (!retryResult.error) {
+            retryInserted += retryResult.inserted;
+            retrySuccesses.add(feed.name);
+            console.log(
+              `[ingestion] Retry succeeded for ${feed.name}: ${retryResult.inserted} articles`,
+            );
+          }
+        }
+
+        // Remove feeds that succeeded on retry
+        failedFeeds = failedFeeds.filter((f) => !retrySuccesses.has(f.feed));
+      }
+
+      if (failedFeeds.length > 0) {
+        console.warn(
+          `[ingestion] Failed feeds: ${failedFeeds.map((f) => `${f.feed}: ${f.error}`).join("; ")}`,
+        );
+      }
+
+      return {
+        totalInserted: totalInserted + retryInserted,
+        feedsProcessed: results.length,
+        failedFeeds: failedFeeds.length,
+      };
+    } finally {
+      try {
+        await ctx.runMutation(internal.ingestion.releasePipelineLock, {
+          key: INGEST_ALL_FEEDS_LOCK_KEY,
+          owner: lockOwner,
+        });
+      } catch (error) {
+        console.error(
+          `[ingestion] Failed to release ingestAllFeeds lock: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }
   },
 });

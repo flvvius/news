@@ -1,6 +1,18 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+
+const TOPIC_CURSOR_PREFIX = "topic:";
+
+function encodeTopicCursor(eventId: Id<"events">): string {
+  return `${TOPIC_CURSOR_PREFIX}${eventId}`;
+}
+
+function decodeTopicCursor(cursor: string | null): Id<"events"> | null {
+  if (!cursor?.startsWith(TOPIC_CURSOR_PREFIX)) return null;
+  return cursor.slice(TOPIC_CURSOR_PREFIX.length) as Id<"events">;
+}
 
 export const getPublishedEvents = query({
   args: {
@@ -8,9 +20,9 @@ export const getPublishedEvents = query({
     topicId: v.optional(v.id("topics")),
   },
   handler: async (ctx, args) => {
-    // When filtering by topic, collect matching IDs first and over-fetch
-    // events pages until we have a full page of filtered results.
-    let matchingEventIds: Set<string> | null = null;
+    // When filtering by topic, collect matching IDs first so pagination can
+    // resume after the last matching event returned to the client.
+    let matchingEventIds: Set<Id<"events">> | null = null;
     if (args.topicId) {
       const eventTopicRows = await ctx.db
         .query("eventTopics")
@@ -19,52 +31,56 @@ export const getPublishedEvents = query({
       matchingEventIds = new Set(eventTopicRows.map((r) => r.eventId));
     }
 
-    // Eagerly fetch the base paginated result so we can derive the type,
-    // then optionally refine when topic-filtering is active.
-    const basePagination = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
-      .paginate(args.paginationOpts);
-
-    let events = basePagination;
+    let events;
 
     if (matchingEventIds !== null) {
-      // Over-fetch pages until we fill the requested page size or exhaust data
+      // Topic filtering uses a custom cursor based on the last returned event.
+      // This avoids dropping matching events that appear later in an over-fetched
+      // database page after the UI page has already reached its target size.
       const targetSize = args.paginationOpts.numItems;
+      const matchingEvents = await Promise.all(
+        Array.from(matchingEventIds).map((eventId) => ctx.db.get(eventId)),
+      );
+      const publishedMatches = matchingEvents
+        .filter(
+          (event): event is Doc<"events"> =>
+            event !== null && event.status === "published",
+        )
+        .sort(
+          (a, b) =>
+            b.firstPublishedAt - a.firstPublishedAt ||
+            b._creationTime - a._creationTime,
+        );
 
-      const filteredPage: typeof basePagination.page = [];
-      for (const event of basePagination.page) {
-        if (matchingEventIds.has(event._id)) {
-          filteredPage.push(event);
-        }
-      }
-
-      let isDone = basePagination.isDone;
-      let continueCursor = basePagination.continueCursor;
-
-      while (filteredPage.length < targetSize && !isDone) {
-        const batch = await ctx.db
-          .query("events")
-          .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-          .order("desc")
-          .paginate({ ...args.paginationOpts, cursor: continueCursor });
-
-        for (const event of batch.page) {
-          if (matchingEventIds.has(event._id)) {
-            filteredPage.push(event);
-          }
-        }
-
-        isDone = batch.isDone;
-        continueCursor = batch.continueCursor;
-      }
+      const resumeAfterId = decodeTopicCursor(args.paginationOpts.cursor);
+      const resumeIndex = resumeAfterId
+        ? publishedMatches.findIndex((event) => event._id === resumeAfterId)
+        : -1;
+      const startIndex = resumeIndex >= 0 ? resumeIndex + 1 : 0;
+      const page = publishedMatches.slice(startIndex, startIndex + targetSize);
+      const isDone = startIndex + page.length >= publishedMatches.length;
+      const lastReturned = page[page.length - 1];
 
       events = {
-        page: filteredPage.slice(0, targetSize),
+        page,
         isDone,
-        continueCursor,
+        continueCursor:
+          isDone || !lastReturned ? "" : encodeTopicCursor(lastReturned._id),
       };
+    } else {
+      // Defensive reset in case a topic cursor is reused after the topic filter
+      // is cleared.
+      const paginationOpts = args.paginationOpts.cursor?.startsWith(
+        TOPIC_CURSOR_PREFIX,
+      )
+        ? { ...args.paginationOpts, cursor: null }
+        : args.paginationOpts;
+
+      events = await ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .order("desc")
+        .paginate(paginationOpts);
     }
 
     // Batch-load topic IDs for all events in the page to avoid N+1 queries

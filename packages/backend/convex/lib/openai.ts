@@ -20,9 +20,12 @@
 
 import { PostHog } from "posthog-node";
 
+type OpenAIClient = InstanceType<typeof import("openai").default>;
+
 // Lazy-init singletons (Convex actions may cold-start)
 let _phClient: PostHog | null = null;
-let _openai: InstanceType<typeof import("openai").default> | null = null;
+let _openai: OpenAIClient | null = null;
+let _openaiInit: Promise<OpenAIClient> | null = null;
 
 function getPostHogClient(): PostHog | null {
   if (_phClient) return _phClient;
@@ -53,28 +56,42 @@ export async function getOpenAI(): Promise<
   InstanceType<typeof import("openai").default>
 > {
   if (_openai) return _openai;
+  if (_openaiInit) return _openaiInit;
 
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (!openaiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is required");
+  _openaiInit = (async () => {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
+    }
+
+    const ph = getPostHogClient();
+
+    if (ph) {
+      // Use PostHog wrapper — auto-instruments all OpenAI calls
+      const { PostHogOpenAI } = await import("@posthog/ai/openai");
+      _openai = new PostHogOpenAI({
+        apiKey: openaiKey,
+        posthog: ph,
+      });
+    } else {
+      // Fallback: plain OpenAI client (no analytics in dev)
+      const OpenAI = (await import("openai")).default;
+      _openai = new OpenAI({ apiKey: openaiKey });
+    }
+
+    return _openai;
+  })();
+
+  try {
+    return await _openaiInit;
+  } catch (error) {
+    _openaiInit = null;
+    throw error;
+  } finally {
+    if (_openai) {
+      _openaiInit = null;
+    }
   }
-
-  const ph = getPostHogClient();
-
-  if (ph) {
-    // Use PostHog wrapper — auto-instruments all OpenAI calls
-    const { PostHogOpenAI } = await import("@posthog/ai/openai");
-    _openai = new PostHogOpenAI({
-      apiKey: openaiKey,
-      posthog: ph,
-    });
-  } else {
-    // Fallback: plain OpenAI client (no analytics in dev)
-    const OpenAI = (await import("openai")).default;
-    _openai = new OpenAI({ apiKey: openaiKey });
-  }
-
-  return _openai;
 }
 
 /**
@@ -83,10 +100,13 @@ export async function getOpenAI(): Promise<
  * Safe to call even if PostHog is not configured.
  */
 export async function shutdownPostHog(): Promise<void> {
-  if (_phClient) {
-    await _phClient.shutdown();
+  try {
+    if (_phClient) {
+      await _phClient.shutdown();
+    }
+  } finally {
     _phClient = null;
+    _openai = null;
+    _openaiInit = null;
   }
-  // Clear cached OpenAI client so getOpenAI() creates a fresh instance next time
-  _openai = null;
 }

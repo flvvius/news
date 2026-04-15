@@ -25,7 +25,9 @@ export default defineSchema({
     mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
     mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"
     mbfcLastChecked: v.optional(v.number()), // Timestamp of last MBFC lookup
-  }).index("by_domain", ["domain"]),
+  })
+    .index("by_domain", ["domain"])
+    .index("by_mbfc_last_checked", ["mbfcLastChecked"]),
 
   // =========================================================================
   // 3. EVENTS (The Clusters/Stories)
@@ -100,15 +102,22 @@ export default defineSchema({
 
     status: v.union(
       v.literal("unprocessed"),
+      v.literal("processing"),
       v.literal("enriched"),
       v.literal("clustered"),
       v.literal("discarded"),
     ),
-    publishedAt: v.number(), // Epoch ms (consistent with all other timestamps)
+    enrichmentRunId: v.optional(v.string()),
+    enrichmentLeaseExpiresAt: v.optional(v.number()),
+    publishedAt: v.number(), // Epoch ms
   })
     .index("by_event", ["eventId"])
     .index("by_canonical_url", ["canonicalUrl"])
     .index("by_status", ["status"])
+    .index("by_status_enrichment_lease", [
+      "status",
+      "enrichmentLeaseExpiresAt",
+    ])
     .index("by_source", ["sourceId"])
     .index("by_published", ["publishedAt"]),
 
@@ -141,6 +150,7 @@ export default defineSchema({
       job: v.optional(v.string()),
       location: v.optional(v.string()),
     }),
+
   })
     .index("by_email", ["email"])
     .index("by_auth_user_id", ["authUserId"]),
@@ -314,4 +324,15 @@ export default defineSchema({
     .index("by_date", ["date"])
     .index("by_date_model", ["date", "model"])
     .index("by_operation", ["operation", "date"]),
+
+  // =========================================================================
+  // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)
+  // =========================================================================
+  pipelineLocks: defineTable({
+    key: v.string(),
+    owner: v.string(),
+    acquiredAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_key", ["key"]),
 });

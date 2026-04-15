@@ -81,6 +81,25 @@ export function calculateCost(
 /** Default daily budget in USD if not configured. */
 const DEFAULT_DAILY_BUDGET_USD = 1.0;
 
+function roundUsd(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
+  if (!limitConfig) return DEFAULT_DAILY_BUDGET_USD;
+
+  const trimmed = limitConfig.value.trim();
+  const parsed = trimmed.length > 0 ? Number(trimmed) : Number.NaN;
+  if (Number.isFinite(parsed) && !Number.isNaN(parsed) && parsed >= 0) {
+    return parsed;
+  }
+
+  console.warn(
+    `[aiBudget] Invalid ai_daily_budget_usd value "${limitConfig.value}", falling back to ${DEFAULT_DAILY_BUDGET_USD}`,
+  );
+  return DEFAULT_DAILY_BUDGET_USD;
+}
+
 /**
  * Check if today's AI spend is under the daily budget limit.
  * Returns { allowed, spentUsd, remainingUsd, dailyLimitUsd }.
@@ -96,9 +115,7 @@ export const checkBudget = internalQuery({
       .withIndex("by_key", (q) => q.eq("key", "ai_daily_budget_usd"))
       .unique();
 
-    const dailyLimitUsd = limitConfig
-      ? Number.parseFloat(limitConfig.value)
-      : DEFAULT_DAILY_BUDGET_USD;
+    const dailyLimitUsd = parseDailyLimitUsd(limitConfig);
 
     // Sum today's spend
     const todaysUsage = await ctx.db
@@ -110,7 +127,7 @@ export const checkBudget = internalQuery({
 
     return {
       allowed: spentUsd < dailyLimitUsd,
-      spentUsd: Math.round(spentUsd * 1_000_000) / 1_000_000, // 6 decimal places
+      spentUsd: roundUsd(spentUsd),
       remainingUsd: Math.max(0, dailyLimitUsd - spentUsd),
       dailyLimitUsd,
     };
@@ -124,6 +141,9 @@ export const checkBudget = internalQuery({
 /**
  * Log an AI API call to the aiUsage table.
  * Call this after every successful OpenAI call for cost tracking.
+ *
+ * Convex mutations are transactions, so the budget read and usage insert happen
+ * atomically here. If this call returns allowed=false, no aiUsage row was added.
  */
 export const logUsage = internalMutation({
   args: {
@@ -136,7 +156,36 @@ export const logUsage = internalMutation({
     articleId: v.optional(v.id("articles")),
   },
   handler: async (ctx, args) => {
+    if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
+      throw new Error("costUsd must be a finite number");
+    }
+    if (args.costUsd < 0) {
+      throw new Error("costUsd must be non-negative");
+    }
+
     const today = new Date().toISOString().split("T")[0]!;
+
+    const limitConfig = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", "ai_daily_budget_usd"))
+      .unique();
+    const dailyLimitUsd = parseDailyLimitUsd(limitConfig);
+
+    const todaysUsage = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_date", (q) => q.eq("date", today))
+      .collect();
+    const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+
+    if (spentUsd + args.costUsd > dailyLimitUsd) {
+      return {
+        allowed: false,
+        spentUsd: roundUsd(spentUsd),
+        remainingUsd: Math.max(0, dailyLimitUsd - spentUsd),
+        dailyLimitUsd,
+      };
+    }
+
     await ctx.db.insert("aiUsage", {
       date: today,
       model: args.model,
@@ -148,6 +197,14 @@ export const logUsage = internalMutation({
       articleId: args.articleId,
       timestamp: Date.now(),
     });
+
+    const updatedSpentUsd = spentUsd + args.costUsd;
+    return {
+      allowed: true,
+      spentUsd: roundUsd(updatedSpentUsd),
+      remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd),
+      dailyLimitUsd,
+    };
   },
 });
 

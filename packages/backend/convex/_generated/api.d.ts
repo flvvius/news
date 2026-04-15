@@ -23,7 +23,6 @@ import type * as ingestion from "../ingestion.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as mbfc from "../mbfc.js";
-import type * as migrations from "../migrations.js";
 import type * as privateData from "../privateData.js";
 import type * as seeds from "../seeds.js";
 import type * as topics from "../topics.js";
@@ -52,7 +51,6 @@ declare const fullApi: ApiFromModules<{
   interactions: typeof interactions;
   "lib/openai": typeof lib_openai;
   mbfc: typeof mbfc;
-  migrations: typeof migrations;
   privateData: typeof privateData;
   seeds: typeof seeds;
   topics: typeof topics;
