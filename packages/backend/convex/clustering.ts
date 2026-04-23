@@ -22,8 +22,9 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
+import type { MutationCtx } from "./_generated/server";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -310,6 +311,113 @@ function chooseCanonicalEvent(
     : { keep: b, remove: a };
 }
 
+function summarizeText(text: string | undefined, maxLength: number): string | undefined {
+  const cleaned = text?.replace(/\s+/g, " ").trim();
+  if (!cleaned) return undefined;
+  if (cleaned.length <= maxLength) return cleaned;
+
+  const slice = cleaned.slice(0, maxLength);
+  const lastBoundary = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("; "),
+    slice.lastIndexOf(", "),
+    slice.lastIndexOf(" "),
+  );
+  const trimmed = (lastBoundary > maxLength * 0.55 ? slice.slice(0, lastBoundary) : slice)
+    .trim()
+    .replace(/[,:;.\s]+$/g, "");
+  return `${trimmed}.`;
+}
+
+function articlePresentationScore(
+  article: Pick<Doc<"articles">, "title" | "rssSnippet" | "publishedAt" | "sourceId">,
+  source: Doc<"sources"> | null,
+  eventTitleTokens: Set<string>,
+): number {
+  const titleTokens = normalizeTitleTokens(article.title);
+  const snippetTokens = normalizeTitleTokens(article.rssSnippet ?? "");
+  const titleOverlap = countTokenOverlap(titleTokens, eventTitleTokens);
+  const snippetOverlap = countTokenOverlap(snippetTokens, eventTitleTokens);
+  const reliability = source?.reliabilityScore ?? 5;
+  const biasDistance = Math.abs(source?.baseBias ?? 0);
+
+  return (
+    titleOverlap * 3 +
+    snippetOverlap * 1.5 +
+    reliability * 0.35 -
+    biasDistance * 0.1 +
+    article.publishedAt / 1_000_000_000_000
+  );
+}
+
+async function refreshEventPresentation(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+): Promise<void> {
+  const event = await ctx.db.get(eventId);
+  if (!event) return;
+
+  const articles = await ctx.db
+    .query("articles")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  if (articles.length === 0) return;
+
+  const eventTitleTokens = normalizeTitleTokens(event.title);
+  const articlesWithSources = await Promise.all(
+    articles.map(async (article) => ({
+      article,
+      source: await ctx.db.get(article.sourceId),
+    })),
+  );
+
+  const ranked = [...articlesWithSources].sort(
+    (a, b) =>
+      articlePresentationScore(b.article, b.source, eventTitleTokens) -
+      articlePresentationScore(a.article, a.source, eventTitleTokens),
+  );
+  const best = ranked[0]!;
+  const uniqueSources = new Set(
+    articlesWithSources.map(({ source, article }) => source?.name ?? String(article.sourceId)),
+  );
+
+  const representativeSnippet =
+    summarizeText(best.article.rssSnippet, 220) ??
+    summarizeText(best.article.title, 160) ??
+    "Coverage is still being assembled from multiple sources.";
+
+  const coverageLine =
+    uniqueSources.size > 1
+      ? `This cluster currently includes ${articles.length} articles from ${uniqueSources.size} sources.`
+      : `This cluster currently includes ${articles.length} article${articles.length === 1 ? "" : "s"}.`;
+
+  const centerSummary = summarizeText(
+    `${representativeSnippet} ${coverageLine}`,
+    280,
+  );
+
+  const sourceNames = Array.from(uniqueSources).slice(0, 3);
+  const sourceLine =
+    sourceNames.length > 0
+      ? `Sources in this event include ${sourceNames.join(", ")}${uniqueSources.size > sourceNames.length ? ", and others" : ""}.`
+      : undefined;
+  const globalImpact = summarizeText(
+    `${coverageLine} ${sourceLine ?? ""}`.trim(),
+    180,
+  );
+
+  await ctx.db.patch(eventId, {
+    perspectiveSummaries: centerSummary
+      ? {
+          center: centerSummary,
+          left: event.perspectiveSummaries?.left,
+          right: event.perspectiveSummaries?.right,
+        }
+      : event.perspectiveSummaries,
+    globalImpact,
+  });
+}
+
 function findBestCandidate(
   article: {
     title: string;
@@ -535,6 +643,8 @@ export const createEventFromArticle = internalMutation({
       status: "clustered",
     });
 
+    await refreshEventPresentation(ctx, eventId);
+
     return {
       created: true as const,
       eventId,
@@ -632,6 +742,8 @@ export const attachArticleToEvent = internalMutation({
         });
       }
     }
+
+    await refreshEventPresentation(ctx, eventId);
 
     return {
       updated: true as const,
@@ -856,6 +968,8 @@ export const mergeEvents = internalMutation({
       globalImpact: mergedGlobalImpact,
       imageUrl: mergedImageUrl,
     });
+
+    await refreshEventPresentation(ctx, keepEventId);
 
     await ctx.db.delete(removeEventId);
     return { merged: true as const, keepEventId, removeEventId };
