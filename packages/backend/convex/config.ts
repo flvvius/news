@@ -387,6 +387,24 @@ export const seedDefaults = internalMutation({
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
       },
       {
+        key: "topic_inference_min_score",
+        value: 4.5,
+        description:
+          "Minimum weighted lexical score required before a topic is attached to a clustered event.",
+      },
+      {
+        key: "topic_inference_confidence_ratio",
+        value: 0.55,
+        description:
+          "Relative score threshold for keeping additional inferred topics alongside the top-scoring topic.",
+      },
+      {
+        key: "topic_inference_max_topics",
+        value: 3,
+        description:
+          "Maximum number of inferred topics attached to an event during clustering.",
+      },
+      {
         key: "merge_min_similarity",
         value: 0.94,
         description:

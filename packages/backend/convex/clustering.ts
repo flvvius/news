@@ -7,10 +7,10 @@
  *  - Create or update published events
  *  - Attach `eventId` to articles and move them to `clustered`
  *
- * This is intentionally a minimal first pass:
+ * This is still a heuristic Phase 3.5 implementation:
  *  - No AI summarization yet
  *  - No claim extraction yet
- *  - No topic inference yet
+ *  - Topic inference is metadata-driven, not model-based
  *  - Center summary falls back to RSS snippet when present
  */
 
@@ -39,75 +39,77 @@ const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.9;
 const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
 const DEFAULT_MIN_TITLE_JACCARD = 0.2;
 const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.9;
+const DEFAULT_TOPIC_INFERENCE_MIN_SCORE = 4.5;
+const DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO = 0.55;
+const DEFAULT_TOPIC_INFERENCE_MAX_TOPICS = 3;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 24;
-const TOPIC_KEYWORD_MAP: Record<string, string[]> = {
-  economy: [
-    "economy",
-    "economic",
-    "inflation",
-    "fed",
-    "federal",
-    "reserve",
-    "rates",
-    "tariff",
-    "gdp",
-    "jobs",
-    "unemployment",
-    "market",
-    "stocks",
-    "bank",
-    "banking",
-    "recession",
-    "trade",
-  ],
-  tech: [
-    "ai",
-    "artificial",
-    "technology",
-    "tech",
-    "software",
-    "chip",
-    "chips",
-    "semiconductor",
-    "apple",
-    "google",
-    "meta",
-    "microsoft",
-    "openai",
-    "tesla",
-    "xbox",
-    "iphone",
-    "android",
-    "cyber",
-    "cybersecurity",
-  ],
-};
 
 const STOPWORDS = new Set([
   "a",
+  "about",
+  "after",
+  "against",
+  "all",
+  "also",
   "an",
   "and",
   "are",
   "as",
   "at",
+  "back",
   "be",
+  "been",
+  "before",
   "by",
+  "can",
+  "could",
+  "do",
+  "does",
+  "during",
+  "even",
   "for",
   "from",
+  "has",
+  "have",
+  "he",
+  "her",
+  "his",
+  "if",
   "in",
   "into",
   "is",
   "it",
+  "its",
+  "just",
+  "may",
+  "more",
+  "new",
+  "not",
   "of",
   "on",
+  "one",
   "or",
+  "our",
+  "over",
+  "says",
+  "she",
+  "than",
   "that",
   "the",
   "their",
+  "them",
+  "they",
   "this",
   "to",
+  "up",
+  "was",
+  "were",
+  "what",
+  "when",
+  "who",
+  "will",
   "with",
 ]);
 
@@ -138,12 +140,18 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeTitleTokens(text: string): Set<string> {
   return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
+    normalizeText(text)
+      .split(" ")
       .map((token) => token.trim())
       .filter((token) => token.length >= 3 && !STOPWORDS.has(token)),
   );
@@ -155,23 +163,6 @@ function countTokenOverlap(a: Set<string>, b: Set<string>): number {
     if (b.has(token)) overlap++;
   }
   return overlap;
-}
-
-function inferTopicSlugs(title: string, snippet: string): string[] {
-  const haystack = `${title} ${snippet}`.toLowerCase();
-  const matches = Object.entries(TOPIC_KEYWORD_MAP)
-    .map(([slug, keywords]) => ({
-      slug,
-      score: keywords.reduce(
-        (sum, keyword) => sum + (haystack.includes(keyword) ? 1 : 0),
-        0,
-      ),
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((entry) => entry.slug);
-
-  return matches.slice(0, 2);
 }
 
 function slugify(value: string): string {
@@ -222,10 +213,57 @@ type ClusterSettings = {
   sameSourceMinSimilarity: number;
 };
 
+type TopicInferenceSettings = {
+  minScore: number;
+  confidenceRatio: number;
+  maxTopics: number;
+};
+
 type MergeSettings = {
   minSimilarity: number;
   minTitleJaccard: number;
   maxTimeDeltaHours: number;
+};
+
+type TopicInferenceTopic = Pick<
+  Doc<"topics">,
+  | "_id"
+  | "slug"
+  | "displayName"
+  | "description"
+  | "aliases"
+  | "keywords"
+  | "keyPhrases"
+  | "excludePhrases"
+>;
+
+type CompiledTopicInferenceTopic = {
+  slug: string;
+  titlePhrases: string[];
+  bodyPhrases: string[];
+  keywordTokens: string[];
+  excludePhrases: string[];
+  displayNameTokens: Set<string>;
+};
+
+type TopicArticleContext = {
+  title: string;
+  rssSnippet: string;
+  summary: string;
+  atomicFacts: string[];
+};
+
+type NormalizedTopicField = {
+  text: string;
+  tokens: Set<string>;
+};
+
+type TopicInferenceFieldContexts = {
+  title: NormalizedTopicField;
+  snippet: NormalizedTopicField;
+  summary: NormalizedTopicField;
+  facts: NormalizedTopicField;
+  combined: NormalizedTopicField;
 };
 
 function clampNumber(
@@ -241,6 +279,223 @@ function clampNumber(
 
 function safeInteger(value: unknown, fallback: number, min: number, max: number) {
   return Math.floor(clampNumber(value, fallback, min, max));
+}
+
+function normalizePhrase(value: string): string {
+  return normalizeText(value);
+}
+
+function countPhraseOccurrences(text: string, phrase: string): number {
+  if (!text || !phrase) return 0;
+
+  const paddedText = ` ${text} `;
+  const paddedPhrase = ` ${phrase} `;
+  let count = 0;
+  let start = 0;
+
+  while (true) {
+    const index = paddedText.indexOf(paddedPhrase, start);
+    if (index === -1) break;
+    count++;
+    start = index + paddedPhrase.length;
+  }
+
+  return count;
+}
+
+function countMatchedKeywords(tokens: Set<string>, keywordTokens: string[]): number {
+  let matches = 0;
+  for (const token of keywordTokens) {
+    if (tokens.has(token)) {
+      matches++;
+    }
+  }
+  return matches;
+}
+
+function buildTopicFieldContexts(article: TopicArticleContext): TopicInferenceFieldContexts {
+  const titleText = normalizeText(article.title);
+  const snippetText = normalizeText(article.rssSnippet);
+  const summaryText = normalizeText(article.summary);
+  const factsText = normalizeText(article.atomicFacts.join(" "));
+  const combinedText = [titleText, snippetText, summaryText, factsText]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return {
+    title: { text: titleText, tokens: normalizeTitleTokens(article.title) },
+    snippet: {
+      text: snippetText,
+      tokens: normalizeTitleTokens(article.rssSnippet),
+    },
+    summary: {
+      text: summaryText,
+      tokens: normalizeTitleTokens(article.summary),
+    },
+    facts: {
+      text: factsText,
+      tokens: normalizeTitleTokens(article.atomicFacts.join(" ")),
+    },
+    combined: {
+      text: combinedText,
+      tokens: normalizeTitleTokens(combinedText),
+    },
+  };
+}
+
+function compileTopicForInference(
+  topic: TopicInferenceTopic,
+): CompiledTopicInferenceTopic {
+  const aliases = topic.aliases ?? [];
+  const keyPhrases = topic.keyPhrases ?? [];
+  const keywords = topic.keywords ?? [];
+  const excludePhrases = topic.excludePhrases ?? [];
+
+  const titlePhrases = Array.from(
+    new Set(
+      [topic.displayName, topic.slug.replace(/-/g, " "), ...aliases, ...keyPhrases]
+        .map(normalizePhrase)
+        .filter((value) => value.length >= 2),
+    ),
+  );
+
+  const bodyPhrases = Array.from(
+    new Set(
+      [
+        ...titlePhrases,
+        topic.description ?? "",
+        ...keywords.filter((keyword) => keyword.includes(" ")),
+      ]
+        .map(normalizePhrase)
+        .filter((value) => value.length >= 2),
+    ),
+  );
+
+  const keywordTokens = Array.from(
+    new Set(
+      [
+        ...keywords,
+        ...aliases,
+        ...keyPhrases,
+        topic.displayName,
+        topic.slug.replace(/-/g, " "),
+      ]
+        .flatMap((value) => normalizePhrase(value).split(" "))
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3 && !STOPWORDS.has(token)),
+    ),
+  );
+
+  return {
+    slug: topic.slug,
+    titlePhrases,
+    bodyPhrases,
+    keywordTokens,
+    excludePhrases: excludePhrases.map(normalizePhrase).filter(Boolean),
+    displayNameTokens: normalizeTitleTokens(topic.displayName),
+  };
+}
+
+function inferTopicSlugs(
+  article: TopicArticleContext,
+  topics: TopicInferenceTopic[],
+  settings: TopicInferenceSettings,
+): string[] {
+  if (topics.length === 0) return [];
+
+  const fields = buildTopicFieldContexts(article);
+  const compiledTopics = topics.map(compileTopicForInference);
+  const scored = compiledTopics
+    .map((topic) => {
+      const titlePhraseHits = topic.titlePhrases.reduce(
+        (sum, phrase) => sum + countPhraseOccurrences(fields.title.text, phrase),
+        0,
+      );
+      const snippetPhraseHits = topic.bodyPhrases.reduce(
+        (sum, phrase) => sum + countPhraseOccurrences(fields.snippet.text, phrase),
+        0,
+      );
+      const summaryPhraseHits = topic.bodyPhrases.reduce(
+        (sum, phrase) => sum + countPhraseOccurrences(fields.summary.text, phrase),
+        0,
+      );
+      const factPhraseHits = topic.bodyPhrases.reduce(
+        (sum, phrase) => sum + countPhraseOccurrences(fields.facts.text, phrase),
+        0,
+      );
+      const excludeHits = topic.excludePhrases.reduce(
+        (sum, phrase) => sum + countPhraseOccurrences(fields.combined.text, phrase),
+        0,
+      );
+
+      const titleKeywordHits = countMatchedKeywords(
+        fields.title.tokens,
+        topic.keywordTokens,
+      );
+      const snippetKeywordHits = countMatchedKeywords(
+        fields.snippet.tokens,
+        topic.keywordTokens,
+      );
+      const summaryKeywordHits = countMatchedKeywords(
+        fields.summary.tokens,
+        topic.keywordTokens,
+      );
+      const factKeywordHits = countMatchedKeywords(
+        fields.facts.tokens,
+        topic.keywordTokens,
+      );
+      const displayNameCoverage = countTokenOverlap(
+        fields.combined.tokens,
+        topic.displayNameTokens,
+      );
+      const fullDisplayNameCoverage =
+        topic.displayNameTokens.size > 0 &&
+        displayNameCoverage === topic.displayNameTokens.size;
+
+      const score =
+        titlePhraseHits * 5.5 +
+        summaryPhraseHits * 2.8 +
+        snippetPhraseHits * 2.2 +
+        factPhraseHits * 3 +
+        titleKeywordHits * 2.1 +
+        summaryKeywordHits * 1.15 +
+        snippetKeywordHits * 0.85 +
+        factKeywordHits * 1.25 +
+        displayNameCoverage * 0.9 +
+        (fullDisplayNameCoverage ? 2.5 : 0) -
+        excludeHits * 4;
+
+      const signalCount =
+        titlePhraseHits +
+        summaryPhraseHits +
+        snippetPhraseHits +
+        factPhraseHits +
+        titleKeywordHits +
+        summaryKeywordHits +
+        snippetKeywordHits +
+        factKeywordHits;
+
+      return {
+        slug: topic.slug,
+        score,
+        signalCount,
+      };
+    })
+    .filter(
+      (topic) =>
+        topic.score >= settings.minScore &&
+        (topic.signalCount >= 2 || topic.score >= settings.minScore + 2),
+    )
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) return [];
+
+  const topScore = scored[0]!.score;
+  return scored
+    .filter((topic) => topic.score >= topScore * settings.confidenceRatio)
+    .slice(0, settings.maxTopics)
+    .map((topic) => topic.slug);
 }
 
 function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
@@ -502,6 +757,8 @@ export const getEnrichedArticlesForClustering = internalQuery({
             _id: article._id,
             title: article.title,
             rssSnippet: article.rssSnippet ?? "",
+            summary: article.summary ?? "",
+            atomicFacts: article.atomicFacts ?? [],
             publishedAt: article.publishedAt,
             embedding: embeddingRow.embedding,
             sourceId: article.sourceId,
@@ -1198,6 +1455,8 @@ export const clusterEnrichedArticles = internalAction({
     }
 
     try {
+      await ctx.runMutation(internal.topics.syncTopicCatalog, {});
+
       const articles = await ctx.runQuery(
         internal.clustering.getEnrichedArticlesForClustering,
         { limit: CLUSTER_BATCH_SIZE },
@@ -1220,6 +1479,11 @@ export const clusterEnrichedArticles = internalAction({
         },
       );
 
+      const topicsForInference = await ctx.runQuery(
+        internal.topics.getTopicsForInference,
+        {},
+      );
+
       const clusteringConfig = await ctx.runQuery(internal.config.getBatch, {
         keys: [
           "clustering_min_similarity",
@@ -1227,6 +1491,9 @@ export const clusterEnrichedArticles = internalAction({
           "clustering_min_title_overlap",
           "clustering_min_title_jaccard",
           "clustering_same_source_min_similarity",
+          "topic_inference_min_score",
+          "topic_inference_confidence_ratio",
+          "topic_inference_max_topics",
         ],
       });
 
@@ -1262,6 +1529,26 @@ export const clusterEnrichedArticles = internalAction({
           0.999,
         ),
       };
+      const topicSettings: TopicInferenceSettings = {
+        minScore: clampNumber(
+          clusteringConfig.topic_inference_min_score,
+          DEFAULT_TOPIC_INFERENCE_MIN_SCORE,
+          1,
+          20,
+        ),
+        confidenceRatio: clampNumber(
+          clusteringConfig.topic_inference_confidence_ratio,
+          DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO,
+          0.1,
+          1,
+        ),
+        maxTopics: safeInteger(
+          clusteringConfig.topic_inference_max_topics,
+          DEFAULT_TOPIC_INFERENCE_MAX_TOPICS,
+          1,
+          5,
+        ),
+      };
 
       const candidates: ClusterCandidate[] = recentCandidatesRaw.map(
         (candidate) => ({
@@ -1277,7 +1564,16 @@ export const clusterEnrichedArticles = internalAction({
 
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
-        const topicSlugs = inferTopicSlugs(article.title, article.rssSnippet);
+        const topicSlugs = inferTopicSlugs(
+          {
+            title: article.title,
+            rssSnippet: article.rssSnippet,
+            summary: article.summary,
+            atomicFacts: article.atomicFacts,
+          },
+          topicsForInference,
+          topicSettings,
+        );
         const match = findBestCandidate(article, candidates, settings);
 
         if (match) {
@@ -1355,7 +1651,7 @@ export const clusterEnrichedArticles = internalAction({
       }
 
       console.log(
-        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity})`,
+        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, topicMinScore=${topicSettings.minScore})`,
       );
 
       return {

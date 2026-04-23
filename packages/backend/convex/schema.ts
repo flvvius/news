@@ -8,6 +8,11 @@ export default defineSchema({
   topics: defineTable({
     slug: v.string(),
     displayName: v.string(),
+    description: v.optional(v.string()),
+    aliases: v.optional(v.array(v.string())),
+    keywords: v.optional(v.array(v.string())),
+    keyPhrases: v.optional(v.array(v.string())),
+    excludePhrases: v.optional(v.array(v.string())),
   }).index("by_slug", ["slug"]),
 
   // =========================================================================

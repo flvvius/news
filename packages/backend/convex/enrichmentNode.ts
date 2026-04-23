@@ -121,10 +121,12 @@ export const enrichUnprocessedArticles = internalAction({
     console.log(`[enrichment] Processing ${articles.length} articles`);
 
     // 2. Build embedding input: "Title: ... | Snippet: ..."
-    const texts = articles.map((a) => {
-      const snippet = (a.rssSnippet ?? "").slice(0, 500); // Cap snippet length for token budget
-      return `${a.title} | ${snippet}`.trim();
-    });
+    const texts = articles.map(
+      (article: { title: string; rssSnippet?: string | null }) => {
+      const snippet = (article.rssSnippet ?? "").slice(0, 500); // Cap snippet length for token budget
+      return `${article.title} | ${snippet}`.trim();
+      },
+    );
 
     try {
       // 3. Generate embeddings in batch

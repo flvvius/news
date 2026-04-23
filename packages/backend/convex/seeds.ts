@@ -1,5 +1,6 @@
 import { internalMutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { TOPIC_CATALOG } from "./topicCatalog";
 
 /**
  * Seed the database with dummy data for UI development.
@@ -18,17 +19,27 @@ export const seedDB = internalMutation({
     // =========================================================================
     // 1. TOPICS
     // =========================================================================
-    const topicEconomy = await ctx.db.insert("topics", {
-      slug: "economy",
-      displayName: "Economy",
-    });
+    const topicIdsBySlug = new Map<string, Id<"topics">>();
+    for (const topic of TOPIC_CATALOG) {
+      const topicId = await ctx.db.insert("topics", {
+        slug: topic.slug,
+        displayName: topic.displayName,
+        description: topic.description,
+        aliases: topic.aliases,
+        keywords: topic.keywords,
+        keyPhrases: topic.keyPhrases,
+        excludePhrases: topic.excludePhrases,
+      });
+      topicIdsBySlug.set(topic.slug, topicId);
+    }
 
-    const topicTech = await ctx.db.insert("topics", {
-      slug: "tech",
-      displayName: "Tech",
-    });
+    const topicEconomy = topicIdsBySlug.get("economy");
+    const topicTech = topicIdsBySlug.get("tech");
+    if (!topicEconomy || !topicTech) {
+      throw new Error("Seed topic catalog is missing required economy/tech topics");
+    }
 
-    console.log("✅ Created 2 topics");
+    console.log(`✅ Created ${TOPIC_CATALOG.length} topics`);
 
     // =========================================================================
     // 2. SOURCES
@@ -289,13 +300,16 @@ export const seedDB = internalMutation({
     return {
       message: "Database seeded successfully!",
       created: {
-        topics: 2,
+        topics: TOPIC_CATALOG.length,
         sources: 3,
         events: 2,
         articles: 6,
       },
       ids: {
-        topics: { economy: topicEconomy, tech: topicTech },
+        topics: {
+          economy: topicEconomy,
+          tech: topicTech,
+        },
         sources: { cnn: sourceCNN, fox: sourceFox, reuters: sourceReuters },
         events: { fedRates: eventFedRates, aiRegulations: eventAIRegulations },
       },
