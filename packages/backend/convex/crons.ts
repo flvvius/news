@@ -37,4 +37,15 @@ crons.interval(
   internal.enrichmentNode.enrichUnprocessedArticles,
 );
 
+// ---------------------------------------------------------------------------
+// Article Clustering — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Clusters enriched articles into published events so the feed can render
+// real ingested data even before AI summarization exists.
+crons.interval(
+  "cluster-enriched-articles",
+  { minutes: 30 },
+  internal.clustering.clusterEnrichedArticles,
+);
+
 export default crons;

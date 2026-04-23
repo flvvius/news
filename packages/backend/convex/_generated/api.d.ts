@@ -10,6 +10,7 @@
 
 import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
+import type * as clustering from "../clustering.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
@@ -38,6 +39,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiBudget: typeof aiBudget;
   auth: typeof auth;
+  clustering: typeof clustering;
   config: typeof config;
   crons: typeof crons;
   emails: typeof emails;
