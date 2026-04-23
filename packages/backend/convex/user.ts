@@ -71,6 +71,23 @@ export const getCurrentUser = query({
   },
 });
 
+export const isCurrentUserAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      return false;
+    }
+
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    return adminEmails.includes(authUser.email.toLowerCase());
+  },
+});
+
 /**
  * Update the current user's profile.
  * Throws ConvexError if not authenticated or user not found.

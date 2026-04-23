@@ -25,6 +25,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import type { MutationCtx } from "./_generated/server";
+import { getConfig } from "./config";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -266,6 +267,23 @@ type TopicInferenceFieldContexts = {
   combined: NormalizedTopicField;
 };
 
+type TopicInferenceCandidate = {
+  slug: string;
+  score: number;
+  signalCount: number;
+  titlePhraseHits: number;
+  snippetPhraseHits: number;
+  summaryPhraseHits: number;
+  factPhraseHits: number;
+  titleKeywordHits: number;
+  snippetKeywordHits: number;
+  summaryKeywordHits: number;
+  factKeywordHits: number;
+  displayNameCoverage: number;
+  fullDisplayNameCoverage: boolean;
+  excludeHits: number;
+};
+
 function clampNumber(
   value: unknown,
   fallback: number,
@@ -397,16 +415,16 @@ function compileTopicForInference(
   };
 }
 
-function inferTopicSlugs(
+function evaluateTopicInference(
   article: TopicArticleContext,
   topics: TopicInferenceTopic[],
   settings: TopicInferenceSettings,
-): string[] {
+): TopicInferenceCandidate[] {
   if (topics.length === 0) return [];
 
   const fields = buildTopicFieldContexts(article);
   const compiledTopics = topics.map(compileTopicForInference);
-  const scored = compiledTopics
+  return compiledTopics
     .map((topic) => {
       const titlePhraseHits = topic.titlePhrases.reduce(
         (sum, phrase) => sum + countPhraseOccurrences(fields.title.text, phrase),
@@ -480,6 +498,17 @@ function inferTopicSlugs(
         slug: topic.slug,
         score,
         signalCount,
+        titlePhraseHits,
+        snippetPhraseHits,
+        summaryPhraseHits,
+        factPhraseHits,
+        titleKeywordHits,
+        snippetKeywordHits,
+        summaryKeywordHits,
+        factKeywordHits,
+        displayNameCoverage,
+        fullDisplayNameCoverage,
+        excludeHits,
       };
     })
     .filter(
@@ -488,7 +517,14 @@ function inferTopicSlugs(
         (topic.signalCount >= 2 || topic.score >= settings.minScore + 2),
     )
     .sort((a, b) => b.score - a.score);
+}
 
+function inferTopicSlugs(
+  article: TopicArticleContext,
+  topics: TopicInferenceTopic[],
+  settings: TopicInferenceSettings,
+): string[] {
+  const scored = evaluateTopicInference(article, topics, settings);
   if (scored.length === 0) return [];
 
   const topScore = scored[0]!.score;
@@ -728,6 +764,85 @@ function findBestCandidate(
   }
 
   return best?.candidate ?? null;
+}
+
+async function getTopicInferenceSettingsForQuery(
+  ctx: Parameters<typeof getConfig>[0],
+): Promise<TopicInferenceSettings> {
+  return {
+    minScore: clampNumber(
+      await getConfig(
+        ctx,
+        "topic_inference_min_score",
+        DEFAULT_TOPIC_INFERENCE_MIN_SCORE,
+      ),
+      DEFAULT_TOPIC_INFERENCE_MIN_SCORE,
+      1,
+      20,
+    ),
+    confidenceRatio: clampNumber(
+      await getConfig(
+        ctx,
+        "topic_inference_confidence_ratio",
+        DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO,
+      ),
+      DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO,
+      0.1,
+      1,
+    ),
+    maxTopics: safeInteger(
+      await getConfig(
+        ctx,
+        "topic_inference_max_topics",
+        DEFAULT_TOPIC_INFERENCE_MAX_TOPICS,
+      ),
+      DEFAULT_TOPIC_INFERENCE_MAX_TOPICS,
+      1,
+      5,
+    ),
+  };
+}
+
+async function requireAdminUser(ctx: Parameters<typeof authComponent.safeGetAuthUser>[0]) {
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  const currentUser = await authComponent.safeGetAuthUser(ctx);
+
+  if (!currentUser) {
+    throw new Error("Not authenticated");
+  }
+  if (!adminEmails.includes(currentUser.email.toLowerCase())) {
+    throw new Error("Unauthorized: admin access required");
+  }
+
+  return currentUser;
+}
+
+function buildEventTopicInferenceContext(
+  event: Pick<Doc<"events">, "title">,
+  articles: Array<
+    Pick<Doc<"articles">, "rssSnippet" | "summary" | "atomicFacts" | "publishedAt">
+  >,
+): TopicArticleContext {
+  const sortedArticles = [...articles].sort((a, b) => b.publishedAt - a.publishedAt);
+  const topArticles = sortedArticles.slice(0, 6);
+
+  return {
+    title: event.title,
+    rssSnippet: topArticles
+      .map((article) => article.rssSnippet?.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" "),
+    summary: topArticles
+      .map((article) => article.summary?.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" "),
+    atomicFacts: topArticles.flatMap((article) => article.atomicFacts ?? []).slice(0, 24),
+  };
 }
 
 export const getEnrichedArticlesForClustering = internalQuery({
@@ -1017,18 +1132,7 @@ export const attachArticleToEvent = internalMutation({
 export const getRecentClusteredEventsForAdmin = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-    const currentUser = await authComponent.safeGetAuthUser(ctx);
-
-    if (!currentUser) {
-      throw new Error("Not authenticated");
-    }
-    if (!adminEmails.includes(currentUser.email.toLowerCase())) {
-      throw new Error("Unauthorized: admin access required");
-    }
+    await requireAdminUser(ctx);
 
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 20), 1), 100);
     const events = await ctx.db
@@ -1079,6 +1183,111 @@ export const getRecentClusteredEventsForAdmin = query({
             status: article.status,
             embeddingDimensions: articleEmbeddings[index]?.embedding.length ?? 0,
           })),
+        };
+      }),
+    );
+  },
+});
+
+export const getRecentTopicInferenceDiagnosticsForAdmin = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    await requireAdminUser(ctx);
+
+    const pageSize = Math.min(Math.max(Math.floor(limit ?? 20), 1), 50);
+    const [topicsForInference, settings] = await Promise.all([
+      ctx.db.query("topics").collect(),
+      getTopicInferenceSettingsForQuery(ctx),
+    ]);
+    const topicBySlug = new Map(topicsForInference.map((topic) => [topic.slug, topic]));
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(pageSize);
+
+    return await Promise.all(
+      events.map(async (event) => {
+        const articles = await ctx.db
+          .query("articles")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const eventTopicRows = await ctx.db
+          .query("eventTopics")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+        const attachedTopics = (
+          await Promise.all(eventTopicRows.map((row) => ctx.db.get(row.topicId)))
+        )
+          .filter((topic) => topic !== null)
+          .map((topic) => ({
+            _id: topic._id,
+            slug: topic.slug,
+            displayName: topic.displayName,
+          }));
+
+        const context = buildEventTopicInferenceContext(event, articles);
+        const rankedCandidates = evaluateTopicInference(
+          context,
+          topicsForInference,
+          settings,
+        );
+        const inferredSlugs = inferTopicSlugs(context, topicsForInference, settings);
+
+        return {
+          eventId: event._id,
+          eventTitle: event.title,
+          eventSlug: event.slug,
+          firstPublishedAt: event.firstPublishedAt,
+          articleCount: articles.length,
+          settings,
+          inferenceInput: {
+            title: context.title,
+            rssSnippet: summarizeText(context.rssSnippet, 240) ?? "",
+            summary: summarizeText(context.summary, 240) ?? "",
+            atomicFacts: context.atomicFacts.slice(0, 8),
+          },
+          attachedTopics,
+          inferredTopics: inferredSlugs.map((slug) => {
+            const topic = topicBySlug.get(slug);
+            return {
+              slug,
+              displayName: topic?.displayName ?? slug,
+            };
+          }),
+          topCandidates: rankedCandidates.slice(0, 8).map((candidate) => ({
+            slug: candidate.slug,
+            displayName:
+              topicBySlug.get(candidate.slug)?.displayName ?? candidate.slug,
+            score: Number(candidate.score.toFixed(2)),
+            signalCount: candidate.signalCount,
+            breakdown: {
+              titlePhraseHits: candidate.titlePhraseHits,
+              summaryPhraseHits: candidate.summaryPhraseHits,
+              snippetPhraseHits: candidate.snippetPhraseHits,
+              factPhraseHits: candidate.factPhraseHits,
+              titleKeywordHits: candidate.titleKeywordHits,
+              summaryKeywordHits: candidate.summaryKeywordHits,
+              snippetKeywordHits: candidate.snippetKeywordHits,
+              factKeywordHits: candidate.factKeywordHits,
+              displayNameCoverage: candidate.displayNameCoverage,
+              fullDisplayNameCoverage: candidate.fullDisplayNameCoverage,
+              excludeHits: candidate.excludeHits,
+            },
+          })),
+          articles: articles
+            .sort((a, b) => b.publishedAt - a.publishedAt)
+            .slice(0, 6)
+            .map((article) => ({
+              _id: article._id,
+              title: article.title,
+              summary: summarizeText(article.summary, 180),
+              rssSnippet: summarizeText(article.rssSnippet, 180),
+              atomicFacts: article.atomicFacts?.slice(0, 4) ?? [],
+              publishedAt: article.publishedAt,
+            })),
         };
       }),
     );

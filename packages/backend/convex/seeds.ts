@@ -1,5 +1,5 @@
 import { internalMutation, query } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
 
 /**
