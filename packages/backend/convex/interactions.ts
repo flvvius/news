@@ -243,7 +243,13 @@ export const logInteraction = mutation({
         timeSpentSeconds: v.optional(v.number()),
         scrollDepthPercentage: v.optional(v.number()),
         deviceType: v.optional(v.string()),
-        extras: v.optional(v.any()),
+        extras: v.optional(
+          v.object({
+            feedbackText: v.optional(v.string()),
+            errorMessage: v.optional(v.string()),
+            experimentVariant: v.optional(v.string()),
+          }),
+        ),
       }),
     ),
   },
