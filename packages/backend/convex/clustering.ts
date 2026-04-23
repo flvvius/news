@@ -27,6 +27,8 @@ import { authComponent } from "./auth";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
+const MERGE_LOCK_KEY = "mergeNearDuplicateEvents";
+const MERGE_LOCK_TTL_MS = 20 * 60 * 1000;
 const CLUSTER_BATCH_SIZE = 40;
 const RECENT_EVENT_WINDOW_MS = 72 * 60 * 60 * 1000;
 const MAX_CANDIDATE_EVENTS = 150;
@@ -36,6 +38,9 @@ const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.9;
 const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
 const DEFAULT_MIN_TITLE_JACCARD = 0.2;
 const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.9;
+const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
+const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
+const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 24;
 const TOPIC_KEYWORD_MAP: Record<string, string[]> = {
   economy: [
     "economy",
@@ -192,11 +197,20 @@ function buildEventSlug(
 type ClusterCandidate = {
   eventId: Id<"events">;
   title: string;
+  slug: string;
   firstPublishedAt: number;
   articleCount: number;
   embedding: number[];
   titleTokens: Set<string>;
   sourceIds: Set<string>;
+  perspectiveSummaries?: {
+    center?: string;
+    left?: string;
+    right?: string;
+  };
+  globalImpact?: string;
+  imageUrl?: string;
+  creationTime: number;
 };
 
 type ClusterSettings = {
@@ -205,6 +219,12 @@ type ClusterSettings = {
   minTitleTokenOverlap: number;
   minTitleJaccard: number;
   sameSourceMinSimilarity: number;
+};
+
+type MergeSettings = {
+  minSimilarity: number;
+  minTitleJaccard: number;
+  maxTimeDeltaHours: number;
 };
 
 function clampNumber(
@@ -232,6 +252,62 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   }
   const union = a.size + b.size - intersection;
   return union > 0 ? intersection / union : 0;
+}
+
+function preferLongerString(
+  primary: string | undefined,
+  fallback: string | undefined,
+): string | undefined {
+  const a = primary?.trim();
+  const b = fallback?.trim();
+  if (!a) return b;
+  if (!b) return a;
+  return a.length >= b.length ? a : b;
+}
+
+function buildMergedPerspectiveSummaries(
+  primary: ClusterCandidate,
+  secondary: ClusterCandidate,
+) {
+  const center = preferLongerString(
+    primary.perspectiveSummaries?.center,
+    secondary.perspectiveSummaries?.center,
+  );
+  const left = preferLongerString(
+    primary.perspectiveSummaries?.left,
+    secondary.perspectiveSummaries?.left,
+  );
+  const right = preferLongerString(
+    primary.perspectiveSummaries?.right,
+    secondary.perspectiveSummaries?.right,
+  );
+
+  if (!center && !left && !right) return undefined;
+  return { center, left, right };
+}
+
+function chooseCanonicalEvent(
+  a: ClusterCandidate,
+  b: ClusterCandidate,
+): { keep: ClusterCandidate; remove: ClusterCandidate } {
+  if (a.articleCount !== b.articleCount) {
+    return a.articleCount > b.articleCount
+      ? { keep: a, remove: b }
+      : { keep: b, remove: a };
+  }
+  if (a.firstPublishedAt !== b.firstPublishedAt) {
+    return a.firstPublishedAt <= b.firstPublishedAt
+      ? { keep: a, remove: b }
+      : { keep: b, remove: a };
+  }
+  if (a.creationTime !== b.creationTime) {
+    return a.creationTime <= b.creationTime
+      ? { keep: a, remove: b }
+      : { keep: b, remove: a };
+  }
+  return String(a.eventId) < String(b.eventId)
+    ? { keep: a, remove: b }
+    : { keep: b, remove: a };
 }
 
 function findBestCandidate(
@@ -370,10 +446,15 @@ export const getRecentClusterCandidates = internalQuery({
             return {
               eventId: event._id,
               title: event.title,
+              slug: event.slug,
               firstPublishedAt: event.firstPublishedAt,
               articleCount,
               embedding: embeddingRow.embedding,
               sourceIds,
+              perspectiveSummaries: event.perspectiveSummaries,
+              globalImpact: event.globalImpact,
+              imageUrl: event.imageUrl,
+              creationTime: event._creationTime,
             };
           }),
       )
@@ -635,6 +716,336 @@ export const getRecentClusteredEventsForAdmin = query({
   },
 });
 
+export const mergeEvents = internalMutation({
+  args: {
+    keepEventId: v.id("events"),
+    removeEventId: v.id("events"),
+    mergedEmbedding: v.array(v.number()),
+    version: v.number(),
+    mergedFirstPublishedAt: v.number(),
+    mergedTitle: v.string(),
+    mergedPerspectiveSummaries: v.optional(
+      v.object({
+        center: v.optional(v.string()),
+        left: v.optional(v.string()),
+        right: v.optional(v.string()),
+      }),
+    ),
+    mergedGlobalImpact: v.optional(v.string()),
+    mergedImageUrl: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    {
+      keepEventId,
+      removeEventId,
+      mergedEmbedding,
+      version,
+      mergedFirstPublishedAt,
+      mergedTitle,
+      mergedPerspectiveSummaries,
+      mergedGlobalImpact,
+      mergedImageUrl,
+    },
+  ) => {
+    if (keepEventId === removeEventId) {
+      return { merged: false as const, reason: "same-event" as const };
+    }
+
+    const keepEvent = await ctx.db.get(keepEventId);
+    const removeEvent = await ctx.db.get(removeEventId);
+    if (!keepEvent || !removeEvent) {
+      return { merged: false as const, reason: "missing-event" as const };
+    }
+
+    const removeArticles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const article of removeArticles) {
+      await ctx.db.patch(article._id, { eventId: keepEventId });
+    }
+
+    const removeInteractions = await ctx.db
+      .query("interactions")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const interaction of removeInteractions) {
+      await ctx.db.patch(interaction._id, { eventId: keepEventId });
+    }
+
+    const allInsights = await ctx.db.query("userInsights").collect();
+    const sourceInsights = allInsights.filter(
+      (insight) => insight.eventId === removeEventId,
+    );
+    for (const insight of sourceInsights) {
+      const existingTarget = await ctx.db
+        .query("userInsights")
+        .withIndex("by_user_event", (q) =>
+          q.eq("userId", insight.userId).eq("eventId", keepEventId),
+        )
+        .unique();
+
+      if (!existingTarget) {
+        await ctx.db.patch(insight._id, { eventId: keepEventId });
+        continue;
+      }
+
+      const preferSource = insight.generatedAt > existingTarget.generatedAt;
+      if (preferSource) {
+        await ctx.db.patch(existingTarget._id, {
+          content: insight.content,
+          eventLastUpdated: insight.eventLastUpdated,
+          generatedAt: insight.generatedAt,
+          expiresAt: insight.expiresAt,
+          lastNotifiedAt: insight.lastNotifiedAt,
+        });
+      }
+      await ctx.db.delete(insight._id);
+    }
+
+    const removeTopicRows = await ctx.db
+      .query("eventTopics")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeTopicRows) {
+      const existingTargetTopic = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event_topic", (q) =>
+          q.eq("eventId", keepEventId).eq("topicId", row.topicId),
+        )
+        .unique();
+      if (!existingTargetTopic) {
+        await ctx.db.insert("eventTopics", {
+          eventId: keepEventId,
+          topicId: row.topicId,
+        });
+      }
+      await ctx.db.delete(row._id);
+    }
+
+    const keepEmbeddingRow = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", keepEventId))
+      .first();
+    if (keepEmbeddingRow) {
+      await ctx.db.patch(keepEmbeddingRow._id, {
+        embedding: mergedEmbedding,
+        version,
+      });
+    } else {
+      await ctx.db.insert("eventEmbeddings", {
+        eventId: keepEventId,
+        embedding: mergedEmbedding,
+        version,
+      });
+    }
+
+    const removeEmbeddingRows = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeEmbeddingRows) {
+      await ctx.db.delete(row._id);
+    }
+
+    await ctx.db.patch(keepEventId, {
+      title: mergedTitle,
+      firstPublishedAt: mergedFirstPublishedAt,
+      perspectiveSummaries: mergedPerspectiveSummaries,
+      globalImpact: mergedGlobalImpact,
+      imageUrl: mergedImageUrl,
+    });
+
+    await ctx.db.delete(removeEventId);
+    return { merged: true as const, keepEventId, removeEventId };
+  },
+});
+
+export const mergeNearDuplicateEvents = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    mergedPairs: number;
+    examinedPairs: number;
+    skipped: number;
+  }> => {
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[clustering] Pipeline paused — skipping event merge");
+      return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
+    }
+
+    const lockOwner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
+      key: MERGE_LOCK_KEY,
+      owner: lockOwner,
+      expiresAt: Date.now() + MERGE_LOCK_TTL_MS,
+    });
+
+    if (!lock.acquired) {
+      console.log(
+        `[clustering] mergeNearDuplicateEvents already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
+      );
+      return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
+    }
+
+    try {
+      const recentCandidatesRaw = await ctx.runQuery(
+        internal.clustering.getRecentClusterCandidates,
+        {
+          sinceTs: Date.now() - RECENT_EVENT_WINDOW_MS,
+          limit: MAX_CANDIDATE_EVENTS,
+        },
+      );
+
+      const mergeConfig = await ctx.runQuery(internal.config.getBatch, {
+        keys: [
+          "merge_min_similarity",
+          "merge_min_title_jaccard",
+          "merge_max_time_delta_hours",
+        ],
+      });
+
+      const settings: MergeSettings = {
+        minSimilarity: clampNumber(
+          mergeConfig.merge_min_similarity,
+          DEFAULT_MERGE_MIN_SIMILARITY,
+          0.75,
+          0.999,
+        ),
+        minTitleJaccard: clampNumber(
+          mergeConfig.merge_min_title_jaccard,
+          DEFAULT_MERGE_MIN_TITLE_JACCARD,
+          0,
+          1,
+        ),
+        maxTimeDeltaHours: clampNumber(
+          mergeConfig.merge_max_time_delta_hours,
+          DEFAULT_MERGE_MAX_TIME_DELTA_HOURS,
+          1,
+          72,
+        ),
+      };
+
+      const candidates: ClusterCandidate[] = recentCandidatesRaw.map(
+        (candidate) => ({
+          ...candidate,
+          titleTokens: normalizeTitleTokens(candidate.title),
+          sourceIds: new Set(candidate.sourceIds),
+        }),
+      );
+
+      const removedIds = new Set<string>();
+      let mergedPairs = 0;
+      let examinedPairs = 0;
+      let skipped = 0;
+
+      for (let i = 0; i < candidates.length; i++) {
+        const a = candidates[i]!;
+        if (removedIds.has(String(a.eventId))) continue;
+
+        for (let j = i + 1; j < candidates.length; j++) {
+          const b = candidates[j]!;
+          if (removedIds.has(String(b.eventId))) continue;
+
+          examinedPairs++;
+
+          const timeDeltaHours =
+            Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
+          if (timeDeltaHours > settings.maxTimeDeltaHours) {
+            continue;
+          }
+
+          const similarity = cosineSimilarity(a.embedding, b.embedding);
+          const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
+          if (
+            similarity < settings.minSimilarity ||
+            titleJaccard < settings.minTitleJaccard
+          ) {
+            continue;
+          }
+
+          const { keep, remove } = chooseCanonicalEvent(a, b);
+          const totalArticles = keep.articleCount + remove.articleCount;
+          const mergedEmbedding = keep.embedding.map(
+            (value, index) =>
+              (value * keep.articleCount +
+                (remove.embedding[index] ?? 0) * remove.articleCount) /
+              Math.max(totalArticles, 1),
+          );
+          const mergedPerspectiveSummaries = buildMergedPerspectiveSummaries(
+            keep,
+            remove,
+          );
+          const mergedGlobalImpact = preferLongerString(
+            keep.globalImpact,
+            remove.globalImpact,
+          );
+          const mergedImageUrl = keep.imageUrl ?? remove.imageUrl;
+          const mergedTitle =
+            preferLongerString(keep.title, remove.title) ?? keep.title;
+
+          const result = await ctx.runMutation(internal.clustering.mergeEvents, {
+            keepEventId: keep.eventId,
+            removeEventId: remove.eventId,
+            mergedEmbedding,
+            version: 1,
+            mergedFirstPublishedAt: Math.min(
+              keep.firstPublishedAt,
+              remove.firstPublishedAt,
+            ),
+            mergedTitle,
+            mergedPerspectiveSummaries,
+            mergedGlobalImpact,
+            mergedImageUrl,
+          });
+
+          if (!result.merged) {
+            skipped++;
+            continue;
+          }
+
+          mergedPairs++;
+          removedIds.add(String(remove.eventId));
+          keep.articleCount = totalArticles;
+          keep.embedding = mergedEmbedding;
+          keep.firstPublishedAt = Math.min(
+            keep.firstPublishedAt,
+            remove.firstPublishedAt,
+          );
+          keep.title = mergedTitle;
+          keep.titleTokens = normalizeTitleTokens(mergedTitle);
+          keep.perspectiveSummaries = mergedPerspectiveSummaries;
+          keep.globalImpact = mergedGlobalImpact;
+          keep.imageUrl = mergedImageUrl;
+          for (const sourceId of remove.sourceIds) {
+            keep.sourceIds.add(sourceId);
+          }
+        }
+      }
+
+      console.log(
+        `[clustering] Merge pass complete: ${mergedPairs} merged, ${examinedPairs} pairs examined, ${skipped} skipped`,
+      );
+
+      return { mergedPairs, examinedPairs, skipped };
+    } finally {
+      try {
+        await ctx.runMutation(internal.ingestion.releasePipelineLock, {
+          key: MERGE_LOCK_KEY,
+          owner: lockOwner,
+        });
+      } catch (error) {
+        console.error(
+          `[clustering] Failed to release merge lock: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }
+  },
+});
+
 export const clusterEnrichedArticles = internalAction({
   args: {},
   handler: async (
@@ -814,11 +1225,18 @@ export const clusterEnrichedArticles = internalAction({
         candidates.unshift({
           eventId: result.eventId,
           title: result.title,
+          slug: result.slug,
           firstPublishedAt: result.firstPublishedAt,
           articleCount: result.articleCount,
           embedding: result.embedding,
           titleTokens: normalizeTitleTokens(result.title),
           sourceIds: new Set([String(article.sourceId)]),
+          perspectiveSummaries: centerSummary
+            ? { center: centerSummary }
+            : undefined,
+          globalImpact: undefined,
+          imageUrl: undefined,
+          creationTime: Date.now(),
         });
       }
 

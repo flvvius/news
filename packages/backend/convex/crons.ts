@@ -48,4 +48,15 @@ crons.interval(
   internal.clustering.clusterEnrichedArticles,
 );
 
+// ---------------------------------------------------------------------------
+// Event Merge Pass — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Collapses near-duplicate recently published events created across separate
+// clustering runs.
+crons.interval(
+  "merge-near-duplicate-events",
+  { minutes: 30 },
+  internal.clustering.mergeNearDuplicateEvents,
+);
+
 export default crons;

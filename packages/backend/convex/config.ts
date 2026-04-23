@@ -386,6 +386,24 @@ export const seedDefaults = internalMutation({
         description:
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
       },
+      {
+        key: "merge_min_similarity",
+        value: 0.94,
+        description:
+          "Minimum event embedding cosine similarity required before merging two published events as duplicates.",
+      },
+      {
+        key: "merge_min_title_jaccard",
+        value: 0.45,
+        description:
+          "Minimum title-token Jaccard similarity required before merging two published events as duplicates.",
+      },
+      {
+        key: "merge_max_time_delta_hours",
+        value: 24,
+        description:
+          "Maximum age difference in hours between two published events that are eligible for duplicate merging.",
+      },
     ];
 
     let created = 0;
