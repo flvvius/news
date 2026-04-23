@@ -356,6 +356,36 @@ export const seedDefaults = internalMutation({
         description:
           "When true, all automatic processing (ingestion, enrichment, MBFC) is paused. Toggle via config:togglePipeline.",
       },
+      {
+        key: "clustering_min_similarity",
+        value: 0.82,
+        description:
+          "Minimum embedding cosine similarity required for an article to join an existing event candidate.",
+      },
+      {
+        key: "clustering_strong_similarity",
+        value: 0.9,
+        description:
+          "High-confidence embedding cosine similarity that can override weaker title overlap.",
+      },
+      {
+        key: "clustering_min_title_overlap",
+        value: 2,
+        description:
+          "Minimum number of overlapping normalized title tokens for a non-strong clustering match.",
+      },
+      {
+        key: "clustering_min_title_jaccard",
+        value: 0.2,
+        description:
+          "Minimum Jaccard similarity between normalized title token sets for a non-strong clustering match.",
+      },
+      {
+        key: "clustering_same_source_min_similarity",
+        value: 0.9,
+        description:
+          "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
+      },
     ];
 
     let created = 0;

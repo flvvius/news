@@ -31,9 +31,11 @@ const CLUSTER_BATCH_SIZE = 40;
 const RECENT_EVENT_WINDOW_MS = 72 * 60 * 60 * 1000;
 const MAX_CANDIDATE_EVENTS = 150;
 const EVENT_EMBEDDING_DIMENSIONS = 1536;
-const MIN_CLUSTER_SIMILARITY = 0.82;
-const STRONG_CLUSTER_SIMILARITY = 0.9;
-const MIN_TITLE_TOKEN_OVERLAP = 2;
+const DEFAULT_MIN_CLUSTER_SIMILARITY = 0.82;
+const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.9;
+const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
+const DEFAULT_MIN_TITLE_JACCARD = 0.2;
+const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.9;
 const TOPIC_KEYWORD_MAP: Record<string, string[]> = {
   economy: [
     "economy",
@@ -194,40 +196,95 @@ type ClusterCandidate = {
   articleCount: number;
   embedding: number[];
   titleTokens: Set<string>;
+  sourceIds: Set<string>;
 };
+
+type ClusterSettings = {
+  minSimilarity: number;
+  strongSimilarity: number;
+  minTitleTokenOverlap: number;
+  minTitleJaccard: number;
+  sameSourceMinSimilarity: number;
+};
+
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function safeInteger(value: unknown, fallback: number, min: number, max: number) {
+  return Math.floor(clampNumber(value, fallback, min, max));
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  if (a.size === 0 || b.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
 
 function findBestCandidate(
   article: {
     title: string;
     publishedAt: number;
     embedding: number[];
+    sourceId: Id<"sources">;
   },
   candidates: ClusterCandidate[],
+  settings: ClusterSettings,
 ): ClusterCandidate | null {
   const articleEmbedding = toEventEmbedding(article.embedding);
   const articleTokens = normalizeTitleTokens(article.title);
 
-  let best: { candidate: ClusterCandidate; similarity: number } | null = null;
+  let best: { candidate: ClusterCandidate; score: number } | null = null;
 
   for (const candidate of candidates) {
-    if (
-      Math.abs(article.publishedAt - candidate.firstPublishedAt) >
-      RECENT_EVENT_WINDOW_MS
-    ) {
+    const timeDeltaMs = Math.abs(article.publishedAt - candidate.firstPublishedAt);
+    if (timeDeltaMs > RECENT_EVENT_WINDOW_MS) {
       continue;
     }
 
     const similarity = cosineSimilarity(articleEmbedding, candidate.embedding);
     const overlap = countTokenOverlap(articleTokens, candidate.titleTokens);
-    const matches =
-      similarity >= STRONG_CLUSTER_SIMILARITY ||
-      (similarity >= MIN_CLUSTER_SIMILARITY &&
-        overlap >= MIN_TITLE_TOKEN_OVERLAP);
+    const titleJaccard = jaccardSimilarity(articleTokens, candidate.titleTokens);
+    const sameSource = candidate.sourceIds.has(String(article.sourceId));
 
-    if (!matches) continue;
+    const baseMatch =
+      similarity >= settings.strongSimilarity ||
+      (similarity >= settings.minSimilarity &&
+        overlap >= settings.minTitleTokenOverlap &&
+        titleJaccard >= settings.minTitleJaccard);
 
-    if (!best || similarity > best.similarity) {
-      best = { candidate, similarity };
+    const sameSourceMatch = sameSource
+      ? similarity >= settings.sameSourceMinSimilarity &&
+        overlap >= settings.minTitleTokenOverlap &&
+        titleJaccard >= settings.minTitleJaccard
+      : true;
+
+    if (!baseMatch || !sameSourceMatch) continue;
+
+    const recencyScore = 1 - timeDeltaMs / RECENT_EVENT_WINDOW_MS;
+    const overlapScore =
+      Math.min(overlap, settings.minTitleTokenOverlap + 3) / 10;
+    const score =
+      similarity * 0.72 +
+      titleJaccard * 0.18 +
+      recencyScore * 0.08 +
+      overlapScore * 0.02;
+
+    if (!best || score > best.score) {
+      best = { candidate, score };
     }
   }
 
@@ -263,6 +320,7 @@ export const getEnrichedArticlesForClustering = internalQuery({
             rssSnippet: article.rssSnippet ?? "",
             publishedAt: article.publishedAt,
             embedding: embeddingRow.embedding,
+            sourceId: article.sourceId,
           };
         }),
       )
@@ -302,6 +360,12 @@ export const getRecentClusterCandidates = internalQuery({
                 .withIndex("by_event", (q) => q.eq("eventId", event._id))
                 .collect()
             ).length;
+            const sourceIds = (
+              await ctx.db
+                .query("articles")
+                .withIndex("by_event", (q) => q.eq("eventId", event._id))
+                .collect()
+            ).map((article) => String(article.sourceId));
 
             return {
               eventId: event._id,
@@ -309,6 +373,7 @@ export const getRecentClusterCandidates = internalQuery({
               firstPublishedAt: event.firstPublishedAt,
               articleCount,
               embedding: embeddingRow.embedding,
+              sourceIds,
             };
           }),
       )
@@ -630,10 +695,54 @@ export const clusterEnrichedArticles = internalAction({
         },
       );
 
+      const clusteringConfig = await ctx.runQuery(internal.config.getBatch, {
+        keys: [
+          "clustering_min_similarity",
+          "clustering_strong_similarity",
+          "clustering_min_title_overlap",
+          "clustering_min_title_jaccard",
+          "clustering_same_source_min_similarity",
+        ],
+      });
+
+      const settings: ClusterSettings = {
+        minSimilarity: clampNumber(
+          clusteringConfig.clustering_min_similarity,
+          DEFAULT_MIN_CLUSTER_SIMILARITY,
+          0.5,
+          0.99,
+        ),
+        strongSimilarity: clampNumber(
+          clusteringConfig.clustering_strong_similarity,
+          DEFAULT_STRONG_CLUSTER_SIMILARITY,
+          0.6,
+          0.999,
+        ),
+        minTitleTokenOverlap: safeInteger(
+          clusteringConfig.clustering_min_title_overlap,
+          DEFAULT_MIN_TITLE_TOKEN_OVERLAP,
+          1,
+          10,
+        ),
+        minTitleJaccard: clampNumber(
+          clusteringConfig.clustering_min_title_jaccard,
+          DEFAULT_MIN_TITLE_JACCARD,
+          0,
+          1,
+        ),
+        sameSourceMinSimilarity: clampNumber(
+          clusteringConfig.clustering_same_source_min_similarity,
+          DEFAULT_SAME_SOURCE_MIN_SIMILARITY,
+          0.5,
+          0.999,
+        ),
+      };
+
       const candidates: ClusterCandidate[] = recentCandidatesRaw.map(
         (candidate) => ({
           ...candidate,
           titleTokens: normalizeTitleTokens(candidate.title),
+          sourceIds: new Set(candidate.sourceIds),
         }),
       );
 
@@ -644,7 +753,7 @@ export const clusterEnrichedArticles = internalAction({
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
         const topicSlugs = inferTopicSlugs(article.title, article.rssSnippet);
-        const match = findBestCandidate(article, candidates);
+        const match = findBestCandidate(article, candidates, settings);
 
         if (match) {
           const result = await ctx.runMutation(
@@ -671,6 +780,7 @@ export const clusterEnrichedArticles = internalAction({
             candidate.embedding = result.embedding;
             candidate.articleCount = result.articleCount;
             candidate.firstPublishedAt = result.firstPublishedAt;
+            candidate.sourceIds.add(String(article.sourceId));
           }
           continue;
         }
@@ -708,11 +818,12 @@ export const clusterEnrichedArticles = internalAction({
           articleCount: result.articleCount,
           embedding: result.embedding,
           titleTokens: normalizeTitleTokens(result.title),
+          sourceIds: new Set([String(article.sourceId)]),
         });
       }
 
       console.log(
-        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped`,
+        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity})`,
       );
 
       return {
