@@ -176,7 +176,9 @@ function EventDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.perspectiveSummaries?.center ?? "Summary pending…"}
+                {event.perspectiveSummaries?.center ??
+                  event.globalImpact ??
+                  "Coverage grouped from multiple sources. Compare the original reporting below."}
               </p>
             </CardContent>
           </Card>

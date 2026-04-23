@@ -8,6 +8,7 @@ type Article = {
   _id: Id<"articles">;
   title: string;
   summary?: string;
+  rssSnippet?: string;
   canonicalUrl: string;
   publishedAt: number;
   source: {
@@ -83,9 +84,9 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                 </div>
 
                 {/* Article summary */}
-                {article.summary && (
+                {(article.summary || article.rssSnippet) && (
                   <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                    {article.summary}
+                    {article.summary ?? article.rssSnippet}
                   </p>
                 )}
 

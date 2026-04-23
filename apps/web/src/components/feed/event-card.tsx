@@ -13,6 +13,7 @@ type EventCardProps = {
     perspectiveSummaries?: {
       center?: string;
     };
+    globalImpact?: string;
     topicIds?: Id<"topics">[];
     articleCount?: number;
     sources?: Array<{
@@ -40,6 +41,10 @@ const EventCard = ({
     .map((id) => topicNamesById[id])
     .filter(Boolean);
   const primaryTopic = topics[0] ?? "General";
+  const summaryPreview =
+    event.perspectiveSummaries?.center ??
+    event.globalImpact ??
+    "Coverage grouped from multiple sources. Open the event to compare articles.";
 
   return (
     <Link to="/event/$slug" params={{ slug: event.slug }} className="block">
@@ -91,7 +96,7 @@ const EventCard = ({
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground line-clamp-3">
-            {event.perspectiveSummaries?.center ?? "Summary pending…"}
+            {summaryPreview}
           </p>
 
           <div className="flex items-center justify-between pt-2 border-t">

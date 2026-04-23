@@ -19,9 +19,11 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { authComponent } from "./auth";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -32,6 +34,48 @@ const EVENT_EMBEDDING_DIMENSIONS = 1536;
 const MIN_CLUSTER_SIMILARITY = 0.82;
 const STRONG_CLUSTER_SIMILARITY = 0.9;
 const MIN_TITLE_TOKEN_OVERLAP = 2;
+const TOPIC_KEYWORD_MAP: Record<string, string[]> = {
+  economy: [
+    "economy",
+    "economic",
+    "inflation",
+    "fed",
+    "federal",
+    "reserve",
+    "rates",
+    "tariff",
+    "gdp",
+    "jobs",
+    "unemployment",
+    "market",
+    "stocks",
+    "bank",
+    "banking",
+    "recession",
+    "trade",
+  ],
+  tech: [
+    "ai",
+    "artificial",
+    "technology",
+    "tech",
+    "software",
+    "chip",
+    "chips",
+    "semiconductor",
+    "apple",
+    "google",
+    "meta",
+    "microsoft",
+    "openai",
+    "tesla",
+    "xbox",
+    "iphone",
+    "android",
+    "cyber",
+    "cybersecurity",
+  ],
+};
 
 const STOPWORDS = new Set([
   "a",
@@ -103,6 +147,23 @@ function countTokenOverlap(a: Set<string>, b: Set<string>): number {
     if (b.has(token)) overlap++;
   }
   return overlap;
+}
+
+function inferTopicSlugs(title: string, snippet: string): string[] {
+  const haystack = `${title} ${snippet}`.toLowerCase();
+  const matches = Object.entries(TOPIC_KEYWORD_MAP)
+    .map(([slug, keywords]) => ({
+      slug,
+      score: keywords.reduce(
+        (sum, keyword) => sum + (haystack.includes(keyword) ? 1 : 0),
+        0,
+      ),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.slug);
+
+  return matches.slice(0, 2);
 }
 
 function slugify(value: string): string {
@@ -266,10 +327,20 @@ export const createEventFromArticle = internalMutation({
     centerSummary: v.optional(v.string()),
     eventEmbedding: v.array(v.number()),
     version: v.number(),
+    topicSlugs: v.array(v.string()),
   },
   handler: async (
     ctx,
-    { articleId, title, slug, publishedAt, centerSummary, eventEmbedding, version },
+    {
+      articleId,
+      title,
+      slug,
+      publishedAt,
+      centerSummary,
+      eventEmbedding,
+      version,
+      topicSlugs,
+    },
   ) => {
     const article = await ctx.db.get(articleId);
     if (!article || article.status !== "enriched") {
@@ -291,6 +362,27 @@ export const createEventFromArticle = internalMutation({
       embedding: eventEmbedding,
       version,
     });
+
+    for (const topicSlug of topicSlugs) {
+      const topic = await ctx.db
+        .query("topics")
+        .withIndex("by_slug", (q) => q.eq("slug", topicSlug))
+        .unique();
+      if (!topic) continue;
+
+      const existingLink = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event_topic", (q) =>
+          q.eq("eventId", eventId).eq("topicId", topic._id),
+        )
+        .unique();
+      if (!existingLink) {
+        await ctx.db.insert("eventTopics", {
+          eventId,
+          topicId: topic._id,
+        });
+      }
+    }
 
     await ctx.db.patch(articleId, {
       eventId,
@@ -316,10 +408,11 @@ export const attachArticleToEvent = internalMutation({
     publishedAt: v.number(),
     eventEmbedding: v.array(v.number()),
     version: v.number(),
+    topicSlugs: v.array(v.string()),
   },
   handler: async (
     ctx,
-    { articleId, eventId, publishedAt, eventEmbedding, version },
+    { articleId, eventId, publishedAt, eventEmbedding, version, topicSlugs },
   ) => {
     const article = await ctx.db.get(articleId);
     const event = await ctx.db.get(eventId);
@@ -373,6 +466,27 @@ export const attachArticleToEvent = internalMutation({
       });
     }
 
+    for (const topicSlug of topicSlugs) {
+      const topic = await ctx.db
+        .query("topics")
+        .withIndex("by_slug", (q) => q.eq("slug", topicSlug))
+        .unique();
+      if (!topic) continue;
+
+      const existingLink = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event_topic", (q) =>
+          q.eq("eventId", eventId).eq("topicId", topic._id),
+        )
+        .unique();
+      if (!existingLink) {
+        await ctx.db.insert("eventTopics", {
+          eventId,
+          topicId: topic._id,
+        });
+      }
+    }
+
     return {
       updated: true as const,
       eventId,
@@ -382,6 +496,77 @@ export const attachArticleToEvent = internalMutation({
       articleCount: currentCount + 1,
       embedding: nextEmbedding,
     };
+  },
+});
+
+export const getRecentClusteredEventsForAdmin = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+    const currentUser = await authComponent.safeGetAuthUser(ctx);
+
+    if (!currentUser) {
+      throw new Error("Not authenticated");
+    }
+    if (!adminEmails.includes(currentUser.email.toLowerCase())) {
+      throw new Error("Unauthorized: admin access required");
+    }
+
+    const pageSize = Math.min(Math.max(Math.floor(limit ?? 20), 1), 100);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(pageSize);
+
+    return await Promise.all(
+      events.map(async (event) => {
+        const articles = await ctx.db
+          .query("articles")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const eventTopicRows = await ctx.db
+          .query("eventTopics")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+        const topics = (
+          await Promise.all(eventTopicRows.map((row) => ctx.db.get(row.topicId)))
+        )
+          .filter((topic) => topic !== null)
+          .map((topic) => ({
+            _id: topic._id,
+            slug: topic.slug,
+            displayName: topic.displayName,
+          }));
+
+        const articleEmbeddings = await Promise.all(
+          articles.map((article) =>
+            ctx.db
+              .query("articleEmbeddings")
+              .withIndex("by_article", (q) => q.eq("articleId", article._id))
+              .first(),
+          ),
+        );
+
+        return {
+          ...event,
+          topics,
+          articleCount: articles.length,
+          articles: articles.map((article, index) => ({
+            _id: article._id,
+            title: article.title,
+            rssSnippet: article.rssSnippet,
+            publishedAt: article.publishedAt,
+            status: article.status,
+            embeddingDimensions: articleEmbeddings[index]?.embedding.length ?? 0,
+          })),
+        };
+      }),
+    );
   },
 });
 
@@ -458,6 +643,7 @@ export const clusterEnrichedArticles = internalAction({
 
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
+        const topicSlugs = inferTopicSlugs(article.title, article.rssSnippet);
         const match = findBestCandidate(article, candidates);
 
         if (match) {
@@ -469,6 +655,7 @@ export const clusterEnrichedArticles = internalAction({
               publishedAt: article.publishedAt,
               eventEmbedding: paddedEmbedding,
               version: 1,
+              topicSlugs,
             },
           );
 
@@ -504,6 +691,7 @@ export const clusterEnrichedArticles = internalAction({
             centerSummary,
             eventEmbedding: paddedEmbedding,
             version: 1,
+            topicSlugs,
           },
         );
 
