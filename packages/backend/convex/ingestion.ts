@@ -31,7 +31,8 @@ import { ALL_FEEDS, type FeedEntry } from "./feeds";
 const MAX_ARTICLES_PER_FEED = 25;
 
 /** User-Agent for RSS fetches. Be a good citizen. */
-const USER_AGENT = "Biviant/1.0 (news aggregator; +https://biviant.com)";
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 
 /** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
 const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
@@ -47,6 +48,34 @@ interface ParsedArticle {
   snippet: string;
   publishedAt: string; // ISO-8601 or raw date string
 }
+
+const KNOWN_HEADLINE_SUFFIXES = [
+  "Reuters",
+  "AP News",
+  "Associated Press",
+  "BBC News",
+  "PBS NewsHour",
+  "ABC News",
+  "CBS News",
+  "NBC News",
+  "CNN",
+  "NPR",
+  "The Hill",
+  "Axios",
+  "Politico",
+  "Bloomberg",
+  "CNBC",
+  "The Guardian",
+  "Fox News",
+  "Financial Times",
+  "The Wall Street Journal",
+  "Wall Street Journal",
+  "The New York Times",
+  "New York Times",
+  "The Washington Post",
+  "Washington Post",
+  "USA Today",
+];
 
 // ---------------------------------------------------------------------------
 // RSS/Atom XML Parsing (lightweight, no dependencies)
@@ -79,9 +108,9 @@ function parseRSSXml(xml: string): ParsedArticle[] {
 
       if (title && link) {
         articles.push({
-          title: stripHtml(title).slice(0, 500),
+          title: normalizeArticleTitle(title).slice(0, 500),
           url: link.trim(),
-          snippet: stripHtml(snippet).slice(0, 1000),
+          snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
           publishedAt,
         });
       }
@@ -101,9 +130,9 @@ function parseRSSXml(xml: string): ParsedArticle[] {
 
       if (title && link) {
         articles.push({
-          title: stripHtml(title).slice(0, 500),
+          title: normalizeArticleTitle(title).slice(0, 500),
           url: link.trim(),
-          snippet: stripHtml(snippet).slice(0, 1000),
+          snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
           publishedAt,
         });
       }
@@ -150,10 +179,8 @@ function extractAtomLink(entry: string): string | null {
   return fallback?.[1] ?? null;
 }
 
-/** Strip HTML tags and decode common entities. */
-function stripHtml(text: string): string {
+function decodeHtmlEntities(text: string): string {
   return text
-    .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -163,7 +190,41 @@ function stripHtml(text: string): string {
     .replace(/&#x27;/g, "'")
     .replace(/&#(\d+);/g, (_m, code) =>
       String.fromCharCode(Number.parseInt(code, 10)),
-    )
+    );
+}
+
+/** Strip HTML tags and decode common entities. */
+function stripHtml(text: string): string {
+  return decodeHtmlEntities(text)
+    .replace(/<a\s+href[^ ]*/gi, " ")
+    .replace(/<a\s+href=["'][^"']*["']?/gi, " ")
+    .replace(/<\/?a>/gi, " ")
+    .replace(/<[^>\n]*$/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/www\.\S+/gi, " ")
+    .replace(/\bView Full Coverage on Google News\b/gi, " ")
+    .replace(/\bRead more\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeArticleTitle(title: string): string {
+  const cleaned = stripHtml(title).replace(/\s+/g, " ").trim();
+  for (const suffix of KNOWN_HEADLINE_SUFFIXES) {
+    const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const suffixPattern = new RegExp(`\\s+-\\s+${escapedSuffix}$`, "i");
+    if (suffixPattern.test(cleaned)) {
+      return cleaned.replace(suffixPattern, "").trim();
+    }
+  }
+  return cleaned;
+}
+
+export function normalizeArticleSnippet(snippet: string): string {
+  return stripHtml(snippet)
+    .replace(/\s*[•·]\s*/g, " ")
+    .replace(/\b[A-Z]{2,5}\s*-\s*/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -519,7 +580,15 @@ export const ingestSingleFeed = internalAction({
 
       // 1. Fetch RSS XML
       const response = await fetch(feedUrl, {
-        headers: { "User-Agent": USER_AGENT },
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          Referer: "https://www.google.com/",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
         signal: AbortSignal.timeout(15_000), // 15s timeout
       });
 

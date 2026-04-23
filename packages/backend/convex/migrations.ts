@@ -10,6 +10,7 @@
 
 import { mutation } from "./_generated/server";
 import { TOPIC_CATALOG } from "./topicCatalog";
+import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 
 export const syncTopicCatalogMigration = mutation({
   args: {},
@@ -64,6 +65,93 @@ export const syncTopicCatalogMigration = mutation({
       created,
       updated,
       totalCatalogTopics: TOPIC_CATALOG.length,
+    };
+  },
+});
+
+export const normalizeStoredArticleText = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const articles = await ctx.db.query("articles").collect();
+    const events = await ctx.db.query("events").collect();
+
+    let updatedArticles = 0;
+    let updatedEvents = 0;
+
+    for (const article of articles) {
+      const nextTitle = normalizeArticleTitle(article.title);
+      const nextSnippet = article.rssSnippet
+        ? normalizeArticleSnippet(article.rssSnippet)
+        : undefined;
+      const nextSummary = article.summary
+        ? normalizeArticleSnippet(article.summary)
+        : undefined;
+      const nextAtomicFacts = article.atomicFacts?.map((fact) =>
+        normalizeArticleSnippet(fact),
+      );
+
+      const atomicFactsChanged =
+        (article.atomicFacts ?? []).length !== (nextAtomicFacts ?? []).length ||
+        (article.atomicFacts ?? []).some(
+          (fact, index) => fact !== nextAtomicFacts?.[index],
+        );
+
+      if (
+        nextTitle !== article.title ||
+        nextSnippet !== article.rssSnippet ||
+        nextSummary !== article.summary ||
+        atomicFactsChanged
+      ) {
+        await ctx.db.patch(article._id, {
+          title: nextTitle,
+          rssSnippet: nextSnippet,
+          summary: nextSummary,
+          atomicFacts: nextAtomicFacts,
+        });
+        updatedArticles++;
+      }
+    }
+
+    for (const event of events) {
+      const nextTitle = normalizeArticleTitle(event.title);
+      const nextCenter = event.perspectiveSummaries?.center
+        ? normalizeArticleSnippet(event.perspectiveSummaries.center)
+        : undefined;
+      const nextLeft = event.perspectiveSummaries?.left
+        ? normalizeArticleSnippet(event.perspectiveSummaries.left)
+        : undefined;
+      const nextRight = event.perspectiveSummaries?.right
+        ? normalizeArticleSnippet(event.perspectiveSummaries.right)
+        : undefined;
+      const nextGlobalImpact = event.globalImpact
+        ? normalizeArticleSnippet(event.globalImpact)
+        : undefined;
+
+      if (
+        nextTitle !== event.title ||
+        nextCenter !== event.perspectiveSummaries?.center ||
+        nextLeft !== event.perspectiveSummaries?.left ||
+        nextRight !== event.perspectiveSummaries?.right ||
+        nextGlobalImpact !== event.globalImpact
+      ) {
+        await ctx.db.patch(event._id, {
+          title: nextTitle,
+          perspectiveSummaries: event.perspectiveSummaries
+            ? {
+                center: nextCenter,
+                left: nextLeft,
+                right: nextRight,
+              }
+            : undefined,
+          globalImpact: nextGlobalImpact,
+        });
+        updatedEvents++;
+      }
+    }
+
+    return {
+      updatedArticles,
+      updatedEvents,
     };
   },
 });

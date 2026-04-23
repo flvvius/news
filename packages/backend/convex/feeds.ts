@@ -127,7 +127,7 @@ const LEFT: FeedEntry[] = [
     reliabilityScore: 7,
   },
   {
-    url: "https://rss.cnn.com/rss/cnn_topstories.rss",
+    url: "https://news.google.com/rss/search?q=site:cnn.com&hl=en-US&gl=US&ceid=US:en",
     name: "CNN",
     domain: "cnn.com",
     mbfc: {
@@ -139,7 +139,7 @@ const LEFT: FeedEntry[] = [
     reliabilityScore: 7,
   },
   {
-    url: "https://www.nbcnews.com/id/3032091/device/rss/rss.xml",
+    url: "https://feeds.nbcnews.com/nbcnews/public/news",
     name: "NBC News",
     domain: "nbcnews.com",
     mbfc: {
@@ -163,7 +163,7 @@ const LEFT: FeedEntry[] = [
     reliabilityScore: 7,
   },
   {
-    url: "https://www.politico.com/rss/politicopicks.xml",
+    url: "https://rss.politico.com/politics-news.xml",
     name: "Politico",
     domain: "politico.com",
     mbfc: { category: "left-center", factual: "high", credibility: "high" },

@@ -161,6 +161,81 @@ export const togglePipeline = mutation({
   },
 });
 
+/**
+ * Internal-only pipeline toggle for scheduled/ops workflows where user auth
+ * is not available in the caller context.
+ */
+export const setPipelinePausedInternal = internalMutation({
+  args: {
+    pause: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", "pipeline_paused"))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: JSON.stringify(args.pause),
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("config", {
+        key: "pipeline_paused",
+        value: JSON.stringify(args.pause),
+        description:
+          "When true, all automatic processing (ingestion, enrichment, MBFC) is paused.",
+        updatedAt: Date.now(),
+      });
+    }
+
+    console.log(
+      `[config] Pipeline ${args.pause ? "⏸ PAUSED" : "▶ RESUMED"} via internal ops mutation`,
+    );
+    return { paused: args.pause };
+  },
+});
+
+export const setInternal = internalMutation({
+  args: {
+    key: v.string(),
+    value: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      JSON.parse(args.value);
+    } catch {
+      throw new ConvexError(
+        `Invalid config value for key "${args.key}": value must be valid JSON`,
+      );
+    }
+
+    const existing = await ctx.db
+      .query("config")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: args.value,
+        ...(args.description !== undefined && {
+          description: args.description,
+        }),
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("config", {
+        key: args.key,
+        value: args.value,
+        description: args.description ?? "",
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Internal queries (for use by actions via ctx.runQuery)
 // ---------------------------------------------------------------------------
@@ -358,33 +433,45 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_min_similarity",
-        value: 0.82,
+        value: 0.74,
         description:
           "Minimum embedding cosine similarity required for an article to join an existing event candidate.",
       },
       {
         key: "clustering_strong_similarity",
-        value: 0.9,
+        value: 0.84,
         description:
           "High-confidence embedding cosine similarity that can override weaker title overlap.",
       },
       {
         key: "clustering_min_title_overlap",
-        value: 2,
+        value: 1,
         description:
           "Minimum number of overlapping normalized title tokens for a non-strong clustering match.",
       },
       {
         key: "clustering_min_title_jaccard",
-        value: 0.2,
+        value: 0.1,
         description:
           "Minimum Jaccard similarity between normalized title token sets for a non-strong clustering match.",
       },
       {
         key: "clustering_same_source_min_similarity",
-        value: 0.9,
+        value: 0.88,
         description:
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
+      },
+      {
+        key: "cluster_publish_min_articles",
+        value: 2,
+        description:
+          "Minimum number of clustered articles required before a new event is published to the feed.",
+      },
+      {
+        key: "cluster_publish_min_sources",
+        value: 2,
+        description:
+          "Minimum number of distinct sources required before a new event is published to the feed.",
       },
       {
         key: "topic_inference_min_score",

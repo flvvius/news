@@ -19,6 +19,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -26,6 +27,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import type { MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
+import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -35,14 +37,16 @@ const CLUSTER_BATCH_SIZE = 40;
 const RECENT_EVENT_WINDOW_MS = 72 * 60 * 60 * 1000;
 const MAX_CANDIDATE_EVENTS = 150;
 const EVENT_EMBEDDING_DIMENSIONS = 1536;
-const DEFAULT_MIN_CLUSTER_SIMILARITY = 0.82;
-const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.9;
+const DEFAULT_MIN_CLUSTER_SIMILARITY = 0.74;
+const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.84;
 const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
-const DEFAULT_MIN_TITLE_JACCARD = 0.2;
-const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.9;
+const DEFAULT_MIN_TITLE_JACCARD = 0.1;
+const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.88;
 const DEFAULT_TOPIC_INFERENCE_MIN_SCORE = 4.5;
 const DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO = 0.55;
 const DEFAULT_TOPIC_INFERENCE_MAX_TOPICS = 3;
+const DEFAULT_CLUSTER_PUBLISH_MIN_ARTICLES = 2;
+const DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES = 2;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 24;
@@ -166,6 +170,66 @@ function countTokenOverlap(a: Set<string>, b: Set<string>): number {
   return overlap;
 }
 
+function mergeTokenSets(...sets: Array<Set<string>>): Set<string> {
+  const merged = new Set<string>();
+  for (const set of sets) {
+    for (const token of set) {
+      merged.add(token);
+    }
+  }
+  return merged;
+}
+
+function stripHtmlTags(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractEntityTokens(...texts: string[]): Set<string> {
+  const entities = new Set<string>();
+
+  for (const rawText of texts) {
+    const text = stripHtmlTags(rawText);
+    if (!text) continue;
+
+    const capitalizedMatches =
+      text.match(
+        /\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,}|of|the|and|for|in|on|to)){0,4}\b/g,
+      ) ?? [];
+    for (const match of capitalizedMatches) {
+      const normalized = match.trim().replace(/\s+/g, " ").toLowerCase();
+      if (normalized.length >= 4) {
+        entities.add(normalized);
+      }
+    }
+
+    const numericMatches =
+      text.match(
+        /\$\d[\d,.]*(?:\s?(?:billion|million|trillion))?|\b\d+(?:\.\d+)?%|\b\d+(?:st|nd|rd|th)\b/gi,
+      ) ?? [];
+    for (const match of numericMatches) {
+      entities.add(match.trim().toLowerCase());
+    }
+  }
+
+  return entities;
+}
+
+function normalizeSnippetForClustering(text: string | undefined): string {
+  return normalizeArticleSnippet(text ?? "");
+}
+
+function normalizeTitleForClustering(text: string): string {
+  return normalizeArticleTitle(text);
+}
+
 function slugify(value: string): string {
   const slug = value
     .toLowerCase()
@@ -195,7 +259,31 @@ type ClusterCandidate = {
   articleCount: number;
   embedding: number[];
   titleTokens: Set<string>;
+  evidenceTokens: Set<string>;
+  factTokens: Set<string>;
+  entityTokens: Set<string>;
   sourceIds: Set<string>;
+  perspectiveSummaries?: {
+    center?: string;
+    left?: string;
+    right?: string;
+  };
+  globalImpact?: string;
+  imageUrl?: string;
+  creationTime: number;
+};
+
+type ClusterCandidateQueryResult = {
+  eventId: Id<"events">;
+  title: string;
+  slug: string;
+  firstPublishedAt: number;
+  articleCount: number;
+  embedding: number[];
+  sourceIds: string[];
+  evidenceTokens: string[];
+  factTokens: string[];
+  entityTokens: string[];
   perspectiveSummaries?: {
     center?: string;
     left?: string;
@@ -218,6 +306,11 @@ type TopicInferenceSettings = {
   minScore: number;
   confidenceRatio: number;
   maxTopics: number;
+};
+
+type ClusterPublishSettings = {
+  minArticles: number;
+  minSources: number;
 };
 
 type MergeSettings = {
@@ -625,8 +718,10 @@ function articlePresentationScore(
   source: Doc<"sources"> | null,
   eventTitleTokens: Set<string>,
 ): number {
-  const titleTokens = normalizeTitleTokens(article.title);
-  const snippetTokens = normalizeTitleTokens(article.rssSnippet ?? "");
+  const titleTokens = normalizeTitleTokens(normalizeTitleForClustering(article.title));
+  const snippetTokens = normalizeTitleTokens(
+    normalizeSnippetForClustering(article.rssSnippet),
+  );
   const titleOverlap = countTokenOverlap(titleTokens, eventTitleTokens);
   const snippetOverlap = countTokenOverlap(snippetTokens, eventTitleTokens);
   const reliability = source?.reliabilityScore ?? 5;
@@ -673,8 +768,8 @@ async function refreshEventPresentation(
   );
 
   const representativeSnippet =
-    summarizeText(best.article.rssSnippet, 220) ??
-    summarizeText(best.article.title, 160) ??
+    summarizeText(normalizeSnippetForClustering(best.article.rssSnippet), 220) ??
+    summarizeText(normalizeTitleForClustering(best.article.title), 160) ??
     "Coverage is still being assembled from multiple sources.";
 
   const coverageLine =
@@ -709,9 +804,22 @@ async function refreshEventPresentation(
   });
 }
 
+export const refreshEventPresentationById = internalMutation({
+  args: {
+    eventId: v.id("events"),
+  },
+  handler: async (ctx, { eventId }) => {
+    await refreshEventPresentation(ctx, eventId);
+    return { refreshed: true };
+  },
+});
+
 function findBestCandidate(
   article: {
     title: string;
+    rssSnippet: string;
+    summary: string;
+    atomicFacts: string[];
     publishedAt: number;
     embedding: number[];
     sourceId: Id<"sources">;
@@ -720,7 +828,24 @@ function findBestCandidate(
   settings: ClusterSettings,
 ): ClusterCandidate | null {
   const articleEmbedding = toEventEmbedding(article.embedding);
-  const articleTokens = normalizeTitleTokens(article.title);
+  const normalizedTitle = normalizeTitleForClustering(article.title);
+  const normalizedSnippet = normalizeSnippetForClustering(article.rssSnippet);
+  const normalizedSummary = normalizeSnippetForClustering(article.summary);
+  const normalizedFacts = article.atomicFacts.map((fact) =>
+    normalizeSnippetForClustering(fact),
+  );
+  const articleTitleTokens = normalizeTitleTokens(normalizedTitle);
+  const articleEvidenceTokens = mergeTokenSets(
+    normalizeTitleTokens(normalizedSnippet),
+    normalizeTitleTokens(normalizedSummary),
+  );
+  const articleFactTokens = normalizeTitleTokens(normalizedFacts.join(" "));
+  const articleEntityTokens = extractEntityTokens(
+    normalizedTitle,
+    normalizedSnippet,
+    normalizedSummary,
+    normalizedFacts.join(" "),
+  );
 
   let best: { candidate: ClusterCandidate; score: number } | null = null;
 
@@ -731,32 +856,82 @@ function findBestCandidate(
     }
 
     const similarity = cosineSimilarity(articleEmbedding, candidate.embedding);
-    const overlap = countTokenOverlap(articleTokens, candidate.titleTokens);
-    const titleJaccard = jaccardSimilarity(articleTokens, candidate.titleTokens);
+    const titleOverlap = countTokenOverlap(
+      articleTitleTokens,
+      candidate.titleTokens,
+    );
+    const titleJaccard = jaccardSimilarity(
+      articleTitleTokens,
+      candidate.titleTokens,
+    );
+    const evidenceOverlap = countTokenOverlap(
+      articleEvidenceTokens,
+      candidate.evidenceTokens,
+    );
+    const evidenceJaccard = jaccardSimilarity(
+      articleEvidenceTokens,
+      candidate.evidenceTokens,
+    );
+    const factOverlap = countTokenOverlap(articleFactTokens, candidate.factTokens);
+    const factJaccard = jaccardSimilarity(articleFactTokens, candidate.factTokens);
+    const entityOverlap = countTokenOverlap(
+      articleEntityTokens,
+      candidate.entityTokens,
+    );
+    const entityJaccard = jaccardSimilarity(
+      articleEntityTokens,
+      candidate.entityTokens,
+    );
     const sameSource = candidate.sourceIds.has(String(article.sourceId));
+    const bodySupport =
+      (evidenceOverlap + factOverlap + entityOverlap >= 2 &&
+        Math.max(evidenceJaccard, factJaccard, entityJaccard) >=
+          settings.minTitleJaccard * 0.6) ||
+      (factOverlap >= 2 && factJaccard >= settings.minTitleJaccard * 0.45) ||
+      (entityOverlap >= 2 && entityJaccard >= settings.minTitleJaccard * 0.45);
+    const lexicalSupport =
+      (titleOverlap >= settings.minTitleTokenOverlap &&
+        titleJaccard >= settings.minTitleJaccard) ||
+      (evidenceOverlap >= settings.minTitleTokenOverlap &&
+        evidenceJaccard >= settings.minTitleJaccard * 0.75) ||
+      (factOverlap >= 1 && factJaccard >= settings.minTitleJaccard * 0.5) ||
+      (entityOverlap >= 1 && entityJaccard >= settings.minTitleJaccard * 0.5) ||
+      bodySupport;
+
+    const semanticSupport =
+      similarity >= settings.minSimilarity + 0.05 &&
+      (evidenceJaccard >= settings.minTitleJaccard * 0.75 ||
+        factJaccard >= settings.minTitleJaccard * 0.6 ||
+        entityJaccard >= settings.minTitleJaccard * 0.6);
 
     const baseMatch =
       similarity >= settings.strongSimilarity ||
       (similarity >= settings.minSimilarity &&
-        overlap >= settings.minTitleTokenOverlap &&
-        titleJaccard >= settings.minTitleJaccard);
+        (lexicalSupport || semanticSupport));
 
     const sameSourceMatch = sameSource
       ? similarity >= settings.sameSourceMinSimilarity &&
-        overlap >= settings.minTitleTokenOverlap &&
-        titleJaccard >= settings.minTitleJaccard
+        lexicalSupport
       : true;
 
     if (!baseMatch || !sameSourceMatch) continue;
 
     const recencyScore = 1 - timeDeltaMs / RECENT_EVENT_WINDOW_MS;
     const overlapScore =
-      Math.min(overlap, settings.minTitleTokenOverlap + 3) / 10;
+      Math.min(titleOverlap + evidenceOverlap + factOverlap + entityOverlap, 10) /
+      10;
+    const sourceDiversityBonus = sameSource
+      ? 0
+      : Math.min(candidate.sourceIds.size, 5) / 100;
     const score =
-      similarity * 0.72 +
-      titleJaccard * 0.18 +
-      recencyScore * 0.08 +
-      overlapScore * 0.02;
+      similarity * 0.43 +
+      titleJaccard * 0.12 +
+      evidenceJaccard * 0.16 +
+      factJaccard * 0.11 +
+      entityJaccard * 0.14 +
+      recencyScore * 0.04 +
+      overlapScore * 0.04 +
+      sourceDiversityBonus;
 
     if (!best || score > best.score) {
       best = { candidate, score };
@@ -764,6 +939,17 @@ function findBestCandidate(
   }
 
   return best?.candidate ?? null;
+}
+
+function shouldPublishCluster(
+  articleCount: number,
+  uniqueSourceCount: number,
+  settings: ClusterPublishSettings,
+): boolean {
+  return (
+    articleCount >= settings.minArticles &&
+    uniqueSourceCount >= settings.minSources
+  );
 }
 
 async function getTopicInferenceSettingsForQuery(
@@ -820,6 +1006,14 @@ async function requireAdminUser(ctx: Parameters<typeof authComponent.safeGetAuth
   return currentUser;
 }
 
+function isWeakEventPresentation(
+  event: Pick<Doc<"events">, "perspectiveSummaries" | "globalImpact">,
+): boolean {
+  const center = event.perspectiveSummaries?.center?.trim() ?? "";
+  const globalImpact = event.globalImpact?.trim() ?? "";
+  return center.length < 120 || globalImpact.length < 60;
+}
+
 function buildEventTopicInferenceContext(
   event: Pick<Doc<"events">, "title">,
   articles: Array<
@@ -830,18 +1024,21 @@ function buildEventTopicInferenceContext(
   const topArticles = sortedArticles.slice(0, 6);
 
   return {
-    title: event.title,
+    title: normalizeTitleForClustering(event.title),
     rssSnippet: topArticles
-      .map((article) => article.rssSnippet?.trim())
+      .map((article) => normalizeSnippetForClustering(article.rssSnippet))
       .filter(Boolean)
       .slice(0, 4)
       .join(" "),
     summary: topArticles
-      .map((article) => article.summary?.trim())
+      .map((article) => normalizeSnippetForClustering(article.summary))
       .filter(Boolean)
       .slice(0, 4)
       .join(" "),
-    atomicFacts: topArticles.flatMap((article) => article.atomicFacts ?? []).slice(0, 24),
+    atomicFacts: topArticles
+      .flatMap((article) => article.atomicFacts ?? [])
+      .map((fact) => normalizeSnippetForClustering(fact))
+      .slice(0, 24),
   };
 }
 
@@ -859,7 +1056,11 @@ export const getEnrichedArticlesForClustering = internalQuery({
           const embeddingRow = await ctx.db
             .query("articleEmbeddings")
             .withIndex("by_article", (q) => q.eq("articleId", article._id))
-            .first();
+            .collect()
+            .then((rows) =>
+              rows.sort((a, b) => b.version - a.version || b._creationTime - a._creationTime)[0] ??
+              null,
+            );
 
           if (!embeddingRow) {
             console.warn(
@@ -870,10 +1071,12 @@ export const getEnrichedArticlesForClustering = internalQuery({
 
           return {
             _id: article._id,
-            title: article.title,
-            rssSnippet: article.rssSnippet ?? "",
-            summary: article.summary ?? "",
-            atomicFacts: article.atomicFacts ?? [],
+            title: normalizeTitleForClustering(article.title),
+            rssSnippet: normalizeSnippetForClustering(article.rssSnippet),
+            summary: normalizeSnippetForClustering(article.summary),
+            atomicFacts: (article.atomicFacts ?? []).map((fact) =>
+              normalizeSnippetForClustering(fact),
+            ),
             publishedAt: article.publishedAt,
             embedding: embeddingRow.embedding,
             sourceId: article.sourceId,
@@ -892,51 +1095,95 @@ export const getRecentClusterCandidates = internalQuery({
     limit: v.number(),
   },
   handler: async (ctx, { sinceTs, limit }) => {
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
-      .take(limit);
+    const [publishedEvents, processingEvents] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .order("desc")
+        .take(limit),
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "processing"))
+        .order("desc")
+        .take(limit),
+    ]);
+    const events = [...publishedEvents, ...processingEvents]
+      .filter((event) => event.firstPublishedAt >= sinceTs)
+      .sort(
+        (a, b) =>
+          b.firstPublishedAt - a.firstPublishedAt ||
+          b._creationTime - a._creationTime,
+      )
+      .slice(0, limit);
 
     const candidates = (
       await Promise.all(
-        events
-          .filter((event) => event.firstPublishedAt >= sinceTs)
-          .map(async (event) => {
-            const embeddingRow = await ctx.db
-              .query("eventEmbeddings")
-              .withIndex("by_event", (q) => q.eq("eventId", event._id))
-              .first();
+        events.map(async (event) => {
+          const embeddingRow = await ctx.db
+            .query("eventEmbeddings")
+            .withIndex("by_event", (q) => q.eq("eventId", event._id))
+            .first();
 
-            if (!embeddingRow) return null;
+          if (!embeddingRow) return null;
 
-            const articleCount = (
-              await ctx.db
-                .query("articles")
-                .withIndex("by_event", (q) => q.eq("eventId", event._id))
-                .collect()
-            ).length;
-            const sourceIds = (
-              await ctx.db
-                .query("articles")
-                .withIndex("by_event", (q) => q.eq("eventId", event._id))
-                .collect()
-            ).map((article) => String(article.sourceId));
+          const articles = await ctx.db
+            .query("articles")
+            .withIndex("by_event", (q) => q.eq("eventId", event._id))
+            .collect();
+          const articleCount = articles.length;
+          const sourceIds = articles.map((article) => String(article.sourceId));
+          const evidenceTokens = mergeTokenSets(
+            ...articles.map((article) =>
+              mergeTokenSets(
+                normalizeTitleTokens(
+                  normalizeSnippetForClustering(article.rssSnippet),
+                ),
+                normalizeTitleTokens(
+                  normalizeSnippetForClustering(article.summary),
+                ),
+              ),
+            ),
+          );
+          const factTokens = mergeTokenSets(
+            ...articles.map((article) =>
+              normalizeTitleTokens(
+                (article.atomicFacts ?? [])
+                  .map((fact) => normalizeSnippetForClustering(fact))
+                  .join(" "),
+              ),
+            ),
+          );
+          const entityTokens = mergeTokenSets(
+            extractEntityTokens(normalizeTitleForClustering(event.title)),
+            ...articles.map((article) =>
+              extractEntityTokens(
+                normalizeTitleForClustering(article.title),
+                normalizeSnippetForClustering(article.rssSnippet),
+                normalizeSnippetForClustering(article.summary),
+                (article.atomicFacts ?? [])
+                  .map((fact) => normalizeSnippetForClustering(fact))
+                  .join(" "),
+              ),
+            ),
+          );
 
-            return {
-              eventId: event._id,
-              title: event.title,
-              slug: event.slug,
-              firstPublishedAt: event.firstPublishedAt,
-              articleCount,
-              embedding: embeddingRow.embedding,
-              sourceIds,
-              perspectiveSummaries: event.perspectiveSummaries,
-              globalImpact: event.globalImpact,
-              imageUrl: event.imageUrl,
-              creationTime: event._creationTime,
-            };
-          }),
+          return {
+            eventId: event._id,
+            title: event.title,
+            slug: event.slug,
+            firstPublishedAt: event.firstPublishedAt,
+            articleCount,
+            embedding: embeddingRow.embedding,
+            sourceIds,
+            evidenceTokens: [...evidenceTokens],
+            factTokens: [...factTokens],
+            entityTokens: [...entityTokens],
+            perspectiveSummaries: event.perspectiveSummaries,
+            globalImpact: event.globalImpact,
+            imageUrl: event.imageUrl,
+            creationTime: event._creationTime,
+          };
+        }),
       )
     ).filter((candidate) => candidate !== null);
 
@@ -954,6 +1201,7 @@ export const createEventFromArticle = internalMutation({
     eventEmbedding: v.array(v.number()),
     version: v.number(),
     topicSlugs: v.array(v.string()),
+    initialStatus: v.union(v.literal("processing"), v.literal("published")),
   },
   handler: async (
     ctx,
@@ -966,6 +1214,7 @@ export const createEventFromArticle = internalMutation({
       eventEmbedding,
       version,
       topicSlugs,
+      initialStatus,
     },
   ) => {
     const article = await ctx.db.get(articleId);
@@ -979,7 +1228,7 @@ export const createEventFromArticle = internalMutation({
       perspectiveSummaries: centerSummary
         ? { center: centerSummary }
         : undefined,
-      status: "published",
+      status: initialStatus,
       firstPublishedAt: publishedAt,
     });
 
@@ -1025,6 +1274,7 @@ export const createEventFromArticle = internalMutation({
       firstPublishedAt: publishedAt,
       articleCount: 1,
       embedding: eventEmbedding,
+      status: initialStatus,
     };
   },
 });
@@ -1037,10 +1287,21 @@ export const attachArticleToEvent = internalMutation({
     eventEmbedding: v.array(v.number()),
     version: v.number(),
     topicSlugs: v.array(v.string()),
+    publishMinArticles: v.number(),
+    publishMinSources: v.number(),
   },
   handler: async (
     ctx,
-    { articleId, eventId, publishedAt, eventEmbedding, version, topicSlugs },
+    {
+      articleId,
+      eventId,
+      publishedAt,
+      eventEmbedding,
+      version,
+      topicSlugs,
+      publishMinArticles,
+      publishMinSources,
+    },
   ) => {
     const article = await ctx.db.get(articleId);
     const event = await ctx.db.get(eventId);
@@ -1088,9 +1349,23 @@ export const attachArticleToEvent = internalMutation({
     }
 
     const nextFirstPublishedAt = Math.min(event.firstPublishedAt, publishedAt);
-    if (nextFirstPublishedAt !== event.firstPublishedAt) {
+    const uniqueSourceCount = new Set(
+      [...existingArticles.map((existingArticle) => String(existingArticle.sourceId)), String(article.sourceId)],
+    ).size;
+    const nextArticleCount = currentCount + 1;
+    const nextStatus = shouldPublishCluster(nextArticleCount, uniqueSourceCount, {
+      minArticles: publishMinArticles,
+      minSources: publishMinSources,
+    })
+      ? "published"
+      : event.status;
+    if (
+      nextFirstPublishedAt !== event.firstPublishedAt ||
+      nextStatus !== event.status
+    ) {
       await ctx.db.patch(eventId, {
         firstPublishedAt: nextFirstPublishedAt,
+        status: nextStatus,
       });
     }
 
@@ -1123,8 +1398,9 @@ export const attachArticleToEvent = internalMutation({
       title: event.title,
       slug: event.slug,
       firstPublishedAt: nextFirstPublishedAt,
-      articleCount: currentCount + 1,
+      articleCount: nextArticleCount,
       embedding: nextEmbedding,
+      status: nextStatus,
     };
   },
 });
@@ -1291,6 +1567,60 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
         };
       }),
     );
+  },
+});
+
+export const refreshWeakPublishedEventsForAdmin = mutation({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit }) => {
+    await requireAdminUser(ctx);
+
+    const target = Math.max(1, Math.min(limit ?? 50, 200));
+    const publishedEvents = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(target * 4);
+
+    let refreshed = 0;
+    let scanned = 0;
+    for (const event of publishedEvents) {
+      if (refreshed >= target) break;
+      scanned++;
+      if (!isWeakEventPresentation(event)) continue;
+      await refreshEventPresentation(ctx, event._id);
+      refreshed++;
+    }
+
+    return { refreshed, scanned };
+  },
+});
+
+export const refreshWeakPublishedEventsInternal = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit }) => {
+    const target = Math.max(1, Math.min(limit ?? 50, 200));
+    const publishedEvents = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(target * 4);
+
+    let refreshed = 0;
+    let scanned = 0;
+    for (const event of publishedEvents) {
+      if (refreshed >= target) break;
+      scanned++;
+      if (!isWeakEventPresentation(event)) continue;
+      await refreshEventPresentation(ctx, event._id);
+      refreshed++;
+    }
+
+    return { refreshed, scanned };
   },
 });
 
@@ -1509,10 +1839,15 @@ export const mergeNearDuplicateEvents = internalAction({
         ),
       };
 
-      const candidates: ClusterCandidate[] = recentCandidatesRaw.map(
+      const candidates: ClusterCandidate[] = (
+        recentCandidatesRaw as ClusterCandidateQueryResult[]
+      ).map(
         (candidate) => ({
           ...candidate,
           titleTokens: normalizeTitleTokens(candidate.title),
+          evidenceTokens: new Set(candidate.evidenceTokens),
+          factTokens: new Set(candidate.factTokens),
+          entityTokens: new Set(candidate.entityTokens),
           sourceIds: new Set(candidate.sourceIds),
         }),
       );
@@ -1700,6 +2035,8 @@ export const clusterEnrichedArticles = internalAction({
           "clustering_min_title_overlap",
           "clustering_min_title_jaccard",
           "clustering_same_source_min_similarity",
+          "cluster_publish_min_articles",
+          "cluster_publish_min_sources",
           "topic_inference_min_score",
           "topic_inference_confidence_ratio",
           "topic_inference_max_topics",
@@ -1738,6 +2075,20 @@ export const clusterEnrichedArticles = internalAction({
           0.999,
         ),
       };
+      const publishSettings: ClusterPublishSettings = {
+        minArticles: safeInteger(
+          clusteringConfig.cluster_publish_min_articles,
+          DEFAULT_CLUSTER_PUBLISH_MIN_ARTICLES,
+          1,
+          10,
+        ),
+        minSources: safeInteger(
+          clusteringConfig.cluster_publish_min_sources,
+          DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES,
+          1,
+          10,
+        ),
+      };
       const topicSettings: TopicInferenceSettings = {
         minScore: clampNumber(
           clusteringConfig.topic_inference_min_score,
@@ -1759,13 +2110,16 @@ export const clusterEnrichedArticles = internalAction({
         ),
       };
 
-      const candidates: ClusterCandidate[] = recentCandidatesRaw.map(
-        (candidate) => ({
-          ...candidate,
-          titleTokens: normalizeTitleTokens(candidate.title),
-          sourceIds: new Set(candidate.sourceIds),
-        }),
-      );
+      const candidates: ClusterCandidate[] = (
+        recentCandidatesRaw as ClusterCandidateQueryResult[]
+      ).map((candidate) => ({
+        ...candidate,
+        titleTokens: normalizeTitleTokens(candidate.title),
+        evidenceTokens: new Set(candidate.evidenceTokens),
+        factTokens: new Set(candidate.factTokens),
+        entityTokens: new Set(candidate.entityTokens),
+        sourceIds: new Set(candidate.sourceIds),
+      }));
 
       let clusteredIntoExisting = 0;
       let createdEvents = 0;
@@ -1795,6 +2149,8 @@ export const clusterEnrichedArticles = internalAction({
               eventEmbedding: paddedEmbedding,
               version: 1,
               topicSlugs,
+              publishMinArticles: publishSettings.minArticles,
+              publishMinSources: publishSettings.minSources,
             },
           );
 
@@ -1811,6 +2167,24 @@ export const clusterEnrichedArticles = internalAction({
             candidate.articleCount = result.articleCount;
             candidate.firstPublishedAt = result.firstPublishedAt;
             candidate.sourceIds.add(String(article.sourceId));
+            candidate.evidenceTokens = mergeTokenSets(
+              candidate.evidenceTokens,
+              normalizeTitleTokens(article.rssSnippet),
+              normalizeTitleTokens(article.summary),
+            );
+            candidate.factTokens = mergeTokenSets(
+              candidate.factTokens,
+              normalizeTitleTokens(article.atomicFacts.join(" ")),
+            );
+            candidate.entityTokens = mergeTokenSets(
+              candidate.entityTokens,
+              extractEntityTokens(
+                article.title,
+                article.rssSnippet,
+                article.summary,
+                article.atomicFacts.join(" "),
+              ),
+            );
           }
           continue;
         }
@@ -1832,6 +2206,9 @@ export const clusterEnrichedArticles = internalAction({
             eventEmbedding: paddedEmbedding,
             version: 1,
             topicSlugs,
+            initialStatus: shouldPublishCluster(1, 1, publishSettings)
+              ? "published"
+              : "processing",
           },
         );
 
@@ -1849,6 +2226,17 @@ export const clusterEnrichedArticles = internalAction({
           articleCount: result.articleCount,
           embedding: result.embedding,
           titleTokens: normalizeTitleTokens(result.title),
+          evidenceTokens: mergeTokenSets(
+            normalizeTitleTokens(article.rssSnippet),
+            normalizeTitleTokens(article.summary),
+          ),
+          factTokens: normalizeTitleTokens(article.atomicFacts.join(" ")),
+          entityTokens: extractEntityTokens(
+            article.title,
+            article.rssSnippet,
+            article.summary,
+            article.atomicFacts.join(" "),
+          ),
           sourceIds: new Set([String(article.sourceId)]),
           perspectiveSummaries: centerSummary
             ? { center: centerSummary }
@@ -1860,7 +2248,7 @@ export const clusterEnrichedArticles = internalAction({
       }
 
       console.log(
-        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, topicMinScore=${topicSettings.minScore})`,
+        `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, publishMin=${publishSettings.minArticles} articles/${publishSettings.minSources} sources, topicMinScore=${topicSettings.minScore})`,
       );
 
       return {

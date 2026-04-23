@@ -25,6 +25,7 @@
     "@posthog/ai": "^7.9.3",
     "better-auth": "catalog:",
     "convex": "catalog:",
+    "jsdom": "^26.0.0",
     "openai": "^6.25.0",
     "posthog-node": "^5.26.0",
     "resend": "^6.9.2"
