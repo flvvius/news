@@ -7,8 +7,8 @@
 export const SITE = {
   name: "Biviant",
   url: "https://biviant.com",
-  title: "Biviant — See Every Side of the Story",
+  title: "Biviant — Every news story, broken down fact by fact",
   description:
-    "Every story has multiple sides. Biviant shows you all of them, scores each source for bias and reliability, and explains how the news affects your life personally.",
+    "Biviant doesn't just show you different perspectives — it shows you exactly what each side claims, where they agree, and where they spin.",
   ogImage: "https://biviant.com/og-image.png",
 } as const;

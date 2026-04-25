@@ -65,7 +65,14 @@ function EventDetailPage() {
   if (eventData === undefined) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="text-sm text-muted-foreground"
+        >
+          Loading...
+        </div>
       </div>
     );
   }
@@ -88,107 +95,175 @@ function EventDetailPage() {
 
   const { event, articles } = eventData;
   const hasPerspectives =
-    event.perspectiveSummaries.left || event.perspectiveSummaries.right;
+    event.perspectiveSummaries?.left || event.perspectiveSummaries?.right;
+  const sourceCount = new Set(
+    articles.map((article) => article.source?._id).filter(Boolean),
+  ).size;
+  const tabCount = [
+    event.perspectiveSummaries?.left ? "left" : null,
+    "center",
+    event.perspectiveSummaries?.right ? "right" : null,
+  ].filter(Boolean).length;
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex flex-col gap-6">
-        {/* Back button */}
+    <div className="bg-linear-to-b from-background via-background to-muted/35">
+      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+        <div className="flex flex-col gap-8">
         <Link
           to="/feed"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           ← Back to feed
         </Link>
 
-        {/* Event header */}
-        <div>
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-3xl font-bold mb-4">{event.title}</h1>
-            <BookmarkButton eventId={event._id} />
-          </div>
-          {event.imageUrl && (
-            <div className="overflow-hidden rounded-lg border mb-4">
-              <img
-                src={event.imageUrl}
-                alt={event.title}
-                className="w-full h-64 object-cover"
-              />
+          <section className="overflow-hidden rounded-[1.6rem] border border-border/80 bg-card/95 shadow-sm">
+            <div className="aspect-[16/10] overflow-hidden border-b border-border/70 bg-muted/40 sm:aspect-[16/9]">
+              {event.imageUrl ? (
+                <img
+                  src={event.imageUrl}
+                  alt={event.imageAlt ?? event.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
+                  <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
+                    Event
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Perspective summaries */}
-        {hasPerspectives ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Multiple Perspectives</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="center" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  {event.perspectiveSummaries.left && (
+            <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    Event Overview
+                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                    {event.title}
+                  </h1>
+                </div>
+                <BookmarkButton
+                  eventId={event._id}
+                  className="rounded-full border border-border/80 bg-background/80"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+                <div className="flex -space-x-3">
+                  {articles
+                    .map((article) => article.source)
+                    .filter((source, index, array) =>
+                      source &&
+                      array.findIndex((candidate) => candidate?._id === source._id) === index,
+                    )
+                    .slice(0, 5)
+                    .map((source) => (
+                      <div
+                        key={source!._id}
+                        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
+                        title={source!.name}
+                      >
+                        {source?.logoUrl ? (
+                          <img
+                            src={source.logoUrl}
+                            alt={source.name}
+                            className="h-full w-full object-contain p-1.5"
+                          />
+                        ) : (
+                          <span className="text-xs font-medium text-foreground">
+                            {source?.name.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  <span className="font-medium text-card-foreground">
+                    {articles.length} {articles.length === 1 ? "article" : "articles"}
+                  </span>
+                  <span>•</span>
+                  <span>{sourceCount} sources</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {hasPerspectives ? (
+            <Card className="overflow-hidden border-border/80 py-0">
+              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                <CardTitle className="text-xl tracking-tight">
+                  Multiple Perspectives
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-6 py-6 sm:px-8">
+                <Tabs defaultValue="center" className="w-full gap-5">
+                <TabsList
+                  className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
+                >
+                  {event.perspectiveSummaries?.left && (
                     <TabsTrigger value="left">Left</TabsTrigger>
                   )}
                   <TabsTrigger value="center">Center</TabsTrigger>
-                  {event.perspectiveSummaries.right && (
+                  {event.perspectiveSummaries?.right && (
                     <TabsTrigger value="right">Right</TabsTrigger>
                   )}
                 </TabsList>
 
-                {event.perspectiveSummaries.left && (
-                  <TabsContent value="left" className="mt-4">
-                    <p className="text-sm leading-relaxed max-w-[65ch]">
+                {event.perspectiveSummaries?.left && (
+                  <TabsContent value="left">
+                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.perspectiveSummaries.left}
                     </p>
                   </TabsContent>
                 )}
 
-                <TabsContent value="center" className="mt-4">
-                  <p className="text-sm leading-relaxed max-w-[65ch]">
-                    {event.perspectiveSummaries.center}
+                <TabsContent value="center">
+                  <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                    {event.perspectiveSummaries?.center ?? "Summary pending…"}
                   </p>
                 </TabsContent>
 
-                {event.perspectiveSummaries.right && (
-                  <TabsContent value="right" className="mt-4">
-                    <p className="text-sm leading-relaxed max-w-[65ch]">
+                {event.perspectiveSummaries?.right && (
+                  <TabsContent value="right">
+                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.perspectiveSummaries.right}
                     </p>
                   </TabsContent>
                 )}
               </Tabs>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.perspectiveSummaries.center}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden border-border/80 py-0">
+              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                <CardTitle className="text-xl tracking-tight">Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="px-6 py-6 sm:px-8">
+                <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                  {event.perspectiveSummaries?.center ??
+                    event.globalImpact ??
+                    "Coverage grouped from multiple sources. Compare the original reporting below."}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Global Impact */}
-        {event.globalImpact && (
-          <Card>
-            <CardHeader>
-              <CardTitle>What This Means</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.globalImpact}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+          {event.globalImpact && (
+            <Card className="overflow-hidden border-border/80 py-0">
+              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                <CardTitle className="text-xl tracking-tight">What This Means</CardTitle>
+              </CardHeader>
+              <CardContent className="px-6 py-6 sm:px-8">
+                <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                  {event.globalImpact}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Articles */}
-        <ArticlesList articles={articles} />
+          <ArticlesList articles={articles} />
+        </div>
       </div>
     </div>
   );

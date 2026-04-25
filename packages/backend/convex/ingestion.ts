@@ -1,0 +1,981 @@
+/**
+ * RSS Ingestion Pipeline — Phase 3.1 + 3.3
+ *
+ * Responsibilities:
+ *  1. Fetch & parse RSS/Atom feeds
+ *  2. Deduplicate by canonical URL
+ *  3. Create or match sources by domain
+ *  4. Insert articles as "unprocessed"
+ *  5. Track feed health in ingestionMeta
+ *
+ * This file uses Convex actions (Node.js runtime) so it can make HTTP
+ * requests. Database writes are delegated to internal mutations to keep
+ * the action idempotent-safe.
+ */
+
+import { v } from "convex/values";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { ALL_FEEDS, type FeedEntry } from "./feeds";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Max articles to ingest per feed per run (prevents runaway on first ingest) */
+const MAX_ARTICLES_PER_FEED = 25;
+
+/** User-Agent for RSS fetches. Be a good citizen. */
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+
+/** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
+const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
+const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ParsedArticle {
+  title: string;
+  url: string;
+  snippet: string;
+  publishedAt: string; // ISO-8601 or raw date string
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+  imageSource?: "rss";
+}
+
+const KNOWN_HEADLINE_SUFFIXES = [
+  "Reuters",
+  "AP News",
+  "Associated Press",
+  "BBC News",
+  "PBS NewsHour",
+  "ABC News",
+  "CBS News",
+  "NBC News",
+  "CNN",
+  "NPR",
+  "The Hill",
+  "Axios",
+  "Politico",
+  "Bloomberg",
+  "CNBC",
+  "The Guardian",
+  "Fox News",
+  "Financial Times",
+  "The Wall Street Journal",
+  "Wall Street Journal",
+  "The New York Times",
+  "New York Times",
+  "The Washington Post",
+  "Washington Post",
+  "USA Today",
+];
+
+// ---------------------------------------------------------------------------
+// RSS/Atom XML Parsing (lightweight, no dependencies)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extremely minimal RSS/Atom parser. Extracts title, link, description/summary,
+ * and pubDate/updated from XML text. No dependency needed — just regex + string ops.
+ *
+ * Handles:
+ *  - RSS 2.0 (<item>)
+ *  - Atom (<entry>)
+ */
+function parseRSSXml(xml: string): ParsedArticle[] {
+  const articles: ParsedArticle[] = [];
+
+  // Detect Atom vs RSS
+  const isAtom = xml.includes("<feed") && xml.includes("<entry");
+
+  if (isAtom) {
+    // Atom: <entry> ... </entry>
+    const entries = xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) ?? [];
+    for (const entry of entries) {
+      const title = extractTag(entry, "title");
+      const link = extractAtomLink(entry) ?? extractTag(entry, "link") ?? "";
+      const snippet =
+        extractTag(entry, "summary") ?? extractTag(entry, "content") ?? "";
+      const publishedAt =
+        extractTag(entry, "published") ?? extractTag(entry, "updated") ?? "";
+      const rssImage = extractFeedImage(entry, link ?? "");
+
+      if (title && link) {
+        articles.push({
+          title: normalizeArticleTitle(title).slice(0, 500),
+          url: link.trim(),
+          snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
+          publishedAt,
+          ...rssImage,
+        });
+      }
+    }
+  } else {
+    // RSS 2.0: <item> ... </item>
+    const items = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) ?? [];
+    for (const item of items) {
+      const title = extractTag(item, "title");
+      const link = extractTag(item, "link");
+      const snippet =
+        extractTag(item, "description") ??
+        extractTag(item, "content:encoded") ??
+        "";
+      const publishedAt =
+        extractTag(item, "pubDate") ?? extractTag(item, "dc:date") ?? "";
+      const rssImage = extractFeedImage(item, link ?? "");
+
+      if (title && link) {
+        articles.push({
+          title: normalizeArticleTitle(title).slice(0, 500),
+          url: link.trim(),
+          snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
+          publishedAt,
+          ...rssImage,
+        });
+      }
+    }
+  }
+
+  return articles;
+}
+
+/** Extract text content of an XML tag. Returns null if missing. */
+function extractTag(xml: string, tag: string): string | null {
+  // Handle CDATA sections: <tag><![CDATA[...]]></tag>
+  const cdataPattern = new RegExp(
+    `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`,
+    "i",
+  );
+  const cdataMatch = xml.match(cdataPattern);
+  if (cdataMatch) return cdataMatch[1]?.trim() ?? null;
+
+  // Plain text: <tag>...</tag>
+  const plainPattern = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i");
+  const plainMatch = xml.match(plainPattern);
+  return plainMatch?.[1]?.trim() ?? null;
+}
+
+/** Extract href from Atom <link rel="alternate" href="..."/> */
+function extractAtomLink(entry: string): string | null {
+  // Try rel="alternate" first
+  const altMatch = entry.match(
+    /<link[^>]*rel\s*=\s*["']alternate["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*\/?>/i,
+  );
+  if (altMatch) return altMatch[1] ?? null;
+
+  // Reversed order: href before rel
+  const altMatch2 = entry.match(
+    /<link[^>]*href\s*=\s*["']([^"']+)["'][^>]*rel\s*=\s*["']alternate["'][^>]*\/?>/i,
+  );
+  if (altMatch2) return altMatch2[1] ?? null;
+
+  // Fallback: first <link href="..."/>
+  const fallback = entry.match(
+    /<link[^>]*href\s*=\s*["']([^"']+)["'][^>]*\/?>/i,
+  );
+  return fallback?.[1] ?? null;
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_m, code) =>
+      String.fromCharCode(Number.parseInt(code, 10)),
+    );
+}
+
+function parseOptionalInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function absolutizeUrl(candidate: string | undefined, baseUrl: string): string | undefined {
+  if (!candidate) return undefined;
+  try {
+    return new URL(candidate, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function isLikelyImageUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.toLowerCase();
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    return (
+      /\.(avif|gif|jpe?g|png|webp|bmp)(?:$|\?)/i.test(path) ||
+      path.includes("/image") ||
+      path.includes("/photo") ||
+      path.includes("/media")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function extractAttribute(tag: string, attribute: string): string | undefined {
+  const patterns = [
+    new RegExp(`${attribute}=["']([^"']+)["']`, "i"),
+    new RegExp(`${attribute}=([^\\s>]+)`, "i"),
+  ];
+  for (const pattern of patterns) {
+    const match = tag.match(pattern);
+    const value = match?.[1]?.trim();
+    if (value) return decodeHtmlEntities(value);
+  }
+  return undefined;
+}
+
+function extractImageFromHtmlSnippet(
+  html: string,
+  articleUrl: string,
+): Pick<
+  ParsedArticle,
+  "imageUrl" | "imageWidth" | "imageHeight" | "imageAlt" | "imageSource"
+> {
+  const matches = Array.from(html.matchAll(/<img\b[^>]*>/gi));
+  for (const match of matches) {
+    const tag = match[0];
+    const src =
+      extractAttribute(tag, "src") ?? extractAttribute(tag, "data-src");
+    const imageUrl = absolutizeUrl(src, articleUrl);
+    if (!imageUrl || !isLikelyImageUrl(imageUrl)) continue;
+
+    return {
+      imageUrl,
+      imageWidth: parseOptionalInteger(extractAttribute(tag, "width")),
+      imageHeight: parseOptionalInteger(extractAttribute(tag, "height")),
+      imageAlt: extractAttribute(tag, "alt") ?? extractAttribute(tag, "title"),
+      imageSource: "rss",
+    };
+  }
+
+  return {};
+}
+
+function extractFeedImage(
+  itemXml: string,
+  articleUrl: string,
+): Pick<
+  ParsedArticle,
+  "imageUrl" | "imageWidth" | "imageHeight" | "imageAlt" | "imageSource"
+> {
+  const patterns = [
+    /<media:content\b[^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<media:thumbnail\b[^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<enclosure\b[^>]*type=["']image\/[^"']+["'][^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = itemXml.match(pattern);
+    const tag = match?.[0];
+    const imageUrl = absolutizeUrl(match?.[1], articleUrl);
+    if (!tag || !imageUrl || !isLikelyImageUrl(imageUrl)) continue;
+
+    return {
+      imageUrl,
+      imageWidth: parseOptionalInteger(extractAttribute(tag, "width")),
+      imageHeight: parseOptionalInteger(extractAttribute(tag, "height")),
+      imageAlt: extractAttribute(tag, "alt") ?? extractAttribute(tag, "title"),
+      imageSource: "rss",
+    };
+  }
+
+  const htmlImage = extractImageFromHtmlSnippet(itemXml, articleUrl);
+  if (htmlImage.imageUrl) {
+    return htmlImage;
+  }
+
+  return {};
+}
+
+/** Strip HTML tags and decode common entities. */
+function stripHtml(text: string): string {
+  return decodeHtmlEntities(text)
+    .replace(/<a\s+href[^ ]*/gi, " ")
+    .replace(/<a\s+href=["'][^"']*["']?/gi, " ")
+    .replace(/<\/?a>/gi, " ")
+    .replace(/<[^>\n]*$/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/www\.\S+/gi, " ")
+    .replace(/\bView Full Coverage on Google News\b/gi, " ")
+    .replace(/\bRead more\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeArticleTitle(title: string): string {
+  const cleaned = stripHtml(title).replace(/\s+/g, " ").trim();
+  for (const suffix of KNOWN_HEADLINE_SUFFIXES) {
+    const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const suffixPattern = new RegExp(`\\s+-\\s+${escapedSuffix}$`, "i");
+    if (suffixPattern.test(cleaned)) {
+      return cleaned.replace(suffixPattern, "").trim();
+    }
+  }
+  return cleaned;
+}
+
+export function normalizeArticleSnippet(snippet: string): string {
+  return stripHtml(snippet)
+    .replace(/\s*[•·]\s*/g, " ")
+    .replace(/\b[A-Z]{2,5}\s*-\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// URL Canonicalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a URL for dedup purposes:
+ *  - Strip tracking params (utm_*, fbclid, etc.)
+ *  - Remove trailing slashes
+ *  - Force lowercase on host
+ *  - Remove fragments
+ */
+function canonicalizeUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    // Remove common tracking params
+    const trackingParams = [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "fbclid",
+      "gclid",
+      "ref",
+      "source",
+    ];
+    for (const param of trackingParams) {
+      url.searchParams.delete(param);
+    }
+    // Lowercase host
+    url.hostname = url.hostname.toLowerCase();
+    // Remove trailing slash (but not root "/")
+    let normalized = url.toString();
+    if (normalized.endsWith("/") && url.pathname !== "/") {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  } catch {
+    // If URL parsing fails, return as-is
+    return raw.trim();
+  }
+}
+
+/** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
+function extractDomain(url: string): string {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    // Strip "www." prefix
+    return host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal Queries
+// ---------------------------------------------------------------------------
+
+/** Check if a canonical URL already exists in articles table. */
+export const articleExistsByCanonicalUrl = internalQuery({
+  args: { canonicalUrl: v.string() },
+  handler: async (ctx, { canonicalUrl }) => {
+    const existing = await ctx.db
+      .query("articles")
+      .withIndex("by_canonical_url", (q) => q.eq("canonicalUrl", canonicalUrl))
+      .first();
+    return existing !== null;
+  },
+});
+
+/** Batch-check canonical URLs for dedup. Returns the set of URLs that already exist. */
+export const findExistingCanonicalUrls = internalQuery({
+  args: { urls: v.array(v.string()) },
+  handler: async (ctx, { urls }) => {
+    const results = await Promise.all(
+      urls.map((url) =>
+        ctx.db
+          .query("articles")
+          .withIndex("by_canonical_url", (q) => q.eq("canonicalUrl", url))
+          .first(),
+      ),
+    );
+    const existing = new Set<string>();
+    for (let i = 0; i < urls.length; i++) {
+      if (results[i]) existing.add(urls[i]!);
+    }
+    return [...existing];
+  },
+});
+
+/** Find a source by domain, or return null. */
+export const getSourceByDomain = internalQuery({
+  args: { domain: v.string() },
+  handler: async (ctx, { domain }) => {
+    return ctx.db
+      .query("sources")
+      .withIndex("by_domain", (q) => q.eq("domain", domain))
+      .first();
+  },
+});
+
+/** Get ingestion meta for a feed URL. */
+export const getIngestionMeta = internalQuery({
+  args: { feedUrl: v.string() },
+  handler: async (ctx, { feedUrl }) => {
+    return ctx.db
+      .query("ingestionMeta")
+      .withIndex("by_feed_url", (q) => q.eq("feedUrl", feedUrl))
+      .first();
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Internal Mutations
+// ---------------------------------------------------------------------------
+
+/** Create a source record for a new domain, using curated MBFC data from feeds.ts. */
+export const createSource = internalMutation({
+  args: {
+    domain: v.string(),
+    name: v.string(),
+    baseBias: v.number(),
+    reliabilityScore: v.number(),
+    mbfcCategory: v.string(),
+    mbfcFactual: v.optional(v.string()),
+    mbfcCredibility: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    {
+      domain,
+      name,
+      baseBias,
+      reliabilityScore,
+      mbfcCategory,
+      mbfcFactual,
+      mbfcCredibility,
+    },
+  ): Promise<Id<"sources">> => {
+    return ctx.db.insert("sources", {
+      domain,
+      name,
+      baseBias,
+      reliabilityScore,
+      logoUrl: `https://logo.clearbit.com/${domain}`,
+      mbfcCategory,
+      mbfcFactual,
+      mbfcCredibility,
+      mbfcLastChecked: Date.now(),
+    });
+  },
+});
+
+/** Insert a batch of articles. */
+export const insertArticles = internalMutation({
+  args: {
+    articles: v.array(
+      v.object({
+        sourceId: v.id("sources"),
+        title: v.string(),
+        url: v.string(),
+        canonicalUrl: v.string(),
+        rssSnippet: v.optional(v.string()),
+        imageUrl: v.optional(v.string()),
+        imageWidth: v.optional(v.number()),
+        imageHeight: v.optional(v.number()),
+        imageAlt: v.optional(v.string()),
+        imageSource: v.optional(v.literal("rss")),
+        status: v.union(
+          v.literal("unprocessed"),
+          v.literal("enriched"),
+          v.literal("clustered"),
+          v.literal("discarded"),
+        ),
+        publishedAt: v.number(), // Epoch ms
+      }),
+    ),
+  },
+  handler: async (ctx, { articles }) => {
+    const ids: Id<"articles">[] = [];
+    for (const article of articles) {
+      const id = await ctx.db.insert("articles", article);
+      ids.push(id);
+    }
+    return ids;
+  },
+});
+
+/** Update or create ingestion meta for a feed. */
+export const upsertIngestionMeta = internalMutation({
+  args: {
+    feedUrl: v.string(),
+    success: v.boolean(),
+    articleCount: v.number(),
+    error: v.optional(v.string()),
+    sourceId: v.id("sources"),
+  },
+  handler: async (ctx, { feedUrl, success, articleCount, error, sourceId }) => {
+    const existing = await ctx.db
+      .query("ingestionMeta")
+      .withIndex("by_feed_url", (q) => q.eq("feedUrl", feedUrl))
+      .first();
+
+    const now = Date.now();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        lastIngestedAt: now,
+        ...(success
+          ? {
+              lastSuccessAt: now,
+              consecutiveFailures: 0,
+              lastError: undefined,
+            }
+          : {
+              consecutiveFailures: existing.consecutiveFailures + 1,
+              lastError: error?.slice(0, 500),
+            }),
+        articleCount: existing.articleCount + articleCount,
+      });
+    } else {
+      await ctx.db.insert("ingestionMeta", {
+        feedUrl,
+        sourceId,
+        lastIngestedAt: now,
+        lastSuccessAt: success ? now : undefined,
+        consecutiveFailures: success ? 0 : 1,
+        lastError: success ? undefined : error?.slice(0, 500),
+        articleCount,
+      });
+    }
+  },
+});
+
+/** Acquire a short-lived run lock if no live owner currently holds it. */
+export const acquirePipelineLock = internalMutation({
+  args: {
+    key: v.string(),
+    owner: v.string(),
+    expiresAt: v.number(),
+  },
+  handler: async (ctx, { key, owner, expiresAt }) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("pipelineLocks")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+
+    if (existing && existing.expiresAt > now) {
+      return {
+        acquired: false,
+        owner: existing.owner,
+        expiresAt: existing.expiresAt,
+      };
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        owner,
+        acquiredAt: now,
+        updatedAt: now,
+        expiresAt,
+      });
+    } else {
+      await ctx.db.insert("pipelineLocks", {
+        key,
+        owner,
+        acquiredAt: now,
+        updatedAt: now,
+        expiresAt,
+      });
+    }
+
+    return { acquired: true, owner, expiresAt };
+  },
+});
+
+/** Release a run lock only if this run still owns it. */
+export const releasePipelineLock = internalMutation({
+  args: {
+    key: v.string(),
+    owner: v.string(),
+  },
+  handler: async (ctx, { key, owner }) => {
+    const existing = await ctx.db
+      .query("pipelineLocks")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+
+    if (!existing || existing.owner !== owner) {
+      return { released: false };
+    }
+
+    await ctx.db.delete(existing._id);
+    return { released: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Main Ingestion Action
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest a single RSS feed: fetch XML, parse articles, deduplicate, insert.
+ * Called by the cron scheduler or manually for testing.
+ */
+export const ingestSingleFeed = internalAction({
+  args: {
+    feedUrl: v.string(),
+    feedName: v.string(),
+    feedDomain: v.string(),
+    baseBias: v.number(),
+    reliabilityScore: v.number(),
+    mbfcCategory: v.string(),
+    mbfcFactual: v.optional(v.string()),
+    mbfcCredibility: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    {
+      feedUrl,
+      feedName,
+      feedDomain,
+      baseBias,
+      reliabilityScore,
+      mbfcCategory,
+      mbfcFactual,
+      mbfcCredibility,
+    },
+  ): Promise<{ inserted: number; skipped: number; error?: string }> => {
+    let articlesInserted = 0;
+    let sourceId: Id<"sources"> | null = null;
+
+    try {
+      // Ensure source exists first — needed for ingestionMeta updates.
+      const existingSource = await ctx.runQuery(
+        internal.ingestion.getSourceByDomain,
+        { domain: feedDomain },
+      );
+
+      const resolvedSourceId: Id<"sources"> = existingSource
+        ? existingSource._id
+        : await ctx.runMutation(internal.ingestion.createSource, {
+            domain: feedDomain,
+            name: feedName,
+            baseBias,
+            reliabilityScore,
+            mbfcCategory,
+            mbfcFactual,
+            mbfcCredibility,
+          });
+      sourceId = resolvedSourceId;
+
+      // 1. Fetch RSS XML
+      const response = await fetch(feedUrl, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          Referer: "https://www.google.com/",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+        signal: AbortSignal.timeout(15_000), // 15s timeout
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const xml = await response.text();
+      const parsed = parseRSSXml(xml);
+
+      if (parsed.length === 0) {
+        console.warn(`[ingestion] No articles parsed from ${feedUrl}`);
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: true,
+          articleCount: 0,
+          sourceId: resolvedSourceId,
+        });
+        return { inserted: 0, skipped: 0 };
+      }
+
+      // 2. Canonicalize URLs
+      const articlesWithCanonical = parsed
+        .slice(0, MAX_ARTICLES_PER_FEED)
+        .map((a) => ({
+          ...a,
+          canonicalUrl: canonicalizeUrl(a.url),
+        }));
+
+      // 2.5 Filter out articles older than 72 hours
+      const cutoffMs = Date.now() - 72 * 60 * 60 * 1000;
+      const recentArticles = articlesWithCanonical.filter((a) => {
+        if (!a.publishedAt) return true; // Keep articles with no date (err on side of inclusion)
+        const pubTime = new Date(a.publishedAt).getTime();
+        return Number.isNaN(pubTime) || pubTime > cutoffMs;
+      });
+
+      // 3. Batch dedup check
+      const dedupedRecentArticles = Array.from(
+        new Map(recentArticles.map((a) => [a.canonicalUrl, a])).values(),
+      );
+      const canonicalUrls = dedupedRecentArticles.map((a) => a.canonicalUrl);
+      const existingUrls = await ctx.runQuery(
+        internal.ingestion.findExistingCanonicalUrls,
+        { urls: canonicalUrls },
+      );
+      const existingSet = new Set(existingUrls);
+
+      const newArticles = dedupedRecentArticles.filter(
+        (a) => !existingSet.has(a.canonicalUrl),
+      );
+      const skippedArticles = recentArticles.length - newArticles.length;
+
+      if (newArticles.length === 0) {
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: true,
+          articleCount: 0,
+          sourceId: resolvedSourceId,
+        });
+        return { inserted: 0, skipped: skippedArticles };
+      }
+
+      // 4. Build article records (no placeholder summary/aiBiasScore — enrichment pipeline fills those)
+      const articleRecords = newArticles.map((a) => ({
+        sourceId: resolvedSourceId,
+        title: a.title,
+        url: a.url,
+        canonicalUrl: a.canonicalUrl,
+        rssSnippet: a.snippet || undefined,
+        imageUrl: a.imageUrl,
+        imageWidth: a.imageWidth,
+        imageHeight: a.imageHeight,
+        imageAlt: a.imageAlt,
+        imageSource: a.imageSource,
+        status: "unprocessed" as const,
+        publishedAt: a.publishedAt
+          ? new Date(a.publishedAt).getTime() || Date.now()
+          : Date.now(),
+      }));
+
+      // 6. Insert articles in batches of 50 (Convex mutation limits)
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < articleRecords.length; i += BATCH_SIZE) {
+        const batch = articleRecords.slice(i, i + BATCH_SIZE);
+        await ctx.runMutation(internal.ingestion.insertArticles, {
+          articles: batch,
+        });
+        articlesInserted += batch.length;
+      }
+
+      // 7. Update feed health (with sourceId link)
+      await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+        feedUrl,
+        success: true,
+        articleCount: articlesInserted,
+        sourceId: resolvedSourceId,
+      });
+
+      console.log(
+        `[ingestion] ${feedName}: ${articlesInserted} new, ${skippedArticles} skipped`,
+      );
+
+      return {
+        inserted: articlesInserted,
+        skipped: skippedArticles,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[ingestion] Failed to ingest ${feedUrl}: ${message}`);
+
+      if (sourceId) {
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: false,
+          articleCount: 0,
+          error: message,
+          sourceId,
+        });
+      }
+
+      return { inserted: 0, skipped: 0, error: message };
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Batch Ingestion — runs all feeds
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest all curated feeds. This is the entry point called by the cron job.
+ * Processes feeds sequentially to avoid overwhelming external servers.
+ */
+export const ingestAllFeeds = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    totalInserted: number;
+    feedsProcessed: number;
+    failedFeeds: number;
+  }> => {
+    const lockOwner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
+      key: INGEST_ALL_FEEDS_LOCK_KEY,
+      owner: lockOwner,
+      expiresAt: Date.now() + INGEST_ALL_FEEDS_LOCK_TTL_MS,
+    });
+
+    if (!lock.acquired) {
+      console.log(
+        `[ingestion] ingestAllFeeds already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
+      );
+      return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
+    }
+
+    try {
+      // Kill-switch: skip entire run when pipeline is paused
+      const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+      if (paused) {
+        console.log("[ingestion] Pipeline paused — skipping ingestAllFeeds");
+        return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
+      }
+
+      console.log(
+        `[ingestion] Starting batch ingest of ${ALL_FEEDS.length} feeds`,
+      );
+      const results: Array<{
+        feed: string;
+        inserted: number;
+        error?: string;
+      }> = [];
+
+      for (const feed of ALL_FEEDS) {
+        const result = await ctx.runAction(internal.ingestion.ingestSingleFeed, {
+          feedUrl: feed.url,
+          feedName: feed.name,
+          feedDomain: feed.domain,
+          baseBias: feed.baseBias,
+          reliabilityScore: feed.reliabilityScore,
+          mbfcCategory: feed.mbfc.category,
+          mbfcFactual: feed.mbfc.factual,
+          mbfcCredibility: feed.mbfc.credibility,
+        });
+
+        results.push({
+          feed: feed.name,
+          inserted: result.inserted,
+          error: result.error,
+        });
+      }
+
+      const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
+      let failedFeeds = results.filter((r) => r.error);
+
+      console.log(
+        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed`,
+      );
+
+      // Retry failed feeds once after a short delay (helps with transient errors)
+      let retryInserted = 0;
+      if (failedFeeds.length > 0) {
+        console.log(
+          `[ingestion] Retrying ${failedFeeds.length} failed feeds...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        const failedFeedNames = new Set(failedFeeds.map((f) => f.feed));
+        const feedsToRetry = ALL_FEEDS.filter((f) =>
+          failedFeedNames.has(f.name),
+        );
+        const retrySuccesses = new Set<string>();
+
+        for (const feed of feedsToRetry) {
+          const retryResult = await ctx.runAction(
+            internal.ingestion.ingestSingleFeed,
+            {
+              feedUrl: feed.url,
+              feedName: feed.name,
+              feedDomain: feed.domain,
+              baseBias: feed.baseBias,
+              reliabilityScore: feed.reliabilityScore,
+              mbfcCategory: feed.mbfc.category,
+              mbfcFactual: feed.mbfc.factual,
+              mbfcCredibility: feed.mbfc.credibility,
+            },
+          );
+
+          if (!retryResult.error) {
+            retryInserted += retryResult.inserted;
+            retrySuccesses.add(feed.name);
+            console.log(
+              `[ingestion] Retry succeeded for ${feed.name}: ${retryResult.inserted} articles`,
+            );
+          }
+        }
+
+        // Remove feeds that succeeded on retry
+        failedFeeds = failedFeeds.filter((f) => !retrySuccesses.has(f.feed));
+      }
+
+      if (failedFeeds.length > 0) {
+        console.warn(
+          `[ingestion] Failed feeds: ${failedFeeds.map((f) => `${f.feed}: ${f.error}`).join("; ")}`,
+        );
+      }
+
+      return {
+        totalInserted: totalInserted + retryInserted,
+        feedsProcessed: results.length,
+        failedFeeds: failedFeeds.length,
+      };
+    } finally {
+      try {
+        await ctx.runMutation(internal.ingestion.releasePipelineLock, {
+          key: INGEST_ALL_FEEDS_LOCK_KEY,
+          owner: lockOwner,
+        });
+      } catch (error) {
+        console.error(
+          `[ingestion] Failed to release ingestAllFeeds lock: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }
+  },
+});
