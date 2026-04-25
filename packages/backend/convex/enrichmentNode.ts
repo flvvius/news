@@ -15,6 +15,7 @@
 
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { getOpenAI, shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
 import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
@@ -102,6 +103,8 @@ async function runEnrichmentBatch(
     url: string;
     canonicalUrl: string;
     rssSnippet?: string | null;
+    entities?: string[];
+    extractionQuality?: "strong" | "weak";
     sourceBaseBias: number;
   }>,
   runId: string,
@@ -131,6 +134,13 @@ async function runEnrichmentBatch(
         bodyChars: extracted.bodyChars,
         fetchSucceeded: extracted.fetchSucceeded,
         resolvedUrl: extracted.resolvedUrl,
+        imageUrl: extracted.imageUrl,
+        imageWidth: extracted.imageWidth,
+        imageHeight: extracted.imageHeight,
+        imageAlt: extracted.imageAlt,
+        imageSource: extracted.imageSource,
+        entities: extracted.entities,
+        extractionQuality: extracted.extractionQuality,
       };
     },
   );
@@ -169,6 +179,7 @@ async function runEnrichmentBatch(
 
     let enriched = 0;
     let failed = 0;
+    const touchedEventIds = new Set<Id<"events">>();
 
     for (let i = 0; i < articles.length; i++) {
       const article = articles[i]!;
@@ -184,12 +195,22 @@ async function runEnrichmentBatch(
             aiBiasScore: article.sourceBaseBias,
             summary: prepared.extractedSummary,
             resolvedUrl: prepared.resolvedUrl,
+            imageUrl: prepared.imageUrl,
+            imageWidth: prepared.imageWidth,
+            imageHeight: prepared.imageHeight,
+            imageAlt: prepared.imageAlt,
+            imageSource: prepared.imageSource,
+            entities: prepared.entities,
+            extractionQuality: prepared.extractionQuality,
             version: EMBEDDING_VERSION,
             runId,
           },
         );
         if (result.updated) {
           enriched++;
+          if (result.eventId) {
+            touchedEventIds.add(result.eventId);
+          }
         } else {
           console.warn(
             `[enrichment] Article ${article._id} lease no longer belongs to run ${runId}; leaving it unchanged`,
@@ -214,6 +235,12 @@ async function runEnrichmentBatch(
           `[enrichment] No embedding for article ${article._id}, discarded`,
         );
       }
+    }
+
+    for (const eventId of touchedEventIds) {
+      await ctx.runMutation(internal.clustering.refreshEventPresentationById, {
+        eventId,
+      });
     }
 
     console.log(

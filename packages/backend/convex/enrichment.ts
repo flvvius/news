@@ -40,6 +40,8 @@ export const getUnprocessedArticles = internalQuery({
             url: article.url,
             canonicalUrl: article.canonicalUrl,
             rssSnippet: article.rssSnippet ?? "",
+            entities: article.entities ?? [],
+            extractionQuality: article.extractionQuality,
             sourceBaseBias: source.baseBias,
           };
         }),
@@ -72,6 +74,8 @@ async function toClaimedArticle(
     url: article.url,
     canonicalUrl: article.canonicalUrl,
     rssSnippet: article.rssSnippet ?? "",
+    entities: article.entities ?? [],
+    extractionQuality: article.extractionQuality,
     sourceBaseBias: source.baseBias,
   };
 }
@@ -198,12 +202,43 @@ export const markArticleEnriched = internalMutation({
     aiBiasScore: v.number(),
     summary: v.optional(v.string()),
     resolvedUrl: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    imageWidth: v.optional(v.number()),
+    imageHeight: v.optional(v.number()),
+    imageAlt: v.optional(v.string()),
+    imageSource: v.optional(
+      v.union(
+        v.literal("og"),
+        v.literal("twitter"),
+        v.literal("jsonld"),
+        v.literal("inline"),
+      ),
+    ),
+    entities: v.optional(v.array(v.string())),
+    extractionQuality: v.optional(
+      v.union(v.literal("strong"), v.literal("weak")),
+    ),
     version: v.number(),
     runId: v.string(),
   },
   handler: async (
     ctx,
-    { articleId, embedding, aiBiasScore, summary, resolvedUrl, version, runId },
+    {
+      articleId,
+      embedding,
+      aiBiasScore,
+      summary,
+      resolvedUrl,
+      imageUrl,
+      imageWidth,
+      imageHeight,
+      imageAlt,
+      imageSource,
+      entities,
+      extractionQuality,
+      version,
+      runId,
+    },
   ) => {
     const article = await ctx.db.get(articleId);
     if (
@@ -211,7 +246,7 @@ export const markArticleEnriched = internalMutation({
       article.status !== "processing" ||
       article.enrichmentRunId !== runId
     ) {
-      return { updated: false };
+      return { updated: false, eventId: undefined };
     }
 
     const existingEmbeddings = await ctx.db
@@ -235,12 +270,19 @@ export const markArticleEnriched = internalMutation({
       summary: summary ?? article.summary,
       url: resolvedUrl ?? article.url,
       canonicalUrl: resolvedUrl ?? article.canonicalUrl,
+      imageUrl: imageUrl ?? article.imageUrl,
+      imageWidth: imageWidth ?? article.imageWidth,
+      imageHeight: imageHeight ?? article.imageHeight,
+      imageAlt: imageAlt ?? article.imageAlt ?? article.title,
+      imageSource: imageSource ?? article.imageSource,
+      entities: entities ?? article.entities,
+      extractionQuality: extractionQuality ?? article.extractionQuality,
       status: "enriched",
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
     });
 
-    return { updated: true };
+    return { updated: true, eventId: article.eventId };
   },
 });
 

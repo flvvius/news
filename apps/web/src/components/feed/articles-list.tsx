@@ -9,6 +9,8 @@ type Article = {
   title: string;
   summary?: string;
   rssSnippet?: string;
+  imageUrl?: string;
+  imageAlt?: string;
   canonicalUrl: string;
   publishedAt: number;
   source: {
@@ -36,84 +38,109 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
     (thresholdsConfig?.value as number[] | undefined) ?? undefined;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Articles ({articles.length})</CardTitle>
+    <Card className="overflow-hidden border-border/80 py-0">
+      <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+        <CardTitle className="text-xl tracking-tight">
+          Original Reporting ({articles.length})
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
         <div className="space-y-4">
           {articles.map((article) => (
             <div
               key={article._id}
-              className="flex items-start gap-4 pb-4 border-b last:border-b-0 last:pb-0"
+              className="overflow-hidden rounded-[1rem] border border-border/70 bg-card"
             >
-              {/* Source logo */}
-              {article.source?.logoUrl && (
-                <div className="shrink-0 h-10 w-10 rounded-full border bg-muted overflow-hidden">
-                  <img
-                    src={article.source.logoUrl}
-                    alt={article.source.name}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              )}
-
-              <div className="flex-1 min-w-0">
-                {/* Article title */}
-                <h3 className="font-medium mb-1 leading-snug">
-                  {article.title}
-                </h3>
-
-                {/* Source name and bias */}
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                  {article.source && (
-                    <>
-                      <span className="text-sm text-muted-foreground">
-                        {article.source.name}
-                      </span>
-                      <BiasIndicator
-                        bias={article.source.baseBias}
-                        size="sm"
-                        thresholds={thresholds}
-                      />
-                    </>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(article.publishedAt).toLocaleDateString()}
-                  </span>
-                </div>
-
-                {/* Article summary */}
-                {(article.summary || article.rssSnippet) && (
-                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                    {article.summary ?? article.rssSnippet}
-                  </p>
-                )}
-
-                {/* Read original link */}
-                <a
-                  href={article.canonicalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Read original (opens in a new tab)"
-                  className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  Read original
-                  <svg
-                    className="h-3 w-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              <div className="grid gap-0 md:grid-cols-[minmax(0,0.34fr)_minmax(0,1fr)]">
+                <div className="aspect-[4/3] overflow-hidden border-b border-border/70 bg-muted/40 md:aspect-auto md:border-r md:border-b-0">
+                  {article.imageUrl ? (
+                    <img
+                      src={article.imageUrl}
+                      alt={article.imageAlt ?? article.title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
                     />
-                  </svg>
-                </a>
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
+                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                        {article.source?.name ?? "Source"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex min-w-0 flex-col gap-4 p-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {article.source && (
+                      <>
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background">
+                          {article.source.logoUrl ? (
+                            <img
+                              src={article.source.logoUrl}
+                              alt={article.source.name}
+                              className="h-full w-full object-contain p-1.5"
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-foreground">
+                              {article.source.name.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-wrap items-center gap-3">
+                          <span className="text-sm font-medium text-card-foreground">
+                            {article.source.name}
+                          </span>
+                          <BiasIndicator
+                            bias={article.source.baseBias}
+                            size="sm"
+                            thresholds={thresholds}
+                          />
+                        </div>
+                      </>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(article.publishedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold leading-snug tracking-tight text-card-foreground">
+                      {article.title}
+                    </h3>
+
+                    {(article.summary || article.rssSnippet) && (
+                      <p className="max-w-[65ch] text-sm text-muted-foreground">
+                        {article.summary ?? article.rssSnippet}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <a
+                      href={article.canonicalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Read original (opens in a new tab)"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      Read original
+                      <svg
+                        className="h-3 w-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           ))}

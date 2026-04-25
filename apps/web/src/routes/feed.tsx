@@ -69,17 +69,32 @@ function FeedComponent() {
     return map;
   }, [topics]);
 
-  return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold">Today's Events</h1>
-          <p className="text-sm text-muted-foreground">
-            Track the same story across perspectives.
-          </p>
-        </header>
+  const featuredEvent = events?.[0];
+  const remainingEvents = featuredEvent ? events.slice(1) : events;
 
-        <div className="flex flex-wrap items-center gap-2">
+  return (
+    <div className="bg-linear-to-b from-background via-background to-muted/35">
+      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+        <div className="flex flex-col gap-8">
+          <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
+            <div className="bg-linear-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
+              <div className="flex flex-col gap-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                  Biviant Feed
+                </p>
+                <div className="flex max-w-[65ch] flex-col gap-3">
+                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+                    See the day’s biggest stories with the image front and center.
+                  </h1>
+                  <p className="max-w-[55ch] text-sm text-muted-foreground sm:text-base">
+                    Follow the same event across outlets, open the story page, and compare the underlying reporting without losing visual context.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             onClick={() => setSelectedTopic("all")}
@@ -103,41 +118,78 @@ function FeedComponent() {
               {topic.displayName}
             </Button>
           ))}
-        </div>
+          </div>
 
-        <div className="grid gap-4">
-          {status === "LoadingFirstPage" && (
-            <div className="text-sm text-muted-foreground">Loading…</div>
-          )}
-
-          {events?.map((event) => (
-            <EventCard
-              key={event._id}
-              event={event}
-              topicNamesById={topicNamesById}
-              maxSources={maxSources}
-            />
-          ))}
-
-          {status !== "LoadingFirstPage" &&
-            (!events || events.length === 0) && (
-              <div className="text-sm text-muted-foreground">
-                No events found.
+          <div className="grid gap-6">
+            {status === "LoadingFirstPage" && (
+              <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+                Loading…
               </div>
             )}
-        </div>
 
-        {status === "CanLoadMore" && (
-          <div>
-            <Button
-              type="button"
-              onClick={() => loadMore(pageSize)}
-              variant="outline"
-            >
-              Load more
-            </Button>
+            {featuredEvent ? (
+              <section className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                    Lead Story
+                  </h2>
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Featured
+                  </p>
+                </div>
+                <EventCard
+                  event={featuredEvent}
+                  topicNamesById={topicNamesById}
+                  maxSources={maxSources}
+                  variant="feature"
+                />
+              </section>
+            ) : null}
+
+            {remainingEvents && remainingEvents.length > 0 ? (
+              <section className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                    More Events
+                  </h2>
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Latest coverage
+                  </p>
+                </div>
+                <div className="grid gap-5">
+                  {remainingEvents.map((event) => (
+                    <EventCard
+                      key={event._id}
+                      event={event}
+                      topicNamesById={topicNamesById}
+                      maxSources={maxSources}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {status !== "LoadingFirstPage" &&
+              (!events || events.length === 0) && (
+                <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+                  No events found.
+                </div>
+              )}
           </div>
-        )}
+
+          {status === "CanLoadMore" && (
+            <div>
+              <Button
+                type="button"
+                onClick={() => loadMore(pageSize)}
+                variant="outline"
+                className="rounded-full"
+              >
+                Load more
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

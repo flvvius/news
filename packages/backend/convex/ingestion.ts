@@ -47,6 +47,11 @@ interface ParsedArticle {
   url: string;
   snippet: string;
   publishedAt: string; // ISO-8601 or raw date string
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+  imageSource?: "rss";
 }
 
 const KNOWN_HEADLINE_SUFFIXES = [
@@ -105,6 +110,7 @@ function parseRSSXml(xml: string): ParsedArticle[] {
         extractTag(entry, "summary") ?? extractTag(entry, "content") ?? "";
       const publishedAt =
         extractTag(entry, "published") ?? extractTag(entry, "updated") ?? "";
+      const rssImage = extractFeedImage(entry, link ?? "");
 
       if (title && link) {
         articles.push({
@@ -112,6 +118,7 @@ function parseRSSXml(xml: string): ParsedArticle[] {
           url: link.trim(),
           snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
           publishedAt,
+          ...rssImage,
         });
       }
     }
@@ -127,6 +134,7 @@ function parseRSSXml(xml: string): ParsedArticle[] {
         "";
       const publishedAt =
         extractTag(item, "pubDate") ?? extractTag(item, "dc:date") ?? "";
+      const rssImage = extractFeedImage(item, link ?? "");
 
       if (title && link) {
         articles.push({
@@ -134,6 +142,7 @@ function parseRSSXml(xml: string): ParsedArticle[] {
           url: link.trim(),
           snippet: normalizeArticleSnippet(snippet).slice(0, 1000),
           publishedAt,
+          ...rssImage,
         });
       }
     }
@@ -191,6 +200,115 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#(\d+);/g, (_m, code) =>
       String.fromCharCode(Number.parseInt(code, 10)),
     );
+}
+
+function parseOptionalInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function absolutizeUrl(candidate: string | undefined, baseUrl: string): string | undefined {
+  if (!candidate) return undefined;
+  try {
+    return new URL(candidate, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function isLikelyImageUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.toLowerCase();
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    return (
+      /\.(avif|gif|jpe?g|png|webp|bmp)(?:$|\?)/i.test(path) ||
+      path.includes("/image") ||
+      path.includes("/photo") ||
+      path.includes("/media")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function extractAttribute(tag: string, attribute: string): string | undefined {
+  const patterns = [
+    new RegExp(`${attribute}=["']([^"']+)["']`, "i"),
+    new RegExp(`${attribute}=([^\\s>]+)`, "i"),
+  ];
+  for (const pattern of patterns) {
+    const match = tag.match(pattern);
+    const value = match?.[1]?.trim();
+    if (value) return decodeHtmlEntities(value);
+  }
+  return undefined;
+}
+
+function extractImageFromHtmlSnippet(
+  html: string,
+  articleUrl: string,
+): Pick<
+  ParsedArticle,
+  "imageUrl" | "imageWidth" | "imageHeight" | "imageAlt" | "imageSource"
+> {
+  const matches = Array.from(html.matchAll(/<img\b[^>]*>/gi));
+  for (const match of matches) {
+    const tag = match[0];
+    const src =
+      extractAttribute(tag, "src") ?? extractAttribute(tag, "data-src");
+    const imageUrl = absolutizeUrl(src, articleUrl);
+    if (!imageUrl || !isLikelyImageUrl(imageUrl)) continue;
+
+    return {
+      imageUrl,
+      imageWidth: parseOptionalInteger(extractAttribute(tag, "width")),
+      imageHeight: parseOptionalInteger(extractAttribute(tag, "height")),
+      imageAlt: extractAttribute(tag, "alt") ?? extractAttribute(tag, "title"),
+      imageSource: "rss",
+    };
+  }
+
+  return {};
+}
+
+function extractFeedImage(
+  itemXml: string,
+  articleUrl: string,
+): Pick<
+  ParsedArticle,
+  "imageUrl" | "imageWidth" | "imageHeight" | "imageAlt" | "imageSource"
+> {
+  const patterns = [
+    /<media:content\b[^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<media:thumbnail\b[^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<enclosure\b[^>]*type=["']image\/[^"']+["'][^>]*url=["']([^"']+)["'][^>]*>/i,
+    /<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["'][^>]*>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = itemXml.match(pattern);
+    const tag = match?.[0];
+    const imageUrl = absolutizeUrl(match?.[1], articleUrl);
+    if (!tag || !imageUrl || !isLikelyImageUrl(imageUrl)) continue;
+
+    return {
+      imageUrl,
+      imageWidth: parseOptionalInteger(extractAttribute(tag, "width")),
+      imageHeight: parseOptionalInteger(extractAttribute(tag, "height")),
+      imageAlt: extractAttribute(tag, "alt") ?? extractAttribute(tag, "title"),
+      imageSource: "rss",
+    };
+  }
+
+  const htmlImage = extractImageFromHtmlSnippet(itemXml, articleUrl);
+  if (htmlImage.imageUrl) {
+    return htmlImage;
+  }
+
+  return {};
 }
 
 /** Strip HTML tags and decode common entities. */
@@ -393,6 +511,11 @@ export const insertArticles = internalMutation({
         url: v.string(),
         canonicalUrl: v.string(),
         rssSnippet: v.optional(v.string()),
+        imageUrl: v.optional(v.string()),
+        imageWidth: v.optional(v.number()),
+        imageHeight: v.optional(v.number()),
+        imageAlt: v.optional(v.string()),
+        imageSource: v.optional(v.literal("rss")),
         status: v.union(
           v.literal("unprocessed"),
           v.literal("enriched"),
@@ -659,6 +782,11 @@ export const ingestSingleFeed = internalAction({
         url: a.url,
         canonicalUrl: a.canonicalUrl,
         rssSnippet: a.snippet || undefined,
+        imageUrl: a.imageUrl,
+        imageWidth: a.imageWidth,
+        imageHeight: a.imageHeight,
+        imageAlt: a.imageAlt,
+        imageSource: a.imageSource,
         status: "unprocessed" as const,
         publishedAt: a.publishedAt
           ? new Date(a.publishedAt).getTime() || Date.now()

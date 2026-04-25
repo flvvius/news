@@ -462,6 +462,18 @@ export const seedDefaults = internalMutation({
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
       },
       {
+        key: "clustering_weak_extraction_min_similarity",
+        value: 0.9,
+        description:
+          "Minimum similarity required before a weak-extraction article can attach to an existing event.",
+      },
+      {
+        key: "clustering_weak_extraction_strong_similarity",
+        value: 0.93,
+        description:
+          "High-confidence similarity override for weak-extraction articles.",
+      },
+      {
         key: "cluster_publish_min_articles",
         value: 2,
         description:
@@ -508,6 +520,18 @@ export const seedDefaults = internalMutation({
         value: 24,
         description:
           "Maximum age difference in hours between two published events that are eligible for duplicate merging.",
+      },
+      {
+        key: "singleton_recluster_min_similarity",
+        value: 0.8,
+        description:
+          "Minimum similarity required before merging two small recent singleton-ish events in the recluster pass.",
+      },
+      {
+        key: "singleton_recluster_window_hours",
+        value: 48,
+        description:
+          "How many hours back the singleton recluster pass should inspect recent small events.",
       },
     ];
 

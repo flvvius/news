@@ -16,6 +16,13 @@ export type ExtractedArticleContent = {
   bodyChars: number;
   fetchSucceeded: boolean;
   resolvedUrl?: string;
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+  imageSource?: "og" | "twitter" | "jsonld" | "inline";
+  entities: string[];
+  extractionQuality: "strong" | "weak";
 };
 
 const EXTRACTION_USER_AGENT =
@@ -102,6 +109,36 @@ function buildEmbeddingText(title: string, bodyText: string, rssSnippet: string)
   }
 
   return parts.join("\n\n").slice(0, MAX_EMBEDDING_CHARS);
+}
+
+function extractEntityCandidates(...texts: string[]): string[] {
+  const entities = new Set<string>();
+
+  for (const rawText of texts) {
+    const text = stripTags(rawText);
+    if (!text) continue;
+
+    const capitalizedMatches =
+      text.match(
+        /\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,}|of|the|and|for|in|on|to)){0,4}\b/g,
+      ) ?? [];
+    for (const match of capitalizedMatches) {
+      const normalized = match.trim().replace(/\s+/g, " ").toLowerCase();
+      if (normalized.length >= 4) {
+        entities.add(normalized);
+      }
+    }
+
+    const numericMatches =
+      text.match(
+        /\$\d[\d,.]*(?:\s?(?:billion|million|trillion))?|\b\d+(?:\.\d+)?%|\b\d+(?:st|nd|rd|th)\b/gi,
+      ) ?? [];
+    for (const match of numericMatches) {
+      entities.add(match.trim().toLowerCase());
+    }
+  }
+
+  return Array.from(entities).slice(0, 32);
 }
 
 function decodeHtmlEntities(text: string): string {
@@ -326,6 +363,351 @@ function getMetaContent(
     if (cleaned) return cleaned;
   }
   return undefined;
+}
+
+function parseOptionalInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function absolutizeUrl(candidate: string | undefined, baseUrl: string): string | undefined {
+  if (!candidate) return undefined;
+  try {
+    return new URL(candidate, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function isLikelyValidImageUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    const path = parsed.pathname.toLowerCase();
+    if (
+      path.includes("avatar") ||
+      path.includes("author") ||
+      path.includes("logo") ||
+      path.includes("icon") ||
+      path.includes("sprite") ||
+      path.includes("pixel") ||
+      path.includes("badge")
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeEscapedUrl(candidate: string | undefined): string | undefined {
+  if (!candidate) return undefined;
+  return candidate
+    .replace(/\\u002F/gi, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
+}
+
+function scoreRawImageCandidate(url: string, hostname: string): number {
+  let score = 0;
+  const lower = url.toLowerCase();
+
+  if (/\.(avif|jpe?g|png|webp)(?:$|\?)/i.test(lower)) score += 4;
+  if (lower.includes("reutersmedia.net")) score += 6;
+  if (lower.includes("assets.bwbx.io")) score += 6;
+  if (lower.includes("bbci.co.uk")) score += 4;
+  if (lower.includes("cdn.cnn.com")) score += 4;
+  if (lower.includes("media.npr.org")) score += 4;
+  if (lower.includes("image")) score += 1;
+  if (lower.includes("photo")) score += 1;
+  if (lower.includes("hero")) score += 2;
+  if (lower.includes("lead")) score += 1;
+  if (lower.includes("social")) score += 1;
+
+  if (hostname.endsWith("reuters.com") && lower.includes("reuters")) score += 3;
+  if (hostname.endsWith("bloomberg.com") && lower.includes("bwbx")) score += 3;
+
+  if (
+    lower.includes("logo") ||
+    lower.includes("icon") ||
+    lower.includes("sprite") ||
+    lower.includes("avatar") ||
+    lower.includes("author") ||
+    lower.includes("thumbnail")
+  ) {
+    score -= 6;
+  }
+
+  return score;
+}
+
+function extractRawImageCandidates(html: string, baseUrl: string): string[] {
+  const hostname = getHostname(baseUrl);
+  const candidates = new Set<string>();
+
+  const addCandidate = (candidate: string | undefined) => {
+    const normalized = absolutizeUrl(normalizeEscapedUrl(candidate), baseUrl);
+    if (!normalized || !isLikelyValidImageUrl(normalized)) return;
+    candidates.add(normalized);
+  };
+
+  const urlPatterns = [
+    /https?:\\\/\\\/[^"'\\\s>]+?\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\\\s>]*)?/gi,
+    /https?:\/\/[^"'\s>]+?\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s>]*)?/gi,
+    /"image"\s*:\s*"([^"]+)"/gi,
+    /"imageUrl"\s*:\s*"([^"]+)"/gi,
+    /"thumbnailUrl"\s*:\s*"([^"]+)"/gi,
+    /"url"\s*:\s*"(https?:[^"]+\.(?:jpg|jpeg|png|webp|avif)[^"]*)"/gi,
+    /contentUrl"\s*:\s*"([^"]+)"/gi,
+    /data-image-url=["']([^"']+)["']/gi,
+    /srcset=["']([^"']+)["']/gi,
+  ];
+
+  for (const pattern of urlPatterns) {
+    for (const match of html.matchAll(pattern)) {
+      const raw = match[1] ?? match[0];
+      if (!raw) continue;
+      if (pattern.source.includes("srcset")) {
+        const srcsetCandidates = raw
+          .split(",")
+          .map((part) => part.trim().split(/\s+/)[0])
+          .filter(Boolean);
+        for (const candidate of srcsetCandidates) addCandidate(candidate);
+      } else {
+        addCandidate(raw);
+      }
+    }
+  }
+
+  return Array.from(candidates).sort(
+    (a, b) => scoreRawImageCandidate(b, hostname) - scoreRawImageCandidate(a, hostname),
+  );
+}
+
+function extractJsonLdImage(html: string): {
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+} {
+  const scripts = Array.from(
+    html.matchAll(
+      /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    ),
+  );
+
+  const candidates: Array<{
+    imageUrl?: string;
+    imageWidth?: number;
+    imageHeight?: number;
+    imageAlt?: string;
+  }> = [];
+
+  const collectImage = (value: unknown) => {
+    if (!value) return;
+    if (typeof value === "string") {
+      candidates.push({ imageUrl: value });
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) collectImage(item);
+      return;
+    }
+    if (typeof value !== "object") return;
+
+    const record = value as Record<string, unknown>;
+    const url =
+      typeof record.url === "string"
+        ? record.url
+        : typeof record.contentUrl === "string"
+          ? record.contentUrl
+          : typeof record["@id"] === "string"
+            ? record["@id"]
+            : undefined;
+
+    candidates.push({
+      imageUrl: url,
+      imageWidth:
+        typeof record.width === "number"
+          ? record.width
+          : parseOptionalInteger(
+              typeof record.width === "string" ? record.width : undefined,
+            ),
+      imageHeight:
+        typeof record.height === "number"
+          ? record.height
+          : parseOptionalInteger(
+              typeof record.height === "string" ? record.height : undefined,
+            ),
+      imageAlt:
+        typeof record.caption === "string"
+          ? record.caption
+          : typeof record.description === "string"
+            ? record.description
+            : undefined,
+    });
+  };
+
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.image) collectImage(record.image);
+    if (record["@graph"]) walk(record["@graph"]);
+    if (record.mainEntity) walk(record.mainEntity);
+  };
+
+  for (const script of scripts) {
+    const raw = decodeHtmlEntities(script[1] ?? "").trim();
+    if (!raw) continue;
+    try {
+      walk(JSON.parse(raw));
+    } catch {
+      continue;
+    }
+  }
+
+  return candidates[0] ?? {};
+}
+
+function extractFirstInlineImage(html: string): {
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+} {
+  const matches = Array.from(html.matchAll(/<img\b[^>]*>/gi));
+  for (const match of matches) {
+    const tag = match[0];
+    const directSrc =
+      tag.match(/\bsrc=["']([^"']+)["']/i)?.[1] ??
+      tag.match(/\bdata-src=["']([^"']+)["']/i)?.[1] ??
+      undefined;
+    const width = parseOptionalInteger(
+      tag.match(/\bwidth=["']?(\d+)["']?/i)?.[1],
+    );
+    const height = parseOptionalInteger(
+      tag.match(/\bheight=["']?(\d+)["']?/i)?.[1],
+    );
+    const alt =
+      tag.match(/\balt=["']([^"']+)["']/i)?.[1] ??
+      tag.match(/\btitle=["']([^"']+)["']/i)?.[1] ??
+      undefined;
+
+    const imageUrl = directSrc;
+    if (!isLikelyValidImageUrl(imageUrl)) continue;
+    if ((width ?? 0) > 0 && (height ?? 0) > 0 && ((width ?? 0) < 300 || (height ?? 0) < 200)) {
+      continue;
+    }
+
+    return {
+      imageUrl,
+      imageWidth: width,
+      imageHeight: height,
+      imageAlt: alt,
+    };
+  }
+
+  return {};
+}
+
+function extractImageMetadata(
+  html: string,
+  baseUrl: string,
+  fallbackAlt: string,
+): {
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+  imageSource?: "og" | "twitter" | "jsonld" | "inline";
+} {
+  const ogImage = absolutizeUrl(
+    getMetaContent(html, "property", "og:image"),
+    baseUrl,
+  );
+  const ogImageUrl = absolutizeUrl(
+    getMetaContent(html, "property", "og:image:url"),
+    baseUrl,
+  );
+  const normalizedOgImage = ogImage ?? ogImageUrl;
+  if (isLikelyValidImageUrl(normalizedOgImage)) {
+    return {
+      imageUrl: normalizedOgImage,
+      imageWidth: parseOptionalInteger(
+        getMetaContent(html, "property", "og:image:width"),
+      ),
+      imageHeight: parseOptionalInteger(
+        getMetaContent(html, "property", "og:image:height"),
+      ),
+      imageAlt:
+        getMetaContent(html, "property", "og:image:alt") ??
+        getMetaContent(html, "property", "og:title") ??
+        fallbackAlt,
+      imageSource: "og",
+    };
+  }
+
+  const twitterImage = absolutizeUrl(
+    getMetaContent(html, "name", "twitter:image"),
+    baseUrl,
+  );
+  const twitterImageSrc = absolutizeUrl(
+    getMetaContent(html, "name", "twitter:image:src"),
+    baseUrl,
+  );
+  const normalizedTwitterImage = twitterImage ?? twitterImageSrc;
+  if (isLikelyValidImageUrl(normalizedTwitterImage)) {
+    return {
+      imageUrl: normalizedTwitterImage,
+      imageAlt:
+        getMetaContent(html, "name", "twitter:image:alt") ??
+        getMetaContent(html, "name", "twitter:title") ??
+        fallbackAlt,
+      imageSource: "twitter",
+    };
+  }
+
+  const jsonLdImage = extractJsonLdImage(html);
+  const jsonLdUrl = absolutizeUrl(jsonLdImage.imageUrl, baseUrl);
+  if (isLikelyValidImageUrl(jsonLdUrl)) {
+    return {
+      imageUrl: jsonLdUrl,
+      imageWidth: jsonLdImage.imageWidth,
+      imageHeight: jsonLdImage.imageHeight,
+      imageAlt: jsonLdImage.imageAlt ?? fallbackAlt,
+      imageSource: "jsonld",
+    };
+  }
+
+  const inlineImage = extractFirstInlineImage(html);
+  const inlineUrl = absolutizeUrl(inlineImage.imageUrl, baseUrl);
+  if (isLikelyValidImageUrl(inlineUrl)) {
+    return {
+      imageUrl: inlineUrl,
+      imageWidth: inlineImage.imageWidth,
+      imageHeight: inlineImage.imageHeight,
+      imageAlt: inlineImage.imageAlt ?? fallbackAlt,
+      imageSource: "inline",
+    };
+  }
+
+  const rawCandidate = extractRawImageCandidates(html, baseUrl)[0];
+  if (isLikelyValidImageUrl(rawCandidate)) {
+    return {
+      imageUrl: rawCandidate,
+      imageAlt: fallbackAlt,
+      imageSource: "inline",
+    };
+  }
+
+  return {};
 }
 
 function chooseBestContentBlock(html: string): {
@@ -562,6 +944,13 @@ export async function extractArticleContentForEmbedding(args: {
     const blockedMetaDescription = fetched.html
       ? extractMetaDescription(fetched.html)
       : undefined;
+    const blockedImage = fetched.html
+      ? extractImageMetadata(
+          fetched.html,
+          fetched.finalUrl ?? resolvedUrl,
+          args.title,
+        )
+      : {};
     return {
       embeddingText: buildEmbeddingText(
         args.title,
@@ -575,12 +964,26 @@ export async function extractArticleContentForEmbedding(args: {
       bodyChars: 0,
       fetchSucceeded: false,
       resolvedUrl: resolvedUrl !== args.url ? resolvedUrl : undefined,
+      imageUrl: blockedImage.imageUrl,
+      imageWidth: blockedImage.imageWidth,
+      imageHeight: blockedImage.imageHeight,
+      imageAlt: blockedImage.imageAlt,
+      imageSource: blockedImage.imageSource,
+      entities: extractEntityCandidates(args.title, blockedMetaDescription ?? args.rssSnippet),
+      extractionQuality: "weak",
     };
   }
 
   try {
     const { text: extractedText, method } = chooseBestContentBlock(fetched.html);
     const metaDescription = extractMetaDescription(fetched.html);
+    const effectiveUrl =
+      fetched.finalUrl && fetched.finalUrl !== args.url
+        ? fetched.finalUrl
+        : resolvedUrl !== args.url
+          ? resolvedUrl
+          : args.url;
+    const image = extractImageMetadata(fetched.html, effectiveUrl, args.title);
 
     const normalizedBody = normalizeWhitespace(extractedText).slice(0, MAX_BODY_CHARS);
     const bodyChars = normalizedBody.length;
@@ -604,12 +1007,17 @@ export async function extractArticleContentForEmbedding(args: {
             : "rss_fallback",
       bodyChars,
       fetchSucceeded: true,
-      resolvedUrl:
-        fetched.finalUrl && fetched.finalUrl !== args.url
-          ? fetched.finalUrl
-          : resolvedUrl !== args.url
-            ? resolvedUrl
-            : undefined,
+      resolvedUrl: effectiveUrl !== args.url ? effectiveUrl : undefined,
+      imageUrl: image.imageUrl,
+      imageWidth: image.imageWidth,
+      imageHeight: image.imageHeight,
+      imageAlt: image.imageAlt,
+      imageSource: image.imageSource,
+      entities: extractEntityCandidates(
+        args.title,
+        strongBody || metaDescription || args.rssSnippet,
+      ),
+      extractionQuality: strongBody.length > 0 ? "strong" : "weak",
     };
   } catch {
     return {
@@ -619,6 +1027,13 @@ export async function extractArticleContentForEmbedding(args: {
       bodyChars: 0,
       fetchSucceeded: true,
       resolvedUrl: resolvedUrl !== args.url ? resolvedUrl : undefined,
+      imageUrl: undefined,
+      imageWidth: undefined,
+      imageHeight: undefined,
+      imageAlt: undefined,
+      imageSource: undefined,
+      entities: extractEntityCandidates(args.title, args.rssSnippet),
+      extractionQuality: "weak",
     };
   }
 }

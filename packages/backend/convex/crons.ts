@@ -59,4 +59,15 @@ crons.interval(
   internal.clustering.mergeNearDuplicateEvents,
 );
 
+// ---------------------------------------------------------------------------
+// Singleton Recluster Pass — Every 6 hours
+// ---------------------------------------------------------------------------
+// Re-examines recent singleton / tiny events after more articles have landed,
+// improving recall for stories that were under-clustered during the online pass.
+crons.interval(
+  "recluster-recent-singletons",
+  { hours: 6 },
+  internal.clustering.reclusterRecentSingletonEvents,
+);
+
 export default crons;

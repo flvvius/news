@@ -42,6 +42,9 @@ export default defineSchema({
     slug: v.string(),
 
     imageUrl: v.optional(v.string()),
+    imageWidth: v.optional(v.number()),
+    imageHeight: v.optional(v.number()),
+    imageAlt: v.optional(v.string()),
 
     perspectiveSummaries: v.optional(
       v.object({
@@ -85,6 +88,21 @@ export default defineSchema({
     }),
 
   // =========================================================================
+  // 3c. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // =========================================================================
+  clusterPairLabels: defineTable({
+    pairKey: v.string(),
+    leftArticleId: v.id("articles"),
+    rightArticleId: v.id("articles"),
+    sameEvent: v.boolean(),
+    notes: v.optional(v.string()),
+    labeledAt: v.number(),
+    labeledByEmail: v.optional(v.string()),
+  })
+    .index("by_pair_key", ["pairKey"])
+    .index("by_labeled_at", ["labeledAt"]),
+
+  // =========================================================================
   // 4. ARTICLES (The Evidence)
   // =========================================================================
   articles: defineTable({
@@ -98,6 +116,23 @@ export default defineSchema({
     // Populated by enrichment pipeline, not at ingestion time
     summary: v.optional(v.string()),
     rssSnippet: v.optional(v.string()), // Raw snippet from RSS feed
+    imageUrl: v.optional(v.string()),
+    imageWidth: v.optional(v.number()),
+    imageHeight: v.optional(v.number()),
+    imageAlt: v.optional(v.string()),
+    imageSource: v.optional(
+      v.union(
+        v.literal("rss"),
+        v.literal("og"),
+        v.literal("twitter"),
+        v.literal("jsonld"),
+        v.literal("inline"),
+      ),
+    ),
+    entities: v.optional(v.array(v.string())),
+    extractionQuality: v.optional(
+      v.union(v.literal("strong"), v.literal("weak")),
+    ),
 
     // Feed THIS to the Event Synthesizer (cheap tokens), not the full text.
     atomicFacts: v.optional(v.array(v.string())), // ["Vote count: 60-40", "Passed on: Tuesday", "Opposition: GOP"]
@@ -119,6 +154,7 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_canonical_url", ["canonicalUrl"])
     .index("by_status", ["status"])
+    .index("by_status_published", ["status", "publishedAt"])
     .index("by_status_enrichment_lease", [
       "status",
       "enrichmentLeaseExpiresAt",
