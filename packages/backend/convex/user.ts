@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { ConvexError } from "convex/values";
+import { getCurrentUserBetaAccess, isAdminEmail } from "./lib/betaAccess";
 
 /**
  * Get the current user's full profile.
@@ -78,13 +79,14 @@ export const isCurrentUserAdmin = query({
     if (!authUser) {
       return false;
     }
+    return isAdminEmail(authUser.email);
+  },
+});
 
-    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-
-    return adminEmails.includes(authUser.email.toLowerCase());
+export const getCurrentUserAccess = query({
+  args: {},
+  handler: async (ctx) => {
+    return await getCurrentUserBetaAccess(ctx);
   },
 });
 

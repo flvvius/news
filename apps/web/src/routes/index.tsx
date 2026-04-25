@@ -243,9 +243,9 @@ function LandingPage() {
     : 5;
 
   const events = useQuery(
-    api.events.getPublishedEvents,
+    api.events.getPublicPublishedEventsPreview,
     previewCountConfig !== undefined
-      ? { paginationOpts: { numItems: previewCount, cursor: null } }
+      ? { limit: previewCount }
       : "skip",
   );
   const topics = useQuery(api.topics.getTopics);
@@ -487,7 +487,7 @@ function LandingPage() {
             </div>
 
             <div className="grid gap-6 max-w-4xl mx-auto w-full">
-              {events?.page.map((event) => (
+                  {events?.map((event) => (
                 <EventCard
                   key={event._id}
                   event={event}

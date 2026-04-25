@@ -2,6 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { requireBetaAccess } from "./lib/betaAccess";
 
 const TOPIC_CURSOR_PREFIX = "topic:";
 
@@ -20,6 +21,8 @@ export const getPublishedEvents = query({
     topicId: v.optional(v.id("topics")),
   },
   handler: async (ctx, args) => {
+    await requireBetaAccess(ctx);
+
     // When filtering by topic, collect matching IDs first so pagination can
     // resume after the last matching event returned to the client.
     let matchingEventIds: Set<Id<"events">> | null = null;
@@ -135,9 +138,61 @@ export const getPublishedEvents = query({
   },
 });
 
+export const getPublicPublishedEventsPreview = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 3), 1), 20);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(safeLimit);
+
+    const eventIds = events.map((event) => event._id);
+    const allEventTopicRows = await Promise.all(
+      eventIds.map((eventId) =>
+        ctx.db
+          .query("eventTopics")
+          .withIndex("by_event", (q) => q.eq("eventId", eventId))
+          .collect(),
+      ),
+    );
+    const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
+    for (let i = 0; i < eventIds.length; i++) {
+      topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
+    }
+
+    return await Promise.all(
+      events.map(async (event) => {
+        const articles = await ctx.db
+          .query("articles")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
+        const sources = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
+        const topicIds = (topicsByEventId.get(event._id) ?? []).map(
+          (row) => row.topicId,
+        );
+
+        return {
+          ...event,
+          topicIds,
+          articleCount: articles.length,
+          sources: sources.filter((source) => source !== null),
+        };
+      }),
+    );
+  },
+});
+
 export const getEventBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
+    await requireBetaAccess(ctx);
+
     const event = await ctx.db
       .query("events")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))

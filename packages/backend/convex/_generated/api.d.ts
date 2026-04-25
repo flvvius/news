@@ -23,6 +23,7 @@ import type * as http from "../http.js";
 import type * as ingestion from "../ingestion.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_articleExtraction from "../lib/articleExtraction.js";
+import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   ingestion: typeof ingestion;
   interactions: typeof interactions;
   "lib/articleExtraction": typeof lib_articleExtraction;
+  "lib/betaAccess": typeof lib_betaAccess;
   "lib/openai": typeof lib_openai;
   mbfc: typeof mbfc;
   migrations: typeof migrations;

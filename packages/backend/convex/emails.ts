@@ -11,6 +11,7 @@ const DEFAULT_UNSUB_BASE = "https://biviant.com/unsubscribe";
 const DEFAULT_PHYSICAL_ADDRESS = "Biviant, Bucharest, Romania";
 const DEFAULT_FROM_ADDRESS = "Biviant <hello@biviant.com>";
 const DEFAULT_REPLY_TO = "hello@biviant.com";
+const DEFAULT_SITE_URL = "https://biviant.com";
 
 /** Shape returned by getEmailConfig — keeps template function signatures clean. */
 interface EmailConfig {
@@ -115,6 +116,7 @@ export const sendWelcomeEmail = internalAction({
  */
 export const sendInviteEmail = internalAction({
   args: {
+    waitlistId: v.id("waitlist"),
     email: v.string(),
     name: v.optional(v.string()),
     inviteCode: v.string(),
@@ -123,7 +125,8 @@ export const sendInviteEmail = internalAction({
     try {
       const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
-      const inviteUrl = `https://biviant.com/signup?code=${args.inviteCode}`;
+      const siteUrl = process.env.SITE_URL ?? DEFAULT_SITE_URL;
+      const inviteUrl = `${siteUrl}/dashboard?mode=signup&code=${encodeURIComponent(args.inviteCode)}`;
       const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
 
       const { data, error } = await resend.emails.send({
@@ -144,6 +147,10 @@ export const sendInviteEmail = internalAction({
         console.error("Resend error:", error);
         throw new Error(`Failed to send email: ${error.message}`);
       }
+
+      await ctx.runMutation(internal.waitlist.markEmailSent, {
+        waitlistId: args.waitlistId,
+      });
 
       console.log("Invite email sent:", data);
       return { success: true, emailId: data?.id };
@@ -386,6 +393,7 @@ function getInviteEmailHTML(
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
               <p style="margin:0 0 16px 0;">Hi ${firstName},</p>
               <p style="margin:0 0 24px 0;">The wait is over. You now have early access to Biviant.</p>
+              <p style="margin:0 0 16px 0;">Create your account using <strong>${email}</strong> to unlock the beta.</p>
             </td>
           </tr>
 
@@ -414,6 +422,10 @@ function getInviteEmailHTML(
                   <td style="padding:6px 0; vertical-align:top; width:20px;">&#8226;</td>
                   <td style="padding:6px 0;">Get personalized insights on how stories affect you</td>
                 </tr>
+                <tr>
+                  <td style="padding:6px 0; vertical-align:top; width:20px;">&#8226;</td>
+                  <td style="padding:6px 0;">Your beta access is reserved for <strong>${email}</strong></td>
+                </tr>
               </table>
             </td>
           </tr>
@@ -434,7 +446,7 @@ function getInviteEmailHTML(
           <!-- Expiry note -->
           <tr>
             <td align="center" style="padding:0 40px 40px 40px; font-size:13px; color:#9ca3af;">
-              This invite link is unique to you and expires in 7 days.
+              Use the same email address when you create your account.
             </td>
           </tr>
 
@@ -446,7 +458,7 @@ function getInviteEmailHTML(
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0 0 8px 0;">
-                      <a href="https://biviant.com" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="${process.env.SITE_URL ?? DEFAULT_SITE_URL}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
                     </p>
                     <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">
@@ -478,15 +490,18 @@ function getInviteEmailText(
 
 The wait is over. You now have early access to Biviant.
 
+Create your account using this email: ${email}
+
 What you can do now:
 - Browse today's events from multiple perspectives
 - Read the same story as told by left, center, and right sources
 - Track your reading balance and break out of your bubble
 - Get personalized insights on how stories affect you
+- Your beta access is reserved for ${email}
 
 Get started: ${inviteUrl}
 
-This invite link is unique to you and expires in 7 days.
+Use the same email address when you create your account.
 
 ---
 See every side of the story.
