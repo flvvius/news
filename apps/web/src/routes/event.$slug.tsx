@@ -106,7 +106,7 @@ function EventDetailPage() {
   ].filter(Boolean).length;
 
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35">
+    <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
         <Link
@@ -125,7 +125,7 @@ function EventDetailPage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center bg-gradient-to-br from-muted to-background">
+                <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
                   <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
                     Event
                   </span>
@@ -220,7 +220,7 @@ function EventDetailPage() {
 
                 <TabsContent value="center">
                   <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                    {event.perspectiveSummaries?.center ?? "Summary pending..."}
+                    {event.perspectiveSummaries?.center ?? "Summary pending…"}
                   </p>
                 </TabsContent>
 

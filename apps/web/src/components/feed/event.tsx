@@ -5,8 +5,8 @@ type EventCardProps = {
     _id: Id<"events">;
     slug: string;
     title: string;
-    perspectiveSummaries: {
-      center: string;
+    perspectiveSummaries?: {
+      center?: string;
     };
     topicIds: Id<"topics">[];
   };
@@ -33,7 +33,7 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
       <h2 className="mt-3 text-lg font-semibold leading-snug">{event.title}</h2>
 
       <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-        {event.perspectiveSummaries.center}
+        {event.perspectiveSummaries?.center ?? "Summary pending…"}
       </p>
     </div>
   );

@@ -61,7 +61,7 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                       loading="lazy"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-muted to-background">
+                    <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
                       <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                         {article.source?.name ?? "Source"}
                       </span>

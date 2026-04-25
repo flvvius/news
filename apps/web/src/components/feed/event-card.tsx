@@ -74,7 +74,7 @@ const EventCard = ({
               loading="lazy"
             />
           ) : (
-            <div className="flex h-full items-center justify-center bg-gradient-to-br from-muted to-background">
+            <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
               <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
                 {primaryTopic}
               </span>

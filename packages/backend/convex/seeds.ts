@@ -1,5 +1,6 @@
 import { internalMutation, query } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
+import { TOPIC_CATALOG } from "./topicCatalog";
 
 /**
  * Seed the database with dummy data for UI development.
@@ -18,17 +19,27 @@ export const seedDB = internalMutation({
     // =========================================================================
     // 1. TOPICS
     // =========================================================================
-    const topicEconomy = await ctx.db.insert("topics", {
-      slug: "economy",
-      displayName: "Economy",
-    });
+    const topicIdsBySlug = new Map<string, Id<"topics">>();
+    for (const topic of TOPIC_CATALOG) {
+      const topicId = await ctx.db.insert("topics", {
+        slug: topic.slug,
+        displayName: topic.displayName,
+        description: topic.description,
+        aliases: topic.aliases,
+        keywords: topic.keywords,
+        keyPhrases: topic.keyPhrases,
+        excludePhrases: topic.excludePhrases,
+      });
+      topicIdsBySlug.set(topic.slug, topicId);
+    }
 
-    const topicTech = await ctx.db.insert("topics", {
-      slug: "tech",
-      displayName: "Tech",
-    });
+    const topicEconomy = topicIdsBySlug.get("economy");
+    const topicTech = topicIdsBySlug.get("tech");
+    if (!topicEconomy || !topicTech) {
+      throw new Error("Seed topic catalog is missing required economy/tech topics");
+    }
 
-    console.log("✅ Created 2 topics");
+    console.log(`✅ Created ${TOPIC_CATALOG.length} topics`);
 
     // =========================================================================
     // 2. SOURCES
@@ -36,25 +47,37 @@ export const seedDB = internalMutation({
     const sourceCNN = await ctx.db.insert("sources", {
       domain: "cnn.com",
       name: "CNN",
-      baseBias: -2, // Slight left lean
+      baseBias: -4,
       reliabilityScore: 7,
       logoUrl: "https://logo.clearbit.com/cnn.com",
+      mbfcCategory: "left",
+      mbfcFactual: "mostly-factual",
+      mbfcCredibility: "medium",
+      mbfcLastChecked: Date.now(),
     });
 
     const sourceFox = await ctx.db.insert("sources", {
       domain: "foxnews.com",
       name: "Fox News",
-      baseBias: 3, // Right lean
-      reliabilityScore: 6,
+      baseBias: 4,
+      reliabilityScore: 5,
       logoUrl: "https://logo.clearbit.com/foxnews.com",
+      mbfcCategory: "right",
+      mbfcFactual: "mixed",
+      mbfcCredibility: "medium",
+      mbfcLastChecked: Date.now(),
     });
 
     const sourceReuters = await ctx.db.insert("sources", {
       domain: "reuters.com",
       name: "Reuters",
-      baseBias: 0, // Center
+      baseBias: 0,
       reliabilityScore: 9,
       logoUrl: "https://logo.clearbit.com/reuters.com",
+      mbfcCategory: "center",
+      mbfcFactual: "very-high",
+      mbfcCredibility: "high",
+      mbfcLastChecked: Date.now(),
     });
 
     console.log("✅ Created 3 sources");
@@ -63,9 +86,6 @@ export const seedDB = internalMutation({
     // 3. EVENTS
     // =========================================================================
     const now = Date.now();
-
-    // Dummy embedding (1536 dimensions of zeros - placeholder for real embeddings)
-    const dummyEmbedding = new Array(1536).fill(0);
 
     const eventFedRates = await ctx.db.insert("events", {
       title: "Federal Reserve Raises Interest Rates to 5.5%",
@@ -81,9 +101,6 @@ export const seedDB = internalMutation({
       },
       globalImpact:
         "Higher borrowing costs affect mortgages, car loans, and credit cards. Savers benefit from better yields on savings accounts.",
-      topicIds: [topicEconomy],
-      embedding: dummyEmbedding,
-      embeddingVersion: 1,
       status: "published",
       firstPublishedAt: now - 86400000, // 1 day ago
       lastSummarizedAt: now - 3600000, // 1 hour ago
@@ -103,15 +120,44 @@ export const seedDB = internalMutation({
       },
       globalImpact:
         "Tech companies may face new compliance costs. Consumers could see improved AI transparency and safety standards.",
-      topicIds: [topicTech],
-      embedding: dummyEmbedding,
-      embeddingVersion: 1,
       status: "published",
       firstPublishedAt: now - 172800000, // 2 days ago
       lastSummarizedAt: now - 7200000, // 2 hours ago
     });
 
     console.log("✅ Created 2 events");
+
+    // =========================================================================
+    // 3a. EVENT TOPICS (Junction table)
+    // =========================================================================
+    await ctx.db.insert("eventTopics", {
+      eventId: eventFedRates,
+      topicId: topicEconomy,
+    });
+    await ctx.db.insert("eventTopics", {
+      eventId: eventAIRegulations,
+      topicId: topicTech,
+    });
+
+    console.log("✅ Created 2 eventTopics");
+
+    // =========================================================================
+    // 3b. EVENT EMBEDDINGS (placeholder zeros — real embeddings come from AI)
+    // =========================================================================
+    const dummyEmbedding = new Array(1536).fill(0);
+
+    await ctx.db.insert("eventEmbeddings", {
+      eventId: eventFedRates,
+      embedding: dummyEmbedding,
+      version: 1,
+    });
+    await ctx.db.insert("eventEmbeddings", {
+      eventId: eventAIRegulations,
+      embedding: dummyEmbedding,
+      version: 1,
+    });
+
+    console.log("✅ Created 2 eventEmbeddings");
 
     // =========================================================================
     // 4. ARTICLES
@@ -137,7 +183,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: -2,
       status: "clustered",
-      publishedAt: "2026-01-06T14:30:00Z",
+      publishedAt: new Date("2026-01-06T14:30:00Z").getTime(),
     });
 
     await ctx.db.insert("articles", {
@@ -159,7 +205,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: 2,
       status: "clustered",
-      publishedAt: "2026-01-06T15:00:00Z",
+      publishedAt: new Date("2026-01-06T15:00:00Z").getTime(),
     });
 
     await ctx.db.insert("articles", {
@@ -180,7 +226,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: 0,
       status: "clustered",
-      publishedAt: "2026-01-06T14:00:00Z",
+      publishedAt: new Date("2026-01-06T14:00:00Z").getTime(),
     });
 
     // --- Articles for AI Regulations Event ---
@@ -202,7 +248,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: -1,
       status: "clustered",
-      publishedAt: "2026-01-05T10:00:00Z",
+      publishedAt: new Date("2026-01-05T10:00:00Z").getTime(),
     });
 
     await ctx.db.insert("articles", {
@@ -223,7 +269,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: 3,
       status: "clustered",
-      publishedAt: "2026-01-05T12:00:00Z",
+      publishedAt: new Date("2026-01-05T12:00:00Z").getTime(),
     });
 
     await ctx.db.insert("articles", {
@@ -243,7 +289,7 @@ export const seedDB = internalMutation({
       ],
       aiBiasScore: 0,
       status: "clustered",
-      publishedAt: "2026-01-05T09:30:00Z",
+      publishedAt: new Date("2026-01-05T09:30:00Z").getTime(),
     });
 
     console.log("✅ Created 6 articles");
@@ -254,13 +300,16 @@ export const seedDB = internalMutation({
     return {
       message: "Database seeded successfully!",
       created: {
-        topics: 2,
+        topics: TOPIC_CATALOG.length,
         sources: 3,
         events: 2,
         articles: 6,
       },
       ids: {
-        topics: { economy: topicEconomy, tech: topicTech },
+        topics: {
+          economy: topicEconomy,
+          tech: topicTech,
+        },
         sources: { cnn: sourceCNN, fox: sourceFox, reuters: sourceReuters },
         events: { fedRates: eventFedRates, aiRegulations: eventAIRegulations },
       },
@@ -276,24 +325,23 @@ export const clearDB = internalMutation({
   args: {},
   handler: async (ctx) => {
     // Delete in reverse order of dependencies
-    const articles = await ctx.db.query("articles").collect();
-    for (const article of articles) {
-      await ctx.db.delete(article._id);
-    }
+    const tablesToClear = [
+      "articleEmbeddings",
+      "articles",
+      "eventEmbeddings",
+      "eventTopics",
+      "events",
+      "sources",
+      "topics",
+      "userPrivateContext",
+      "userStats",
+    ] as const;
 
-    const events = await ctx.db.query("events").collect();
-    for (const event of events) {
-      await ctx.db.delete(event._id);
-    }
-
-    const sources = await ctx.db.query("sources").collect();
-    for (const source of sources) {
-      await ctx.db.delete(source._id);
-    }
-
-    const topics = await ctx.db.query("topics").collect();
-    for (const topic of topics) {
-      await ctx.db.delete(topic._id);
+    for (const table of tablesToClear) {
+      const rows = await ctx.db.query(table).collect();
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+      }
     }
 
     console.log("✅ Cleared all seeded data");
@@ -312,22 +360,26 @@ export const verifySeedData = query({
     const sources = await ctx.db.query("sources").collect();
     const events = await ctx.db.query("events").collect();
     const articles = await ctx.db.query("articles").collect();
+    const eventTopicsRows = await ctx.db.query("eventTopics").collect();
 
-    // Verify relationships: Get topic names for each event
+    // Verify relationships: Get topic names for each event via junction table
     const eventsWithTopics = await Promise.all(
       events.map(async (event) => {
+        const junctionRows = eventTopicsRows.filter(
+          (row) => row.eventId === event._id,
+        );
         const topicNames = await Promise.all(
-          event.topicIds.map(async (topicId) => {
-            const topic = await ctx.db.get(topicId);
+          junctionRows.map(async (row) => {
+            const topic = await ctx.db.get(row.topicId);
             return topic?.displayName ?? "Unknown";
-          })
+          }),
         );
         return {
           title: event.title,
           topics: topicNames,
           articleCount: articles.filter((a) => a.eventId === event._id).length,
         };
-      })
+      }),
     );
 
     // Verify relationships: Get source and event for each article
@@ -343,7 +395,7 @@ export const verifySeedData = query({
           event: event ? event.title.substring(0, 30) + "..." : "Unclustered",
           biasScore: article.aiBiasScore,
         };
-      })
+      }),
     );
 
     return {

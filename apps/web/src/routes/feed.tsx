@@ -73,11 +73,11 @@ function FeedComponent() {
   const remainingEvents = featuredEvent ? events.slice(1) : events;
 
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35">
+    <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
           <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
-            <div className="bg-gradient-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
+            <div className="bg-linear-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
               <div className="flex flex-col gap-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Biviant Feed
@@ -123,7 +123,7 @@ function FeedComponent() {
           <div className="grid gap-6">
             {status === "LoadingFirstPage" && (
               <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
-                Loading...
+                Loading…
               </div>
             )}
 
