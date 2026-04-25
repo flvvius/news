@@ -6,6 +6,7 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { SITE } from "@/lib/seo";
+import { Loader2, Newspaper, SlidersHorizontal } from "lucide-react";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -48,7 +49,7 @@ function FeedComponent() {
     : 5;
 
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
-    "all",
+    "all"
   );
 
   const {
@@ -58,7 +59,7 @@ function FeedComponent() {
   } = usePaginatedQuery(
     api.events.getPublishedEvents,
     selectedTopic === "all" ? {} : { topicId: selectedTopic },
-    { initialNumItems: pageSize },
+    { initialNumItems: pageSize }
   );
 
   const topicNamesById = useMemo(() => {
@@ -70,74 +71,135 @@ function FeedComponent() {
   }, [topics]);
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold">Today's Events</h1>
-          <p className="text-sm text-muted-foreground">
-            Track the same story across perspectives.
-          </p>
-        </header>
+    <div className="min-h-[calc(100vh-4rem)]">
+      {/* Page Header */}
+      <div className="border-b border-border bg-muted/20">
+        <div className="container mx-auto max-w-5xl px-4 py-8">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight mb-2">
+                  Today&apos;s Events
+                </h1>
+                <p className="text-muted-foreground">
+                  Track the same story across perspectives
+                </p>
+              </div>
+              <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+                <SlidersHorizontal className="size-4" />
+                Filter by topic
+              </div>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => setSelectedTopic("all")}
-            variant={selectedTopic === "all" ? "default" : "outline"}
-            aria-pressed={selectedTopic === "all"}
-            size="sm"
-            className="rounded-full"
-          >
-            All topics
-          </Button>
-          {topics?.map((topic) => (
-            <Button
-              key={topic._id}
-              type="button"
-              onClick={() => setSelectedTopic(topic._id)}
-              variant={selectedTopic === topic._id ? "default" : "outline"}
-              aria-pressed={selectedTopic === topic._id}
-              size="sm"
-              className="rounded-full"
-            >
-              {topic.displayName}
-            </Button>
-          ))}
+            {/* Topic filters */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Button
+                type="button"
+                onClick={() => setSelectedTopic("all")}
+                variant={selectedTopic === "all" ? "default" : "outline"}
+                aria-pressed={selectedTopic === "all"}
+                size="sm"
+                className="rounded-full h-9 px-4"
+              >
+                All topics
+              </Button>
+              {topics?.map((topic) => (
+                <Button
+                  key={topic._id}
+                  type="button"
+                  onClick={() => setSelectedTopic(topic._id)}
+                  variant={selectedTopic === topic._id ? "default" : "outline"}
+                  aria-pressed={selectedTopic === topic._id}
+                  size="sm"
+                  className="rounded-full h-9 px-4"
+                >
+                  {topic.displayName}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
 
-        <div className="grid gap-4">
+      {/* Feed Content */}
+      <div className="container mx-auto max-w-5xl px-4 py-8">
+        <div className="flex flex-col gap-6">
+          {/* Loading state */}
           {status === "LoadingFirstPage" && (
-            <div className="text-sm text-muted-foreground">Loading…</div>
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="size-8 text-primary animate-spin" />
+              <p className="text-sm text-muted-foreground">
+                Loading events...
+              </p>
+            </div>
           )}
 
-          {events?.map((event) => (
-            <EventCard
-              key={event._id}
-              event={event}
-              topicNamesById={topicNamesById}
-              maxSources={maxSources}
-            />
-          ))}
+          {/* Events grid */}
+          {events && events.length > 0 && (
+            <div className="grid gap-6">
+              {events.map((event) => (
+                <EventCard
+                  key={event._id}
+                  event={event}
+                  topicNamesById={topicNamesById}
+                  maxSources={maxSources}
+                />
+              ))}
+            </div>
+          )}
 
+          {/* Empty state */}
           {status !== "LoadingFirstPage" &&
             (!events || events.length === 0) && (
-              <div className="text-sm text-muted-foreground">
-                No events found.
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="flex items-center justify-center size-16 rounded-2xl bg-muted">
+                  <Newspaper className="size-8 text-muted-foreground" />
+                </div>
+                <div className="text-center">
+                  <h3 className="font-semibold mb-1">No events found</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTopic !== "all"
+                      ? "Try selecting a different topic or check back later."
+                      : "Check back later for new stories."}
+                  </p>
+                </div>
+                {selectedTopic !== "all" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedTopic("all")}
+                    className="mt-2"
+                  >
+                    View all topics
+                  </Button>
+                )}
               </div>
             )}
-        </div>
 
-        {status === "CanLoadMore" && (
-          <div>
-            <Button
-              type="button"
-              onClick={() => loadMore(pageSize)}
-              variant="outline"
-            >
-              Load more
-            </Button>
-          </div>
-        )}
+          {/* Load more */}
+          {status === "CanLoadMore" && (
+            <div className="flex justify-center pt-4">
+              <Button
+                type="button"
+                onClick={() => loadMore(pageSize)}
+                variant="outline"
+                size="lg"
+                className="min-w-[200px]"
+              >
+                Load more events
+              </Button>
+            </div>
+          )}
+
+          {/* Loading more indicator */}
+          {status === "LoadingMore" && (
+            <div className="flex justify-center pt-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading more...
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

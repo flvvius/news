@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BiasIndicator from "@/components/bias-indicator";
+import { ExternalLink, Newspaper } from "lucide-react";
 
 type Article = {
   _id: Id<"articles">;
@@ -23,7 +24,6 @@ type ArticlesListProps = {
 };
 
 const ArticlesList = ({ articles }: ArticlesListProps) => {
-  // Single subscription for the whole list — passed down to each BiasIndicator
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
@@ -31,20 +31,35 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
     (thresholdsConfig?.value as number[] | undefined) ?? undefined;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Articles ({articles.length})</CardTitle>
+    <Card className="border-border">
+      <CardHeader className="border-b border-border bg-muted/30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary">
+            <Newspaper className="size-5" />
+          </div>
+          <div>
+            <CardTitle>
+              Articles{" "}
+              <span className="text-muted-foreground font-normal">
+                ({articles.length})
+              </span>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Coverage from multiple sources
+            </p>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="p-0">
+        <div className="divide-y divide-border">
           {articles.map((article) => (
-            <div
+            <article
               key={article._id}
-              className="flex items-start gap-4 pb-4 border-b last:border-b-0 last:pb-0"
+              className="flex items-start gap-4 p-6 hover:bg-muted/30 transition-colors"
             >
               {/* Source logo */}
               {article.source?.logoUrl && (
-                <div className="shrink-0 h-10 w-10 rounded-full border bg-muted overflow-hidden">
+                <div className="shrink-0 size-12 rounded-xl border border-border bg-card overflow-hidden">
                   <img
                     src={article.source.logoUrl}
                     alt={article.source.name}
@@ -55,15 +70,15 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
 
               <div className="flex-1 min-w-0">
                 {/* Article title */}
-                <h3 className="font-medium mb-1 leading-snug">
+                <h3 className="font-semibold leading-snug mb-2 line-clamp-2">
                   {article.title}
                 </h3>
 
-                {/* Source name and bias */}
-                <div className="flex flex-wrap items-center gap-3 mb-2">
+                {/* Source name, bias, and date */}
+                <div className="flex flex-wrap items-center gap-3 mb-3">
                   {article.source && (
                     <>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm font-medium text-foreground">
                         {article.source.name}
                       </span>
                       <BiasIndicator
@@ -74,13 +89,20 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                     </>
                   )}
                   <span className="text-xs text-muted-foreground">
-                    {new Date(article.publishedAt).toLocaleDateString()}
+                    {new Date(article.publishedAt).toLocaleDateString(
+                      undefined,
+                      {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      }
+                    )}
                   </span>
                 </div>
 
                 {/* Article summary */}
                 {article.summary && (
-                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
                     {article.summary}
                   </p>
                 )}
@@ -90,26 +112,13 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                   href={article.canonicalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline group"
                 >
                   Read original
-                  <svg
-                    className="h-3 w-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
+                  <ExternalLink className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       </CardContent>

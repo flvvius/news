@@ -84,19 +84,35 @@ export default function BookmarkButton({
   );
 
   const bookmarked = isBookmarked === true;
+  const iconSize = size === "sm" ? "size-4" : "size-5";
+  const buttonSize = size === "sm" ? "size-8" : "size-9";
 
   return (
     <Button
       type="button"
       variant="ghost"
       size="icon"
-      className={cn("shrink-0", bookmarked && "text-primary", className)}
+      className={cn(
+        "shrink-0 rounded-full transition-all",
+        buttonSize,
+        bookmarked
+          ? "text-primary bg-primary/10 hover:bg-primary/20"
+          : "text-muted-foreground hover:text-primary hover:bg-primary/10",
+        className
+      )}
       disabled={toggle.isPending}
       onClick={handleClick}
       aria-label={bookmarked ? "Remove bookmark" : "Bookmark this event"}
       aria-pressed={bookmarked}
     >
-      <Bookmark className={cn("size-4", bookmarked && "fill-current")} />
+      <Bookmark
+        className={cn(
+          iconSize,
+          "transition-transform",
+          bookmarked && "fill-current scale-110",
+          toggle.isPending && "animate-pulse"
+        )}
+      />
     </Button>
   );
 }

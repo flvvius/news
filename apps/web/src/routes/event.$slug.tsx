@@ -7,11 +7,16 @@ import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
 import BookmarkButton from "@/components/bookmark-button";
 import { SITE } from "@/lib/seo";
+import {
+  ArrowLeft,
+  Globe,
+  Loader2,
+  MessageSquare,
+  Newspaper,
+} from "lucide-react";
 
 export const Route = createFileRoute("/event/$slug")({
   loader: async ({ context, params }) => {
-    // Fetch event data server-side so head() can set dynamic meta tags for SEO.
-    // serverHttpClient is only available during SSR — returns null on client nav.
     const httpClient = context.convexQueryClient.serverHttpClient;
     if (!httpClient) return null;
     try {
@@ -21,7 +26,7 @@ export const Route = createFileRoute("/event/$slug")({
     } catch (error) {
       console.error(
         `[SSR] Failed to load event (slug: ${params.slug}):`,
-        error,
+        error
       );
       return null;
     }
@@ -64,22 +69,32 @@ function EventDetailPage() {
 
   if (eventData === undefined) {
     return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-sm text-muted-foreground">Loading...</div>
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="size-8 text-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading event...</p>
+        </div>
       </div>
     );
   }
 
   if (eventData === null) {
     return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-2">Event not found</h1>
-          <p className="text-muted-foreground mb-4">
-            The event you're looking for doesn't exist.
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
+        <div className="flex flex-col items-center text-center gap-4 max-w-md px-4">
+          <div className="flex items-center justify-center size-16 rounded-2xl bg-muted">
+            <Newspaper className="size-8 text-muted-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold">Event not found</h1>
+          <p className="text-muted-foreground">
+            The event you&apos;re looking for doesn&apos;t exist or has been
+            removed.
           </p>
           <Link to="/feed">
-            <Button>Back to feed</Button>
+            <Button className="mt-2">
+              <ArrowLeft className="size-4 mr-2" />
+              Back to feed
+            </Button>
           </Link>
         </div>
       </div>
@@ -91,104 +106,172 @@ function EventDetailPage() {
     event.perspectiveSummaries.left || event.perspectiveSummaries.right;
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex flex-col gap-6">
-        {/* Back button */}
-        <Link
-          to="/feed"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Back to feed
-        </Link>
-
-        {/* Event header */}
-        <div>
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-3xl font-bold mb-4">{event.title}</h1>
-            <BookmarkButton eventId={event._id} />
+    <div className="min-h-[calc(100vh-4rem)]">
+      {/* Hero Section */}
+      <div className="relative">
+        {/* Background image */}
+        {event.imageUrl && (
+          <div className="absolute inset-0 h-[300px] md:h-[400px]">
+            <img
+              src={event.imageUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-linear-to-b from-background/60 via-background/80 to-background" />
           </div>
-          {event.imageUrl && (
-            <div className="overflow-hidden rounded-lg border mb-4">
-              <img
-                src={event.imageUrl}
-                alt={event.title}
-                className="w-full h-64 object-cover"
-              />
+        )}
+
+        {/* Content overlay */}
+        <div className="relative container mx-auto max-w-4xl px-4 pt-8 pb-12">
+          {/* Back button */}
+          <Link
+            to="/feed"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 group"
+          >
+            <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
+            Back to feed
+          </Link>
+
+          {/* Event header */}
+          <div className="flex flex-col gap-6">
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight max-w-3xl">
+                {event.title}
+              </h1>
+              <BookmarkButton eventId={event._id} size="default" />
             </div>
-          )}
+          </div>
         </div>
+      </div>
 
-        {/* Perspective summaries */}
-        {hasPerspectives ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Multiple Perspectives</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="center" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  {event.perspectiveSummaries.left && (
-                    <TabsTrigger value="left">Left</TabsTrigger>
-                  )}
-                  <TabsTrigger value="center">Center</TabsTrigger>
-                  {event.perspectiveSummaries.right && (
-                    <TabsTrigger value="right">Right</TabsTrigger>
-                  )}
-                </TabsList>
-
-                {event.perspectiveSummaries.left && (
-                  <TabsContent value="left" className="mt-4">
-                    <p className="text-sm leading-relaxed max-w-[65ch]">
-                      {event.perspectiveSummaries.left}
+      {/* Main Content */}
+      <div className="container mx-auto max-w-4xl px-4 pb-16">
+        <div className="flex flex-col gap-8">
+          {/* Perspective summaries */}
+          {hasPerspectives ? (
+            <Card className="overflow-hidden border-border">
+              <CardHeader className="border-b border-border bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary">
+                    <MessageSquare className="size-5" />
+                  </div>
+                  <div>
+                    <CardTitle>Multiple Perspectives</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      See how different sources cover this story
                     </p>
-                  </TabsContent>
-                )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Tabs defaultValue="center" className="w-full">
+                  <div className="border-b border-border px-6">
+                    <TabsList className="h-auto p-0 bg-transparent gap-0">
+                      {event.perspectiveSummaries.left && (
+                        <TabsTrigger
+                          value="left"
+                          className="relative h-12 px-6 rounded-none border-b-2 border-transparent data-[state=active]:border-bias-left data-[state=active]:text-bias-left bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-bias-left" />
+                            Left
+                          </span>
+                        </TabsTrigger>
+                      )}
+                      <TabsTrigger
+                        value="center"
+                        className="relative h-12 px-6 rounded-none border-b-2 border-transparent data-[state=active]:border-bias-center data-[state=active]:text-foreground bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="size-2 rounded-full bg-bias-center" />
+                          Center
+                        </span>
+                      </TabsTrigger>
+                      {event.perspectiveSummaries.right && (
+                        <TabsTrigger
+                          value="right"
+                          className="relative h-12 px-6 rounded-none border-b-2 border-transparent data-[state=active]:border-bias-right data-[state=active]:text-bias-right bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-bias-right" />
+                            Right
+                          </span>
+                        </TabsTrigger>
+                      )}
+                    </TabsList>
+                  </div>
 
-                <TabsContent value="center" className="mt-4">
-                  <p className="text-sm leading-relaxed max-w-[65ch]">
-                    {event.perspectiveSummaries.center}
-                  </p>
-                </TabsContent>
+                  <div className="p-6">
+                    {event.perspectiveSummaries.left && (
+                      <TabsContent value="left" className="mt-0">
+                        <p className="text-sm leading-relaxed max-w-[65ch]">
+                          {event.perspectiveSummaries.left}
+                        </p>
+                      </TabsContent>
+                    )}
 
-                {event.perspectiveSummaries.right && (
-                  <TabsContent value="right" className="mt-4">
-                    <p className="text-sm leading-relaxed max-w-[65ch]">
-                      {event.perspectiveSummaries.right}
+                    <TabsContent value="center" className="mt-0">
+                      <p className="text-sm leading-relaxed max-w-[65ch]">
+                        {event.perspectiveSummaries.center}
+                      </p>
+                    </TabsContent>
+
+                    {event.perspectiveSummaries.right && (
+                      <TabsContent value="right" className="mt-0">
+                        <p className="text-sm leading-relaxed max-w-[65ch]">
+                          {event.perspectiveSummaries.right}
+                        </p>
+                      </TabsContent>
+                    )}
+                  </div>
+                </Tabs>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-border">
+              <CardHeader className="border-b border-border bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary">
+                    <MessageSquare className="size-5" />
+                  </div>
+                  <CardTitle>Summary</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <p className="text-sm leading-relaxed max-w-[65ch]">
+                  {event.perspectiveSummaries.center}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Global Impact */}
+          {event.globalImpact && (
+            <Card className="border-border">
+              <CardHeader className="border-b border-border bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary">
+                    <Globe className="size-5" />
+                  </div>
+                  <div>
+                    <CardTitle>What This Means</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      How this story affects you
                     </p>
-                  </TabsContent>
-                )}
-              </Tabs>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.perspectiveSummaries.center}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <p className="text-sm leading-relaxed max-w-[65ch]">
+                  {event.globalImpact}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Global Impact */}
-        {event.globalImpact && (
-          <Card>
-            <CardHeader>
-              <CardTitle>What This Means</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed max-w-[65ch]">
-                {event.globalImpact}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Articles */}
-        <ArticlesList articles={articles} />
+          {/* Articles */}
+          <ArticlesList articles={articles} />
+        </div>
       </div>
     </div>
   );

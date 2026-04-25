@@ -15,7 +15,6 @@ function validateThresholds(raw: unknown): number[] {
   ) {
     return DEFAULT_THRESHOLDS;
   }
-  // Ensure ascending order for the first 4 values
   const sorted = (raw.slice(0, 4) as number[]).sort((a, b) => a - b);
   return sorted;
 }
@@ -48,29 +47,60 @@ const BiasIndicator = ({
     return "Right";
   };
 
+  // Determine text color
+  const getTextColor = (biasValue: number) => {
+    if (biasValue < thresholds[0]) return "text-bias-left";
+    if (biasValue < thresholds[1]) return "text-bias-left-muted";
+    if (biasValue <= thresholds[2]) return "text-bias-center";
+    if (biasValue <= thresholds[3]) return "text-bias-right-muted";
+    return "text-bias-right";
+  };
+
   const sizeClasses = {
-    sm: "h-1.5 w-16",
-    md: "h-2 w-24",
-    lg: "h-3 w-32",
+    sm: "h-1.5 w-20",
+    md: "h-2 w-28",
+    lg: "h-2.5 w-36",
   };
 
   const dotSizeClasses = {
-    sm: "h-2.5 w-2.5",
-    md: "h-3 w-3",
-    lg: "h-4 w-4",
+    sm: "size-3",
+    md: "size-4",
+    lg: "size-5",
+  };
+
+  const textSizeClasses = {
+    sm: "text-xs",
+    md: "text-xs",
+    lg: "text-sm",
   };
 
   return (
     <div className="flex items-center gap-2">
       <div
         className={`relative rounded-full bg-bias-track ${sizeClasses[size]}`}
+        role="meter"
+        aria-valuenow={bias}
+        aria-valuemin={-5}
+        aria-valuemax={5}
+        aria-label={`Bias: ${getLabel(bias)}`}
       >
+        {/* Gradient track for visual interest */}
+        <div className="absolute inset-0 rounded-full overflow-hidden opacity-40">
+          <div className="absolute inset-0 bg-linear-to-r from-bias-left via-bias-center to-bias-right" />
+        </div>
+
+        {/* Indicator dot */}
         <div
-          className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-background ${getColor(bias)} ${dotSizeClasses[size]}`}
-          style={{ left: `${position}%`, transform: "translate(-50%, -50%)" }}
+          className={`absolute top-1/2 rounded-full border-2 border-card shadow-sm ${getColor(bias)} ${dotSizeClasses[size]}`}
+          style={{
+            left: `${Math.max(0, Math.min(100, position))}%`,
+            transform: "translate(-50%, -50%)",
+          }}
         />
       </div>
-      <span className="text-xs font-medium text-muted-foreground">
+      <span
+        className={`font-medium ${textSizeClasses[size]} ${getTextColor(bias)}`}
+      >
         {getLabel(bias)}
       </span>
     </div>
