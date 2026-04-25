@@ -155,3 +155,30 @@ export const normalizeStoredArticleText = mutation({
     };
   },
 });
+
+
+export const backfillLogoUrls = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const sources = await ctx.db.query("sources").collect();
+    let updated = 0;
+
+    for (const source of sources) {
+      // Skip sources that already have a curated SVG/PNG (anything not pointing at clearbit/duckduckgo/google)
+      const isAutoLogo =
+        !source.logoUrl ||
+        source.logoUrl.includes("logo.clearbit.com") ||
+        source.logoUrl.includes("icons.duckduckgo.com") ||
+        source.logoUrl.includes("google.com/s2/favicons");
+
+      if (!isAutoLogo) continue;
+      if (!source.domain) continue;
+
+      const newUrl = `https://icons.duckduckgo.com/ip3/${source.domain}.ico`;
+      await ctx.db.patch(source._id, { logoUrl: newUrl });
+      updated++;
+    }
+
+    return { totalSources: sources.length, updated };
+  },
+});

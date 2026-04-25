@@ -47,11 +47,11 @@ function WaitlistForm({
     onSuccess: (result) => {
       if (result.alreadyExists) {
         setMessage(
-          `You're already on the waitlist at position #${result.position}!`
+          `You're already on the waitlist at position #${result.position}!`,
         );
       } else {
         setMessage(
-          `You're in! You're #${result.position} on the waitlist. Check your email for details.`
+          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
         );
         setEmail("");
         setName("");
@@ -246,7 +246,7 @@ function LandingPage() {
     api.events.getPublishedEvents,
     previewCountConfig !== undefined
       ? { paginationOpts: { numItems: previewCount, cursor: null } }
-      : "skip"
+      : "skip",
   );
   const topics = useQuery(api.topics.getTopics);
 
@@ -282,12 +282,6 @@ function LandingPage() {
 
         <div className="container relative mx-auto max-w-5xl px-4 py-20 md:py-32">
           <div className="flex flex-col items-center text-center gap-8">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
-              <Sparkles className="size-4" />
-              Multi-perspective news platform
-            </div>
-
             {/* Main headline */}
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-balance">
               Stop Reading the{" "}
@@ -320,7 +314,7 @@ function LandingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Users className="size-4 text-primary" />
-                Join 1,000+ early adopters
+                Join 50+ early adopters
               </div>
             </div>
           </div>

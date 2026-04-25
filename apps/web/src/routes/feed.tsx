@@ -3,8 +3,33 @@ import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { usePaginatedQuery, useQuery } from "convex/react";
+import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useIsMobile } from "@/components/ui/use-mobile";
+import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
@@ -28,6 +53,169 @@ export const Route = createFileRoute("/feed")({
   }),
   component: FeedComponent,
 });
+
+function TopicFilterContent({
+  topics,
+  selectedTopic,
+  onSelect,
+}: {
+  topics: Array<{ _id: Id<"topics">; displayName: string }> | undefined;
+  selectedTopic: Id<"topics"> | "all";
+  onSelect: (topic: Id<"topics"> | "all") => void;
+}) {
+  return (
+    <Command className="w-full">
+      <CommandInput placeholder="Search topics..." />
+      <CommandList className="max-h-[300px]">
+        <CommandEmpty>No topics found.</CommandEmpty>
+        <CommandGroup>
+          <CommandItem
+            value="all-topics"
+            onSelect={() => onSelect("all")}
+            className="flex items-center justify-between gap-2"
+          >
+            <span>All Topics</span>
+            {selectedTopic === "all" && (
+              <CheckIcon className="size-4 text-primary" />
+            )}
+          </CommandItem>
+          {topics?.map((topic) => (
+            <CommandItem
+              key={topic._id}
+              value={topic.displayName}
+              onSelect={() => onSelect(topic._id)}
+              className="flex items-center justify-between gap-2"
+            >
+              <span>{topic.displayName}</span>
+              {selectedTopic === topic._id && (
+                <CheckIcon className="size-4 text-primary" />
+              )}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </Command>
+  );
+}
+
+function TopicFilter({
+  topics,
+  selectedTopic,
+  onSelect,
+}: {
+  topics: Array<{ _id: Id<"topics">; displayName: string }> | undefined;
+  selectedTopic: Id<"topics"> | "all";
+  onSelect: (topic: Id<"topics"> | "all") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
+
+  const selectedLabel = useMemo(() => {
+    if (selectedTopic === "all") return "All Topics";
+    return topics?.find((t) => t._id === selectedTopic)?.displayName ?? "Topic";
+  }, [selectedTopic, topics]);
+
+  const handleSelect = (topic: Id<"topics"> | "all") => {
+    onSelect(topic);
+    setOpen(false);
+  };
+
+  const triggerButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn(
+        "min-w-[140px] justify-between gap-2 rounded-full",
+        selectedTopic !== "all" && "border-primary/50 bg-primary/5",
+      )}
+      aria-label="Filter by topic"
+    >
+      <span className="flex items-center gap-2">
+        <FilterIcon className="size-3.5" />
+        <span className="max-w-[120px] truncate">{selectedLabel}</span>
+      </span>
+      <ChevronDownIcon className="size-3.5 opacity-50" />
+    </Button>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="flex items-center gap-2">
+        <Drawer open={open} onOpenChange={setOpen}>
+          <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
+          <DrawerContent>
+            <DrawerHeader className="border-b border-border pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <DrawerTitle>Filter by Topic</DrawerTitle>
+                  <DrawerDescription>
+                    Select a topic to filter stories
+                  </DrawerDescription>
+                </div>
+                <DrawerClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 rounded-full"
+                  >
+                    <XIcon className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </Button>
+                </DrawerClose>
+              </div>
+            </DrawerHeader>
+            <div className="p-4">
+              <TopicFilterContent
+                topics={topics}
+                selectedTopic={selectedTopic}
+                onSelect={handleSelect}
+              />
+            </div>
+          </DrawerContent>
+        </Drawer>
+
+        {selectedTopic !== "all" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full"
+            onClick={() => onSelect("all")}
+            aria-label="Clear filter"
+          >
+            <XIcon className="size-4" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
+        <PopoverContent className="w-[240px] p-0" align="start">
+          <TopicFilterContent
+            topics={topics}
+            selectedTopic={selectedTopic}
+            onSelect={handleSelect}
+          />
+        </PopoverContent>
+      </Popover>
+
+      {selectedTopic !== "all" && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-full"
+          onClick={() => onSelect("all")}
+          aria-label="Clear filter"
+        >
+          <XIcon className="size-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function FeedComponent() {
   const topics = useQuery(api.topics.getTopics);
@@ -77,48 +265,21 @@ function FeedComponent() {
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
           <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
-            <div className="bg-linear-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
-              <div className="flex flex-col gap-4">
+            <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-4 sm:px-4 sm:py-5">
+              <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Biviant Feed
                 </p>
-                <div className="flex max-w-[65ch] flex-col gap-3">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl text-balance">
-                    See the day&apos;s biggest stories with the image front and center.
-                  </h1>
-                  <p className="max-w-[55ch] text-sm text-muted-foreground sm:text-base">
-                    Follow the same event across outlets, open the story page, and compare the underlying reporting without losing visual context.
-                  </p>
+                <div className="shrink-0">
+                  <TopicFilter
+                    topics={topics}
+                    selectedTopic={selectedTopic}
+                    onSelect={setSelectedTopic}
+                  />
                 </div>
               </div>
             </div>
           </header>
-
-          <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => setSelectedTopic("all")}
-            variant={selectedTopic === "all" ? "default" : "outline"}
-            aria-pressed={selectedTopic === "all"}
-            size="sm"
-            className="rounded-full"
-          >
-            All topics
-          </Button>
-          {topics?.map((topic) => (
-            <Button
-              key={topic._id}
-              type="button"
-              onClick={() => setSelectedTopic(topic._id)}
-              variant={selectedTopic === topic._id ? "default" : "outline"}
-              aria-pressed={selectedTopic === topic._id}
-              size="sm"
-              className="rounded-full"
-            >
-              {topic.displayName}
-            </Button>
-          ))}
-          </div>
 
           <div className="grid gap-6">
             {status === "LoadingFirstPage" && (
