@@ -83,8 +83,8 @@ function FeedComponent() {
                   Biviant Feed
                 </p>
                 <div className="flex max-w-[65ch] flex-col gap-3">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-                    See the day’s biggest stories with the image front and center.
+                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl text-balance">
+                    See the day&apos;s biggest stories with the image front and center.
                   </h1>
                   <p className="max-w-[55ch] text-sm text-muted-foreground sm:text-base">
                     Follow the same event across outlets, open the story page, and compare the underlying reporting without losing visual context.

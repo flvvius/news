@@ -86,17 +86,15 @@ function RootDocument() {
       authClient={authClient}
       initialToken={context.token}
     >
-      <html lang="en" className="dark">
+      <html lang="en" className="dark bg-background">
         <head>
           <HeadContent />
         </head>
-        <body>
-          <div className="grid h-svh grid-rows-[auto_1fr]">
-            <Header />
-            <main>
-              <Outlet />
-            </main>
-          </div>
+        <body className="min-h-svh flex flex-col antialiased">
+          <Header />
+          <main className="flex-1">
+            <Outlet />
+          </main>
           <Toaster richColors />
           {import.meta.env.DEV && (
             <TanStackRouterDevtools position="bottom-left" />

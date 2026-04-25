@@ -83,7 +83,7 @@ function EventDetailPage() {
         <div className="text-center">
           <h1 className="text-2xl font-semibold mb-2">Event not found</h1>
           <p className="text-muted-foreground mb-4">
-            The event you're looking for doesn't exist.
+            The event you&apos;re looking for doesn&apos;t exist.
           </p>
           <Link to="/feed">
             <Button>Back to feed</Button>
@@ -113,7 +113,7 @@ function EventDetailPage() {
           to="/feed"
           className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          ← Back to feed
+          &larr; Back to feed
         </Link>
 
           <section className="overflow-hidden rounded-[1.6rem] border border-border/80 bg-card/95 shadow-sm">
@@ -139,7 +139,7 @@ function EventDetailPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                     Event Overview
                   </p>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl text-balance">
                     {event.title}
                   </h1>
                 </div>

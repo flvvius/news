@@ -89,7 +89,7 @@ const EventCard = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-full border-border/80 bg-background/70 px-3 text-xs"
+                className="h-7 rounded-full border-border/80 bg-background/70 px-3 text-xs pointer-events-none"
               >
                 {topic}
               </Button>
