@@ -1,12 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import EarlyAccessRequired from "@/components/early-access-required";
 import ArticlesList from "@/components/feed/articles-list";
 import BookmarkButton from "@/components/bookmark-button";
 import { SITE } from "@/lib/seo";
+import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/event/$slug")({
   loader: async ({ context, params }) => {
@@ -15,7 +18,7 @@ export const Route = createFileRoute("/event/$slug")({
     const httpClient = context.convexQueryClient.serverHttpClient;
     if (!httpClient) return null;
     try {
-      return await httpClient.query(api.events.getEventBySlug, {
+      return await httpClient.query(api.events.getEventBySlugPreview, {
         slug: params.slug,
       });
     } catch (error) {
@@ -59,7 +62,44 @@ export const Route = createFileRoute("/event/$slug")({
 });
 
 function EventDetailPage() {
+  const access = useQuery(api.user.getCurrentUserAccess);
   const { slug } = Route.useParams();
+
+  useEffect(() => {
+    if (access?.hasBetaAccess) {
+      consumeBetaWelcomeToast();
+    }
+  }, [access?.hasBetaAccess]);
+
+  if (access === undefined) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-8">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="text-sm text-muted-foreground"
+        >
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  if (!access.hasBetaAccess) {
+    return (
+      <EarlyAccessRequired
+        access={access}
+        redirectTo={`/event/${slug}`}
+        surfaceName="Event details"
+      />
+    );
+  }
+
+  return <AuthorizedEventDetailPage slug={slug} />;
+}
+
+function AuthorizedEventDetailPage({ slug }: { slug: string }) {
   const eventData = useQuery(api.events.getEventBySlug, { slug });
 
   if (eventData === undefined) {

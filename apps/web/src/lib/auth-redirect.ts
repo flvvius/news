@@ -1,0 +1,24 @@
+export type AuthRedirectPath =
+  | "/"
+  | "/bookmarks"
+  | "/dashboard"
+  | "/feed"
+  | "/unsubscribe"
+  | "/api/auth/$"
+  | `/event/${string}`;
+
+export function isAuthRedirectPath(value: string): value is AuthRedirectPath {
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return false;
+  }
+
+  return (
+    value === "/" ||
+    value === "/bookmarks" ||
+    value === "/dashboard" ||
+    value === "/feed" ||
+    value === "/unsubscribe" ||
+    value === "/api/auth/$" ||
+    value.startsWith("/event/")
+  );
+}

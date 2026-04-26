@@ -6,10 +6,11 @@ import {
 import { convex } from "@convex-dev/better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { components, internal } from "./_generated/api";
-import { DataModel } from "./_generated/dataModel";
+import type { DataModel } from "./_generated/dataModel";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import { crossDomain } from "@convex-dev/better-auth/plugins";
+import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
 
 const siteUrl = process.env.SITE_URL!;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
@@ -21,9 +22,10 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
       onCreate: async (ctx, authUser) => {
+        const normalizedEmail = normalizeEmail(authUser.email);
         const userId = await ctx.db.insert("users", {
           authUserId: authUser._id,
-          email: authUser.email,
+          email: normalizedEmail,
           profile: {
             name: authUser.name ?? undefined,
             avatar: authUser.image ?? undefined,
@@ -38,10 +40,23 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           articlesRead: 0,
           biasBalance: 0,
         });
+
+        const waitlistRecord = await getWaitlistRecordByEmail(
+          ctx,
+          normalizedEmail,
+        );
+
+        if (waitlistRecord && waitlistRecord.status === "invited") {
+          await ctx.db.patch(waitlistRecord._id, {
+            status: "converted",
+            convertedAt: Date.now(),
+          });
+        }
       },
 
       onUpdate: async (ctx, newAuthUser, oldAuthUser) => {
         if (newAuthUser.email !== oldAuthUser.email) {
+          const normalizedEmail = normalizeEmail(newAuthUser.email);
           const appUser = await ctx.db
             .query("users")
             .withIndex("by_auth_user_id", (q) =>
@@ -51,7 +66,19 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
 
           if (appUser) {
             await ctx.db.patch(appUser._id, {
-              email: newAuthUser.email,
+              email: normalizedEmail,
+            });
+          }
+
+          const waitlistRecord = await getWaitlistRecordByEmail(
+            ctx,
+            normalizedEmail,
+          );
+
+          if (waitlistRecord && waitlistRecord.status === "invited") {
+            await ctx.db.patch(waitlistRecord._id, {
+              status: "converted",
+              convertedAt: Date.now(),
             });
           }
         }

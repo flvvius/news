@@ -318,6 +318,7 @@ export default defineSchema({
   })
     .index("by_email", ["email"])
     .index("by_status", ["status", "createdAt"])
+    .index("by_status_invitedAt", ["status", "invitedAt"])
     .index("by_invite_code", ["inviteCode"])
     .index("by_position", ["position"])
     .index("by_status_last_email", ["status", "lastEmailSentAt"]),

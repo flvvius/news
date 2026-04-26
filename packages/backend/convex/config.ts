@@ -6,7 +6,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { authComponent } from "./auth";
+import { requireAdminUser } from "./lib/betaAccess";
 
 // ---------------------------------------------------------------------------
 // Server-side helper — use from any query or mutation handler
@@ -57,7 +57,7 @@ export const get = query({
   handler: async (ctx, args) => {
     if (!CLIENT_SAFE_KEYS.has(args.key)) {
       // Non-allowlisted keys require admin access
-      await requireAdmin(ctx);
+      await requireAdminUser(ctx);
     }
 
     const row = await ctx.db
@@ -81,7 +81,7 @@ export const get = query({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx);
+    await requireAdminUser(ctx);
 
     const rows = await ctx.db.query("config").collect();
     return rows.map((row) => ({
@@ -129,7 +129,7 @@ export const togglePipeline = mutation({
     pause: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireAdminUser(ctx);
 
     const currentlyPaused = await getConfig(ctx, "pipeline_paused", false);
     const newValue = args.pause ?? !currentlyPaused;
@@ -269,25 +269,6 @@ export const getBatch = internalQuery({
 // Mutations
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Auth helper — reuse the same ADMIN_EMAILS pattern from waitlist.ts
-// ---------------------------------------------------------------------------
-
-async function requireAdmin(ctx: QueryCtx) {
-  const authUser = await authComponent.safeGetAuthUser(ctx);
-  if (!authUser) {
-    throw new ConvexError("Not authenticated");
-  }
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  if (!adminEmails.includes(authUser.email.toLowerCase())) {
-    throw new ConvexError("Unauthorized: admin access required");
-  }
-  return authUser;
-}
-
 /** Upsert a config key. Creates the row if it doesn't exist; patches if it does. */
 export const set = mutation({
   args: {
@@ -296,7 +277,7 @@ export const set = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireAdminUser(ctx);
 
     // Validate that the value is parseable JSON before storing
     try {
@@ -335,7 +316,7 @@ export const set = mutation({
 export const remove = mutation({
   args: { key: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requireAdminUser(ctx);
 
     const existing = await ctx.db
       .query("config")

@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react";
+import EarlyAccessRequired from "@/components/early-access-required";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import {
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
+import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -218,6 +220,44 @@ function TopicFilter({
 }
 
 function FeedComponent() {
+  const access = useQuery(api.user.getCurrentUserAccess);
+
+  useEffect(() => {
+    if (access?.hasBetaAccess) {
+      consumeBetaWelcomeToast();
+    }
+  }, [access?.hasBetaAccess]);
+
+  if (access === undefined) {
+    return (
+        <div className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
+          <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+          >
+            Loading…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!access.hasBetaAccess) {
+    return (
+      <EarlyAccessRequired
+        access={access}
+        redirectTo="/feed"
+        surfaceName="The feed"
+      />
+    );
+  }
+
+  return <FeedContent />;
+}
+
+function FeedContent() {
   const topics = useQuery(api.topics.getTopics);
   const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
   const rawPageSize = Number(pageSizeConfig?.value);
@@ -283,7 +323,11 @@ function FeedComponent() {
 
           <div className="grid gap-6">
             {status === "LoadingFirstPage" && (
-              <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+              >
                 Loading…
               </div>
             )}

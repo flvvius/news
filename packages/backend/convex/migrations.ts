@@ -182,3 +182,77 @@ export const backfillLogoUrls = mutation({
     return { totalSources: sources.length, updated };
   },
 });
+
+export const dedupeWaitlistByEmail = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const entries = await ctx.db.query("waitlist").collect();
+    const grouped = new Map<string, typeof entries>();
+
+    for (const entry of entries) {
+      const existing = grouped.get(entry.email) ?? [];
+      existing.push(entry);
+      grouped.set(entry.email, existing);
+    }
+
+    const statusRank: Record<
+      "pending" | "invited" | "converted" | "bounced" | "unsubscribed",
+      number
+    > = {
+      converted: 5,
+      invited: 4,
+      pending: 3,
+      bounced: 2,
+      unsubscribed: 1,
+    };
+
+    let groupsDeduped = 0;
+    let rowsDeleted = 0;
+
+    for (const duplicates of grouped.values()) {
+      if (duplicates.length < 2) continue;
+
+      const sorted = [...duplicates].sort((a, b) => {
+        const rankDiff = statusRank[b.status] - statusRank[a.status];
+        if (rankDiff !== 0) return rankDiff;
+        return a.createdAt - b.createdAt;
+      });
+
+      const keeper = sorted[0]!;
+      const rest = sorted.slice(1);
+
+      const merged = {
+        name: keeper.name ?? rest.find((row) => row.name)?.name,
+        referralSource:
+          keeper.referralSource ?? rest.find((row) => row.referralSource)?.referralSource,
+        invitedAt:
+          keeper.invitedAt ?? rest.map((row) => row.invitedAt).find((value) => value !== undefined),
+        convertedAt:
+          keeper.convertedAt ??
+          rest.map((row) => row.convertedAt).find((value) => value !== undefined),
+        lastEmailSentAt:
+          keeper.lastEmailSentAt ??
+          rest
+            .map((row) => row.lastEmailSentAt)
+            .find((value) => value !== undefined),
+        inviteCode:
+          keeper.inviteCode ?? rest.map((row) => row.inviteCode).find((value) => value !== undefined),
+      };
+
+      await ctx.db.patch(keeper._id, merged);
+
+      for (const duplicate of rest) {
+        await ctx.db.delete(duplicate._id);
+        rowsDeleted++;
+      }
+
+      groupsDeduped++;
+    }
+
+    return {
+      totalEntries: entries.length,
+      groupsDeduped,
+      rowsDeleted,
+    };
+  },
+});
