@@ -285,7 +285,10 @@ export const backfillEventSearchAndRecency = mutation({
         event.firstPublishedAt,
       );
 
-      const nextLastUpdatedAt = latestArticlePublishedAt || event.lastUpdatedAt;
+      const nextLastUpdatedAt = Math.max(
+        event.lastUpdatedAt ?? 0,
+        latestArticlePublishedAt,
+      );
       if (nextLastUpdatedAt !== event.lastUpdatedAt) {
         await ctx.db.patch(event._id, {
           lastUpdatedAt: nextLastUpdatedAt,
