@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import EarlyAccessRequired from "@/components/early-access-required";
 import ArticlesList from "@/components/feed/articles-list";
 import BookmarkButton from "@/components/bookmark-button";
+import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { SITE } from "@/lib/seo";
 import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
@@ -144,6 +145,7 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
     "center",
     event.perspectiveSummaries?.right ? "right" : null,
   ].filter(Boolean).length;
+  const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -190,6 +192,12 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+                <div
+                  className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                  title={formatAbsoluteTimestamp(lastUpdatedAt)}
+                >
+                  Updated {formatRelativeTimestamp(lastUpdatedAt)}
+                </div>
                 <div className="flex -space-x-3">
                   {articles
                     .map((article) => article.source)

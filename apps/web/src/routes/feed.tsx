@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
@@ -7,6 +7,7 @@ import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react";
 import EarlyAccessRequired from "@/components/early-access-required";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Command,
   CommandEmpty,
@@ -259,6 +260,7 @@ function FeedComponent() {
 
 function FeedContent() {
   const topics = useQuery(api.topics.getTopics);
+  const currentUser = useQuery(api.user.getCurrentUser);
   const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
   const rawPageSize = Number(pageSizeConfig?.value);
   const MAX_FEED_PAGE_SIZE = 50;
@@ -278,6 +280,58 @@ function FeedContent() {
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("biviant-recent-event-searches");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setRecentSearches(
+          parsed.filter((value): value is string => typeof value === "string").slice(0, 5),
+        );
+      }
+    } catch {
+      // Ignore malformed localStorage.
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "/") return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const {
     results: events,
@@ -288,6 +342,75 @@ function FeedContent() {
     selectedTopic === "all" ? {} : { topicId: selectedTopic },
     { initialNumItems: pageSize },
   );
+  const isSearching = debouncedSearch.length >= 2;
+  const searchResults = useQuery(
+    api.events.searchPublishedEvents,
+    isSearching
+      ? {
+          query: debouncedSearch,
+          limit: pageSize,
+          topicId: selectedTopic === "all" ? undefined : selectedTopic,
+        }
+      : "skip",
+  );
+
+  const preferredTopicIds = useMemo(() => {
+    if (!topics || !currentUser?.privateContext?.interests?.length) {
+      return [];
+    }
+
+    const preferredNames = currentUser.privateContext.interests.map((interest) =>
+      interest.trim().toLowerCase(),
+    );
+
+    return topics
+      .filter((topic) => {
+        const candidates = [
+          topic.displayName,
+          ...(topic.aliases ?? []),
+        ].map((value) => value.trim().toLowerCase());
+        return candidates.some((candidate) => preferredNames.includes(candidate));
+      })
+      .map((topic) => topic._id);
+  }, [currentUser?.privateContext?.interests, topics]);
+
+  const fallbackEvents = useQuery(
+    api.events.getPublishedEventsByTopicIds,
+    isSearching &&
+      searchResults !== undefined &&
+      searchResults.length === 0 &&
+      preferredTopicIds.length > 0
+      ? { topicIds: preferredTopicIds, limit: 5 }
+      : "skip",
+  );
+
+  useEffect(() => {
+    if (
+      debouncedSearch.length < 2 ||
+      searchResults === undefined ||
+      searchResults.length === 0
+    ) {
+      return;
+    }
+
+    const next = [
+      debouncedSearch,
+      ...recentSearches.filter(
+        (entry) => entry.toLowerCase() !== debouncedSearch.toLowerCase(),
+      ),
+    ].slice(0, 5);
+    const isUnchanged =
+      next.length === recentSearches.length &&
+      next.every((value, index) => value === recentSearches[index]);
+    if (isUnchanged) {
+      return;
+    }
+    setRecentSearches(() => next);
+    window.localStorage.setItem(
+      "biviant-recent-event-searches",
+      JSON.stringify(next),
+    );
+  }, [debouncedSearch, recentSearches, searchResults]);
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -299,6 +422,13 @@ function FeedContent() {
 
   const featuredEvent = events?.[0];
   const remainingEvents = featuredEvent ? events.slice(1) : events;
+  const featuredSearchEvent = searchResults?.[0];
+  const remainingSearchEvents = featuredSearchEvent
+    ? searchResults.slice(1)
+    : searchResults;
+  const shouldShowThresholdHint = isSearchFocused && searchInput.trim().length < 2;
+  const shouldShowRecentSearches =
+    isSearchFocused && searchInput.trim().length === 0 && recentSearches.length > 0;
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -306,22 +436,91 @@ function FeedContent() {
         <div className="flex flex-col gap-8">
           <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
             <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-4 sm:px-4 sm:py-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Biviant Feed
-                </p>
-                <div className="shrink-0">
-                  <TopicFilter
-                    topics={topics}
-                    selectedTopic={selectedTopic}
-                    onSelect={setSelectedTopic}
-                  />
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="relative flex-1">
+                    <Input
+                      ref={searchInputRef}
+                      type="search"
+                      value={searchInput}
+                      onChange={(event) => setSearchInput(event.target.value)}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => {
+                        window.setTimeout(() => setIsSearchFocused(false), 100);
+                      }}
+                      placeholder="Search events by title..."
+                      className="h-11 rounded-full border-border/80 bg-background/75 pr-12"
+                      aria-label="Search events"
+                    />
+                    {searchInput.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1 size-9 rounded-full"
+                        onClick={() => {
+                          setSearchInput("");
+                          setDebouncedSearch("");
+                        }}
+                        aria-label="Clear search"
+                      >
+                        <XIcon className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="shrink-0">
+                    <TopicFilter
+                      topics={topics}
+                      selectedTopic={selectedTopic}
+                      onSelect={setSelectedTopic}
+                    />
+                  </div>
                 </div>
+                {shouldShowThresholdHint && (
+                  <p className="text-xs text-muted-foreground">
+                    Type 2+ characters to search.
+                  </p>
+                )}
+                {shouldShowRecentSearches && (
+                  <div className="flex flex-wrap gap-2">
+                    {recentSearches.map((recentSearch) => (
+                      <Button
+                        key={recentSearch}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setSearchInput(recentSearch);
+                          setDebouncedSearch(recentSearch);
+                          searchInputRef.current?.focus();
+                        }}
+                      >
+                        {recentSearch}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {isSearching && (
+                  <p className="text-xs text-muted-foreground">
+                    Showing indexed search results for “{debouncedSearch}”.
+                  </p>
+                )}
               </div>
             </div>
           </header>
 
           <div className="grid gap-6">
+            {isSearching && searchResults === undefined && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+              >
+                Searching events…
+              </div>
+            )}
             {status === "LoadingFirstPage" && (
               <div
                 role="status"
@@ -332,7 +531,7 @@ function FeedContent() {
               </div>
             )}
 
-            {featuredEvent ? (
+            {!isSearching && featuredEvent ? (
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
@@ -351,30 +550,84 @@ function FeedContent() {
               </section>
             ) : null}
 
-            {remainingEvents && remainingEvents.length > 0 ? (
+            {isSearching && featuredSearchEvent ? (
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    More Events
+                    Top Search Match
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Latest coverage
+                    Search
+                  </p>
+                </div>
+                <EventCard
+                  event={featuredSearchEvent}
+                  topicNamesById={topicNamesById}
+                  maxSources={maxSources}
+                  variant="feature"
+                  searchQuery={debouncedSearch}
+                />
+              </section>
+            ) : null}
+
+            {((!isSearching && remainingEvents && remainingEvents.length > 0) ||
+              (isSearching && remainingSearchEvents && remainingSearchEvents.length > 0)) ? (
+              <section className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                    {isSearching ? "More Search Results" : "More Events"}
+                  </h2>
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    {isSearching ? "Best matches" : "Latest coverage"}
                   </p>
                 </div>
                 <div className="grid gap-5">
-                  {remainingEvents.map((event) => (
+                  {(isSearching ? remainingSearchEvents : remainingEvents)?.map((event) => (
                     <EventCard
                       key={event._id}
                       event={event}
                       topicNamesById={topicNamesById}
                       maxSources={maxSources}
+                      searchQuery={isSearching ? debouncedSearch : undefined}
                     />
                   ))}
                 </div>
               </section>
             ) : null}
 
-            {status !== "LoadingFirstPage" &&
+            {isSearching && searchResults?.length === 0 && (
+              <section className="flex flex-col gap-4">
+                <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+                  <p>No events matched “{debouncedSearch}”.</p>
+                  <p className="mt-2">Try fewer keywords.</p>
+                </div>
+                {fallbackEvents && fallbackEvents.length > 0 && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                        From your preferred topics
+                      </h2>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                        Latest 5
+                      </p>
+                    </div>
+                    <div className="grid gap-5">
+                      {fallbackEvents.map((event) => (
+                        <EventCard
+                          key={event._id}
+                          event={event}
+                          topicNamesById={topicNamesById}
+                          maxSources={maxSources}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {!isSearching &&
+              status !== "LoadingFirstPage" &&
               (!events || events.length === 0) && (
                 <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
                   No events found.
@@ -382,7 +635,7 @@ function FeedContent() {
               )}
           </div>
 
-          {status === "CanLoadMore" && (
+          {!isSearching && status === "CanLoadMore" && (
             <div>
               <Button
                 type="button"

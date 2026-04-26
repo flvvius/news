@@ -26,6 +26,7 @@ type EnrichableEvent = Pick<
   | "perspectiveSummaries"
   | "globalImpact"
   | "firstPublishedAt"
+  | "lastUpdatedAt"
 >;
 
 async function enrichEventsWithTopicsAndSources(
@@ -96,6 +97,7 @@ async function enrichEventsWithTopicsAndSources(
       perspectiveSummaries: event.perspectiveSummaries,
       globalImpact: event.globalImpact,
       firstPublishedAt: event.firstPublishedAt,
+      lastUpdatedAt: event.lastUpdatedAt,
       topicIds,
       articleCount,
       sources,
@@ -113,6 +115,7 @@ function redactPublicEventPreview(
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
     firstPublishedAt: event.firstPublishedAt,
+    lastUpdatedAt: event.lastUpdatedAt,
     topicIds: event.topicIds,
     articleCount: event.articleCount,
     sources: event.sources,
@@ -202,6 +205,87 @@ export const getPublishedEvents = query({
   },
 });
 
+export const searchPublishedEvents = query({
+  args: {
+    query: v.string(),
+    limit: v.optional(v.number()),
+    topicId: v.optional(v.id("topics")),
+  },
+  handler: async (ctx, args) => {
+    await requireBetaAccess(ctx);
+
+    const normalizedQuery = args.query.trim();
+    if (normalizedQuery.length < 2) {
+      return [];
+    }
+
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 12), 1), 30);
+    const rawMatches = await ctx.db
+      .query("events")
+      .withSearchIndex("by_search_text", (q) =>
+        q.search("title", normalizedQuery).eq("status", "published"),
+      )
+      .take(args.topicId ? safeLimit * 4 : safeLimit);
+
+    const enriched = await enrichEventsWithTopicsAndSources(ctx, rawMatches);
+    const filtered = args.topicId
+      ? enriched.filter((event) => event.topicIds.includes(args.topicId!))
+      : enriched;
+
+    return filtered.slice(0, safeLimit);
+  },
+});
+
+export const getPublishedEventsByTopicIds = query({
+  args: {
+    topicIds: v.array(v.id("topics")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireBetaAccess(ctx);
+
+    const uniqueTopicIds = Array.from(new Set(args.topicIds));
+    if (uniqueTopicIds.length === 0) {
+      return [];
+    }
+
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5), 1), 20);
+    const eventIds = new Set<Id<"events">>();
+
+    await Promise.all(
+      uniqueTopicIds.map(async (topicId) => {
+        const rows = await ctx.db
+          .query("eventTopics")
+          .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+          .take(safeLimit * 4);
+        for (const row of rows) {
+          eventIds.add(row.eventId);
+        }
+      }),
+    );
+
+    const matchedEvents = await Promise.all(
+      Array.from(eventIds).map((eventId) => ctx.db.get(eventId)),
+    );
+
+    const publishedEvents = matchedEvents
+      .filter(
+        (event): event is Doc<"events"> =>
+          event !== null && event.status === "published",
+      )
+      .sort(
+        (a, b) =>
+          (b.lastUpdatedAt ?? b.firstPublishedAt) -
+            (a.lastUpdatedAt ?? a.firstPublishedAt) ||
+          b.firstPublishedAt - a.firstPublishedAt ||
+          b._creationTime - a._creationTime,
+      )
+      .slice(0, safeLimit);
+
+    return await enrichEventsWithTopicsAndSources(ctx, publishedEvents);
+  },
+});
+
 export const getPublicPublishedEventsPreview = query({
   args: {
     limit: v.optional(v.number()),
@@ -237,6 +321,7 @@ export const getEventBySlugPreview = query({
         title: event.title,
         imageUrl: event.imageUrl,
         imageAlt: event.imageAlt,
+        lastUpdatedAt: event.lastUpdatedAt,
         perspectiveSummaries: {
           center: event.perspectiveSummaries?.center,
         },

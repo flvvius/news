@@ -9,6 +9,7 @@
  */
 
 import { mutation } from "./_generated/server";
+import { v } from "convex/values";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 
@@ -253,6 +254,54 @@ export const dedupeWaitlistByEmail = mutation({
       totalEntries: entries.length,
       groupsDeduped,
       rowsDeleted,
+    };
+  },
+});
+
+export const backfillEventSearchAndRecency = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      2000,
+    );
+    const page = await ctx.db.query("events").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+
+    for (const event of page.page) {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+
+      const latestArticlePublishedAt = articles.reduce(
+        (max, article) => Math.max(max, article.publishedAt),
+        event.firstPublishedAt,
+      );
+
+      const nextLastUpdatedAt = Math.max(
+        event.lastUpdatedAt ?? 0,
+        latestArticlePublishedAt,
+      );
+      if (nextLastUpdatedAt !== event.lastUpdatedAt) {
+        await ctx.db.patch(event._id, {
+          lastUpdatedAt: nextLastUpdatedAt,
+        });
+        updated++;
+      }
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
     };
   },
 });
