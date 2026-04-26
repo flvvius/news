@@ -22,9 +22,7 @@ export default function ShareEventButton({
 }: ShareEventButtonProps) {
   const shareOrigin = SITE.url || window.location.origin;
   const shareUrl = `${shareOrigin}/event/${slug}`;
-  const shareText = summary?.trim()
-    ? `${title} — ${summary.trim()}`
-    : title;
+  const shareText = summary?.trim() ? `${title} — ${summary.trim()}` : title;
   const iconSize = size === "sm" ? "size-4" : "size-5";
   const buttonSize = size === "sm" ? "size-8" : "size-9";
 

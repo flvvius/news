@@ -181,10 +181,7 @@ export default defineSchema({
     .index("by_canonical_url", ["canonicalUrl"])
     .index("by_status", ["status"])
     .index("by_status_published", ["status", "publishedAt"])
-    .index("by_status_enrichment_lease", [
-      "status",
-      "enrichmentLeaseExpiresAt",
-    ])
+    .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
     .index("by_source", ["sourceId"])
     .index("by_published", ["publishedAt"]),
 
@@ -217,7 +214,6 @@ export default defineSchema({
       job: v.optional(v.string()),
       location: v.optional(v.string()),
     }),
-
   })
     .index("by_email", ["email"])
     .index("by_auth_user_id", ["authUserId"]),

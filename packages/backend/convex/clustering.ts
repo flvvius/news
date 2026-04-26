@@ -154,9 +154,10 @@ function maxMemberSimilarity(
   articleEmbedding: number[],
   candidate: Pick<ClusterCandidate, "embedding" | "memberEmbeddings">,
 ): number {
-  const memberEmbeddings = candidate.memberEmbeddings.length > 0
-    ? candidate.memberEmbeddings
-    : [candidate.embedding];
+  const memberEmbeddings =
+    candidate.memberEmbeddings.length > 0
+      ? candidate.memberEmbeddings
+      : [candidate.embedding];
   let maxSimilarity = cosineSimilarity(articleEmbedding, candidate.embedding);
   for (const memberEmbedding of memberEmbeddings) {
     maxSimilarity = Math.max(
@@ -171,8 +172,10 @@ function maxCrossEventSimilarity(
   a: Pick<ClusterCandidate, "embedding" | "memberEmbeddings">,
   b: Pick<ClusterCandidate, "embedding" | "memberEmbeddings">,
 ): number {
-  const aEmbeddings = a.memberEmbeddings.length > 0 ? a.memberEmbeddings : [a.embedding];
-  const bEmbeddings = b.memberEmbeddings.length > 0 ? b.memberEmbeddings : [b.embedding];
+  const aEmbeddings =
+    a.memberEmbeddings.length > 0 ? a.memberEmbeddings : [a.embedding];
+  const bEmbeddings =
+    b.memberEmbeddings.length > 0 ? b.memberEmbeddings : [b.embedding];
   let maxSimilarity = cosineSimilarity(a.embedding, b.embedding);
   for (const left of aEmbeddings) {
     for (const right of bEmbeddings) {
@@ -284,7 +287,9 @@ function buildEventSlug(
   articleId: Id<"articles">,
 ): string {
   const ymd = new Date(publishedAt).toISOString().slice(0, 10);
-  const suffix = String(articleId).replace(/[^a-zA-Z0-9]/g, "").slice(-6);
+  const suffix = String(articleId)
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(-6);
   return `${slugify(title)}-${ymd}-${suffix}`.toLowerCase();
 }
 
@@ -443,7 +448,12 @@ function clampNumber(
   return Math.min(Math.max(parsed, min), max);
 }
 
-function safeInteger(value: unknown, fallback: number, min: number, max: number) {
+function safeInteger(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   return Math.floor(clampNumber(value, fallback, min, max));
 }
 
@@ -469,7 +479,10 @@ function countPhraseOccurrences(text: string, phrase: string): number {
   return count;
 }
 
-function countMatchedKeywords(tokens: Set<string>, keywordTokens: string[]): number {
+function countMatchedKeywords(
+  tokens: Set<string>,
+  keywordTokens: string[],
+): number {
   let matches = 0;
   for (const token of keywordTokens) {
     if (tokens.has(token)) {
@@ -479,7 +492,9 @@ function countMatchedKeywords(tokens: Set<string>, keywordTokens: string[]): num
   return matches;
 }
 
-function buildTopicFieldContexts(article: TopicArticleContext): TopicInferenceFieldContexts {
+function buildTopicFieldContexts(
+  article: TopicArticleContext,
+): TopicInferenceFieldContexts {
   const titleText = normalizeText(article.title);
   const snippetText = normalizeText(article.rssSnippet);
   const summaryText = normalizeText(article.summary);
@@ -520,7 +535,12 @@ function compileTopicForInference(
 
   const titlePhrases = Array.from(
     new Set(
-      [topic.displayName, topic.slug.replace(/-/g, " "), ...aliases, ...keyPhrases]
+      [
+        topic.displayName,
+        topic.slug.replace(/-/g, " "),
+        ...aliases,
+        ...keyPhrases,
+      ]
         .map(normalizePhrase)
         .filter((value) => value.length >= 2),
     ),
@@ -575,23 +595,28 @@ function evaluateTopicInference(
   return compiledTopics
     .map((topic) => {
       const titlePhraseHits = topic.titlePhrases.reduce(
-        (sum, phrase) => sum + countPhraseOccurrences(fields.title.text, phrase),
+        (sum, phrase) =>
+          sum + countPhraseOccurrences(fields.title.text, phrase),
         0,
       );
       const snippetPhraseHits = topic.bodyPhrases.reduce(
-        (sum, phrase) => sum + countPhraseOccurrences(fields.snippet.text, phrase),
+        (sum, phrase) =>
+          sum + countPhraseOccurrences(fields.snippet.text, phrase),
         0,
       );
       const summaryPhraseHits = topic.bodyPhrases.reduce(
-        (sum, phrase) => sum + countPhraseOccurrences(fields.summary.text, phrase),
+        (sum, phrase) =>
+          sum + countPhraseOccurrences(fields.summary.text, phrase),
         0,
       );
       const factPhraseHits = topic.bodyPhrases.reduce(
-        (sum, phrase) => sum + countPhraseOccurrences(fields.facts.text, phrase),
+        (sum, phrase) =>
+          sum + countPhraseOccurrences(fields.facts.text, phrase),
         0,
       );
       const excludeHits = topic.excludePhrases.reduce(
-        (sum, phrase) => sum + countPhraseOccurrences(fields.combined.text, phrase),
+        (sum, phrase) =>
+          sum + countPhraseOccurrences(fields.combined.text, phrase),
         0,
       );
 
@@ -750,7 +775,10 @@ function chooseCanonicalEvent(
     : { keep: b, remove: a };
 }
 
-function summarizeText(text: string | undefined, maxLength: number): string | undefined {
+function summarizeText(
+  text: string | undefined,
+  maxLength: number,
+): string | undefined {
   const cleaned = text?.replace(/\s+/g, " ").trim();
   if (!cleaned) return undefined;
   if (cleaned.length <= maxLength) return cleaned;
@@ -762,18 +790,25 @@ function summarizeText(text: string | undefined, maxLength: number): string | un
     slice.lastIndexOf(", "),
     slice.lastIndexOf(" "),
   );
-  const trimmed = (lastBoundary > maxLength * 0.55 ? slice.slice(0, lastBoundary) : slice)
+  const trimmed = (
+    lastBoundary > maxLength * 0.55 ? slice.slice(0, lastBoundary) : slice
+  )
     .trim()
     .replace(/[,:;.\s]+$/g, "");
   return `${trimmed}.`;
 }
 
 function articlePresentationScore(
-  article: Pick<Doc<"articles">, "title" | "rssSnippet" | "publishedAt" | "sourceId">,
+  article: Pick<
+    Doc<"articles">,
+    "title" | "rssSnippet" | "publishedAt" | "sourceId"
+  >,
   source: Doc<"sources"> | null,
   eventTitleTokens: Set<string>,
 ): number {
-  const titleTokens = normalizeTitleTokens(normalizeTitleForClustering(article.title));
+  const titleTokens = normalizeTitleTokens(
+    normalizeTitleForClustering(article.title),
+  );
   const snippetTokens = normalizeTitleTokens(
     normalizeSnippetForClustering(article.rssSnippet),
   );
@@ -880,11 +915,16 @@ async function refreshEventPresentation(
     eventTitleTokens,
   );
   const uniqueSources = new Set(
-    articlesWithSources.map(({ source, article }) => source?.name ?? String(article.sourceId)),
+    articlesWithSources.map(
+      ({ source, article }) => source?.name ?? String(article.sourceId),
+    ),
   );
 
   const representativeSnippet =
-    summarizeText(normalizeSnippetForClustering(best.article.rssSnippet), 220) ??
+    summarizeText(
+      normalizeSnippetForClustering(best.article.rssSnippet),
+      220,
+    ) ??
     summarizeText(normalizeTitleForClustering(best.article.title), 160) ??
     "Coverage is still being assembled from multiple sources.";
 
@@ -974,8 +1014,13 @@ function diagnoseEventImageState(args: {
   | "event_image_stale_or_external" {
   if (args.articleCount === 0) return "no_articles";
   if (args.candidateCount === 0) return "no_article_images";
-  if (!args.eventImageUrl && args.bestCandidateUrl) return "event_missing_best_candidate";
-  if (args.eventImageUrl && args.bestCandidateUrl && args.eventImageUrl === args.bestCandidateUrl) {
+  if (!args.eventImageUrl && args.bestCandidateUrl)
+    return "event_missing_best_candidate";
+  if (
+    args.eventImageUrl &&
+    args.bestCandidateUrl &&
+    args.eventImageUrl === args.bestCandidateUrl
+  ) {
     return "event_image_matches_candidate";
   }
   return "event_image_stale_or_external";
@@ -1031,7 +1076,9 @@ function findBestCandidate(
   let best: { candidate: ClusterCandidate; score: number } | null = null;
 
   for (const candidate of candidates) {
-    const timeDeltaMs = Math.abs(article.publishedAt - candidate.firstPublishedAt);
+    const timeDeltaMs = Math.abs(
+      article.publishedAt - candidate.firstPublishedAt,
+    );
     if (timeDeltaMs > RECENT_EVENT_WINDOW_MS) {
       continue;
     }
@@ -1053,8 +1100,14 @@ function findBestCandidate(
       articleEvidenceTokens,
       candidate.evidenceTokens,
     );
-    const factOverlap = countTokenOverlap(articleFactTokens, candidate.factTokens);
-    const factJaccard = jaccardSimilarity(articleFactTokens, candidate.factTokens);
+    const factOverlap = countTokenOverlap(
+      articleFactTokens,
+      candidate.factTokens,
+    );
+    const factJaccard = jaccardSimilarity(
+      articleFactTokens,
+      candidate.factTokens,
+    );
     const entityOverlap = countTokenOverlap(
       articleEntityTokens,
       candidate.entityTokens,
@@ -1098,16 +1151,17 @@ function findBestCandidate(
         (lexicalSupport || semanticSupport));
 
     const sameSourceMatch = sameSource
-      ? similarity >= settings.sameSourceMinSimilarity &&
-        lexicalSupport
+      ? similarity >= settings.sameSourceMinSimilarity && lexicalSupport
       : true;
 
     if (!baseMatch || !sameSourceMatch) continue;
 
     const recencyScore = 1 - timeDeltaMs / RECENT_EVENT_WINDOW_MS;
     const overlapScore =
-      Math.min(titleOverlap + evidenceOverlap + factOverlap + entityOverlap, 10) /
-      10;
+      Math.min(
+        titleOverlap + evidenceOverlap + factOverlap + entityOverlap,
+        10,
+      ) / 10;
     const sourceDiversityBonus = sameSource
       ? 0
       : Math.min(candidate.sourceIds.size, 5) / 100;
@@ -1188,10 +1242,15 @@ function isWeakEventPresentation(
 function buildEventTopicInferenceContext(
   event: Pick<Doc<"events">, "title">,
   articles: Array<
-    Pick<Doc<"articles">, "rssSnippet" | "summary" | "atomicFacts" | "publishedAt">
+    Pick<
+      Doc<"articles">,
+      "rssSnippet" | "summary" | "atomicFacts" | "publishedAt"
+    >
   >,
 ): TopicArticleContext {
-  const sortedArticles = [...articles].sort((a, b) => b.publishedAt - a.publishedAt);
+  const sortedArticles = [...articles].sort(
+    (a, b) => b.publishedAt - a.publishedAt,
+  );
   const topArticles = sortedArticles.slice(0, 6);
 
   return {
@@ -1243,9 +1302,12 @@ export const getEnrichedArticlesForClustering = internalQuery({
             .query("articleEmbeddings")
             .withIndex("by_article", (q) => q.eq("articleId", article._id))
             .collect()
-            .then((rows) =>
-              rows.sort((a, b) => b.version - a.version || b._creationTime - a._creationTime)[0] ??
-              null,
+            .then(
+              (rows) =>
+                rows.sort(
+                  (a, b) =>
+                    b.version - a.version || b._creationTime - a._creationTime,
+                )[0] ?? null,
             );
 
           if (!embeddingRow) {
@@ -1329,12 +1391,16 @@ export const getRecentClusterCandidates = internalQuery({
             ),
           );
           const memberEmbeddings = articleEmbeddingRows
-            .map((rows) =>
-              rows.sort(
-                (a, b) => b.version - a.version || b._creationTime - a._creationTime,
-              )[0]?.embedding,
+            .map(
+              (rows) =>
+                rows.sort(
+                  (a, b) =>
+                    b.version - a.version || b._creationTime - a._creationTime,
+                )[0]?.embedding,
             )
-            .filter((embedding): embedding is number[] => embedding !== undefined)
+            .filter(
+              (embedding): embedding is number[] => embedding !== undefined,
+            )
             .slice(0, 3);
           const articleCount = articles.length;
           const sourceIds = articles.map((article) => String(article.sourceId));
@@ -1564,14 +1630,21 @@ export const attachArticleToEvent = internalMutation({
       event.lastUpdatedAt ?? event.firstPublishedAt,
       publishedAt,
     );
-    const uniqueSourceCount = new Set(
-      [...existingArticles.map((existingArticle) => String(existingArticle.sourceId)), String(article.sourceId)],
-    ).size;
+    const uniqueSourceCount = new Set([
+      ...existingArticles.map((existingArticle) =>
+        String(existingArticle.sourceId),
+      ),
+      String(article.sourceId),
+    ]).size;
     const nextArticleCount = currentCount + 1;
-    const nextStatus = shouldPublishCluster(nextArticleCount, uniqueSourceCount, {
-      minArticles: publishMinArticles,
-      minSources: publishMinSources,
-    })
+    const nextStatus = shouldPublishCluster(
+      nextArticleCount,
+      uniqueSourceCount,
+      {
+        minArticles: publishMinArticles,
+        minSources: publishMinSources,
+      },
+    )
       ? "published"
       : event.status;
     if (
@@ -1646,7 +1719,9 @@ export const getRecentClusteredEventsForAdmin = query({
           .withIndex("by_event", (q) => q.eq("eventId", event._id))
           .collect();
         const topics = (
-          await Promise.all(eventTopicRows.map((row) => ctx.db.get(row.topicId)))
+          await Promise.all(
+            eventTopicRows.map((row) => ctx.db.get(row.topicId)),
+          )
         )
           .filter((topic) => topic !== null)
           .map((topic) => ({
@@ -1674,7 +1749,8 @@ export const getRecentClusteredEventsForAdmin = query({
             rssSnippet: article.rssSnippet,
             publishedAt: article.publishedAt,
             status: article.status,
-            embeddingDimensions: articleEmbeddings[index]?.embedding.length ?? 0,
+            embeddingDimensions:
+              articleEmbeddings[index]?.embedding.length ?? 0,
           })),
         };
       }),
@@ -1692,7 +1768,9 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
       ctx.db.query("topics").collect(),
       getTopicInferenceSettingsForQuery(ctx),
     ]);
-    const topicBySlug = new Map(topicsForInference.map((topic) => [topic.slug, topic]));
+    const topicBySlug = new Map(
+      topicsForInference.map((topic) => [topic.slug, topic]),
+    );
 
     const events = await ctx.db
       .query("events")
@@ -1712,7 +1790,9 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
           .withIndex("by_event", (q) => q.eq("eventId", event._id))
           .collect();
         const attachedTopics = (
-          await Promise.all(eventTopicRows.map((row) => ctx.db.get(row.topicId)))
+          await Promise.all(
+            eventTopicRows.map((row) => ctx.db.get(row.topicId)),
+          )
         )
           .filter((topic) => topic !== null)
           .map((topic) => ({
@@ -1727,7 +1807,11 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
           topicsForInference,
           settings,
         );
-        const inferredSlugs = inferTopicSlugs(context, topicsForInference, settings);
+        const inferredSlugs = inferTopicSlugs(
+          context,
+          topicsForInference,
+          settings,
+        );
 
         return {
           eventId: event._id,
@@ -1842,7 +1926,8 @@ export const getRecentEventImageDiagnosticsForAdmin = query({
                 articleId: bestCandidate.article._id,
                 title: bestCandidate.article.title,
                 sourceName:
-                  bestCandidate.source?.name ?? String(bestCandidate.article.sourceId),
+                  bestCandidate.source?.name ??
+                  String(bestCandidate.article.sourceId),
                 imageUrl: bestCandidate.article.imageUrl,
                 imageWidth: bestCandidate.article.imageWidth,
                 imageHeight: bestCandidate.article.imageHeight,
@@ -1979,11 +2064,16 @@ export const getRecentArticleImageCoverageBySourceForAdmin = query({
     return Array.from(bySource.values())
       .map((row) => ({
         ...row,
-        imageCoverage: row.totalArticles > 0
-          ? Number((row.withImage / row.totalArticles).toFixed(3))
-          : 0,
+        imageCoverage:
+          row.totalArticles > 0
+            ? Number((row.withImage / row.totalArticles).toFixed(3))
+            : 0,
       }))
-      .sort((a, b) => b.totalArticles - a.totalArticles || a.imageCoverage - b.imageCoverage);
+      .sort(
+        (a, b) =>
+          b.totalArticles - a.totalArticles ||
+          a.imageCoverage - b.imageCoverage,
+      );
   },
 });
 
@@ -2003,7 +2093,9 @@ export const getRecentImageArticlesWithEventStateInternal = internalQuery({
         .slice(0, pageSize)
         .map(async (article) => {
           const source = await ctx.db.get(article.sourceId);
-          const event = article.eventId ? await ctx.db.get(article.eventId) : null;
+          const event = article.eventId
+            ? await ctx.db.get(article.eventId)
+            : null;
           return {
             articleId: article._id,
             articleTitle: article.title,
@@ -2096,7 +2188,8 @@ export const getRecentEventImageDiagnosticsInternal = internalQuery({
                 articleId: bestCandidate.article._id,
                 title: bestCandidate.article.title,
                 sourceName:
-                  bestCandidate.source?.name ?? String(bestCandidate.article.sourceId),
+                  bestCandidate.source?.name ??
+                  String(bestCandidate.article.sourceId),
                 imageUrl: bestCandidate.article.imageUrl,
                 imageSource: bestCandidate.article.imageSource,
                 extractionQuality:
@@ -2254,11 +2347,16 @@ export const getRecentArticleImageCoverageBySourceInternal = internalQuery({
     return Array.from(bySource.values())
       .map((row) => ({
         ...row,
-        imageCoverage: row.totalArticles > 0
-          ? Number((row.withImage / row.totalArticles).toFixed(3))
-          : 0,
+        imageCoverage:
+          row.totalArticles > 0
+            ? Number((row.withImage / row.totalArticles).toFixed(3))
+            : 0,
       }))
-      .sort((a, b) => b.totalArticles - a.totalArticles || a.imageCoverage - b.imageCoverage);
+      .sort(
+        (a, b) =>
+          b.totalArticles - a.totalArticles ||
+          a.imageCoverage - b.imageCoverage,
+      );
   },
 });
 
@@ -2275,7 +2373,10 @@ export const getRecentClusterPairDiagnosticsForAdmin = query({
       .take(articleLimit * 3);
 
     const candidateArticles = recentArticles
-      .filter((article) => article.status === "enriched" || article.status === "clustered")
+      .filter(
+        (article) =>
+          article.status === "enriched" || article.status === "clustered",
+      )
       .slice(0, articleLimit);
 
     const enriched = (
@@ -2286,7 +2387,8 @@ export const getRecentClusterPairDiagnosticsForAdmin = query({
             .withIndex("by_article", (q) => q.eq("articleId", article._id))
             .collect();
           const embeddingRow = embeddingRows.sort(
-            (a, b) => b.version - a.version || b._creationTime - a._creationTime,
+            (a, b) =>
+              b.version - a.version || b._creationTime - a._creationTime,
           )[0];
           if (!embeddingRow) return null;
           const source = await ctx.db.get(article.sourceId);
@@ -2334,7 +2436,9 @@ export const getRecentClusterPairDiagnosticsForAdmin = query({
               toEventEmbedding(right.embedding),
             ).toFixed(4),
           ),
-          titleJaccard: Number(jaccardSimilarity(leftTokens, rightTokens).toFixed(4)),
+          titleJaccard: Number(
+            jaccardSimilarity(leftTokens, rightTokens).toFixed(4),
+          ),
           sharedEntityCount: countTokenOverlap(leftEntities, rightEntities),
           hoursApart: Number(hoursApart.toFixed(1)),
         });
@@ -2356,10 +2460,17 @@ export const labelClusterPairForAdmin = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireAdminUser(ctx);
-    const pairKey = buildClusterPairKey(args.leftArticleId, args.rightArticleId);
-    const [leftArticleId, rightArticleId] = [args.leftArticleId, args.rightArticleId].sort(
-      (a, b) => String(a).localeCompare(String(b)),
-    ) as [Id<"articles">, Id<"articles">];
+    const pairKey = buildClusterPairKey(
+      args.leftArticleId,
+      args.rightArticleId,
+    );
+    const [leftArticleId, rightArticleId] = [
+      args.leftArticleId,
+      args.rightArticleId,
+    ].sort((a, b) => String(a).localeCompare(String(b))) as [
+      Id<"articles">,
+      Id<"articles">,
+    ];
 
     const existing = await ctx.db
       .query("clusterPairLabels")
@@ -2411,25 +2522,35 @@ export const getLabeledClusterPairsForAdmin = query({
           ]);
           if (!leftArticle || !rightArticle) return null;
 
-          const [leftEmbeddingRows, rightEmbeddingRows, leftSource, rightSource] =
-            await Promise.all([
-              ctx.db
-                .query("articleEmbeddings")
-                .withIndex("by_article", (q) => q.eq("articleId", leftArticle._id))
-                .collect(),
-              ctx.db
-                .query("articleEmbeddings")
-                .withIndex("by_article", (q) => q.eq("articleId", rightArticle._id))
-                .collect(),
-              ctx.db.get(leftArticle.sourceId),
-              ctx.db.get(rightArticle.sourceId),
-            ]);
+          const [
+            leftEmbeddingRows,
+            rightEmbeddingRows,
+            leftSource,
+            rightSource,
+          ] = await Promise.all([
+            ctx.db
+              .query("articleEmbeddings")
+              .withIndex("by_article", (q) =>
+                q.eq("articleId", leftArticle._id),
+              )
+              .collect(),
+            ctx.db
+              .query("articleEmbeddings")
+              .withIndex("by_article", (q) =>
+                q.eq("articleId", rightArticle._id),
+              )
+              .collect(),
+            ctx.db.get(leftArticle.sourceId),
+            ctx.db.get(rightArticle.sourceId),
+          ]);
 
           const leftEmbedding = leftEmbeddingRows.sort(
-            (a, b) => b.version - a.version || b._creationTime - a._creationTime,
+            (a, b) =>
+              b.version - a.version || b._creationTime - a._creationTime,
           )[0]?.embedding;
           const rightEmbedding = rightEmbeddingRows.sort(
-            (a, b) => b.version - a.version || b._creationTime - a._creationTime,
+            (a, b) =>
+              b.version - a.version || b._creationTime - a._creationTime,
           )[0]?.embedding;
           if (!leftEmbedding || !rightEmbedding) return null;
 
@@ -2566,21 +2687,20 @@ export const refreshEventImagesInternal = internalAction({
     const includeProcessing = args.includeProcessing ?? true;
     const onlyMissingImage = args.onlyMissingImage ?? true;
 
-    const publishedEvents: Array<Pick<Doc<"events">, "_id">> = await ctx.runQuery(
-      internal.clustering.getEventsForImageRefresh,
-      {
+    const publishedEvents: Array<Pick<Doc<"events">, "_id">> =
+      await ctx.runQuery(internal.clustering.getEventsForImageRefresh, {
         status: "published",
         limit,
         onlyMissingImage,
-      },
-    );
-    const processingEvents: Array<Pick<Doc<"events">, "_id">> = includeProcessing
-      ? await ctx.runQuery(internal.clustering.getEventsForImageRefresh, {
-          status: "processing",
-          limit,
-          onlyMissingImage,
-        })
-      : [];
+      });
+    const processingEvents: Array<Pick<Doc<"events">, "_id">> =
+      includeProcessing
+        ? await ctx.runQuery(internal.clustering.getEventsForImageRefresh, {
+            status: "processing",
+            limit,
+            onlyMissingImage,
+          })
+        : [];
 
     const seen = new Set<string>();
     const eventIds: Id<"events">[] = [...publishedEvents, ...processingEvents]
@@ -2891,16 +3011,14 @@ export const mergeNearDuplicateEvents = internalAction({
 
       const candidates: ClusterCandidate[] = (
         recentCandidatesRaw as ClusterCandidateQueryResult[]
-      ).map(
-        (candidate) => ({
-          ...candidate,
-          titleTokens: normalizeTitleTokens(candidate.title),
-          evidenceTokens: new Set(candidate.evidenceTokens),
-          factTokens: new Set(candidate.factTokens),
-          entityTokens: new Set(candidate.entityTokens),
-          sourceIds: new Set(candidate.sourceIds),
-        }),
-      );
+      ).map((candidate) => ({
+        ...candidate,
+        titleTokens: normalizeTitleTokens(candidate.title),
+        evidenceTokens: new Set(candidate.evidenceTokens),
+        factTokens: new Set(candidate.factTokens),
+        entityTokens: new Set(candidate.entityTokens),
+        sourceIds: new Set(candidate.sourceIds),
+      }));
 
       const removedIds = new Set<string>();
       let mergedPairs = 0;
@@ -2918,7 +3036,8 @@ export const mergeNearDuplicateEvents = internalAction({
           examinedPairs++;
 
           const timeDeltaHours =
-            Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
+            Math.abs(a.firstPublishedAt - b.firstPublishedAt) /
+            (60 * 60 * 1000);
           if (timeDeltaHours > settings.maxTimeDeltaHours) {
             continue;
           }
@@ -2952,20 +3071,23 @@ export const mergeNearDuplicateEvents = internalAction({
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
 
-          const result = await ctx.runMutation(internal.clustering.mergeEvents, {
-            keepEventId: keep.eventId,
-            removeEventId: remove.eventId,
-            mergedEmbedding,
-            version: 1,
-            mergedFirstPublishedAt: Math.min(
-              keep.firstPublishedAt,
-              remove.firstPublishedAt,
-            ),
-            mergedTitle,
-            mergedPerspectiveSummaries,
-            mergedGlobalImpact,
-            mergedImageUrl,
-          });
+          const result = await ctx.runMutation(
+            internal.clustering.mergeEvents,
+            {
+              keepEventId: keep.eventId,
+              removeEventId: remove.eventId,
+              mergedEmbedding,
+              version: 1,
+              mergedFirstPublishedAt: Math.min(
+                keep.firstPublishedAt,
+                remove.firstPublishedAt,
+              ),
+              mergedTitle,
+              mergedPerspectiveSummaries,
+              mergedGlobalImpact,
+              mergedImageUrl,
+            },
+          );
 
           if (!result.merged) {
             skipped++;
@@ -3022,7 +3144,9 @@ export const reclusterRecentSingletonEvents = internalAction({
   }> => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
-      console.log("[clustering] Pipeline paused — skipping singleton recluster");
+      console.log(
+        "[clustering] Pipeline paused — skipping singleton recluster",
+      );
       return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
     }
 
@@ -3098,12 +3222,17 @@ export const reclusterRecentSingletonEvents = internalAction({
           examinedPairs++;
 
           const hoursApart =
-            Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
+            Math.abs(a.firstPublishedAt - b.firstPublishedAt) /
+            (60 * 60 * 1000);
           if (hoursApart > settings.windowHours) continue;
 
           const similarity = maxCrossEventSimilarity(a, b);
-          const entityOverlap = countTokenOverlap(a.entityTokens, b.entityTokens);
-          if (similarity < settings.minSimilarity || entityOverlap < 1) continue;
+          const entityOverlap = countTokenOverlap(
+            a.entityTokens,
+            b.entityTokens,
+          );
+          if (similarity < settings.minSimilarity || entityOverlap < 1)
+            continue;
 
           const { keep, remove } = chooseCanonicalEvent(a, b);
           const totalArticles = keep.articleCount + remove.articleCount;
@@ -3125,20 +3254,23 @@ export const reclusterRecentSingletonEvents = internalAction({
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
 
-          const result = await ctx.runMutation(internal.clustering.mergeEvents, {
-            keepEventId: keep.eventId,
-            removeEventId: remove.eventId,
-            mergedEmbedding,
-            version: 1,
-            mergedFirstPublishedAt: Math.min(
-              keep.firstPublishedAt,
-              remove.firstPublishedAt,
-            ),
-            mergedTitle,
-            mergedPerspectiveSummaries,
-            mergedGlobalImpact,
-            mergedImageUrl,
-          });
+          const result = await ctx.runMutation(
+            internal.clustering.mergeEvents,
+            {
+              keepEventId: keep.eventId,
+              removeEventId: remove.eventId,
+              mergedEmbedding,
+              version: 1,
+              mergedFirstPublishedAt: Math.min(
+                keep.firstPublishedAt,
+                remove.firstPublishedAt,
+              ),
+              mergedTitle,
+              mergedPerspectiveSummaries,
+              mergedGlobalImpact,
+              mergedImageUrl,
+            },
+          );
 
           if (!result.merged) {
             skipped++;
@@ -3434,7 +3566,11 @@ export const clusterEnrichedArticles = internalAction({
           continue;
         }
 
-        const slug = buildEventSlug(article.title, article.publishedAt, article._id);
+        const slug = buildEventSlug(
+          article.title,
+          article.publishedAt,
+          article._id,
+        );
         const centerSummary =
           article.rssSnippet.trim().length > 0
             ? article.rssSnippet.trim().slice(0, 280)

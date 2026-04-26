@@ -23,9 +23,12 @@ export const Route = createFileRoute("/event/$slug")({
         });
       }
 
-      return await context.convexClient.query(api.events.getEventBySlugPreview, {
-        slug: params.slug,
-      });
+      return await context.convexClient.query(
+        api.events.getEventBySlugPreview,
+        {
+          slug: params.slug,
+        },
+      );
     } catch (error) {
       console.error(
         `[Route loader] Failed to load event (slug: ${params.slug}):`,
@@ -57,7 +60,9 @@ export const Route = createFileRoute("/event/$slug")({
           ? [
               {
                 property: "article:published_time",
-                content: new Date(loaderData.event.firstPublishedAt).toISOString(),
+                content: new Date(
+                  loaderData.event.firstPublishedAt,
+                ).toISOString(),
               },
             ]
           : []),
@@ -91,7 +96,10 @@ export const Route = createFileRoute("/event/$slug")({
                     },
                   ]
                 : []),
-              { property: "og:image:alt", content: loaderData?.event?.imageAlt ?? title },
+              {
+                property: "og:image:alt",
+                content: loaderData?.event?.imageAlt ?? title,
+              },
               { name: "twitter:image", content: imageUrl },
             ]
           : []),
@@ -311,7 +319,8 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
                 Unlock the full comparison
               </CardTitle>
               <p className="max-w-[60ch] text-sm text-muted-foreground">
-                See the original reporting, compare perspectives side by side, and follow the full feed inside Biviant.
+                See the original reporting, compare perspectives side by side,
+                and follow the full feed inside Biviant.
               </p>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
@@ -380,12 +389,12 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
     <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
-        <Link
-          to="/feed"
-          className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          &larr; Back to feed
-        </Link>
+          <Link
+            to="/feed"
+            className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            &larr; Back to feed
+          </Link>
 
           <section className="overflow-hidden rounded-[1.6rem] border border-border/80 bg-card/95 shadow-sm">
             <div className="aspect-[16/10] overflow-hidden border-b border-border/70 bg-muted/40 sm:aspect-[16/9]">
@@ -440,9 +449,12 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                 <div className="flex -space-x-3">
                   {articles
                     .map((article) => article.source)
-                    .filter((source, index, array) =>
-                      source &&
-                      array.findIndex((candidate) => candidate?._id === source._id) === index,
+                    .filter(
+                      (source, index, array) =>
+                        source &&
+                        array.findIndex(
+                          (candidate) => candidate?._id === source._id,
+                        ) === index,
                     )
                     .slice(0, 5)
                     .map((source) => (
@@ -467,7 +479,8 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span className="font-medium text-card-foreground">
-                    {articles.length} {articles.length === 1 ? "article" : "articles"}
+                    {articles.length}{" "}
+                    {articles.length === 1 ? "article" : "articles"}
                   </span>
                   <span>•</span>
                   <span>{sourceCount} sources</span>
@@ -485,46 +498,48 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
               </CardHeader>
               <CardContent className="px-6 py-6 sm:px-8">
                 <Tabs defaultValue="center" className="w-full gap-5">
-                <TabsList
-                  className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
-                >
+                  <TabsList
+                    className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
+                  >
+                    {event.perspectiveSummaries?.left && (
+                      <TabsTrigger value="left">Left</TabsTrigger>
+                    )}
+                    <TabsTrigger value="center">Center</TabsTrigger>
+                    {event.perspectiveSummaries?.right && (
+                      <TabsTrigger value="right">Right</TabsTrigger>
+                    )}
+                  </TabsList>
+
                   {event.perspectiveSummaries?.left && (
-                    <TabsTrigger value="left">Left</TabsTrigger>
+                    <TabsContent value="left">
+                      <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                        {event.perspectiveSummaries.left}
+                      </p>
+                    </TabsContent>
                   )}
-                  <TabsTrigger value="center">Center</TabsTrigger>
+
+                  <TabsContent value="center">
+                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                      {event.perspectiveSummaries?.center ?? "Summary pending…"}
+                    </p>
+                  </TabsContent>
+
                   {event.perspectiveSummaries?.right && (
-                    <TabsTrigger value="right">Right</TabsTrigger>
+                    <TabsContent value="right">
+                      <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                        {event.perspectiveSummaries.right}
+                      </p>
+                    </TabsContent>
                   )}
-                </TabsList>
-
-                {event.perspectiveSummaries?.left && (
-                  <TabsContent value="left">
-                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.perspectiveSummaries.left}
-                    </p>
-                  </TabsContent>
-                )}
-
-                <TabsContent value="center">
-                  <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                    {event.perspectiveSummaries?.center ?? "Summary pending…"}
-                  </p>
-                </TabsContent>
-
-                {event.perspectiveSummaries?.right && (
-                  <TabsContent value="right">
-                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.perspectiveSummaries.right}
-                    </p>
-                  </TabsContent>
-                )}
-              </Tabs>
+                </Tabs>
               </CardContent>
             </Card>
           ) : (
             <Card className="overflow-hidden border-border/80 py-0">
               <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="text-xl tracking-tight">Summary</CardTitle>
+                <CardTitle className="text-xl tracking-tight">
+                  Summary
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-6 py-6 sm:px-8">
                 <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
@@ -539,7 +554,9 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
           {event.globalImpact && (
             <Card className="overflow-hidden border-border/80 py-0">
               <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="text-xl tracking-tight">What This Means</CardTitle>
+                <CardTitle className="text-xl tracking-tight">
+                  What This Means
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-6 py-6 sm:px-8">
                 <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
