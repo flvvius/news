@@ -159,7 +159,6 @@ export const normalizeStoredArticleText = mutation({
   },
 });
 
-
 export const backfillLogoUrls = mutation({
   args: {},
   handler: async (ctx) => {
@@ -227,19 +226,26 @@ export const dedupeWaitlistByEmail = mutation({
       const merged = {
         name: keeper.name ?? rest.find((row) => row.name)?.name,
         referralSource:
-          keeper.referralSource ?? rest.find((row) => row.referralSource)?.referralSource,
+          keeper.referralSource ??
+          rest.find((row) => row.referralSource)?.referralSource,
         invitedAt:
-          keeper.invitedAt ?? rest.map((row) => row.invitedAt).find((value) => value !== undefined),
+          keeper.invitedAt ??
+          rest.map((row) => row.invitedAt).find((value) => value !== undefined),
         convertedAt:
           keeper.convertedAt ??
-          rest.map((row) => row.convertedAt).find((value) => value !== undefined),
+          rest
+            .map((row) => row.convertedAt)
+            .find((value) => value !== undefined),
         lastEmailSentAt:
           keeper.lastEmailSentAt ??
           rest
             .map((row) => row.lastEmailSentAt)
             .find((value) => value !== undefined),
         inviteCode:
-          keeper.inviteCode ?? rest.map((row) => row.inviteCode).find((value) => value !== undefined),
+          keeper.inviteCode ??
+          rest
+            .map((row) => row.inviteCode)
+            .find((value) => value !== undefined),
       };
 
       await ctx.db.patch(keeper._id, merged);

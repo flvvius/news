@@ -47,10 +47,7 @@ async function enrichEventsWithTopicsAndSources(
     topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
   }
 
-  const allArticlesByEventId = new Map<
-    Id<"events">,
-    Doc<"articles">[]
-  >();
+  const allArticlesByEventId = new Map<Id<"events">, Doc<"articles">[]>();
   const articleRows = await Promise.all(
     eventIds.map((eventId) =>
       ctx.db
@@ -70,17 +67,18 @@ async function enrichEventsWithTopicsAndSources(
   }
 
   const sourceRows = await Promise.all(
-    Array.from(uniqueSourceIds).map(async (sourceId) => [
-      sourceId,
-      await ctx.db.get(sourceId),
-    ] as const),
+    Array.from(uniqueSourceIds).map(
+      async (sourceId) => [sourceId, await ctx.db.get(sourceId)] as const,
+    ),
   );
   const sourcesById = new Map(sourceRows);
 
   return events.map((event) => {
     const articles = allArticlesByEventId.get(event._id) ?? [];
     const articleCount = articles.length;
-    const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
+    const sourceIds = Array.from(
+      new Set(articles.map((article) => article.sourceId)),
+    );
     const sources = sourceIds
       .map((sourceId) => sourcesById.get(sourceId) ?? null)
       .filter((source) => source !== null);
@@ -196,7 +194,10 @@ export const getPublishedEvents = query({
         .paginate(paginationOpts);
     }
 
-    const enrichedPage = await enrichEventsWithTopicsAndSources(ctx, events.page);
+    const enrichedPage = await enrichEventsWithTopicsAndSources(
+      ctx,
+      events.page,
+    );
 
     return {
       ...events,

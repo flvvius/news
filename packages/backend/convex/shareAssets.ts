@@ -2,10 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import {
-  internalMutation,
-  internalQuery,
-} from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 export const SHARE_IMAGE_WIDTH = 1200;
 export const SHARE_IMAGE_HEIGHT = 630;
@@ -33,10 +30,9 @@ export function buildEventShareRenderSignature(
     data.imageUrl ?? "",
     String(data.lastUpdatedAt),
     String(data.articleCount),
-    ...data.sources.slice(0, 3).flatMap((source) => [
-      source.name,
-      source.logoUrl ?? "",
-    ]),
+    ...data.sources
+      .slice(0, 3)
+      .flatMap((source) => [source.name, source.logoUrl ?? ""]),
   ].join("|");
 }
 
@@ -51,10 +47,7 @@ async function getLatestEventShareAsset(
     .first();
 }
 
-async function dedupeEventShareAssets(
-  ctx: MutationCtx,
-  eventId: Id<"events">,
-) {
+async function dedupeEventShareAssets(ctx: MutationCtx, eventId: Id<"events">) {
   const assets = await ctx.db
     .query("eventShareAssets")
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -168,7 +161,10 @@ export const markEventShareAssetReady = internalMutation({
     storageId: v.id("_storage"),
     contentType: v.string(),
   },
-  handler: async (ctx, { eventId, renderSignature, storageId, contentType }) => {
+  handler: async (
+    ctx,
+    { eventId, renderSignature, storageId, contentType },
+  ) => {
     const existing = await dedupeEventShareAssets(ctx, eventId);
 
     if (!existing) {
