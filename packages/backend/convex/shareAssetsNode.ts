@@ -1,6 +1,10 @@
 "use node";
 
-import { Resvg, initWasm } from "@resvg/resvg-wasm";
+import { Buffer } from "node:buffer";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Resvg } from "@resvg/resvg-js";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -17,10 +21,27 @@ const USER_AGENT =
   "Mozilla/5.0 (compatible; BiviantBot/1.0; +https://biviant.com)";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;
-const RESVG_WASM_URL =
-  "https://cdn.jsdelivr.net/npm/@resvg/resvg-wasm@2.6.2/index_bg.wasm";
+const RESVG_FONT_FAMILY = "Inter";
+const FONT_FILES = [
+  {
+    url: "https://unpkg.com/inter-font@3.19.0/ttf/Inter-Regular.ttf",
+    fileName: "biviant-inter-regular.ttf",
+  },
+  {
+    url: "https://unpkg.com/inter-font@3.19.0/ttf/Inter-Medium.ttf",
+    fileName: "biviant-inter-medium.ttf",
+  },
+  {
+    url: "https://unpkg.com/inter-font@3.19.0/ttf/Inter-Bold.ttf",
+    fileName: "biviant-inter-bold.ttf",
+  },
+  {
+    url: "https://unpkg.com/inter-font@3.19.0/ttf/Inter-ExtraBold.ttf",
+    fileName: "biviant-inter-extra-bold.ttf",
+  },
+] as const;
 
-let wasmInitPromise: Promise<void> | null = null;
+let cachedFontFilePathsPromise: Promise<string[]> | null = null;
 
 function escapeXml(value: string): string {
   return value
@@ -102,6 +123,26 @@ function splitIntoLines(
     );
 }
 
+async function getFontFilePaths(): Promise<string[]> {
+  if (!cachedFontFilePathsPromise) {
+    cachedFontFilePathsPromise = Promise.all(
+      FONT_FILES.map(async ({ url, fileName }) => {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Font fetch failed: ${response.status}`);
+        }
+
+        const fontBuffer = Buffer.from(await response.arrayBuffer());
+        const fontFilePath = join(tmpdir(), fileName);
+        await writeFile(fontFilePath, fontBuffer);
+        return fontFilePath;
+      }),
+    );
+  }
+
+  return cachedFontFilePathsPromise;
+}
+
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
@@ -115,6 +156,14 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
 
     const contentType = response.headers.get("content-type");
     if (!contentType?.startsWith("image/")) {
+      return null;
+    }
+
+    if (
+      contentType.includes("icon") ||
+      contentType.endsWith("/x-icon") ||
+      contentType.endsWith("/vnd.microsoft.icon")
+    ) {
       return null;
     }
 
@@ -150,23 +199,13 @@ async function fetchSourceLogoData(
   return logos;
 }
 
-async function ensureResvgReady(): Promise<void> {
-  if (!wasmInitPromise) {
-    wasmInitPromise = (async () => {
-      await initWasm(fetch(RESVG_WASM_URL));
-    })();
-  }
-
-  await wasmInitPromise;
-}
-
 function buildSourceStripSvg(
   sources: Array<{ name: string; logoDataUri?: string }>,
 ): string {
   return sources
     .map((source, index) => {
-      const x = 76 + index * 216;
-      const label = escapeXml(truncate(source.name, 18));
+      const x = 72 + index * 194;
+      const label = escapeXml(truncate(source.name, 16));
       const initials = escapeXml(
         source.name
           .split(/\s+/)
@@ -177,20 +216,20 @@ function buildSourceStripSvg(
       );
 
       return `
-        <g transform="translate(${x} 132)">
-          <rect width="196" height="52" rx="26" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.16)" />
+        <g transform="translate(${x} 122)">
+          <rect width="178" height="48" rx="24" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.16)" />
           ${
             source.logoDataUri
               ? `
-                <rect x="8" y="8" width="36" height="36" rx="18" fill="rgba(255,255,255,0.88)" />
-                <image href="${source.logoDataUri}" x="8" y="8" width="36" height="36" preserveAspectRatio="xMidYMid meet" />
+                <rect x="8" y="8" width="32" height="32" rx="16" fill="rgba(255,255,255,0.92)" />
+                <image href="${source.logoDataUri}" x="8" y="8" width="32" height="32" preserveAspectRatio="xMidYMid meet" />
               `
               : `
-                <rect x="8" y="8" width="36" height="36" rx="18" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.12)" />
-                <text x="26" y="31" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="white">${initials}</text>
+                <rect x="8" y="8" width="32" height="32" rx="16" fill="white" fill-opacity="0.12" stroke="white" stroke-opacity="0.12" />
+                <text x="24" y="28" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="13" font-weight="700" fill="white">${initials}</text>
               `
           }
-          <text x="56" y="31" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="white">${label}</text>
+          <text x="50" y="29" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="17" font-weight="700" fill="white">${label}</text>
         </g>
       `;
     })
@@ -227,18 +266,18 @@ function buildShareSvg(
     sourceLogos: Array<{ name: string; logoDataUri?: string }>;
   },
 ): string {
-  const titleLines = splitIntoLines(truncate(data.title, 150), {
-    maxCharsPerLine: 34,
+  const titleLines = splitIntoLines(truncate(data.title, 140), {
+    maxCharsPerLine: 32,
     maxLines: 3,
   });
   const summaryLines = splitIntoLines(
     truncate(
       data.summary?.trim() ||
         "Compare the original reporting and see how this story is framed across sources.",
-      220,
+      200,
     ),
     {
-      maxCharsPerLine: 56,
+      maxCharsPerLine: 54,
       maxLines: 3,
     },
   );
@@ -262,72 +301,90 @@ function buildShareSvg(
   return `
     <svg width="${SHARE_IMAGE_WIDTH}" height="${SHARE_IMAGE_HEIGHT}" viewBox="0 0 ${SHARE_IMAGE_WIDTH} ${SHARE_IMAGE_HEIGHT}" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="fallbackBg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+        <linearGradient id="fallbackBg" x1="0" y1="0" x2="${SHARE_IMAGE_WIDTH}" y2="${SHARE_IMAGE_HEIGHT}" gradientUnits="userSpaceOnUse">
           <stop stop-color="#111827" />
           <stop offset="0.45" stop-color="#0F172A" />
           <stop offset="1" stop-color="#05070B" />
         </linearGradient>
-        <linearGradient id="heroOverlay" x1="0" y1="0" x2="0" y2="630" gradientUnits="userSpaceOnUse">
+        <linearGradient id="heroOverlay" x1="0" y1="0" x2="0" y2="${SHARE_IMAGE_HEIGHT}" gradientUnits="userSpaceOnUse">
           <stop stop-color="rgba(5,8,14,0.18)" />
-          <stop offset="0.35" stop-color="rgba(5,8,14,0.36)" />
+          <stop offset="0.35" stop-color="rgba(5,8,14,0.38)" />
           <stop offset="1" stop-color="rgba(5,8,14,0.88)" />
         </linearGradient>
-        <linearGradient id="glass" x1="72" y1="84" x2="834" y2="560" gradientUnits="userSpaceOnUse">
+        <linearGradient id="glass" x1="68" y1="72" x2="754" y2="508" gradientUnits="userSpaceOnUse">
           <stop stop-color="rgba(255,255,255,0.18)" />
           <stop offset="1" stop-color="rgba(255,255,255,0.08)" />
         </linearGradient>
-        <linearGradient id="blueGlow" x1="848" y1="68" x2="1162" y2="236" gradientUnits="userSpaceOnUse">
+        <linearGradient id="blueGlow" x1="774" y1="56" x2="1038" y2="196" gradientUnits="userSpaceOnUse">
           <stop stop-color="${BIVIANT_BLUE}" stop-opacity="0.42" />
           <stop offset="1" stop-color="${BIVIANT_BLUE_SOFT}" stop-opacity="0.08" />
         </linearGradient>
         <filter id="blurGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="48" />
+          <feGaussianBlur stdDeviation="24" />
         </filter>
       </defs>
 
       ${backgroundLayer}
 
-      <circle cx="1060" cy="110" r="150" fill="url(#blueGlow)" filter="url(#blurGlow)" />
-      <circle cx="180" cy="70" r="110" fill="rgba(90,166,247,0.18)" filter="url(#blurGlow)" />
+      <circle cx="960" cy="96" r="132" fill="url(#blueGlow)" filter="url(#blurGlow)" />
+      <circle cx="160" cy="68" r="92" fill="rgba(90,166,247,0.18)" filter="url(#blurGlow)" />
 
-      <rect x="36" y="36" width="1128" height="558" rx="36" fill="rgba(3,6,12,0.20)" stroke="rgba(255,255,255,0.08)" />
-      <rect x="56" y="56" width="812" height="518" rx="30" fill="url(#glass)" stroke="rgba(255,255,255,0.16)" />
+      <rect x="28" y="28" width="1024" height="510" rx="34" fill="rgba(3,6,12,0.22)" stroke="rgba(255,255,255,0.08)" />
+      <rect x="48" y="48" width="740" height="470" rx="28" fill="url(#glass)" stroke="rgba(255,255,255,0.16)" />
 
-      <g transform="translate(904 68)">
-        <rect width="212" height="212" rx="36" fill="rgba(9,14,24,0.44)" stroke="rgba(255,255,255,0.10)" />
-        <rect x="26" y="24" width="64" height="64" rx="20" fill="${BIVIANT_BLUE}" />
-        <text x="58" y="65" text-anchor="middle" font-family="Arial, sans-serif" font-size="32" font-weight="800" fill="#08111E">B</text>
-        <text x="26" y="124" font-family="Arial, sans-serif" font-size="28" letter-spacing="0.18em" font-weight="800" fill="white">BIVIANT</text>
-        <text x="26" y="155" font-family="Arial, sans-serif" font-size="16" font-weight="600" fill="rgba(255,255,255,0.72)">MULTI-SOURCE EVENT</text>
-        <rect x="26" y="173" width="118" height="26" rx="13" fill="rgba(90,166,247,0.18)" stroke="rgba(90,166,247,0.34)" />
-        <text x="85" y="191" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="0.12em" fill="#DDEEFF">UPDATED ${updated.toUpperCase()}</text>
+      <g transform="translate(816 56)">
+        <rect width="202" height="192" rx="34" fill="rgba(9,14,24,0.46)" stroke="rgba(255,255,255,0.10)" />
+        <rect x="24" y="22" width="58" height="58" rx="18" fill="${BIVIANT_BLUE}" />
+        <text x="53" y="59" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="30" font-weight="800" fill="#08111E">B</text>
+        <text x="24" y="114" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="26" letter-spacing="0.16em" font-weight="800" fill="white">BIVIANT</text>
+        <text x="24" y="142" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="600" fill="rgba(255,255,255,0.72)">MULTI-SOURCE EVENT</text>
+        <rect x="24" y="158" width="122" height="24" rx="12" fill="rgba(90,166,247,0.18)" stroke="rgba(90,166,247,0.34)" />
+        <text x="85" y="175" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="11" font-weight="800" letter-spacing="0.10em" fill="#DDEEFF">UPDATED ${updated.toUpperCase()}</text>
       </g>
 
       ${buildSourceStripSvg(sourceLogos)}
 
-      <text font-family="Arial, sans-serif" font-size="60" font-weight="800" fill="white">
+      <text font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="56" font-weight="800" fill="white">
         ${buildMultilineTextSpans(titleLines, {
-          x: 76,
-          startY: 260,
-          lineHeight: 70,
+          x: 68,
+          startY: 236,
+          lineHeight: 64,
         })}
       </text>
 
-      <text font-family="Arial, sans-serif" font-size="26" font-weight="500" fill="rgba(255,255,255,0.90)">
+      <text font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="24" font-weight="500" fill="rgba(255,255,255,0.90)">
         ${buildMultilineTextSpans(summaryLines, {
-          x: 76,
-          startY: 458,
-          lineHeight: 36,
+          x: 68,
+          startY: 404,
+          lineHeight: 34,
         })}
       </text>
 
-      <rect x="76" y="526" width="258" height="34" rx="17" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.12)" />
-      <text x="205" y="548" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="white">${coverage}</text>
+      <rect x="68" y="480" width="236" height="30" rx="15" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.12)" />
+      <text x="186" y="501" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="700" fill="white">${coverage}</text>
 
-      <text x="904" y="530" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="rgba(255,255,255,0.94)">See every side of the story</text>
-      <text x="904" y="556" font-family="Arial, sans-serif" font-size="16" font-weight="500" fill="rgba(255,255,255,0.70)">Shared from biviant.com</text>
+      <text x="816" y="494" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="19" font-weight="700" fill="rgba(255,255,255,0.94)">See every side of the story</text>
+      <text x="816" y="518" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="500" fill="rgba(255,255,255,0.70)">Shared from biviant.com</text>
     </svg>
   `;
+}
+
+async function renderSvgToPng(svg: string): Promise<Buffer> {
+  const fontFilePaths = await getFontFilePaths();
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: SHARE_IMAGE_WIDTH },
+    background: "rgba(0,0,0,0)",
+    font: {
+      fontFiles: fontFilePaths,
+      defaultFontFamily: RESVG_FONT_FAMILY,
+      loadSystemFonts: false,
+    },
+    logLevel: "off",
+  });
+
+  const pngBytes = resvg.render().asPng();
+  return Buffer.from(pngBytes);
 }
 
 export const generateEventShareAsset = internalAction({
@@ -360,7 +417,6 @@ export const generateEventShareAsset = internalAction({
     }
 
     try {
-      await ensureResvgReady();
       const [backgroundDataUri, sourceLogos] = await Promise.all([
         data.imageUrl
           ? fetchImageAsDataUri(data.imageUrl)
@@ -369,15 +425,10 @@ export const generateEventShareAsset = internalAction({
       ]);
 
       const svg = buildShareSvg(data, { backgroundDataUri, sourceLogos });
-      const pngBytes = new Resvg(svg, {
-        fitTo: { mode: "width", value: SHARE_IMAGE_WIDTH },
-      })
-        .render()
-        .asPng();
-      const pngBytesCopy = Uint8Array.from(pngBytes);
+      const pngBytes = await renderSvgToPng(svg);
 
       const storageId = await ctx.storage.store(
-        new Blob([pngBytesCopy], { type: "image/png" }),
+        new Blob([Uint8Array.from(pngBytes)], { type: "image/png" }),
       );
 
       const {

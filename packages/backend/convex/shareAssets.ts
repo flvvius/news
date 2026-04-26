@@ -4,8 +4,9 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 
-export const SHARE_IMAGE_WIDTH = 1200;
-export const SHARE_IMAGE_HEIGHT = 630;
+export const SHARE_IMAGE_WIDTH = 1080;
+export const SHARE_IMAGE_HEIGHT = 566;
+const SHARE_RENDER_VERSION = "v7-resvg-js-inter-ttf-1080";
 
 export type EventShareRenderData = {
   title: string;
@@ -25,6 +26,7 @@ export function buildEventShareRenderSignature(
   data: EventShareRenderData,
 ): string {
   return [
+    SHARE_RENDER_VERSION,
     data.title,
     data.summary ?? "",
     data.imageUrl ?? "",
