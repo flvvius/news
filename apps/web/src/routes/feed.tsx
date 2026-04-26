@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
@@ -32,6 +32,7 @@ import {
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
+import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -220,6 +221,12 @@ function TopicFilter({
 
 function FeedComponent() {
   const access = useQuery(api.user.getCurrentUserAccess);
+
+  useEffect(() => {
+    if (access?.hasBetaAccess) {
+      consumeBetaWelcomeToast();
+    }
+  }, [access?.hasBetaAccess]);
 
   if (access === undefined) {
     return (

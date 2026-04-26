@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import EarlyAccessRequired from "@/components/early-access-required";
 import ArticlesList from "@/components/feed/articles-list";
 import BookmarkButton from "@/components/bookmark-button";
 import { SITE } from "@/lib/seo";
+import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/event/$slug")({
   loader: async ({ context, params }) => {
@@ -62,6 +64,12 @@ export const Route = createFileRoute("/event/$slug")({
 function EventDetailPage() {
   const access = useQuery(api.user.getCurrentUserAccess);
   const { slug } = Route.useParams();
+
+  useEffect(() => {
+    if (access?.hasBetaAccess) {
+      consumeBetaWelcomeToast();
+    }
+  }, [access?.hasBetaAccess]);
 
   if (access === undefined) {
     return (

@@ -20,8 +20,10 @@ export function AuthDivider() {
 
 export function GoogleSignInButton({
   callbackURL,
+  onBeforeSignIn,
 }: {
   callbackURL: AuthRedirectPath;
+  onBeforeSignIn?: () => void;
 }) {
   return (
     <Button
@@ -30,6 +32,7 @@ export function GoogleSignInButton({
       className="w-full h-11"
       onClick={async () => {
         try {
+          onBeforeSignIn?.();
           await authClient.signIn.social({
             provider: "google",
             callbackURL,

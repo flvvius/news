@@ -24,6 +24,7 @@ import {
   isAuthRedirectPath,
   type AuthRedirectPath,
 } from "@/lib/auth-redirect";
+import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -127,11 +128,11 @@ function RouteComponent() {
                         title="Create your beta account"
                         subtitle={
                           showInvitedEmail
-                            ? `Your access is reserved for ${validInvite?.email}.`
-                            : "Use the same email address from your invite email to create your beta account."
+                            ? `Your access is reserved for ${validInvite?.email}. You can sign up with Google or email and password as long as you use that same email address.`
+                            : "Use the same email address from your invite email to create your beta account, whether you choose Google or email and password."
                         }
                         submitLabel="Create beta account"
-                        showGoogle={false}
+                        showGoogle
                         onSwitchToSignIn={() => {
                           userToggledAuthModeRef.current = true;
                           setShowSignIn(true);
@@ -219,6 +220,12 @@ function RouteComponent() {
 
 function AuthenticatedDashboard() {
   const access = useQuery(api.user.getCurrentUserAccess);
+
+  useEffect(() => {
+    if (access?.hasBetaAccess) {
+      consumeBetaWelcomeToast();
+    }
+  }, [access?.hasBetaAccess]);
 
   if (access === undefined) {
     return (

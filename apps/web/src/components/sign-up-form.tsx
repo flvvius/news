@@ -1,5 +1,6 @@
 import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
+import { markBetaWelcomePending } from "@/lib/beta-welcome";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -49,8 +50,8 @@ export default function SignUpForm({
         },
         {
           onSuccess: () => {
+            markBetaWelcomePending();
             navigate({ to: redirectTo as never });
-            toast.success("Account created");
           },
           onError: (error) => {
             console.error(error);
@@ -187,7 +188,10 @@ export default function SignUpForm({
         {showGoogle && (
           <>
             <AuthDivider />
-            <GoogleSignInButton callbackURL={redirectTo} />
+            <GoogleSignInButton
+              callbackURL={redirectTo}
+              onBeforeSignIn={markBetaWelcomePending}
+            />
           </>
         )}
 
