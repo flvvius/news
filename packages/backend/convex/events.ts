@@ -315,13 +315,57 @@ export const getEventBySlugPreview = query({
       return null;
     }
 
+    const eventTopicRows = await ctx.db
+      .query("eventTopics")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+    const topicIds = eventTopicRows.map((r) => r.topicId);
+    const topics = (
+      await Promise.all(topicIds.map((topicId) => ctx.db.get(topicId)))
+    ).filter((topic) => topic !== null);
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+
+    const uniqueSourceIds = Array.from(
+      new Set(articles.map((article) => article.sourceId)),
+    );
+    const sources = (
+      await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
+    ).filter((source) => source !== null);
+    const shareAsset = await ctx.db
+      .query("eventShareAssets")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .order("desc")
+      .first();
+    const shareImageUrl =
+      shareAsset?.status === "ready" && shareAsset.storageId
+        ? await ctx.storage.getUrl(shareAsset.storageId)
+        : null;
+
     return {
       event: {
+        _id: event._id,
         slug: event.slug,
         title: event.title,
+        shareImageUrl: shareImageUrl ?? undefined,
+        shareImageWidth:
+          shareAsset?.status === "ready" ? shareAsset.width : undefined,
+        shareImageHeight:
+          shareAsset?.status === "ready" ? shareAsset.height : undefined,
         imageUrl: event.imageUrl,
         imageAlt: event.imageAlt,
+        firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,
+        topics: topics.map((topic) => ({
+          _id: topic._id,
+          displayName: topic.displayName,
+        })),
+        articleCount: articles.length,
+        sources,
+        globalImpact: event.globalImpact,
         perspectiveSummaries: {
           center: event.perspectiveSummaries?.center,
         },

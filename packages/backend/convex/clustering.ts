@@ -28,6 +28,7 @@ import type { MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { requireAdminUser } from "./lib/betaAccess";
+import { buildEventShareRenderSignature } from "./shareAssets";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -910,6 +911,14 @@ async function refreshEventPresentation(
     (max, article) => Math.max(max, article.publishedAt),
     event.firstPublishedAt,
   );
+  const nextLastUpdatedAt = Math.max(
+    event.lastUpdatedAt ?? 0,
+    latestArticlePublishedAt,
+  );
+  const nextImageUrl = bestImage?.article.imageUrl;
+  const nextImageAlt =
+    bestImage?.article.imageAlt ??
+    (bestImage ? bestImage.article.title : event.imageAlt);
 
   await ctx.db.patch(eventId, {
     perspectiveSummaries: centerSummary
@@ -920,16 +929,35 @@ async function refreshEventPresentation(
         }
       : event.perspectiveSummaries,
     globalImpact,
-    imageUrl: bestImage?.article.imageUrl,
+    imageUrl: nextImageUrl,
     imageWidth: bestImage?.article.imageWidth,
     imageHeight: bestImage?.article.imageHeight,
-    imageAlt:
-      bestImage?.article.imageAlt ??
-      (bestImage ? bestImage.article.title : event.imageAlt),
-    lastUpdatedAt: Math.max(
-      event.lastUpdatedAt ?? 0,
-      latestArticlePublishedAt,
-    ),
+    imageAlt: nextImageAlt,
+    lastUpdatedAt: nextLastUpdatedAt,
+  });
+
+  await ctx.runMutation(internal.shareAssets.ensureEventShareAssetQueued, {
+    eventId,
+    renderSignature: buildEventShareRenderSignature({
+      title: event.title,
+      summary: centerSummary ?? globalImpact,
+      imageUrl: nextImageUrl,
+      imageAlt: nextImageAlt,
+      lastUpdatedAt: nextLastUpdatedAt,
+      articleCount: articles.length,
+      sourceCount: uniqueSources.size,
+      sources: Array.from(
+        new Map(
+          articlesWithSources.map(({ source, article }) => [
+            source?._id ?? article.sourceId,
+            {
+              name: source?.name ?? String(article.sourceId),
+              logoUrl: source?.logoUrl,
+            },
+          ]),
+        ).values(),
+      ),
+    }),
   });
 }
 

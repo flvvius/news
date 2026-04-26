@@ -29,6 +29,8 @@ import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
 import type * as privateData from "../privateData.js";
 import type * as seeds from "../seeds.js";
+import type * as shareAssets from "../shareAssets.js";
+import type * as shareAssetsNode from "../shareAssetsNode.js";
 import type * as topicCatalog from "../topicCatalog.js";
 import type * as topics from "../topics.js";
 import type * as user from "../user.js";
@@ -62,6 +64,8 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   privateData: typeof privateData;
   seeds: typeof seeds;
+  shareAssets: typeof shareAssets;
+  shareAssetsNode: typeof shareAssetsNode;
   topicCatalog: typeof topicCatalog;
   topics: typeof topics;
   user: typeof user;

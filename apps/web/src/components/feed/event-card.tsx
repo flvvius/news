@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import BookmarkButton from "@/components/bookmark-button";
+import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -150,11 +151,20 @@ const EventCard = ({
             >
               {highlightTitle(event.title, searchQuery)}
             </CardTitle>
-            <BookmarkButton
-              eventId={event._id}
-              size="sm"
-              className="mt-0.5 rounded-full border border-border/80 bg-background/80"
-            />
+            <div className="mt-0.5 flex items-center gap-2">
+              <ShareEventButton
+                slug={event.slug}
+                title={event.title}
+                summary={summaryPreview}
+                size="sm"
+                className="rounded-full border border-border/80 bg-background/80"
+              />
+              <BookmarkButton
+                eventId={event._id}
+                size="sm"
+                className="rounded-full border border-border/80 bg-background/80"
+              />
+            </div>
           </div>
 
           <p

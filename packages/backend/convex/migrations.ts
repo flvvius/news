@@ -9,9 +9,11 @@
  */
 
 import { mutation } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
+import { buildEventShareRenderSignature } from "./shareAssets";
 
 export const syncTopicCatalogMigration = mutation({
   args: {},
@@ -302,6 +304,76 @@ export const backfillEventSearchAndRecency = mutation({
       updated,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
+    };
+  },
+});
+
+export const queueEventShareAssetsBackfill = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 50), 1),
+      200,
+    );
+    const page = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: safePageSize,
+      });
+
+    let queued = 0;
+
+    for (const event of page.page) {
+      const renderData = await ctx.runQuery(
+        internal.shareAssets.getEventShareRenderData,
+        {
+          eventId: event._id,
+        },
+      );
+      if (!renderData) continue;
+
+      const result = await ctx.runMutation(
+        internal.shareAssets.ensureEventShareAssetQueued,
+        {
+          eventId: event._id,
+          renderSignature: buildEventShareRenderSignature(renderData),
+        },
+      );
+      if (result.queued) {
+        queued++;
+      }
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const scheduledContinuation =
+      shouldAutoContinue && !page.isDone && Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        0,
+        api.migrations.queueEventShareAssetsBackfill,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+        },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      queued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
     };
   },
 });
