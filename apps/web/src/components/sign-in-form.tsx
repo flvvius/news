@@ -1,4 +1,5 @@
 import { authClient } from "@/lib/auth-client";
+import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ export default function SignInForm({
   onSwitchToSignUp?: () => void;
   initialEmail?: string;
   emailLocked?: boolean;
-  redirectTo?: string;
+  redirectTo?: AuthRedirectPath;
   title?: string;
   subtitle?: string;
   submitLabel?: string;
@@ -46,7 +47,7 @@ export default function SignInForm({
         },
         {
           onSuccess: () => {
-            navigate({ to: redirectTo });
+            navigate({ to: redirectTo as never });
             toast.success("Signed in");
           },
           onError: (error) => {

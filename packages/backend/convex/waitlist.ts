@@ -2,9 +2,12 @@ import { v, ConvexError } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
+  getWaitlistRecordByEmail,
+  isAdminEmail,
   normalizeEmail,
   requireAdminUser,
 } from "./lib/betaAccess";
+import { authComponent } from "./auth";
 
 export const addToWaitlist = mutation({
   args: {
@@ -22,10 +25,7 @@ export const addToWaitlist = mutation({
     const normalizedEmail = normalizeEmail(args.email);
 
     // Check if email already exists
-    const existing = await ctx.db
-      .query("waitlist")
-      .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
-      .first();
+    const existing = await getWaitlistRecordByEmail(ctx, normalizedEmail);
 
     if (existing) {
       if (existing.status === "unsubscribed") {
@@ -148,20 +148,16 @@ export const getWaitlistStats = query({
         .collect(),
     ]);
 
-    const pending = pendingRows.length;
-    const invited = invitedRows.length;
-    const converted = convertedRows.length;
-
     return {
       total:
-        pending +
-        invited +
-        converted +
+        pendingRows.length +
+        invitedRows.length +
+        convertedRows.length +
         bouncedRows.length +
         unsubscribedRows.length,
-      pending,
-      invited,
-      converted,
+      pending: pendingRows.length,
+      invited: invitedRows.length,
+      converted: convertedRows.length,
     };
   },
 });
@@ -192,10 +188,16 @@ export const getInvitePreview = query({
       return { isValid: false as const };
     }
 
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    const canRevealPII = authUser
+      ? isAdminEmail(authUser.email) ||
+        normalizeEmail(authUser.email) === entry.email
+      : false;
+
     return {
       isValid: true as const,
-      email: entry.email,
-      name: entry.name ?? null,
+      email: canRevealPII ? entry.email : null,
+      name: canRevealPII ? entry.name ?? null : null,
       status: entry.status,
       position: entry.position,
       invitedAt: entry.invitedAt ?? null,

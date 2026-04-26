@@ -1,4 +1,5 @@
 import { authClient } from "@/lib/auth-client";
+import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ export default function SignUpForm({
   onSwitchToSignIn?: () => void;
   initialEmail?: string;
   emailLocked?: boolean;
-  redirectTo?: string;
+  redirectTo?: AuthRedirectPath;
   title?: string;
   subtitle?: string;
   submitLabel?: string;
@@ -48,16 +49,12 @@ export default function SignUpForm({
         },
         {
           onSuccess: () => {
-            navigate({ to: redirectTo });
+            navigate({ to: redirectTo as never });
             toast.success("Account created");
           },
-          onError: (error: {
-            error: {
-              message?: string;
-              statusText?: string;
-            };
-          }) => {
-            toast.error(error.error.message || error.error.statusText);
+          onError: (error) => {
+            console.error(error);
+            toast.error("An unexpected error occurred. Please try again.");
           },
         }
       );

@@ -455,7 +455,7 @@ function getInviteEmailHTML(
             </td>
           </tr>
 
-          <!-- Expiry note -->
+          <!-- Use same email reminder -->
           <tr>
             <td align="center" style="padding:0 40px 40px 40px; font-size:13px; color:#9ca3af;">
               Use the same email address when you create your account.

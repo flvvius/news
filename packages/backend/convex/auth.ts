@@ -10,7 +10,7 @@ import type { DataModel } from "./_generated/dataModel";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import { crossDomain } from "@convex-dev/better-auth/plugins";
-import { normalizeEmail } from "./lib/betaAccess";
+import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
 
 const siteUrl = process.env.SITE_URL!;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
@@ -41,10 +41,10 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           biasBalance: 0,
         });
 
-        const waitlistRecord = await ctx.db
-          .query("waitlist")
-          .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
-          .unique();
+        const waitlistRecord = await getWaitlistRecordByEmail(
+          ctx,
+          normalizedEmail,
+        );
 
         if (waitlistRecord && waitlistRecord.status === "invited") {
           await ctx.db.patch(waitlistRecord._id, {
@@ -70,10 +70,10 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
             });
           }
 
-          const waitlistRecord = await ctx.db
-            .query("waitlist")
-            .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
-            .unique();
+          const waitlistRecord = await getWaitlistRecordByEmail(
+            ctx,
+            normalizedEmail,
+          );
 
           if (waitlistRecord && waitlistRecord.status === "invited") {
             await ctx.db.patch(waitlistRecord._id, {

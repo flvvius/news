@@ -17,9 +17,13 @@ import {
   useQuery,
 } from "convex/react";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { authClient } from "@/lib/auth-client";
+import {
+  isAuthRedirectPath,
+  type AuthRedirectPath,
+} from "@/lib/auth-redirect";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -41,8 +45,8 @@ export const Route = createFileRoute("/dashboard")({
 
 function RouteComponent() {
   const search = Route.useSearch();
-  const redirectTo =
-    search.redirect && search.redirect.startsWith("/")
+  const redirectTo: AuthRedirectPath = search.redirect &&
+    isAuthRedirectPath(search.redirect)
       ? search.redirect
       : "/feed";
   const invitePreview = useQuery(
@@ -50,8 +54,13 @@ function RouteComponent() {
     search.code ? { inviteCode: search.code } : "skip",
   );
   const [showSignIn, setShowSignIn] = useState(search.mode === "signin");
+  const userToggledAuthModeRef = useRef(false);
 
   useEffect(() => {
+    if (userToggledAuthModeRef.current) {
+      return;
+    }
+
     if (search.mode === "signin") {
       setShowSignIn(true);
       return;
@@ -69,6 +78,7 @@ function RouteComponent() {
   const validInvite = invitePreview?.isValid ? invitePreview : null;
   const showInviteSignup =
     validInvite?.status === "invited" && !showSignIn;
+  const showInvitedEmail = Boolean(validInvite?.email);
 
   return (
     <>
@@ -91,9 +101,13 @@ function RouteComponent() {
                   </h1>
                   <p className="max-w-[60ch] text-sm text-muted-foreground sm:text-base">
                     {validInvite?.status === "invited"
-                      ? `This invite is reserved for ${validInvite.email}. Create your account with that email to unlock the beta.`
+                      ? showInvitedEmail
+                        ? `This invite is reserved for ${validInvite.email}. Create your account with that email to unlock the beta.`
+                        : "This invite is active. Create your account with the same email address from your invite email to unlock the beta."
                       : validInvite?.status === "converted"
-                        ? `This email already has access. Sign in with ${validInvite.email} to continue.`
+                        ? showInvitedEmail
+                          ? `This email already has access. Sign in with ${validInvite.email} to continue.`
+                          : "This invite has already been used. Sign in with the same email address from your invite email to continue."
                         : "Biviant is currently running as a private beta. If you've already been invited, sign in. If not, apply for early access below."}
                   </p>
                 </div>
@@ -108,18 +122,25 @@ function RouteComponent() {
                       <SignUpForm
                         key={`invite-signup-${validInvite?.email ?? "default"}`}
                         initialEmail={validInvite?.email ?? ""}
-                        emailLocked
+                        emailLocked={showInvitedEmail}
                         redirectTo={redirectTo}
                         title="Create your beta account"
-                        subtitle={`Your access is reserved for ${validInvite?.email}.`}
+                        subtitle={
+                          showInvitedEmail
+                            ? `Your access is reserved for ${validInvite?.email}.`
+                            : "Use the same email address from your invite email to create your beta account."
+                        }
                         submitLabel="Create beta account"
                         showGoogle={false}
-                        onSwitchToSignIn={() => setShowSignIn(true)}
+                        onSwitchToSignIn={() => {
+                          userToggledAuthModeRef.current = true;
+                          setShowSignIn(true);
+                        }}
                       />
                     ) : (
                       <SignInForm
                         key={`signin-${validInvite?.email ?? "default"}`}
-                        initialEmail={validInvite?.isValid ? validInvite.email : ""}
+                        initialEmail={validInvite?.email ?? ""}
                         redirectTo={redirectTo}
                         title={
                           validInvite?.status === "converted"
@@ -128,12 +149,17 @@ function RouteComponent() {
                         }
                         subtitle={
                           validInvite?.status === "converted"
-                            ? `Use ${validInvite.email} to access your beta account.`
+                            ? showInvitedEmail
+                              ? `Use ${validInvite.email} to access your beta account.`
+                              : "Use the same email address from your invite email to access your beta account."
                             : "Sign in if your email already has beta access."
                         }
                         onSwitchToSignUp={
                           validInvite?.status === "invited"
-                            ? () => setShowSignIn(false)
+                            ? () => {
+                                userToggledAuthModeRef.current = true;
+                                setShowSignIn(false);
+                              }
                             : undefined
                         }
                       />

@@ -1,4 +1,6 @@
 import { authClient } from "@/lib/auth-client";
+import { toast } from "sonner";
+import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { Button } from "./ui/button";
 
 export function AuthDivider() {
@@ -19,21 +21,31 @@ export function AuthDivider() {
 export function GoogleSignInButton({
   callbackURL,
 }: {
-  callbackURL: string;
+  callbackURL: AuthRedirectPath;
 }) {
   return (
     <Button
       type="button"
       variant="outline"
       className="w-full h-11"
-      onClick={() => {
-        authClient.signIn.social({
-          provider: "google",
-          callbackURL,
-        });
+      onClick={async () => {
+        try {
+          await authClient.signIn.social({
+            provider: "google",
+            callbackURL,
+          });
+        } catch (error) {
+          console.error(error);
+          toast.error("Google sign-in failed. Please try again.");
+        }
       }}
     >
-      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        focusable="false"
+        className="mr-2 h-4 w-4"
+        viewBox="0 0 24 24"
+      >
         <path
           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
           fill="#4285F4"

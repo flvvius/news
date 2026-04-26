@@ -29,7 +29,7 @@ export function isAdminEmail(email: string): boolean {
     getAdminEmails();
   }
 
-  return cachedAdminEmails?.has(normalizeEmail(email)) ?? false;
+  return cachedAdminEmails!.has(normalizeEmail(email));
 }
 
 export async function getWaitlistRecordByEmail(
@@ -39,7 +39,7 @@ export async function getWaitlistRecordByEmail(
   return await ctx.db
     .query("waitlist")
     .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
-    .unique();
+    .first();
 }
 
 export async function getBetaAccessForEmail(ctx: DbCtx, email: string) {

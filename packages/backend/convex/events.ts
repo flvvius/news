@@ -46,35 +46,80 @@ async function enrichEventsWithTopicsAndSources(
     topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
   }
 
-  return await Promise.all(
-    events.map(async (event) => {
-      const articles = await ctx.db
+  const allArticlesByEventId = new Map<
+    Id<"events">,
+    Doc<"articles">[]
+  >();
+  const articleRows = await Promise.all(
+    eventIds.map((eventId) =>
+      ctx.db
         .query("articles")
-        .withIndex("by_event", (q) => q.eq("eventId", event._id))
-        .collect();
-
-      const articleCount = articles.length;
-      const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
-      const sources = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
-      const topicIds = (topicsByEventId.get(event._id) ?? []).map(
-        (row) => row.topicId,
-      );
-
-      return {
-        _id: event._id,
-        slug: event.slug,
-        title: event.title,
-        imageUrl: event.imageUrl,
-        imageAlt: event.imageAlt,
-        perspectiveSummaries: event.perspectiveSummaries,
-        globalImpact: event.globalImpact,
-        firstPublishedAt: event.firstPublishedAt,
-        topicIds,
-        articleCount,
-        sources: sources.filter((source) => source !== null),
-      };
-    }),
+        .withIndex("by_event", (q) => q.eq("eventId", eventId))
+        .collect(),
+    ),
   );
+
+  const uniqueSourceIds = new Set<Id<"sources">>();
+  for (let i = 0; i < eventIds.length; i++) {
+    const articles = articleRows[i] ?? [];
+    allArticlesByEventId.set(eventIds[i]!, articles);
+    for (const article of articles) {
+      uniqueSourceIds.add(article.sourceId);
+    }
+  }
+
+  const sourceRows = await Promise.all(
+    Array.from(uniqueSourceIds).map(async (sourceId) => [
+      sourceId,
+      await ctx.db.get(sourceId),
+    ] as const),
+  );
+  const sourcesById = new Map(sourceRows);
+
+  return events.map((event) => {
+    const articles = allArticlesByEventId.get(event._id) ?? [];
+    const articleCount = articles.length;
+    const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
+    const sources = sourceIds
+      .map((sourceId) => sourcesById.get(sourceId) ?? null)
+      .filter((source) => source !== null);
+    const topicIds = (topicsByEventId.get(event._id) ?? []).map(
+      (row) => row.topicId,
+    );
+
+    return {
+      _id: event._id,
+      slug: event.slug,
+      title: event.title,
+      imageUrl: event.imageUrl,
+      imageAlt: event.imageAlt,
+      perspectiveSummaries: event.perspectiveSummaries,
+      globalImpact: event.globalImpact,
+      firstPublishedAt: event.firstPublishedAt,
+      topicIds,
+      articleCount,
+      sources,
+    };
+  });
+}
+
+function redactPublicEventPreview(
+  event: Awaited<ReturnType<typeof enrichEventsWithTopicsAndSources>>[number],
+) {
+  return {
+    _id: event._id,
+    slug: event.slug,
+    title: event.title,
+    imageUrl: event.imageUrl,
+    imageAlt: event.imageAlt,
+    firstPublishedAt: event.firstPublishedAt,
+    topicIds: event.topicIds,
+    articleCount: event.articleCount,
+    sources: event.sources,
+    perspectiveSummaries: {
+      center: event.perspectiveSummaries?.center,
+    },
+  };
 }
 
 export const getPublishedEvents = query({
@@ -169,7 +214,8 @@ export const getPublicPublishedEventsPreview = query({
       .order("desc")
       .take(safeLimit);
 
-    return await enrichEventsWithTopicsAndSources(ctx, events);
+    const enriched = await enrichEventsWithTopicsAndSources(ctx, events);
+    return enriched.map(redactPublicEventPreview);
   },
 });
 
