@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireBetaAccess } from "./lib/betaAccess";
 
@@ -13,6 +14,67 @@ function encodeTopicCursor(eventId: Id<"events">): string {
 function decodeTopicCursor(cursor: string | null): Id<"events"> | null {
   if (!cursor?.startsWith(TOPIC_CURSOR_PREFIX)) return null;
   return cursor.slice(TOPIC_CURSOR_PREFIX.length) as Id<"events">;
+}
+
+type EnrichableEvent = Pick<
+  Doc<"events">,
+  | "_id"
+  | "slug"
+  | "title"
+  | "imageUrl"
+  | "imageAlt"
+  | "perspectiveSummaries"
+  | "globalImpact"
+  | "firstPublishedAt"
+>;
+
+async function enrichEventsWithTopicsAndSources(
+  ctx: QueryCtx,
+  events: EnrichableEvent[],
+) {
+  const eventIds = events.map((event) => event._id);
+  const allEventTopicRows = await Promise.all(
+    eventIds.map((eventId) =>
+      ctx.db
+        .query("eventTopics")
+        .withIndex("by_event", (q) => q.eq("eventId", eventId))
+        .collect(),
+    ),
+  );
+  const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
+  for (let i = 0; i < eventIds.length; i++) {
+    topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
+  }
+
+  return await Promise.all(
+    events.map(async (event) => {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+
+      const articleCount = articles.length;
+      const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
+      const sources = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
+      const topicIds = (topicsByEventId.get(event._id) ?? []).map(
+        (row) => row.topicId,
+      );
+
+      return {
+        _id: event._id,
+        slug: event.slug,
+        title: event.title,
+        imageUrl: event.imageUrl,
+        imageAlt: event.imageAlt,
+        perspectiveSummaries: event.perspectiveSummaries,
+        globalImpact: event.globalImpact,
+        firstPublishedAt: event.firstPublishedAt,
+        topicIds,
+        articleCount,
+        sources: sources.filter((source) => source !== null),
+      };
+    }),
+  );
 }
 
 export const getPublishedEvents = query({
@@ -86,50 +148,7 @@ export const getPublishedEvents = query({
         .paginate(paginationOpts);
     }
 
-    // Batch-load topic IDs for all events in the page to avoid N+1 queries
-    const eventIds = events.page.map((e) => e._id);
-    const allEventTopicRows = await Promise.all(
-      eventIds.map((eventId) =>
-        ctx.db
-          .query("eventTopics")
-          .withIndex("by_event", (q) => q.eq("eventId", eventId))
-          .collect(),
-      ),
-    );
-    const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
-    for (let i = 0; i < eventIds.length; i++) {
-      topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
-    }
-
-    // Enrich each event with article count, sources, and topic IDs
-    const enrichedPage = await Promise.all(
-      events.page.map(async (event) => {
-        const articles = await ctx.db
-          .query("articles")
-          .withIndex("by_event", (q) => q.eq("eventId", event._id))
-          .collect();
-
-        const articleCount = articles.length;
-
-        // Get unique sources (with deduplication)
-        const sourceIds = Array.from(new Set(articles.map((a) => a.sourceId)));
-        const sources = await Promise.all(
-          sourceIds.map((id) => ctx.db.get(id)),
-        );
-
-        // Read topic IDs from pre-loaded lookup
-        const topicIds = (topicsByEventId.get(event._id) ?? []).map(
-          (r) => r.topicId,
-        );
-
-        return {
-          ...event,
-          topicIds,
-          articleCount,
-          sources: sources.filter((s) => s !== null),
-        };
-      }),
-    );
+    const enrichedPage = await enrichEventsWithTopicsAndSources(ctx, events.page);
 
     return {
       ...events,
@@ -150,41 +169,33 @@ export const getPublicPublishedEventsPreview = query({
       .order("desc")
       .take(safeLimit);
 
-    const eventIds = events.map((event) => event._id);
-    const allEventTopicRows = await Promise.all(
-      eventIds.map((eventId) =>
-        ctx.db
-          .query("eventTopics")
-          .withIndex("by_event", (q) => q.eq("eventId", eventId))
-          .collect(),
-      ),
-    );
-    const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
-    for (let i = 0; i < eventIds.length; i++) {
-      topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
+    return await enrichEventsWithTopicsAndSources(ctx, events);
+  },
+});
+
+export const getEventBySlugPreview = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+
+    if (!event || event.status !== "published") {
+      return null;
     }
 
-    return await Promise.all(
-      events.map(async (event) => {
-        const articles = await ctx.db
-          .query("articles")
-          .withIndex("by_event", (q) => q.eq("eventId", event._id))
-          .collect();
-
-        const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
-        const sources = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
-        const topicIds = (topicsByEventId.get(event._id) ?? []).map(
-          (row) => row.topicId,
-        );
-
-        return {
-          ...event,
-          topicIds,
-          articleCount: articles.length,
-          sources: sources.filter((source) => source !== null),
-        };
-      }),
-    );
+    return {
+      event: {
+        slug: event.slug,
+        title: event.title,
+        imageUrl: event.imageUrl,
+        imageAlt: event.imageAlt,
+        perspectiveSummaries: {
+          center: event.perspectiveSummaries?.center,
+        },
+      },
+    };
   },
 });
 

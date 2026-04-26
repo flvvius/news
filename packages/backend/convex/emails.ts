@@ -52,6 +52,11 @@ async function getEmailConfig(ctx: ActionCtx): Promise<EmailConfig> {
   };
 }
 
+function resolveSiteUrl(): string {
+  const siteUrl = process.env.SITE_URL?.trim();
+  return siteUrl && siteUrl.length > 0 ? siteUrl : DEFAULT_SITE_URL;
+}
+
 /**
  * Send welcome email to new waitlist signups
  */
@@ -125,7 +130,7 @@ export const sendInviteEmail = internalAction({
     try {
       const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
-      const siteUrl = process.env.SITE_URL ?? DEFAULT_SITE_URL;
+      const siteUrl = resolveSiteUrl();
       const inviteUrl = `${siteUrl}/dashboard?mode=signup&code=${encodeURIComponent(args.inviteCode)}`;
       const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
 
@@ -139,7 +144,13 @@ export const sendInviteEmail = internalAction({
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           "X-Entity-Ref-ID": `invite-${args.inviteCode}-${Date.now()}`,
         },
-        html: getInviteEmailHTML(firstName, inviteUrl, args.email, emailCfg),
+        html: getInviteEmailHTML(
+          firstName,
+          inviteUrl,
+          args.email,
+          emailCfg,
+          siteUrl,
+        ),
         text: getInviteEmailText(firstName, inviteUrl, args.email, emailCfg),
       });
 
@@ -345,6 +356,7 @@ function getInviteEmailHTML(
   inviteUrl: string,
   email: string,
   cfg: EmailConfig,
+  siteUrl: string,
 ): string {
   const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
@@ -458,7 +470,7 @@ function getInviteEmailHTML(
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0 0 8px 0;">
-                      <a href="${process.env.SITE_URL ?? DEFAULT_SITE_URL}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
                     </p>
                     <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">

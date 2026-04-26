@@ -5,20 +5,31 @@ import { authComponent } from "../auth";
 
 type DbCtx = QueryCtx | MutationCtx;
 type AuthCtx = Parameters<typeof authComponent.safeGetAuthUser>[0];
+let cachedAdminEmails: Set<string> | null = null;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 export function getAdminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((email) => normalizeEmail(email))
-    .filter(Boolean);
+  if (cachedAdminEmails === null) {
+    cachedAdminEmails = new Set(
+      (process.env.ADMIN_EMAILS ?? "")
+        .split(",")
+        .map((email) => normalizeEmail(email))
+        .filter(Boolean),
+    );
+  }
+
+  return Array.from(cachedAdminEmails);
 }
 
 export function isAdminEmail(email: string): boolean {
-  return getAdminEmails().includes(normalizeEmail(email));
+  if (cachedAdminEmails === null) {
+    getAdminEmails();
+  }
+
+  return cachedAdminEmails?.has(normalizeEmail(email)) ?? false;
 }
 
 export async function getWaitlistRecordByEmail(

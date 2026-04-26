@@ -39,7 +39,7 @@ export default function EarlyAccessRequired({
     ? isPendingWaitlist
       ? `You're signed in as ${access.email}. We'll email this address as soon as your beta access is ready${access.waitlistPosition ? ` (#${access.waitlistPosition} on the waitlist)` : ""}.`
       : `You're signed in as ${access.email}, but ${surfaceName} is still limited to invited beta users. If you joined the waitlist with a different email, sign out and use that invite instead.`
-    : `${surfaceName} is currently available to invited beta users. Sign in with the invited email from your beta email, or apply for access below.`;
+    : `${surfaceName} is currently available to invited beta users. Sign in with the invited email from your invite email, or apply for access below.`;
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">

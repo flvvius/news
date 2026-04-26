@@ -124,13 +124,41 @@ export const getWaitlistStats = query({
   handler: async (ctx) => {
     await requireAdminUser(ctx);
 
-    const total = await ctx.db.query("waitlist").collect();
-    const pending = total.filter((w) => w.status === "pending").length;
-    const invited = total.filter((w) => w.status === "invited").length;
-    const converted = total.filter((w) => w.status === "converted").length;
+    const [pendingRows, invitedRows, convertedRows, bouncedRows, unsubscribedRows] =
+      await Promise.all([
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "invited"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "converted"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "bounced"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "unsubscribed"))
+        .collect(),
+    ]);
+
+    const pending = pendingRows.length;
+    const invited = invitedRows.length;
+    const converted = convertedRows.length;
 
     return {
-      total: total.length,
+      total:
+        pending +
+        invited +
+        converted +
+        bouncedRows.length +
+        unsubscribedRows.length,
       pending,
       invited,
       converted,
@@ -184,36 +212,73 @@ export const getWaitlistAdminOverview = query({
     await requireAdminUser(ctx);
 
     const safeLimit = Math.min(Math.max(args.limit ?? 10, 1), 50);
-    const entries = await ctx.db.query("waitlist").collect();
-    const sortedByPosition = [...entries].sort((a, b) => a.position - b.position);
-    const pending = sortedByPosition.filter((entry) => entry.status === "pending");
-    const invited = entries.filter((entry) => entry.status === "invited");
-    const converted = entries.filter((entry) => entry.status === "converted");
+    const [
+      pendingRows,
+      invitedRows,
+      convertedRows,
+      bouncedRows,
+      unsubscribedRows,
+      nextPending,
+      recentInvites,
+    ] = await Promise.all([
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "invited"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "converted"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "bounced"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "unsubscribed"))
+        .collect(),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .order("asc")
+        .take(safeLimit),
+      ctx.db
+        .query("waitlist")
+        .withIndex("by_status_invitedAt", (q) => q.eq("status", "invited"))
+        .order("desc")
+        .take(safeLimit),
+    ]);
 
     return {
       stats: {
-        total: entries.length,
-        pending: pending.length,
-        invited: invited.length,
-        converted: converted.length,
+        total:
+          pendingRows.length +
+          invitedRows.length +
+          convertedRows.length +
+          bouncedRows.length +
+          unsubscribedRows.length,
+        pending: pendingRows.length,
+        invited: invitedRows.length,
+        converted: convertedRows.length,
       },
-      nextPending: pending.slice(0, safeLimit).map((entry) => ({
+      nextPending: nextPending.map((entry) => ({
         _id: entry._id,
         email: entry.email,
         name: entry.name ?? null,
         position: entry.position,
         createdAt: entry.createdAt,
       })),
-      recentInvites: invited
-        .sort((a, b) => (b.invitedAt ?? 0) - (a.invitedAt ?? 0))
-        .slice(0, safeLimit)
-        .map((entry) => ({
-          _id: entry._id,
-          email: entry.email,
-          name: entry.name ?? null,
-          position: entry.position,
-          invitedAt: entry.invitedAt ?? null,
-        })),
+      recentInvites: recentInvites.map((entry) => ({
+        _id: entry._id,
+        email: entry.email,
+        name: entry.name ?? null,
+        position: entry.position,
+        invitedAt: entry.invitedAt ?? null,
+      })),
     };
   },
 });
@@ -278,13 +343,11 @@ export const inviteNextPendingUsers = mutation({
     }
 
     const count = Math.min(Math.max(Math.floor(args.count), 1), 100);
-    const allPending = await ctx.db
+    const toInvite = await ctx.db
       .query("waitlist")
       .withIndex("by_status", (q) => q.eq("status", "pending"))
       .order("asc")
-      .collect();
-
-    const toInvite = allPending.slice(0, count);
+      .take(count);
     const now = Date.now();
     const invitedEmails: string[] = [];
 

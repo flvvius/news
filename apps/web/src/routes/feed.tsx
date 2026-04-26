@@ -223,9 +223,13 @@ function FeedComponent() {
 
   if (access === undefined) {
     return (
-      <div className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
-        <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-          <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+        <div className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
+          <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+          >
             Loading…
           </div>
         </div>
@@ -312,7 +316,11 @@ function FeedContent() {
 
           <div className="grid gap-6">
             {status === "LoadingFirstPage" && (
-              <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+              >
                 Loading…
               </div>
             )}

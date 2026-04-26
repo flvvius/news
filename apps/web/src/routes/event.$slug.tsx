@@ -16,7 +16,7 @@ export const Route = createFileRoute("/event/$slug")({
     const httpClient = context.convexQueryClient.serverHttpClient;
     if (!httpClient) return null;
     try {
-      return await httpClient.query(api.events.getEventBySlug, {
+      return await httpClient.query(api.events.getEventBySlugPreview, {
         slug: params.slug,
       });
     } catch (error) {

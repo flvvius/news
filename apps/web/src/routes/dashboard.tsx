@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMutation as useTanStackMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import {
   Authenticated,
   AuthLoading,
   Unauthenticated,
-  useMutation,
+  useMutation as useConvexMutationHook,
   useQuery,
 } from "convex/react";
 import type { FormEvent } from "react";
@@ -283,16 +285,28 @@ function AuthorizedDashboard() {
     api.clustering.getRecentTopicInferenceDiagnosticsForAdmin,
     isAdmin ? { limit: 10 } : "skip",
   );
-  const setConfig = useMutation(api.config.set);
-  const inviteWaitlistUser = useMutation(api.waitlist.inviteWaitlistUser);
-  const inviteNextPendingUsers = useMutation(api.waitlist.inviteNextPendingUsers);
+  const setConfig = useConvexMutationHook(api.config.set);
+  const convexInviteWaitlistUser = useConvexMutation(
+    api.waitlist.inviteWaitlistUser,
+  );
+  const convexInviteNextPendingUsers = useConvexMutation(
+    api.waitlist.inviteNextPendingUsers,
+  );
+  const inviteWaitlistUser = useTanStackMutation({
+    mutationFn: convexInviteWaitlistUser,
+  });
+  const inviteNextPendingUsers = useTanStackMutation({
+    mutationFn: convexInviteNextPendingUsers,
+  });
   const [minScoreInput, setMinScoreInput] = useState("");
   const [confidenceRatioInput, setConfidenceRatioInput] = useState("");
   const [maxTopicsInput, setMaxTopicsInput] = useState("");
   const [configMessage, setConfigMessage] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [waitlistMessage, setWaitlistMessage] = useState("");
-  const [isInvitingWaitlist, setIsInvitingWaitlist] = useState(false);
+  const [invitingWaitlistId, setInvitingWaitlistId] = useState<string | null>(
+    null,
+  );
   const currentSettings = topicDiagnostics?.[0]?.settings;
 
   useEffect(() => {
@@ -400,40 +414,41 @@ function AuthorizedDashboard() {
   const userEmail = currentUser?.email;
   const waitlistStats = waitlistOverview?.stats;
 
-  const handleInviteNextPendingUsers = async (count: number) => {
+  const handleInviteNextPendingUsers = (count: number) => {
+    inviteNextPendingUsers.reset();
+    inviteWaitlistUser.reset();
+    setInvitingWaitlistId(null);
     setWaitlistMessage("");
-    setIsInvitingWaitlist(true);
-    try {
-      const result = await inviteNextPendingUsers({ count });
-      setWaitlistMessage(
-        result.invitedCount > 0
-          ? `Invited ${result.invitedCount} waitlist ${result.invitedCount === 1 ? "user" : "users"}.`
-          : "No pending waitlist users left to invite.",
-      );
-    } catch (error) {
-      console.error("Failed to invite waitlist batch:", error);
-      setWaitlistMessage(
-        error instanceof Error ? error.message : "Could not send invites right now.",
-      );
-    } finally {
-      setIsInvitingWaitlist(false);
-    }
+    inviteNextPendingUsers.mutate(
+      { count },
+      {
+        onSuccess: (result) => {
+          setWaitlistMessage(
+            result.invitedCount > 0
+              ? `Invited ${result.invitedCount} waitlist ${result.invitedCount === 1 ? "user" : "users"}.`
+              : "No pending waitlist users left to invite.",
+          );
+        },
+      },
+    );
   };
 
-  const handleInviteSingleUser = async (waitlistId: Id<"waitlist">) => {
+  const handleInviteSingleUser = (waitlistId: Id<"waitlist">) => {
+    inviteWaitlistUser.reset();
+    inviteNextPendingUsers.reset();
     setWaitlistMessage("");
-    setIsInvitingWaitlist(true);
-    try {
-      const result = await inviteWaitlistUser({ waitlistId });
-      setWaitlistMessage(`Invite sent to ${result.email}.`);
-    } catch (error) {
-      console.error("Failed to invite waitlist user:", error);
-      setWaitlistMessage(
-        error instanceof Error ? error.message : "Could not send that invite.",
-      );
-    } finally {
-      setIsInvitingWaitlist(false);
-    }
+    setInvitingWaitlistId(waitlistId);
+    inviteWaitlistUser.mutate(
+      { waitlistId },
+      {
+        onSuccess: (result) => {
+          setWaitlistMessage(`Invite sent to ${result.email}.`);
+        },
+        onSettled: () => {
+          setInvitingWaitlistId(null);
+        },
+      },
+    );
   };
 
   return (
@@ -637,20 +652,42 @@ function AuthorizedDashboard() {
                       <Button
                         size="sm"
                         onClick={() => handleInviteNextPendingUsers(10)}
-                        disabled={isInvitingWaitlist}
+                        disabled={
+                          inviteNextPendingUsers.isPending ||
+                          inviteWaitlistUser.isPending
+                        }
                       >
-                        {isInvitingWaitlist ? "Sending..." : "Invite next 10"}
+                        {inviteNextPendingUsers.isPending
+                          ? "Sending..."
+                          : "Invite next 10"}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleInviteNextPendingUsers(25)}
-                        disabled={isInvitingWaitlist}
+                        disabled={
+                          inviteNextPendingUsers.isPending ||
+                          inviteWaitlistUser.isPending
+                        }
                       >
                         Invite next 25
                       </Button>
-                      {waitlistMessage && (
+                      {waitlistMessage && !inviteNextPendingUsers.isError && !inviteWaitlistUser.isError && (
                         <p className="text-sm text-muted-foreground">{waitlistMessage}</p>
+                      )}
+                      {inviteNextPendingUsers.isError && (
+                        <p className="text-sm text-destructive">
+                          {inviteNextPendingUsers.error instanceof Error
+                            ? inviteNextPendingUsers.error.message
+                            : "Could not send invites right now."}
+                        </p>
+                      )}
+                      {inviteWaitlistUser.isError && !inviteNextPendingUsers.isError && (
+                        <p className="text-sm text-destructive">
+                          {inviteWaitlistUser.error instanceof Error
+                            ? inviteWaitlistUser.error.message
+                            : "Could not send that invite."}
+                        </p>
                       )}
                     </CardContent>
                   </Card>
@@ -683,9 +720,17 @@ function AuthorizedDashboard() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleInviteSingleUser(entry._id)}
-                                disabled={isInvitingWaitlist}
+                                disabled={
+                                  inviteNextPendingUsers.isPending
+                                    ? true
+                                    : inviteWaitlistUser.isPending &&
+                                      invitingWaitlistId === entry._id
+                                }
                               >
-                                {isInvitingWaitlist ? "Sending..." : "Send invite"}
+                                {invitingWaitlistId === entry._id &&
+                                inviteWaitlistUser.isPending
+                                  ? "Sending..."
+                                  : "Send invite"}
                               </Button>
                             </div>
                           ))}

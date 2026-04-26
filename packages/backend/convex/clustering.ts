@@ -24,10 +24,10 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { authComponent } from "./auth";
 import type { MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
+import { requireAdminUser } from "./lib/betaAccess";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -1139,23 +1139,6 @@ async function getTopicInferenceSettingsForQuery(
       5,
     ),
   };
-}
-
-async function requireAdminUser(ctx: Parameters<typeof authComponent.safeGetAuthUser>[0]) {
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-  const currentUser = await authComponent.safeGetAuthUser(ctx);
-
-  if (!currentUser) {
-    throw new Error("Not authenticated");
-  }
-  if (!adminEmails.includes(currentUser.email.toLowerCase())) {
-    throw new Error("Unauthorized: admin access required");
-  }
-
-  return currentUser;
 }
 
 function isWeakEventPresentation(
