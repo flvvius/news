@@ -93,7 +93,26 @@ export default defineSchema({
     }),
 
   // =========================================================================
-  // 3c. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // 3c. EVENT SHARE ASSETS (Cold path — social images stored outside hot reads)
+  // =========================================================================
+  eventShareAssets: defineTable({
+    eventId: v.id("events"),
+    storageId: v.optional(v.id("_storage")),
+    contentType: v.optional(v.string()),
+    width: v.number(),
+    height: v.number(),
+    renderSignature: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    error: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
+  // =========================================================================
+  // 3d. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
   // =========================================================================
   clusterPairLabels: defineTable({
     pairKey: v.string(),
