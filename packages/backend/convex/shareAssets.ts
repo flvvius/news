@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   internalMutation,
   internalQuery,
@@ -38,6 +40,38 @@ export function buildEventShareRenderSignature(
   ].join("|");
 }
 
+async function getLatestEventShareAsset(
+  ctx: QueryCtx | MutationCtx,
+  eventId: Id<"events">,
+) {
+  return await ctx.db
+    .query("eventShareAssets")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .order("desc")
+    .first();
+}
+
+async function dedupeEventShareAssets(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+) {
+  const assets = await ctx.db
+    .query("eventShareAssets")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .order("desc")
+    .collect();
+
+  if (assets.length <= 1) {
+    return assets[0] ?? null;
+  }
+
+  const [latest, ...duplicates] = assets;
+  for (const duplicate of duplicates) {
+    await ctx.db.delete(duplicate._id);
+  }
+  return latest;
+}
+
 export const getEventShareRenderData = internalQuery({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
@@ -74,10 +108,7 @@ export const getEventShareRenderData = internalQuery({
 export const getEventShareAsset = internalQuery({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
-    return await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .unique();
+    return await getLatestEventShareAsset(ctx, eventId);
   },
 });
 
@@ -87,10 +118,7 @@ export const ensureEventShareAssetQueued = internalMutation({
     renderSignature: v.string(),
   },
   handler: async (ctx, { eventId, renderSignature }) => {
-    const existing = await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .unique();
+    const existing = await dedupeEventShareAssets(ctx, eventId);
 
     if (
       existing &&
@@ -116,6 +144,8 @@ export const ensureEventShareAssetQueued = internalMutation({
         status: "pending",
         updatedAt: Date.now(),
       });
+
+      await dedupeEventShareAssets(ctx, eventId);
     }
 
     await ctx.scheduler.runAfter(
@@ -139,10 +169,7 @@ export const markEventShareAssetReady = internalMutation({
     contentType: v.string(),
   },
   handler: async (ctx, { eventId, renderSignature, storageId, contentType }) => {
-    const existing = await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .unique();
+    const existing = await dedupeEventShareAssets(ctx, eventId);
 
     if (!existing) {
       await ctx.db.insert("eventShareAssets", {
@@ -181,10 +208,7 @@ export const markEventShareAssetFailed = internalMutation({
     error: v.string(),
   },
   handler: async (ctx, { eventId, renderSignature, error }) => {
-    const existing = await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .unique();
+    const existing = await dedupeEventShareAssets(ctx, eventId);
     if (!existing) return;
 
     await ctx.db.patch(existing._id, {

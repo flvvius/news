@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { SITE } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
 type ShareEventButtonProps = {
@@ -19,7 +20,8 @@ export default function ShareEventButton({
   size = "default",
   className,
 }: ShareEventButtonProps) {
-  const shareUrl = `https://biviant.com/event/${slug}`;
+  const shareOrigin = SITE.url || window.location.origin;
+  const shareUrl = `${shareOrigin}/event/${slug}`;
   const shareText = summary?.trim()
     ? `${title} — ${summary.trim()}`
     : title;
@@ -30,26 +32,25 @@ export default function ShareEventButton({
     e.preventDefault();
     e.stopPropagation();
 
-    try {
-      if (navigator.share) {
+    if (navigator.share) {
+      try {
         await navigator.share({
           title,
           text: shareText,
           url: shareUrl,
         });
         return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
       }
+    }
 
+    try {
       await navigator.clipboard.writeText(shareUrl);
       toast.success("Event link copied");
     } catch (error) {
-      if (
-        error instanceof DOMException &&
-        error.name === "AbortError"
-      ) {
-        return;
-      }
-
       console.error("Share failed:", error);
       toast.error("Could not share this event. Please try again.");
     }

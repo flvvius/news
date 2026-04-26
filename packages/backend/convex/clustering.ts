@@ -915,6 +915,10 @@ async function refreshEventPresentation(
     event.lastUpdatedAt ?? 0,
     latestArticlePublishedAt,
   );
+  const nextImageUrl = bestImage?.article.imageUrl;
+  const nextImageAlt =
+    bestImage?.article.imageAlt ??
+    (bestImage ? bestImage.article.title : event.imageAlt);
 
   await ctx.db.patch(eventId, {
     perspectiveSummaries: centerSummary
@@ -925,12 +929,10 @@ async function refreshEventPresentation(
         }
       : event.perspectiveSummaries,
     globalImpact,
-    imageUrl: bestImage?.article.imageUrl,
+    imageUrl: nextImageUrl,
     imageWidth: bestImage?.article.imageWidth,
     imageHeight: bestImage?.article.imageHeight,
-    imageAlt:
-      bestImage?.article.imageAlt ??
-      (bestImage ? bestImage.article.title : event.imageAlt),
+    imageAlt: nextImageAlt,
     lastUpdatedAt: nextLastUpdatedAt,
   });
 
@@ -939,10 +941,8 @@ async function refreshEventPresentation(
     renderSignature: buildEventShareRenderSignature({
       title: event.title,
       summary: centerSummary ?? globalImpact,
-      imageUrl: bestImage?.article.imageUrl,
-      imageAlt:
-        bestImage?.article.imageAlt ??
-        (bestImage ? bestImage.article.title : event.imageAlt),
+      imageUrl: nextImageUrl,
+      imageAlt: nextImageAlt,
       lastUpdatedAt: nextLastUpdatedAt,
       articleCount: articles.length,
       sourceCount: uniqueSources.size,

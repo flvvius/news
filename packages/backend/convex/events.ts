@@ -338,7 +338,8 @@ export const getEventBySlugPreview = query({
     const shareAsset = await ctx.db
       .query("eventShareAssets")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .unique();
+      .order("desc")
+      .first();
     const shareImageUrl =
       shareAsset?.status === "ready" && shareAsset.storageId
         ? await ctx.storage.getUrl(shareAsset.storageId)

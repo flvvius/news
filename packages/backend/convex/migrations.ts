@@ -9,7 +9,7 @@
  */
 
 import { mutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
@@ -312,6 +312,7 @@ export const queueEventShareAssetsBackfill = mutation({
   args: {
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const safePageSize = Math.min(
@@ -350,11 +351,29 @@ export const queueEventShareAssetsBackfill = mutation({
       }
     }
 
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const scheduledContinuation =
+      shouldAutoContinue && !page.isDone && Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        0,
+        api.migrations.queueEventShareAssetsBackfill,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+        },
+      );
+    }
+
     return {
       processed: page.page.length,
       queued,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
+      scheduledContinuation,
     };
   },
 });

@@ -14,17 +14,21 @@ import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/event/$slug")({
   loader: async ({ context, params }) => {
-    // Fetch event data server-side so head() can set dynamic meta tags for SEO.
-    // serverHttpClient is only available during SSR — returns null on client nav.
+    // Fetch event data for both SSR and client transitions so head() stays dynamic.
     const httpClient = context.convexQueryClient.serverHttpClient;
-    if (!httpClient) return null;
     try {
-      return await httpClient.query(api.events.getEventBySlugPreview, {
+      if (httpClient) {
+        return await httpClient.query(api.events.getEventBySlugPreview, {
+          slug: params.slug,
+        });
+      }
+
+      return await context.convexClient.query(api.events.getEventBySlugPreview, {
         slug: params.slug,
       });
     } catch (error) {
       console.error(
-        `[SSR] Failed to load event (slug: ${params.slug}):`,
+        `[Route loader] Failed to load event (slug: ${params.slug}):`,
         error,
       );
       return null;
@@ -131,7 +135,9 @@ function EventDetailPage() {
 }
 
 function PublicEventDetailPage({ slug }: { slug: string }) {
-  const eventData = useQuery(api.events.getEventBySlugPreview, { slug });
+  const loaderData = Route.useLoaderData();
+  const queryData = useQuery(api.events.getEventBySlugPreview, { slug });
+  const eventData = queryData ?? loaderData;
 
   if (eventData === undefined) {
     return (
@@ -408,18 +414,20 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                     {event.title}
                   </h1>
                 </div>
-                <BookmarkButton
-                  eventId={event._id}
-                  className="rounded-full border border-border/80 bg-background/80"
-                />
-                <ShareEventButton
-                  slug={event.slug}
-                  title={event.title}
-                  summary={
-                    event.perspectiveSummaries?.center ?? event.globalImpact
-                  }
-                  className="rounded-full border border-border/80 bg-background/80"
-                />
+                <div className="flex items-center gap-2">
+                  <BookmarkButton
+                    eventId={event._id}
+                    className="rounded-full border border-border/80 bg-background/80"
+                  />
+                  <ShareEventButton
+                    slug={event.slug}
+                    title={event.title}
+                    summary={
+                      event.perspectiveSummaries?.center ?? event.globalImpact
+                    }
+                    className="rounded-full border border-border/80 bg-background/80"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">

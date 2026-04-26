@@ -109,7 +109,9 @@ export default defineSchema({
     ),
     error: v.optional(v.string()),
     updatedAt: v.number(),
-  }).index("by_event", ["eventId"]),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
   // 3d. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)

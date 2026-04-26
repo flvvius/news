@@ -38,7 +38,7 @@ function truncate(value: string | undefined, maxChars: number): string {
 }
 
 function formatUpdatedAt(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -77,7 +77,11 @@ function splitIntoLines(
   }
 
   const consumedWords = lines.join(" ").split(/\s+/).filter(Boolean).length;
-  const remainingWords = words.slice(consumedWords);
+  const consumedIncludingCurrent = Math.min(
+    words.length,
+    consumedWords + (current ? 1 : 0),
+  );
+  const remainingWords = words.slice(consumedIncludingCurrent);
   const finalLine =
     current || remainingWords.length > 0
       ? [current, ...remainingWords].filter(Boolean).join(" ")
@@ -91,9 +95,11 @@ function splitIntoLines(
     );
   }
 
-  return lines.slice(0, maxLines).map((line, index) =>
-    index === maxLines - 1 ? truncate(line, maxCharsPerLine) : line,
-  );
+  return lines
+    .slice(0, maxLines)
+    .map((line, index) =>
+      index === maxLines - 1 ? truncate(line, maxCharsPerLine) : line,
+    );
 }
 
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
@@ -356,7 +362,9 @@ export const generateEventShareAsset = internalAction({
     try {
       await ensureResvgReady();
       const [backgroundDataUri, sourceLogos] = await Promise.all([
-        data.imageUrl ? fetchImageAsDataUri(data.imageUrl) : Promise.resolve(null),
+        data.imageUrl
+          ? fetchImageAsDataUri(data.imageUrl)
+          : Promise.resolve(null),
         fetchSourceLogoData(data.sources),
       ]);
 
@@ -376,15 +384,12 @@ export const generateEventShareAsset = internalAction({
         previousStorageId,
       }: {
         previousStorageId: Id<"_storage"> | null;
-      } = await ctx.runMutation(
-        internal.shareAssets.markEventShareAssetReady,
-        {
-          eventId,
-          renderSignature,
-          storageId,
-          contentType: "image/png",
-        },
-      );
+      } = await ctx.runMutation(internal.shareAssets.markEventShareAssetReady, {
+        eventId,
+        renderSignature,
+        storageId,
+        contentType: "image/png",
+      });
 
       if (previousStorageId && previousStorageId !== storageId) {
         await ctx.storage.delete(previousStorageId);
@@ -399,7 +404,10 @@ export const generateEventShareAsset = internalAction({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown share render error";
-      console.error("[shareAssets] Failed to generate event share asset:", error);
+      console.error(
+        "[shareAssets] Failed to generate event share asset:",
+        error,
+      );
       await ctx.runMutation(internal.shareAssets.markEventShareAssetFailed, {
         eventId,
         renderSignature,
