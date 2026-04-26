@@ -1,7 +1,5 @@
 "use node";
 
-import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
 import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -19,8 +17,9 @@ const USER_AGENT =
   "Mozilla/5.0 (compatible; BiviantBot/1.0; +https://biviant.com)";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;
+const RESVG_WASM_URL =
+  "https://cdn.jsdelivr.net/npm/@resvg/resvg-wasm@2.6.2/index_bg.wasm";
 
-const require = createRequire(import.meta.url);
 let wasmInitPromise: Promise<void> | null = null;
 
 function escapeXml(value: string): string {
@@ -148,9 +147,7 @@ async function fetchSourceLogoData(
 async function ensureResvgReady(): Promise<void> {
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
-      const wasmPath = require.resolve("@resvg/resvg-wasm/index_bg.wasm");
-      const wasmBytes = await readFile(wasmPath);
-      await initWasm(wasmBytes);
+      await initWasm(fetch(RESVG_WASM_URL));
     })();
   }
 
