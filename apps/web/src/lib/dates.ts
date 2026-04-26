@@ -1,4 +1,4 @@
-const relativeTimeFormatter = new Intl.RelativeTimeFormat("en", {
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
 
@@ -36,7 +36,7 @@ export function formatRelativeTimestamp(timestamp: number): string {
 }
 
 export function formatAbsoluteTimestamp(timestamp: number): string {
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(timestamp));

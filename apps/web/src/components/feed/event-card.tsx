@@ -203,10 +203,13 @@ const EventCard = ({
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <p
+                className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground"
+                title={lastUpdatedTitle}
+              >
                 Updated {lastUpdatedLabel}
               </p>
-              <p className="text-xs text-muted-foreground" title={lastUpdatedTitle}>
+              <p className="text-xs text-muted-foreground">
                 Open event
               </p>
             </div>

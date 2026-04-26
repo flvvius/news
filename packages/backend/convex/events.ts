@@ -257,7 +257,7 @@ export const getPublishedEventsByTopicIds = query({
         const rows = await ctx.db
           .query("eventTopics")
           .withIndex("by_topic", (q) => q.eq("topicId", topicId))
-          .collect();
+          .take(safeLimit * 4);
         for (const row of rows) {
           eventIds.add(row.eventId);
         }

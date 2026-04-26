@@ -9,6 +9,7 @@
  */
 
 import { mutation } from "./_generated/server";
+import { v } from "convex/values";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 
@@ -258,12 +259,22 @@ export const dedupeWaitlistByEmail = mutation({
 });
 
 export const backfillEventSearchAndRecency = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const events = await ctx.db.query("events").collect();
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      2000,
+    );
+    const page = await ctx.db.query("events").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
     let updated = 0;
 
-    for (const event of events) {
+    for (const event of page.page) {
       const articles = await ctx.db
         .query("articles")
         .withIndex("by_event", (q) => q.eq("eventId", event._id))
@@ -284,8 +295,10 @@ export const backfillEventSearchAndRecency = mutation({
     }
 
     return {
-      totalEvents: events.length,
+      processed: page.page.length,
       updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
     };
   },
 });

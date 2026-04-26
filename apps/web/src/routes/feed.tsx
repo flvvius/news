@@ -287,7 +287,6 @@ function FeedContent() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem("biviant-recent-event-searches");
       if (!raw) return;
@@ -313,6 +312,9 @@ function FeedContent() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "/") return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
 
       const target = event.target as HTMLElement | null;
       if (
@@ -384,25 +386,31 @@ function FeedContent() {
 
   useEffect(() => {
     if (
-      typeof window === "undefined" ||
       debouncedSearch.length < 2 ||
-      searchResults === undefined
+      searchResults === undefined ||
+      searchResults.length === 0
     ) {
       return;
     }
 
-    setRecentSearches((current) => {
-      const next = [
-        debouncedSearch,
-        ...current.filter((entry) => entry.toLowerCase() !== debouncedSearch.toLowerCase()),
-      ].slice(0, 5);
-      window.localStorage.setItem(
-        "biviant-recent-event-searches",
-        JSON.stringify(next),
-      );
-      return next;
-    });
-  }, [debouncedSearch, searchResults]);
+    const next = [
+      debouncedSearch,
+      ...recentSearches.filter(
+        (entry) => entry.toLowerCase() !== debouncedSearch.toLowerCase(),
+      ),
+    ].slice(0, 5);
+    const isUnchanged =
+      next.length === recentSearches.length &&
+      next.every((value, index) => value === recentSearches[index]);
+    if (isUnchanged) {
+      return;
+    }
+    setRecentSearches(() => next);
+    window.localStorage.setItem(
+      "biviant-recent-event-searches",
+      JSON.stringify(next),
+    );
+  }, [debouncedSearch, recentSearches, searchResults]);
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};

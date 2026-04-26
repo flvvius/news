@@ -908,7 +908,7 @@ async function refreshEventPresentation(
   );
   const latestArticlePublishedAt = articles.reduce(
     (max, article) => Math.max(max, article.publishedAt),
-    0,
+    event.firstPublishedAt,
   );
 
   await ctx.db.patch(eventId, {
@@ -926,8 +926,10 @@ async function refreshEventPresentation(
     imageAlt:
       bestImage?.article.imageAlt ??
       (bestImage ? bestImage.article.title : event.imageAlt),
-    lastUpdatedAt:
-      latestArticlePublishedAt > 0 ? latestArticlePublishedAt : event.lastUpdatedAt,
+    lastUpdatedAt: Math.max(
+      event.lastUpdatedAt ?? 0,
+      latestArticlePublishedAt,
+    ),
   });
 }
 
@@ -2780,10 +2782,6 @@ export const mergeEvents = internalMutation({
     await ctx.db.patch(keepEventId, {
       title: mergedTitle,
       firstPublishedAt: mergedFirstPublishedAt,
-      lastUpdatedAt: Math.max(
-        keepEvent.lastUpdatedAt ?? keepEvent.firstPublishedAt,
-        removeEvent.lastUpdatedAt ?? removeEvent.firstPublishedAt,
-      ),
       perspectiveSummaries: mergedPerspectiveSummaries,
       globalImpact: mergedGlobalImpact,
       imageUrl: mergedImageUrl,
