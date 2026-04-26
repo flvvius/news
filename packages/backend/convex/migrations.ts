@@ -256,3 +256,36 @@ export const dedupeWaitlistByEmail = mutation({
     };
   },
 });
+
+export const backfillEventSearchAndRecency = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const events = await ctx.db.query("events").collect();
+    let updated = 0;
+
+    for (const event of events) {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+
+      const latestArticlePublishedAt = articles.reduce(
+        (max, article) => Math.max(max, article.publishedAt),
+        event.firstPublishedAt,
+      );
+
+      const nextLastUpdatedAt = latestArticlePublishedAt || event.lastUpdatedAt;
+      if (nextLastUpdatedAt !== event.lastUpdatedAt) {
+        await ctx.db.patch(event._id, {
+          lastUpdatedAt: nextLastUpdatedAt,
+        });
+        updated++;
+      }
+    }
+
+    return {
+      totalEvents: events.length,
+      updated,
+    };
+  },
+});

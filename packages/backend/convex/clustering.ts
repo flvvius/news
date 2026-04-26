@@ -906,6 +906,10 @@ async function refreshEventPresentation(
     `${coverageLine} ${sourceLine ?? ""}`.trim(),
     180,
   );
+  const latestArticlePublishedAt = articles.reduce(
+    (max, article) => Math.max(max, article.publishedAt),
+    0,
+  );
 
   await ctx.db.patch(eventId, {
     perspectiveSummaries: centerSummary
@@ -922,6 +926,8 @@ async function refreshEventPresentation(
     imageAlt:
       bestImage?.article.imageAlt ??
       (bestImage ? bestImage.article.title : event.imageAlt),
+    lastUpdatedAt:
+      latestArticlePublishedAt > 0 ? latestArticlePublishedAt : event.lastUpdatedAt,
   });
 }
 
@@ -1404,6 +1410,7 @@ export const createEventFromArticle = internalMutation({
         : undefined,
       status: initialStatus,
       firstPublishedAt: publishedAt,
+      lastUpdatedAt: publishedAt,
     });
 
     await ctx.db.insert("eventEmbeddings", {
@@ -1523,6 +1530,10 @@ export const attachArticleToEvent = internalMutation({
     }
 
     const nextFirstPublishedAt = Math.min(event.firstPublishedAt, publishedAt);
+    const nextLastUpdatedAt = Math.max(
+      event.lastUpdatedAt ?? event.firstPublishedAt,
+      publishedAt,
+    );
     const uniqueSourceCount = new Set(
       [...existingArticles.map((existingArticle) => String(existingArticle.sourceId)), String(article.sourceId)],
     ).size;
@@ -1535,10 +1546,12 @@ export const attachArticleToEvent = internalMutation({
       : event.status;
     if (
       nextFirstPublishedAt !== event.firstPublishedAt ||
+      nextLastUpdatedAt !== (event.lastUpdatedAt ?? event.firstPublishedAt) ||
       nextStatus !== event.status
     ) {
       await ctx.db.patch(eventId, {
         firstPublishedAt: nextFirstPublishedAt,
+        lastUpdatedAt: nextLastUpdatedAt,
         status: nextStatus,
       });
     }
@@ -2767,6 +2780,10 @@ export const mergeEvents = internalMutation({
     await ctx.db.patch(keepEventId, {
       title: mergedTitle,
       firstPublishedAt: mergedFirstPublishedAt,
+      lastUpdatedAt: Math.max(
+        keepEvent.lastUpdatedAt ?? keepEvent.firstPublishedAt,
+        removeEvent.lastUpdatedAt ?? removeEvent.firstPublishedAt,
+      ),
       perspectiveSummaries: mergedPerspectiveSummaries,
       globalImpact: mergedGlobalImpact,
       imageUrl: mergedImageUrl,

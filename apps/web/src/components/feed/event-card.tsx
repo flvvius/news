@@ -3,7 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import BookmarkButton from "@/components/bookmark-button";
+import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 type EventCardProps = {
   event: {
@@ -15,6 +17,8 @@ type EventCardProps = {
       center?: string;
     };
     globalImpact?: string;
+    firstPublishedAt: number;
+    lastUpdatedAt?: number;
     topicIds?: Id<"topics">[];
     articleCount?: number;
     sources?: Array<{
@@ -32,13 +36,51 @@ type EventCardProps = {
   /** Max source logos to display. Pre-validated by the parent. */
   maxSources?: number;
   variant?: "default" | "feature";
+  searchQuery?: string;
 };
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightTitle(title: string, query?: string): ReactNode {
+  const terms = Array.from(
+    new Set(
+      (query ?? "")
+        .trim()
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2),
+    ),
+  );
+
+  if (terms.length === 0) {
+    return title;
+  }
+
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+  const parts = title.split(pattern);
+
+  return parts.map((part, index) =>
+    terms.some((term) => part.toLowerCase() === term.toLowerCase()) ? (
+      <mark
+        key={`${part}-${index}`}
+        className="rounded bg-primary/18 px-0.5 text-inherit"
+      >
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}-${index}`}>{part}</span>
+    ),
+  );
+}
 
 const EventCard = ({
   event,
   topicNamesById,
   maxSources = 5,
   variant = "default",
+  searchQuery,
 }: EventCardProps) => {
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
@@ -49,6 +91,9 @@ const EventCard = ({
     event.globalImpact ??
     "Coverage grouped from multiple sources. Open the event to compare articles.";
   const isFeature = variant === "feature";
+  const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt);
+  const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
 
   return (
     <Link to="/event/$slug" params={{ slug: event.slug }} className="group block">
@@ -103,7 +148,7 @@ const EventCard = ({
                 isFeature ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl",
               )}
             >
-              {event.title}
+              {highlightTitle(event.title, searchQuery)}
             </CardTitle>
             <BookmarkButton
               eventId={event._id}
@@ -157,9 +202,14 @@ const EventCard = ({
                 </p>
               </div>
             </div>
-            <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Open event
-            </span>
+            <div className="text-right">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Updated {lastUpdatedLabel}
+              </p>
+              <p className="text-xs text-muted-foreground" title={lastUpdatedTitle}>
+                Open event
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

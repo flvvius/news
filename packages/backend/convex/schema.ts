@@ -57,10 +57,15 @@ export default defineSchema({
 
     status: v.union(v.literal("processing"), v.literal("published")),
     firstPublishedAt: v.number(),
+    lastUpdatedAt: v.optional(v.number()),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
   })
     .index("by_slug", ["slug"])
-    .index("by_status_recency", ["status", "firstPublishedAt"]),
+    .index("by_status_recency", ["status", "firstPublishedAt"])
+    .searchIndex("by_search_text", {
+      searchField: "title",
+      filterFields: ["status"],
+    }),
 
   // =========================================================================
   // 3a. EVENT TOPICS (Junction — replaces events.topicIds array)
