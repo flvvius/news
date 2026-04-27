@@ -5,6 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
+import sharp from "sharp";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -21,6 +22,7 @@ const USER_AGENT =
   "Mozilla/5.0 (compatible; BiviantBot/1.0; +https://biviant.com)";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;
+const WHATSAPP_TARGET_BYTES = 280 * 1024;
 const RESVG_FONT_FAMILY = "Inter";
 const FONT_FILES = [
   {
@@ -369,7 +371,7 @@ function buildShareSvg(
   `;
 }
 
-async function renderSvgToPng(svg: string): Promise<Buffer> {
+async function renderSvgToJpeg(svg: string): Promise<Buffer> {
   const fontFilePaths = await getFontFilePaths();
 
   const resvg = new Resvg(svg, {
@@ -384,6 +386,17 @@ async function renderSvgToPng(svg: string): Promise<Buffer> {
   });
 
   const pngBytes = resvg.render().asPng();
+  for (const quality of [76, 68, 60, 52]) {
+    const jpegBytes = await sharp(pngBytes)
+      .flatten({ background: "#0B0F14" })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
+
+    if (jpegBytes.byteLength <= WHATSAPP_TARGET_BYTES || quality === 52) {
+      return jpegBytes;
+    }
+  }
+
   return Buffer.from(pngBytes);
 }
 
@@ -399,8 +412,8 @@ export const generateEventShareAsset = internalAction({
     | { generated: false; reason: "stale_or_missing" | "render_failed" }
     | {
         generated: true;
-        storageId: Id<"_storage">;
-        contentType: "image/png";
+      storageId: Id<"_storage">;
+        contentType: "image/jpeg";
         bytes: number;
       }
   > => {
@@ -425,10 +438,10 @@ export const generateEventShareAsset = internalAction({
       ]);
 
       const svg = buildShareSvg(data, { backgroundDataUri, sourceLogos });
-      const pngBytes = await renderSvgToPng(svg);
+      const imageBytes = await renderSvgToJpeg(svg);
 
       const storageId = await ctx.storage.store(
-        new Blob([Uint8Array.from(pngBytes)], { type: "image/png" }),
+        new Blob([Uint8Array.from(imageBytes)], { type: "image/jpeg" }),
       );
 
       const {
@@ -439,7 +452,7 @@ export const generateEventShareAsset = internalAction({
         eventId,
         renderSignature,
         storageId,
-        contentType: "image/png",
+        contentType: "image/jpeg",
       });
 
       if (previousStorageId && previousStorageId !== storageId) {
@@ -449,8 +462,8 @@ export const generateEventShareAsset = internalAction({
       return {
         generated: true as const,
         storageId,
-        contentType: "image/png" as const,
-        bytes: pngBytes.byteLength,
+        contentType: "image/jpeg" as const,
+        bytes: imageBytes.byteLength,
       };
     } catch (error) {
       const message =
