@@ -1,5 +1,8 @@
 {
   "node": {
-    "externalPackages": ["@resvg/resvg-js"]
+    "externalPackages": [
+      "@resvg/resvg-js",
+      "sharp"
+    ]
   }
 }

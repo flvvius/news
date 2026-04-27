@@ -6,7 +6,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 
 export const SHARE_IMAGE_WIDTH = 1080;
 export const SHARE_IMAGE_HEIGHT = 566;
-const SHARE_RENDER_VERSION = "v7-resvg-js-inter-ttf-1080";
+const SHARE_RENDER_VERSION = "v8-resvg-js-inter-ttf-jpeg-1080";
 
 export type EventShareRenderData = {
   title: string;

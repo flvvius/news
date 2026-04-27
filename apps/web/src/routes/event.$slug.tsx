@@ -184,8 +184,8 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-        <div className="flex flex-col gap-8">
+      <div className="container mx-auto max-w-4xl px-3 py-4 sm:px-4 sm:py-10">
+        <div className="flex flex-col gap-5 sm:gap-8">
           <Link
             to="/"
             className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -193,8 +193,8 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
             &larr; Back to homepage
           </Link>
 
-          <section className="overflow-hidden rounded-[1.6rem] border border-border/80 bg-card/95 shadow-sm">
-            <div className="aspect-[16/10] overflow-hidden border-b border-border/70 bg-muted/40 sm:aspect-[16/9]">
+          <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
+            <div className="aspect-[16/9] overflow-hidden border-b border-border/70 bg-muted/40">
               {event.imageUrl ? (
                 <img
                   src={event.imageUrl}
@@ -210,61 +210,63 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
               )}
             </div>
 
-            <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
+            <div className="space-y-5 px-4 py-5 sm:space-y-6 sm:px-8 sm:py-8">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                     Public Preview
                   </p>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl text-balance">
-                    {event.title}
-                  </h1>
+                  <ShareEventButton
+                    slug={event.slug}
+                    title={event.title}
+                    summary={
+                      event.perspectiveSummaries?.center ?? event.globalImpact
+                    }
+                    className="rounded-full border border-border/80 bg-background/80"
+                  />
                 </div>
-                <ShareEventButton
-                  slug={event.slug}
-                  title={event.title}
-                  summary={
-                    event.perspectiveSummaries?.center ?? event.globalImpact
-                  }
-                  className="rounded-full border border-border/80 bg-background/80"
-                />
+                <h1 className="max-w-3xl text-2xl font-bold leading-[1.12] tracking-tight text-foreground text-balance sm:text-4xl sm:leading-tight">
+                  {event.title}
+                </h1>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+              <div className="grid gap-3 border-t border-border/70 pt-4 sm:flex sm:flex-wrap sm:items-center">
                 <div
-                  className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                  className="w-fit rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
                   title={formatAbsoluteTimestamp(lastUpdatedAt)}
                 >
                   Updated {formatRelativeTimestamp(lastUpdatedAt)}
                 </div>
-                <div className="flex -space-x-3">
-                  {event.sources?.slice(0, 5).map((source) => (
-                    <div
-                      key={source._id}
-                      className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
-                      title={source.name}
-                    >
-                      {source.logoUrl ? (
-                        <img
-                          src={source.logoUrl}
-                          alt={source.name}
-                          className="h-full w-full object-contain p-1.5"
-                        />
-                      ) : (
-                        <span className="text-xs font-medium text-foreground">
-                          {source.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span className="font-medium text-card-foreground">
-                    {event.articleCount}{" "}
-                    {event.articleCount === 1 ? "article" : "articles"}
-                  </span>
-                  <span>•</span>
-                  <span>{event.sources?.length ?? 0} sources</span>
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3 sm:border-0 sm:bg-transparent sm:p-0">
+                  <div className="flex -space-x-3">
+                    {event.sources?.slice(0, 5).map((source) => (
+                      <div
+                        key={source._id}
+                        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm sm:h-11 sm:w-11"
+                        title={source.name}
+                      >
+                        {source.logoUrl ? (
+                          <img
+                            src={source.logoUrl}
+                            alt={source.name}
+                            className="h-full w-full object-contain p-1.5"
+                          />
+                        ) : (
+                          <span className="text-xs font-medium text-foreground">
+                            {source.name.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
+                    <span className="font-medium text-card-foreground">
+                      {event.articleCount}{" "}
+                      {event.articleCount === 1 ? "article" : "articles"}
+                    </span>
+                    <span>•</span>
+                    <span>{event.sources?.length ?? 0} sources</span>
+                  </div>
                 </div>
               </div>
 
@@ -387,8 +389,8 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-        <div className="flex flex-col gap-8">
+      <div className="container mx-auto max-w-4xl px-3 py-4 sm:px-4 sm:py-10">
+        <div className="flex flex-col gap-5 sm:gap-8">
           <Link
             to="/feed"
             className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -396,8 +398,8 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
             &larr; Back to feed
           </Link>
 
-          <section className="overflow-hidden rounded-[1.6rem] border border-border/80 bg-card/95 shadow-sm">
-            <div className="aspect-[16/10] overflow-hidden border-b border-border/70 bg-muted/40 sm:aspect-[16/9]">
+          <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
+            <div className="aspect-[16/9] overflow-hidden border-b border-border/70 bg-muted/40">
               {event.imageUrl ? (
                 <img
                   src={event.imageUrl}
@@ -413,17 +415,13 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
               )}
             </div>
 
-            <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
+            <div className="space-y-5 px-4 py-5 sm:space-y-6 sm:px-8 sm:py-8">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                     Event Overview
                   </p>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl text-balance">
-                    {event.title}
-                  </h1>
-                </div>
-                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                   <BookmarkButton
                     eventId={event._id}
                     className="rounded-full border border-border/80 bg-background/80"
@@ -436,54 +434,60 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                     }
                     className="rounded-full border border-border/80 bg-background/80"
                   />
+                  </div>
                 </div>
+                <h1 className="max-w-3xl text-2xl font-bold leading-[1.12] tracking-tight text-foreground text-balance sm:text-4xl sm:leading-tight">
+                  {event.title}
+                </h1>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+              <div className="grid gap-3 border-t border-border/70 pt-4 sm:flex sm:flex-wrap sm:items-center">
                 <div
-                  className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                  className="w-fit rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
                   title={formatAbsoluteTimestamp(lastUpdatedAt)}
                 >
                   Updated {formatRelativeTimestamp(lastUpdatedAt)}
                 </div>
-                <div className="flex -space-x-3">
-                  {articles
-                    .map((article) => article.source)
-                    .filter(
-                      (source, index, array) =>
-                        source &&
-                        array.findIndex(
-                          (candidate) => candidate?._id === source._id,
-                        ) === index,
-                    )
-                    .slice(0, 5)
-                    .map((source) => (
-                      <div
-                        key={source!._id}
-                        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
-                        title={source!.name}
-                      >
-                        {source?.logoUrl ? (
-                          <img
-                            src={source.logoUrl}
-                            alt={source.name}
-                            className="h-full w-full object-contain p-1.5"
-                          />
-                        ) : (
-                          <span className="text-xs font-medium text-foreground">
-                            {source?.name.charAt(0)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span className="font-medium text-card-foreground">
-                    {articles.length}{" "}
-                    {articles.length === 1 ? "article" : "articles"}
-                  </span>
-                  <span>•</span>
-                  <span>{sourceCount} sources</span>
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3 sm:border-0 sm:bg-transparent sm:p-0">
+                  <div className="flex -space-x-3">
+                    {articles
+                      .map((article) => article.source)
+                      .filter(
+                        (source, index, array) =>
+                          source &&
+                          array.findIndex(
+                            (candidate) => candidate?._id === source._id,
+                          ) === index,
+                      )
+                      .slice(0, 5)
+                      .map((source) => (
+                        <div
+                          key={source!._id}
+                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm sm:h-11 sm:w-11"
+                          title={source!.name}
+                        >
+                          {source?.logoUrl ? (
+                            <img
+                              src={source.logoUrl}
+                              alt={source.name}
+                              className="h-full w-full object-contain p-1.5"
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-foreground">
+                              {source?.name.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
+                    <span className="font-medium text-card-foreground">
+                      {articles.length}{" "}
+                      {articles.length === 1 ? "article" : "articles"}
+                    </span>
+                    <span>•</span>
+                    <span>{sourceCount} sources</span>
+                  </div>
                 </div>
               </div>
             </div>

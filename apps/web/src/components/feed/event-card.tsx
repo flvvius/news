@@ -1,6 +1,5 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
@@ -97,21 +96,37 @@ const EventCard = ({
   const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
 
   return (
-    <Link to="/event/$slug" params={{ slug: event.slug }} className="group block">
+    <Link
+      to="/event/$slug"
+      params={{ slug: event.slug }}
+      className="group block"
+    >
       <Card
         className={cn(
           "overflow-hidden border-border/80 bg-card/95 py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
-          isFeature
-            ? "rounded-[1.4rem]"
-            : "rounded-[1.2rem]",
+          isFeature ? "rounded-[1.4rem]" : "rounded-[1.2rem]",
         )}
       >
         <div
           className={cn(
-            "overflow-hidden border-b border-border/70 bg-muted/40",
-            isFeature ? "aspect-[16/10] sm:aspect-[16/9]" : "aspect-[16/10] lg:aspect-[2.2/1]",
+            "relative overflow-hidden bg-muted/40",
+            isFeature
+              ? "aspect-[16/10] sm:aspect-[16/10]"
+              : "aspect-[16/10] lg:aspect-[16/10]",
           )}
         >
+          <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
+            {(topics.length > 0 ? topics : ["General"])
+              .slice(0, isFeature ? 3 : 2)
+              .map((topic) => (
+                <span
+                  key={topic}
+                  className="inline-flex h-7 items-center rounded-full border border-white/20 bg-black/45 px-3 text-xs font-medium text-white shadow-sm backdrop-blur-md"
+                >
+                  {topic}
+                </span>
+              ))}
+          </div>
           {event.imageUrl ? (
             <img
               src={event.imageUrl}
@@ -127,22 +142,35 @@ const EventCard = ({
             </div>
           )}
         </div>
-        <CardContent className={cn("space-y-5 px-6 py-6", isFeature && "px-6 py-7 sm:px-8 sm:py-8")}>
-          <div className="flex flex-wrap items-center gap-2">
-            {(topics.length > 0 ? topics : ["General"]).slice(0, isFeature ? 3 : 2).map((topic) => (
-              <Button
-                key={topic}
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 rounded-full border-border/80 bg-background/70 px-3 text-xs pointer-events-none"
+        <CardContent
+          className={cn(
+            "space-y-4 px-5 pb-6 pt-0 sm:px-6",
+            isFeature && "px-5 pb-7 pt-1 sm:px-8",
+          )}
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <p
+                className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground -mt-1"
+                title={lastUpdatedTitle}
               >
-                {topic}
-              </Button>
-            ))}
-          </div>
-
-          <div className="flex items-start justify-between gap-4">
+                Updated {lastUpdatedLabel}
+              </p>
+              <div className="flex items-center gap-2 -mt-1">
+                <ShareEventButton
+                  slug={event.slug}
+                  title={event.title}
+                  summary={summaryPreview}
+                  size="sm"
+                  className="rounded-full border border-border/80 bg-background/80"
+                />
+                <BookmarkButton
+                  eventId={event._id}
+                  size="sm"
+                  className="rounded-full border border-border/80 bg-background/80"
+                />
+              </div>
+            </div>
             <CardTitle
               className={cn(
                 "leading-tight tracking-tight text-card-foreground",
@@ -151,77 +179,54 @@ const EventCard = ({
             >
               {highlightTitle(event.title, searchQuery)}
             </CardTitle>
-            <div className="mt-0.5 flex items-center gap-2">
-              <ShareEventButton
-                slug={event.slug}
-                title={event.title}
-                summary={summaryPreview}
-                size="sm"
-                className="rounded-full border border-border/80 bg-background/80"
-              />
-              <BookmarkButton
-                eventId={event._id}
-                size="sm"
-                className="rounded-full border border-border/80 bg-background/80"
-              />
-            </div>
           </div>
 
           <p
             className={cn(
-              "max-w-[65ch] text-muted-foreground",
+              "text-muted-foreground",
               isFeature ? "text-base" : "text-sm line-clamp-3",
             )}
           >
             {summaryPreview}
           </p>
 
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/70 pt-4">
+          <div className="border-t border-border/70 pt-4">
             <div className="flex items-center gap-3">
-              {event.sources && event.sources.length > 0 && (
-                <div className="flex -space-x-3">
-                  {event.sources.slice(0, maxSources).map((source) => (
-                    <div
-                      key={source._id}
-                      className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
-                      title={source.name}
-                    >
-                      {source.logoUrl ? (
-                        <img
-                          src={source.logoUrl}
-                          alt={source.name}
-                          className="h-full w-full object-contain p-1.5"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-xs font-medium text-foreground">
-                          {source.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+              <div className="flex min-w-0 items-center gap-3">
+                {event.sources && event.sources.length > 0 && (
+                  <div className="flex -space-x-3">
+                    {event.sources.slice(0, maxSources).map((source) => (
+                      <div
+                        key={source._id}
+                        className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
+                        title={source.name}
+                      >
+                        {source.logoUrl ? (
+                          <img
+                            src={source.logoUrl}
+                            alt={source.name}
+                            className="h-full w-full object-contain p-1.5"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-xs font-medium text-foreground">
+                            {source.name.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-card-foreground">
+                    {event.sources?.length ?? 0} sources
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {event.articleCount !== undefined
+                      ? `${event.articleCount} ${event.articleCount === 1 ? "article" : "articles"}`
+                      : "Follow the event"}
+                  </p>
                 </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-card-foreground">
-                  {event.sources?.length ?? 0} sources
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {event.articleCount !== undefined
-                    ? `${event.articleCount} ${event.articleCount === 1 ? "article" : "articles"}`
-                    : "Follow the event"}
-                </p>
               </div>
-            </div>
-            <div className="text-right">
-              <p
-                className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground"
-                title={lastUpdatedTitle}
-              >
-                Updated {lastUpdatedLabel}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Open event
-              </p>
             </div>
           </div>
         </CardContent>
