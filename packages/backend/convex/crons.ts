@@ -70,4 +70,17 @@ crons.interval(
   internal.clustering.reclusterRecentSingletonEvents,
 );
 
+// ---------------------------------------------------------------------------
+// Event Summarization — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Generates GPT-backed perspective summaries for published events that have
+// enough source diversity. Runs independently so clustering is never blocked on
+// model latency or budget state.
+crons.interval(
+  "summarize-published-events",
+  { minutes: 30 },
+  internal.summarizationNode.summarizeQueuedEvents,
+  {},
+);
+
 export default crons;

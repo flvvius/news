@@ -413,6 +413,54 @@ export const seedDefaults = internalMutation({
           "When true, all automatic processing (ingestion, enrichment, MBFC) is paused. Toggle via config:togglePipeline.",
       },
       {
+        key: "ai_daily_budget_usd",
+        value: 1,
+        description:
+          "Daily AI spend cap in USD. AI workers check this before model calls and log usage to aiUsage.",
+      },
+      {
+        key: "event_summary_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for event perspective summaries.",
+      },
+      {
+        key: "event_summary_enqueue_limit",
+        value: 40,
+        description:
+          "Maximum number of recent published events inspected for summary eligibility per summarization run.",
+      },
+      {
+        key: "event_summary_batch_size",
+        value: 4,
+        description:
+          "Maximum number of queued event summary jobs processed per summarization run.",
+      },
+      {
+        key: "event_summary_max_attempts",
+        value: 3,
+        description:
+          "Maximum retry attempts for a failed event summary job before it stops retrying.",
+      },
+      {
+        key: "event_summary_min_articles",
+        value: 3,
+        description:
+          "Minimum number of articles an event needs before AI summarization is queued.",
+      },
+      {
+        key: "event_summary_min_sources",
+        value: 2,
+        description:
+          "Minimum number of distinct sources an event needs before AI summarization is queued.",
+      },
+      {
+        key: "event_summary_max_input_articles",
+        value: 12,
+        description:
+          "Maximum number of recent articles included in one event summarization prompt.",
+      },
+      {
         key: "clustering_min_similarity",
         value: 0.74,
         description:

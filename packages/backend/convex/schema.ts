@@ -114,7 +114,32 @@ export default defineSchema({
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
-  // 3d. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // 3d. EVENT SUMMARY JOBS (Durable queue for AI summarization)
+  // =========================================================================
+  eventSummaryJobs: defineTable({
+    eventId: v.id("events"),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    reason: v.optional(v.string()),
+    attempts: v.number(),
+    requestedAt: v.number(),
+    nextAttemptAt: v.number(),
+    updatedAt: v.number(),
+    processingRunId: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_status_next_attempt", ["status", "nextAttemptAt"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
+
+  // =========================================================================
+  // 3e. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
   // =========================================================================
   clusterPairLabels: defineTable({
     pairKey: v.string(),
