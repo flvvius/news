@@ -20,6 +20,43 @@ const DEFAULT_MIN_SOURCES = 2;
 const DEFAULT_MAX_INPUT_ARTICLES = 12;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
+const SUMMARY_WORD_LIMITS = {
+  center: 110,
+  left: 70,
+  right: 70,
+  globalImpact: 50,
+};
+const EVENT_SUMMARY_JSON_SCHEMA = {
+  name: "EventSummary",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      center: {
+        type: "string",
+        description:
+          "60-110 word factual core, grounded in supplied article material.",
+      },
+      left: {
+        type: "string",
+        description:
+          "25-70 word left/left-center framing summary or the limited-coverage fallback.",
+      },
+      right: {
+        type: "string",
+        description:
+          "25-70 word right/right-center framing summary or the limited-coverage fallback.",
+      },
+      globalImpact: {
+        type: "string",
+        description:
+          "25-50 word concrete downstream impact, or the exact fallback when unsupported.",
+      },
+    },
+    required: ["center", "left", "right", "globalImpact"],
+  },
+} as const;
 
 function safeInteger(
   value: unknown,
@@ -80,6 +117,21 @@ function parseSummaryOutput(raw: string, eventTitle: string): EventSummaryOutput
       "This story may affect public debate as more reporting develops.",
     ),
   };
+}
+
+function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
+  const violations: string[] = [];
+  for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS)) {
+    const wordCount = countWords(summary[field as keyof EventSummaryOutput]);
+    if (wordCount > maxWords) {
+      violations.push(`${field} has ${wordCount} words; maximum is ${maxWords}`);
+    }
+  }
+  return violations;
 }
 
 function retryDelayMs(attempts: number): number {
@@ -245,25 +297,61 @@ export const summarizeQueuedEvents = internalAction({
           });
 
           const openai = await getOpenAI();
-          const response = await openai.chat.completions.create({
-            model: settings.model,
-            temperature: 0.2,
-            max_tokens: 900,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: prompt.system },
-              { role: "user", content: prompt.user },
-            ],
-          });
+          let summary: EventSummaryOutput | null = null;
+          let inputTokens = 0;
+          let outputTokens = 0;
+          let retryInstruction: string | null = null;
 
-          const content = response.choices[0]?.message?.content;
-          if (!content) {
-            throw new Error("Model returned an empty summary response");
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const response = await openai.chat.completions.create({
+              model: settings.model,
+              temperature: 0.2,
+              max_tokens: 900,
+              response_format: {
+                type: "json_schema",
+                json_schema: EVENT_SUMMARY_JSON_SCHEMA,
+              },
+              messages: [
+                { role: "system", content: prompt.system },
+                { role: "user", content: prompt.user },
+                ...(retryInstruction
+                  ? [{ role: "user" as const, content: retryInstruction }]
+                  : []),
+              ],
+            });
+
+            inputTokens += response.usage?.prompt_tokens ?? 0;
+            outputTokens += response.usage?.completion_tokens ?? 0;
+
+            const content = response.choices[0]?.message?.content;
+            if (!content) {
+              throw new Error("Model returned an empty summary response");
+            }
+
+            const candidate = parseSummaryOutput(content, input.event.title);
+            const wordCapViolations = validateSummaryWordCaps(candidate);
+            if (wordCapViolations.length === 0) {
+              summary = candidate;
+              break;
+            }
+
+            if (attempt === 1) {
+              throw new Error(
+                `Model exceeded summary word caps after retry: ${wordCapViolations.join("; ")}`,
+              );
+            }
+
+            retryInstruction = [
+              "Your previous JSON exceeded one or more word limits:",
+              ...wordCapViolations.map((violation) => `- ${violation}`),
+              "Return the same JSON keys again, but keep every field within its word cap.",
+            ].join("\n");
           }
 
-          const summary = parseSummaryOutput(content, input.event.title);
-          const inputTokens = response.usage?.prompt_tokens ?? 0;
-          const outputTokens = response.usage?.completion_tokens ?? 0;
+          if (!summary) {
+            throw new Error("Model did not produce a usable event summary");
+          }
+
           const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
           const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
             model: settings.model,

@@ -461,6 +461,36 @@ export const seedDefaults = internalMutation({
           "Maximum number of recent articles included in one event summarization prompt.",
       },
       {
+        key: "article_fact_extraction_enabled",
+        value: true,
+        description:
+          "When true, enrichment extracts structured atomic facts from article text using the configured chat model.",
+      },
+      {
+        key: "article_fact_extraction_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used to extract atomic facts from articles during enrichment.",
+      },
+      {
+        key: "article_fact_extraction_max_articles_per_run",
+        value: 20,
+        description:
+          "Maximum number of articles in one enrichment run that receive atomic fact extraction.",
+      },
+      {
+        key: "article_fact_extraction_max_facts_per_article",
+        value: 8,
+        description:
+          "Maximum number of atomic facts stored per article.",
+      },
+      {
+        key: "article_fact_extraction_max_input_chars",
+        value: 2600,
+        description:
+          "Maximum extracted article text characters sent to the atomic fact extraction prompt per article.",
+      },
+      {
         key: "clustering_min_similarity",
         value: 0.74,
         description:

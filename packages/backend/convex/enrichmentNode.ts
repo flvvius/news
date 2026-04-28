@@ -20,6 +20,8 @@ import { getOpenAI, shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
 import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
 import { v } from "convex/values";
+import { calculateCost } from "./aiBudget";
+import { buildArticleFactExtractionPrompt } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,6 +35,11 @@ const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 
 /** OpenAI embedding model — cheap & effective for clustering */
 const EMBEDDING_MODEL = "text-embedding-3-small";
+const DEFAULT_FACT_EXTRACTION_MODEL = "gpt-4o-mini";
+const DEFAULT_FACT_EXTRACTION_ENABLED = true;
+const DEFAULT_FACT_EXTRACTION_MAX_ARTICLES = 20;
+const DEFAULT_FACT_EXTRACTION_MAX_FACTS = 8;
+const DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS = 2600;
 
 /** Embedding dimensions (text-embedding-3-small supports 512 with shortening) */
 const EMBEDDING_DIMENSIONS = 512;
@@ -42,6 +49,65 @@ const EMBEDDING_VERSION = 4;
 
 /** How many article pages to fetch/extract in parallel inside one batch. */
 const EXTRACTION_CONCURRENCY = 5;
+
+const ARTICLE_FACTS_JSON_SCHEMA = {
+  name: "ArticleAtomicFacts",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      articles: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            facts: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+          required: ["id", "facts"],
+        },
+      },
+    },
+    required: ["articles"],
+  },
+} as const;
+
+type PreparedArticle = {
+  _id: string;
+  title: string;
+  url: string;
+  canonicalUrl: string;
+  rssSnippet?: string | null;
+  publishedAt: number;
+  entities?: string[];
+  extractionQuality?: "strong" | "weak";
+  sourceBaseBias: number;
+  sourceName?: string;
+  embeddingText: string;
+  extractedSummary?: string;
+  extractionMethod: string;
+  bodyChars: number;
+  fetchSucceeded: boolean;
+  resolvedUrl?: string;
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAlt?: string;
+  imageSource?: "og" | "twitter" | "jsonld" | "inline";
+};
+
+type FactExtractionSettings = {
+  enabled: boolean;
+  model: string;
+  maxArticles: number;
+  maxFactsPerArticle: number;
+  maxInputChars: number;
+};
 
 // ---------------------------------------------------------------------------
 // OpenAI Embedding Generation (via PostHog-instrumented client)
@@ -70,6 +136,204 @@ async function generateEmbeddings(
   }
 
   return { embeddings, tokensUsed: response.usage.total_tokens };
+}
+
+function safeInteger(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
+}
+
+function safeBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function safeString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : fallback;
+}
+
+function stripJsonFences(value: string): string {
+  return value
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function sanitizeAtomicFacts(
+  rawFacts: unknown,
+  maxFactsPerArticle: number,
+): string[] {
+  if (!Array.isArray(rawFacts)) return [];
+
+  const seen = new Set<string>();
+  const facts: string[] = [];
+  for (const rawFact of rawFacts) {
+    if (typeof rawFact !== "string") continue;
+    const fact = rawFact.replace(/\s+/g, " ").trim();
+    if (fact.length < 12) continue;
+    const normalized = fact.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    facts.push(fact.slice(0, 260));
+    if (facts.length >= maxFactsPerArticle) break;
+  }
+
+  return facts;
+}
+
+function parseAtomicFactsResponse(
+  raw: string,
+  articleIds: Set<string>,
+  maxFactsPerArticle: number,
+): Map<string, string[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(raw));
+  } catch (error) {
+    throw new Error(
+      `Fact extraction returned invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`,
+    );
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Fact extraction returned a non-object JSON payload");
+  }
+
+  const rows = (parsed as { articles?: unknown }).articles;
+  if (!Array.isArray(rows)) {
+    throw new Error("Fact extraction JSON is missing an articles array");
+  }
+
+  const result = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const id = (row as { id?: unknown }).id;
+    if (typeof id !== "string" || !articleIds.has(id)) continue;
+    result.set(
+      id,
+      sanitizeAtomicFacts(
+        (row as { facts?: unknown }).facts,
+        maxFactsPerArticle,
+      ),
+    );
+  }
+
+  for (const id of articleIds) {
+    if (!result.has(id)) result.set(id, []);
+  }
+
+  return result;
+}
+
+async function extractAtomicFactsForArticles(
+  ctx: any,
+  articles: PreparedArticle[],
+  settings: FactExtractionSettings,
+): Promise<Map<string, string[]>> {
+  const selectedArticles = articles
+    .filter(
+      (article) =>
+        article.embeddingText.trim().length > 0 ||
+        article.extractedSummary?.trim() ||
+        article.rssSnippet?.trim(),
+    )
+    .slice(0, settings.maxArticles);
+
+  if (!settings.enabled || selectedArticles.length === 0) {
+    return new Map();
+  }
+
+  const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
+  if (!budget.allowed) {
+    console.warn(
+      `[enrichment] AI budget exhausted before fact extraction ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping atomic facts`,
+    );
+    return new Map();
+  }
+
+  const prompt = buildArticleFactExtractionPrompt({
+    maxFactsPerArticle: settings.maxFactsPerArticle,
+    articles: selectedArticles.map((article) => ({
+      id: article._id,
+      title: article.title,
+      sourceName: article.sourceName,
+      publishedAt: new Date(article.publishedAt).toISOString(),
+      entities: article.entities,
+      summary: article.extractedSummary,
+      rssSnippet: article.rssSnippet ?? undefined,
+      bodyText: article.embeddingText.slice(0, settings.maxInputChars),
+    })),
+  });
+
+  try {
+    const openai = await getOpenAI();
+    const response = await openai.chat.completions.create({
+      model: settings.model,
+      temperature: 0,
+      max_tokens: Math.min(
+        3000,
+        250 + selectedArticles.length * settings.maxFactsPerArticle * 32,
+      ),
+      response_format: {
+        type: "json_schema",
+        json_schema: ARTICLE_FACTS_JSON_SCHEMA,
+      },
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("Fact extraction returned an empty response");
+    }
+
+    const factsByArticleId = parseAtomicFactsResponse(
+      content,
+      new Set(selectedArticles.map((article) => article._id)),
+      settings.maxFactsPerArticle,
+    );
+
+    const inputTokens = response.usage?.prompt_tokens ?? 0;
+    const outputTokens = response.usage?.completion_tokens ?? 0;
+    const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
+    const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
+      model: settings.model,
+      operation: "extract_atomic_facts",
+      inputTokens,
+      outputTokens,
+      costUsd,
+    });
+    if (!usage.allowed) {
+      console.warn(
+        `[enrichment] Atomic fact usage log rejected because budget would be exceeded ($${usage.spentUsd}/$${usage.dailyLimitUsd})`,
+      );
+    }
+
+    const factCount = Array.from(factsByArticleId.values()).reduce(
+      (sum, facts) => sum + facts.length,
+      0,
+    );
+    console.log(
+      `[enrichment] Extracted ${factCount} atomic facts across ${factsByArticleId.size} articles (${inputTokens}/${outputTokens} tokens)`,
+    );
+
+    return factsByArticleId;
+  } catch (error) {
+    console.error(
+      `[enrichment] Atomic fact extraction failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+    return new Map();
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -103,9 +367,11 @@ async function runEnrichmentBatch(
     url: string;
     canonicalUrl: string;
     rssSnippet?: string | null;
+    publishedAt: number;
     entities?: string[];
     extractionQuality?: "strong" | "weak";
     sourceBaseBias: number;
+    sourceName?: string;
   }>,
   runId: string,
 ): Promise<{
@@ -162,7 +428,6 @@ async function runEnrichmentBatch(
       `[enrichment] Generated embeddings, ${tokensUsed} tokens used (${extractedCount}/${articles.length} extracted, ${fetchSuccessCount}/${articles.length} fetches succeeded, ${resolvedUrlCount}/${articles.length} URLs resolved)`,
     );
 
-    const { calculateCost } = await import("./aiBudget");
     const cost = calculateCost(EMBEDDING_MODEL, tokensUsed, 0);
     const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
       model: EMBEDDING_MODEL,
@@ -176,6 +441,49 @@ async function runEnrichmentBatch(
         `[enrichment] AI budget would be exceeded by this run ($${usage.spentUsd}/$${usage.dailyLimitUsd}); usage was not recorded.`,
       );
     }
+
+    const factConfig = await ctx.runQuery(internal.config.getBatch, {
+      keys: [
+        "article_fact_extraction_enabled",
+        "article_fact_extraction_model",
+        "article_fact_extraction_max_articles_per_run",
+        "article_fact_extraction_max_facts_per_article",
+        "article_fact_extraction_max_input_chars",
+      ],
+    });
+    const factSettings: FactExtractionSettings = {
+      enabled: safeBoolean(
+        factConfig.article_fact_extraction_enabled,
+        DEFAULT_FACT_EXTRACTION_ENABLED,
+      ),
+      model: safeString(
+        factConfig.article_fact_extraction_model,
+        DEFAULT_FACT_EXTRACTION_MODEL,
+      ),
+      maxArticles: safeInteger(
+        factConfig.article_fact_extraction_max_articles_per_run,
+        DEFAULT_FACT_EXTRACTION_MAX_ARTICLES,
+        1,
+        BATCH_SIZE,
+      ),
+      maxFactsPerArticle: safeInteger(
+        factConfig.article_fact_extraction_max_facts_per_article,
+        DEFAULT_FACT_EXTRACTION_MAX_FACTS,
+        1,
+        16,
+      ),
+      maxInputChars: safeInteger(
+        factConfig.article_fact_extraction_max_input_chars,
+        DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS,
+        500,
+        6000,
+      ),
+    };
+    const factsByArticleId = await extractAtomicFactsForArticles(
+      ctx,
+      preparedArticles,
+      factSettings,
+    );
 
     let enriched = 0;
     let failed = 0;
@@ -194,6 +502,7 @@ async function runEnrichmentBatch(
             embedding,
             aiBiasScore: article.sourceBaseBias,
             summary: prepared.extractedSummary,
+            atomicFacts: factsByArticleId.get(article._id),
             resolvedUrl: prepared.resolvedUrl,
             imageUrl: prepared.imageUrl,
             imageWidth: prepared.imageWidth,

@@ -40,9 +40,11 @@ export const getUnprocessedArticles = internalQuery({
             url: article.url,
             canonicalUrl: article.canonicalUrl,
             rssSnippet: article.rssSnippet ?? "",
+            publishedAt: article.publishedAt,
             entities: article.entities ?? [],
             extractionQuality: article.extractionQuality,
             sourceBaseBias: source.baseBias,
+            sourceName: source.name,
           };
         }),
       )
@@ -74,9 +76,11 @@ async function toClaimedArticle(
     url: article.url,
     canonicalUrl: article.canonicalUrl,
     rssSnippet: article.rssSnippet ?? "",
+    publishedAt: article.publishedAt,
     entities: article.entities ?? [],
     extractionQuality: article.extractionQuality,
     sourceBaseBias: source.baseBias,
+    sourceName: source.name,
   };
 }
 
@@ -136,6 +140,7 @@ function articleNeedsReenrichment(
 ): boolean {
   if (embeddingVersion < targetVersion) return true;
   if ((article.summary ?? "").trim().length < 120) return true;
+  if (article.atomicFacts === undefined) return true;
   if (article.url.includes("news.google.com")) return true;
   if (article.canonicalUrl.includes("news.google.com")) return true;
   return false;
@@ -201,6 +206,7 @@ export const markArticleEnriched = internalMutation({
     embedding: v.array(v.number()),
     aiBiasScore: v.number(),
     summary: v.optional(v.string()),
+    atomicFacts: v.optional(v.array(v.string())),
     resolvedUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     imageWidth: v.optional(v.number()),
@@ -228,6 +234,7 @@ export const markArticleEnriched = internalMutation({
       embedding,
       aiBiasScore,
       summary,
+      atomicFacts,
       resolvedUrl,
       imageUrl,
       imageWidth,
@@ -268,6 +275,7 @@ export const markArticleEnriched = internalMutation({
     await ctx.db.patch(articleId, {
       aiBiasScore,
       summary: summary ?? article.summary,
+      atomicFacts: atomicFacts ?? article.atomicFacts,
       url: resolvedUrl ?? article.url,
       canonicalUrl: resolvedUrl ?? article.canonicalUrl,
       imageUrl: imageUrl ?? article.imageUrl,
