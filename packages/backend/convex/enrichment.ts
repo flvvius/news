@@ -11,6 +11,12 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
+const ARTICLE_AI_STATUS_VALIDATOR = v.union(
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("skipped"),
+);
+
 function sourceBiasLabel(source: Doc<"sources">): string {
   const mbfcCategory = source.mbfcCategory?.toLowerCase();
   if (
@@ -164,8 +170,20 @@ function articleNeedsReenrichment(
 ): boolean {
   if (embeddingVersion < targetVersion) return true;
   if ((article.summary ?? "").trim().length < 120) return true;
-  if (article.atomicFacts === undefined) return true;
-  if (article.biasAnalyzedAt === undefined) return true;
+  if (
+    article.atomicFacts === undefined &&
+    article.factExtractionStatus !== "skipped"
+  ) {
+    return true;
+  }
+  if (article.factExtractionStatus === "failed") return true;
+  if (
+    article.biasAnalyzedAt === undefined &&
+    article.biasDetectionStatus !== "skipped"
+  ) {
+    return true;
+  }
+  if (article.biasDetectionStatus === "failed") return true;
   if (article.url.includes("news.google.com")) return true;
   if (article.canonicalUrl.includes("news.google.com")) return true;
   return false;
@@ -280,8 +298,13 @@ export const markArticleEnriched = internalMutation({
     sourceBiasDelta: v.optional(v.number()),
     sourceBiasOutlierFlag: v.optional(v.boolean()),
     biasAnalyzedAt: v.optional(v.number()),
+    biasDetectionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    biasDetectionError: v.optional(v.string()),
     summary: v.optional(v.string()),
     atomicFacts: v.optional(v.array(v.string())),
+    factExtractionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    factExtractionError: v.optional(v.string()),
+    factExtractedAt: v.optional(v.number()),
     resolvedUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     imageWidth: v.optional(v.number()),
@@ -312,8 +335,13 @@ export const markArticleEnriched = internalMutation({
       sourceBiasDelta,
       sourceBiasOutlierFlag,
       biasAnalyzedAt,
+      biasDetectionStatus,
+      biasDetectionError,
       summary,
       atomicFacts,
+      factExtractionStatus,
+      factExtractionError,
+      factExtractedAt,
       resolvedUrl,
       imageUrl,
       imageWidth,
@@ -358,8 +386,21 @@ export const markArticleEnriched = internalMutation({
       sourceBiasOutlierFlag:
         sourceBiasOutlierFlag ?? article.sourceBiasOutlierFlag,
       biasAnalyzedAt: biasAnalyzedAt ?? article.biasAnalyzedAt,
+      ...(biasDetectionStatus !== undefined
+        ? {
+            biasDetectionStatus,
+            biasDetectionError,
+          }
+        : {}),
       summary: summary ?? article.summary,
       atomicFacts: atomicFacts ?? article.atomicFacts,
+      ...(factExtractionStatus !== undefined
+        ? {
+            factExtractionStatus,
+            factExtractionError,
+            factExtractedAt: factExtractedAt ?? article.factExtractedAt,
+          }
+        : {}),
       url: resolvedUrl ?? article.url,
       canonicalUrl: resolvedUrl ?? article.canonicalUrl,
       imageUrl: imageUrl ?? article.imageUrl,

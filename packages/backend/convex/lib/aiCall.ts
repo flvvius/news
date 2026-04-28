@@ -87,7 +87,13 @@ function errorStatus(error: unknown): number | undefined {
 
 function isRetryableError(error: unknown): boolean {
   const status = errorStatus(error);
-  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  );
 }
 
 function isFatalError(error: unknown): boolean {
@@ -117,7 +123,9 @@ function estimateEmbeddingInputTokens(input: string[]): number {
   return input.reduce((sum, text) => sum + estimateTokensFromText(text), 0);
 }
 
-function estimateCallCostUsd(args: ChatArgs<unknown> | EmbeddingArgs<unknown>): {
+function estimateCallCostUsd(
+  args: ChatArgs<unknown> | EmbeddingArgs<unknown>,
+): {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -146,7 +154,7 @@ async function logUsage(
   model: string,
   usage: AICallUsage,
   reservationId?: Id<"aiBudgetReservations">,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const result = await runtime.runMutation(internal.aiBudget.recordUsage, {
       callType: context.callType,
@@ -165,12 +173,14 @@ async function logUsage(
         `[aiCall] Usage log exceeded budget for ${context.callType} ($${result.spentUsd}/$${result.dailyLimitUsd})`,
       );
     }
+    return true;
   } catch (error) {
     console.error(
       `[aiCall] Usage log failed for ${context.callType} (event ${context.eventId ?? "n/a"}): ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    return false;
   }
 }
 
@@ -180,13 +190,16 @@ async function reserveBudget(
   model: string,
   estimatedCostUsd: number,
 ): Promise<BudgetReservation | null> {
-  const reservation = await runtime.runMutation(internal.aiBudget.reserveBudget, {
-    model,
-    callType: context.callType,
-    costUsd: estimatedCostUsd,
-    eventId: context.eventId,
-    articleId: context.articleId,
-  });
+  const reservation = await runtime.runMutation(
+    internal.aiBudget.reserveBudget,
+    {
+      model,
+      callType: context.callType,
+      costUsd: estimatedCostUsd,
+      eventId: context.eventId,
+      articleId: context.articleId,
+    },
+  );
 
   if (!reservation.allowed || !reservation.reservationId) {
     console.warn(
@@ -201,7 +214,9 @@ async function reserveBudget(
 export async function callOpenAI<T>(
   args: ChatArgs<T> | EmbeddingArgs<T>,
 ): Promise<AICallResult<T>> {
-  const estimate = estimateCallCostUsd(args as ChatArgs<unknown> | EmbeddingArgs<unknown>);
+  const estimate = estimateCallCostUsd(
+    args as ChatArgs<unknown> | EmbeddingArgs<unknown>,
+  );
   const reservation = await reserveBudget(
     args.runtime,
     args.context,
@@ -215,7 +230,8 @@ export async function callOpenAI<T>(
       error: "budget_exhausted",
     };
   }
-  let reservationId: Id<"aiBudgetReservations"> | null = reservation.reservationId;
+  let reservationId: Id<"aiBudgetReservations"> | null =
+    reservation.reservationId;
   let usageLogged = false;
 
   let lastError: unknown;
@@ -240,9 +256,17 @@ export async function callOpenAI<T>(
             costUsd: calculateCost(args.model, inputTokens, 0),
             latencyMs: Date.now() - startedAt,
           };
-          await logUsage(args.runtime, args.context, args.model, usage, reservationId ?? undefined);
-          usageLogged = true;
-          reservationId = null;
+          const logged = await logUsage(
+            args.runtime,
+            args.context,
+            args.model,
+            usage,
+            reservationId ?? undefined,
+          );
+          if (logged) {
+            usageLogged = true;
+            reservationId = null;
+          }
           return { result: response.data as T, usage };
         }
 
@@ -264,20 +288,31 @@ export async function callOpenAI<T>(
           costUsd: calculateCost(args.model, inputTokens, outputTokens),
           latencyMs: Date.now() - startedAt,
         };
-        await logUsage(args.runtime, args.context, args.model, usage, reservationId ?? undefined);
-        usageLogged = true;
-        reservationId = null;
+        const logged = await logUsage(
+          args.runtime,
+          args.context,
+          args.model,
+          usage,
+          reservationId ?? undefined,
+        );
+        if (logged) {
+          usageLogged = true;
+          reservationId = null;
+        }
 
         const content = response.choices[0]?.message?.content;
         if (!content) throw new Error("OpenAI returned empty response content");
 
-        const shouldParseJson =
-          args.parseJson ?? Boolean(args.responseFormat);
+        const shouldParseJson = args.parseJson ?? Boolean(args.responseFormat);
         const result = shouldParseJson ? JSON.parse(content) : content;
         return { result: result as T, usage };
       } catch (error) {
         lastError = error;
-        if (isFatalError(error) || !isRetryableError(error) || attempt === maxRetries - 1) {
+        if (
+          isFatalError(error) ||
+          !isRetryableError(error) ||
+          attempt === maxRetries - 1
+        ) {
           break;
         }
         await sleep(retryDelayMs(attempt));
@@ -285,9 +320,17 @@ export async function callOpenAI<T>(
     }
   } finally {
     if (reservationId && !usageLogged) {
-      await args.runtime.runMutation(internal.aiBudget.releaseReservation, {
-        reservationId,
-      });
+      try {
+        await args.runtime.runMutation(internal.aiBudget.releaseReservation, {
+          reservationId,
+        });
+      } catch (error) {
+        console.error(
+          `[aiCall] Failed to release AI budget reservation ${reservationId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 

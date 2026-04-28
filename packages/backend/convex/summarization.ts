@@ -171,7 +171,7 @@ export const enqueueEligibleEventSummaries = internalMutation({
     let skipped = 0;
 
     for (const event of events) {
-      if (inspected >= safeLimit) break;
+      if (queued >= safeLimit) break;
       inspected++;
 
       const eligibility = await getEventEligibility(
@@ -189,7 +189,7 @@ export const enqueueEligibleEventSummaries = internalMutation({
       if (
         latestJob &&
         ACTIVE_JOB_STATUSES.has(latestJob.status) &&
-        (latestJob.leaseExpiresAt ?? Number.POSITIVE_INFINITY) > now
+        (latestJob.leaseExpiresAt ?? 0) > now
       ) {
         skipped++;
         continue;
@@ -228,33 +228,7 @@ export const listDueSummaryJobs = internalQuery({
   handler: async (ctx, { limit }) => {
     const now = Date.now();
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
-    const now = Date.now();
-    const event = await ctx.db.get(eventId);
-    if (!event) {
-      return { queued: false as const, warning: "event_missing" };
-    }
-
-    const cfg = await ctx.runQuery(internal.config.getBatch, {
-      keys: ["event_summary_min_articles", "event_summary_min_sources"],
-    });
-    const minArticles = safeInteger(
-      cfg.event_summary_min_articles,
-      DEFAULT_MIN_ARTICLES,
-      1,
-      20,
-    );
-    const minSources = safeInteger(
-      cfg.event_summary_min_sources,
-      DEFAULT_MIN_SOURCES,
-      1,
-      20,
-    );
-    const eligibility = await getEventEligibility(
-      ctx,
-      event,
-      minArticles,
-      minSources,
-    );
+    const jobs: Doc<"eventSummaryJobs">[] = [];
 
     const queued = await ctx.db
       .query("eventSummaryJobs")
@@ -266,10 +240,7 @@ export const listDueSummaryJobs = internalQuery({
 
     if (jobs.length < safeLimit) {
       const failed = await ctx.db
-    return {
-      queued: true as const,
-      warning: eligibility.eligible ? undefined : eligibility.reason,
-    };
+        .query("eventSummaryJobs")
         .withIndex("by_status_next_attempt", (q) =>
           q.eq("status", "failed").lte("nextAttemptAt", now),
         )
@@ -307,7 +278,7 @@ export const startSummaryJob = internalMutation({
 
     if (
       job.status === "processing" &&
-      (job.leaseExpiresAt ?? Number.POSITIVE_INFINITY) > now
+      (job.leaseExpiresAt ?? 0) > now
     ) {
       return { started: false as const, reason: "lease_active" };
     }
@@ -521,6 +492,31 @@ export const markSummaryJobFailed = internalMutation({
   },
 });
 
+export const deferSummaryJob = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    reason: v.string(),
+    retryAfterMs: v.number(),
+  },
+  handler: async (ctx, { jobId, reason, retryAfterMs }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job || job.status === "succeeded" || job.status === "skipped") {
+      return { updated: false as const };
+    }
+
+    await ctx.db.patch(jobId, {
+      status: job.status === "failed" ? "failed" : "queued",
+      processingRunId: undefined,
+      leaseExpiresAt: undefined,
+      nextAttemptAt: Date.now() + Math.max(60_000, retryAfterMs),
+      lastError: reason.slice(0, 1000),
+      updatedAt: Date.now(),
+    });
+
+    return { updated: true as const };
+  },
+});
+
 export const markSummaryJobSkipped = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
@@ -575,6 +571,33 @@ export const enqueueEventSummaryForAdmin = mutation({
     await requireAdminUser(ctx);
 
     const now = Date.now();
+    const event = await ctx.db.get(eventId);
+    if (!event) {
+      return { queued: false as const, warning: "event_missing" };
+    }
+
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["event_summary_min_articles", "event_summary_min_sources"],
+    });
+    const minArticles = safeInteger(
+      cfg.event_summary_min_articles,
+      DEFAULT_MIN_ARTICLES,
+      1,
+      20,
+    );
+    const minSources = safeInteger(
+      cfg.event_summary_min_sources,
+      DEFAULT_MIN_SOURCES,
+      1,
+      20,
+    );
+    const eligibility = await getEventEligibility(
+      ctx,
+      event,
+      minArticles,
+      minSources,
+    );
+
     await ctx.db.insert("eventSummaryJobs", {
       eventId,
       status: "queued",
@@ -585,7 +608,10 @@ export const enqueueEventSummaryForAdmin = mutation({
       updatedAt: now,
     });
 
-    return { queued: true };
+    return {
+      queued: true as const,
+      warning: eligibility.eligible ? undefined : eligibility.reason,
+    };
   },
 });
 

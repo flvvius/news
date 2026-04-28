@@ -261,8 +261,8 @@ function stemToken(token: string): string {
 }
 
 function canonicalizeToken(token: string): string {
-  const stemmed = stemToken(token);
-  return TOKEN_SYNONYMS[stemmed] ?? stemmed;
+  const normalized = token.toLowerCase();
+  return TOKEN_SYNONYMS[normalized] ?? stemToken(normalized);
 }
 
 function meaningfulTokens(value: string): Set<string> {
@@ -353,7 +353,9 @@ function leanGroup(lean: string): "left" | "center" | "right" | "other" {
 function exclusiveStatusForVariants(
   variants: StoredClaim["variants"],
 ): ClaimDivergenceStatus | null {
-  const groups = new Set(variants.map((variant) => leanGroup(variant.sourceLean)));
+  const groups = new Set(
+    variants.map((variant) => leanGroup(variant.sourceLean)),
+  );
   groups.delete("other");
   if (groups.size !== 1) return null;
   const [group] = Array.from(groups);
@@ -372,7 +374,9 @@ function sanitizeClaims(
   const sanitized: StoredClaim[] = [];
 
   for (const rawClaim of rawClaims) {
-    const canonicalStatement = rawClaim.canonicalStatement.replace(/\s+/g, " ").trim();
+    const canonicalStatement = rawClaim.canonicalStatement
+      .replace(/\s+/g, " ")
+      .trim();
     if (!canonicalStatement) continue;
     if (rawClaim.confidence < minConfidence) continue;
 
@@ -381,7 +385,9 @@ function sanitizeClaims(
     for (const rawVariant of rawClaim.variants) {
       const article = articles[rawVariant.articleIndex];
       const factIndex = Math.floor(rawVariant.factIndex);
-      const statement = article?.atomicFacts[factIndex]?.replace(/\s+/g, " ").trim();
+      const statement = article?.atomicFacts[factIndex]
+        ?.replace(/\s+/g, " ")
+        .trim();
       if (!article || !statement) continue;
 
       const rawValue = rawVariant.value?.replace(/\s+/g, " ").trim();
@@ -409,7 +415,9 @@ function sanitizeClaims(
 
     if (variants.length === 0) continue;
 
-    const distinctSources = new Set(variants.map((variant) => variant.sourceId));
+    const distinctSources = new Set(
+      variants.map((variant) => variant.sourceId),
+    );
     const distinctValues = new Set(
       variants
         .map((variant) => normalizeForComparison(variant.value ?? ""))
@@ -466,7 +474,11 @@ function sanitizeClaims(
 
 function parseClaimResponse(raw: unknown): ParsedClaimResponse {
   const parsed = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { claims?: unknown }).claims)) {
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !Array.isArray((parsed as { claims?: unknown }).claims)
+  ) {
     throw new Error("Model returned an invalid claim response shape");
   }
   return parsed as ParsedClaimResponse;
@@ -486,9 +498,7 @@ function buildClaimAnalysisSignature(input: ClaimAnalysisInput): string {
       }))
       .sort((a, b) => a.id.localeCompare(b.id)),
   };
-  return createHash("sha256")
-    .update(JSON.stringify(payload))
-    .digest("hex");
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 async function detectEventClaimsForInput(
@@ -538,7 +548,9 @@ async function detectEventClaimsForInput(
   });
 
   if (!response.result) {
-    throw new Error(response.error ?? "Model returned an empty claim analysis response");
+    throw new Error(
+      response.error ?? "Model returned an empty claim analysis response",
+    );
   }
 
   const parsed = parseClaimResponse(response.result);
@@ -703,7 +715,9 @@ export const processStaleEventClaims = internalAction({
   handler: async (ctx, args) => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
-      console.log("[claimDivergence] Pipeline paused - skipping claim analysis");
+      console.log(
+        "[claimDivergence] Pipeline paused - skipping claim analysis",
+      );
       return {
         processed: 0,
         succeeded: 0,

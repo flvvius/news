@@ -2,10 +2,13 @@ import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { requireBetaAccess } from "./lib/betaAccess";
+import type { MutationCtx } from "./_generated/server";
+import { requireAdminUser, requireBetaAccess } from "./lib/betaAccess";
+import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
 const CLAIM_STATUS_VALIDATOR = v.union(
   v.literal("agreement"),
@@ -74,6 +77,43 @@ function eventNeedsAnalysis(
   return lastAnalysisAt < changedAt || now - lastAnalysisAt >= staleAfterMs;
 }
 
+async function backfillClaimCoverage(
+  ctx: MutationCtx,
+  args: { limit?: number; includeExisting?: boolean },
+) {
+  const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
+  const scanLimit = Math.min(1000, limit * 3);
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+    .order("desc")
+    .take(scanLimit);
+
+  let inspected = 0;
+  let refreshed = 0;
+  let skipped = 0;
+
+  for (const event of events) {
+    if (inspected >= limit) break;
+    inspected++;
+
+    if (
+      !args.includeExisting &&
+      event.factualArticleCount !== undefined &&
+      event.factualSourceCount !== undefined &&
+      event.lastFactualUpdateAt !== undefined
+    ) {
+      skipped++;
+      continue;
+    }
+
+    await refreshEventClaimCoverage(ctx, event._id);
+    refreshed++;
+  }
+
+  return { inspected, refreshed, skipped };
+}
+
 export const getStaleEventsForClaimAnalysis = internalQuery({
   args: {
     limit: v.number(),
@@ -119,6 +159,27 @@ export const getStaleEventsForClaimAnalysis = internalQuery({
     }
 
     return candidates;
+  },
+});
+
+export const backfillEventClaimCoverage = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    includeExisting: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    return await backfillClaimCoverage(ctx, args);
+  },
+});
+
+export const backfillEventClaimCoverageForAdmin = mutation({
+  args: {
+    limit: v.optional(v.number()),
+    includeExisting: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+    return await backfillClaimCoverage(ctx, args);
   },
 });
 

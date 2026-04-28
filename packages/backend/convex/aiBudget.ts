@@ -106,11 +106,7 @@ function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
 
 function startOfUtcDay(timestamp: number): number {
   const date = new Date(timestamp);
-  return Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
-  );
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
 async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
@@ -157,7 +153,7 @@ async function getDailyBudgetState(ctx: QueryCtx | MutationCtx) {
   const dailyLimitUsd = await getDailyLimitUsd(ctx);
   const todaysUsage = await ctx.db
     .query("aiUsage")
-    .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
+    .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
     .collect();
   const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
   const reservedUsd = await getActiveReservationTotal(ctx, now);
@@ -208,7 +204,10 @@ export const reserveBudget = internalMutation({
     const now = Date.now();
     const ttlMs = Math.max(
       60_000,
-      Math.min(30 * 60 * 1000, Math.floor(args.ttlMs ?? DEFAULT_RESERVATION_TTL_MS)),
+      Math.min(
+        30 * 60 * 1000,
+        Math.floor(args.ttlMs ?? DEFAULT_RESERVATION_TTL_MS),
+      ),
     );
 
     const expired = await ctx.db
@@ -223,7 +222,7 @@ export const reserveBudget = internalMutation({
     const dailyLimitUsd = await getDailyLimitUsd(ctx);
     const todaysUsage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
+      .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
       .collect();
     const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
     const reservedUsd = await getActiveReservationTotal(ctx, now);
@@ -234,7 +233,9 @@ export const reserveBudget = internalMutation({
         allowed: false,
         spentUsd: roundUsd(spentUsd),
         reservedUsd: roundUsd(reservedUsd),
-        remainingUsd: roundUsd(Math.max(0, dailyLimitUsd - (spentUsd + reservedUsd))),
+        remainingUsd: roundUsd(
+          Math.max(0, dailyLimitUsd - (spentUsd + reservedUsd)),
+        ),
         dailyLimitUsd,
       };
     }
@@ -319,55 +320,55 @@ async function recordUsageInternal(
     reservationId?: Id<"aiBudgetReservations">;
   },
 ) {
-    if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
-      throw new Error("costUsd must be a finite number");
+  if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
+    throw new Error("costUsd must be a finite number");
+  }
+  if (args.costUsd < 0) {
+    throw new Error("costUsd must be non-negative");
+  }
+
+  const now = Date.now();
+  const today = new Date(now).toISOString().split("T")[0]!;
+  const dailyLimitUsd = await getDailyLimitUsd(ctx);
+
+  if (args.reservationId) {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (reservation) {
+      await ctx.db.delete(reservation._id);
     }
-    if (args.costUsd < 0) {
-      throw new Error("costUsd must be non-negative");
-    }
+  }
 
-    const now = Date.now();
-    const today = new Date(now).toISOString().split("T")[0]!;
-    const dailyLimitUsd = await getDailyLimitUsd(ctx);
+  const todaysUsage = await ctx.db
+    .query("aiUsage")
+    .withIndex("by_timestamp", (q) => q.gte("timestamp", startOfUtcDay(now)))
+    .collect();
+  const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+  const reservedUsd = await getActiveReservationTotal(ctx, now);
+  const projectedSpentUsd = spentUsd + args.costUsd;
+  const allowed = projectedSpentUsd + reservedUsd <= dailyLimitUsd;
 
-    if (args.reservationId) {
-      const reservation = await ctx.db.get(args.reservationId);
-      if (reservation) {
-        await ctx.db.delete(reservation._id);
-      }
-    }
+  await ctx.db.insert("aiUsage", {
+    date: today,
+    model: args.model,
+    operation: args.operation,
+    callType: args.callType,
+    inputTokens: args.inputTokens,
+    outputTokens: args.outputTokens,
+    costUsd: args.costUsd,
+    eventId: args.eventId,
+    articleId: args.articleId,
+    latencyMs: args.latencyMs,
+    timestamp: now,
+  });
 
-    const todaysUsage = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gt("timestamp", startOfUtcDay(now)))
-      .collect();
-    const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
-    const reservedUsd = await getActiveReservationTotal(ctx, now);
-    const projectedSpentUsd = spentUsd + args.costUsd;
-    const allowed = projectedSpentUsd + reservedUsd <= dailyLimitUsd;
-
-    await ctx.db.insert("aiUsage", {
-      date: today,
-      model: args.model,
-      operation: args.operation,
-      callType: args.callType,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      costUsd: args.costUsd,
-      eventId: args.eventId,
-      articleId: args.articleId,
-      latencyMs: args.latencyMs,
-      timestamp: now,
-    });
-
-    const updatedSpentUsd = projectedSpentUsd;
-    return {
-      allowed,
-      spentUsd: roundUsd(updatedSpentUsd),
-      reservedUsd: roundUsd(reservedUsd),
-      remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd - reservedUsd),
-      dailyLimitUsd,
-    };
+  const updatedSpentUsd = projectedSpentUsd;
+  return {
+    allowed,
+    spentUsd: roundUsd(updatedSpentUsd),
+    reservedUsd: roundUsd(reservedUsd),
+    remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd - reservedUsd),
+    dailyLimitUsd,
+  };
 }
 
 export const recordUsage = internalMutation({
@@ -404,7 +405,7 @@ export const getTodaysUsage = internalQuery({
     const since = startOfUtcDay(Date.now());
     const usage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
+      .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
       .collect();
 
     type UsageGroup = {
@@ -417,7 +418,11 @@ export const getTodaysUsage = internalQuery({
     const byModel: Record<string, UsageGroup> = {};
     const byCallType: Record<string, UsageGroup> = {};
 
-    function addUsage(group: Record<string, UsageGroup>, key: string, row: typeof usage[number]) {
+    function addUsage(
+      group: Record<string, UsageGroup>,
+      key: string,
+      row: (typeof usage)[number],
+    ) {
       const existing = group[key] ?? {
         calls: 0,
         inputTokens: 0,

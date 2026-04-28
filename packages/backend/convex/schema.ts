@@ -244,6 +244,15 @@ export default defineSchema({
 
     // Feed THIS to the Event Synthesizer (cheap tokens), not the full text.
     atomicFacts: v.optional(v.array(v.string())), // ["Vote count: 60-40", "Passed on: Tuesday", "Opposition: GOP"]
+    factExtractionStatus: v.optional(
+      v.union(
+        v.literal("succeeded"),
+        v.literal("failed"),
+        v.literal("skipped"),
+      ),
+    ),
+    factExtractionError: v.optional(v.string()),
+    factExtractedAt: v.optional(v.number()),
 
     // Populated by enrichment pipeline (AI bias detection)
     aiBiasScore: v.optional(v.number()),
@@ -260,6 +269,14 @@ export default defineSchema({
     sourceBiasOutlierFlag: v.optional(v.boolean()),
     biasOutlierFlag: v.optional(v.boolean()),
     biasAnalyzedAt: v.optional(v.number()),
+    biasDetectionStatus: v.optional(
+      v.union(
+        v.literal("succeeded"),
+        v.literal("failed"),
+        v.literal("skipped"),
+      ),
+    ),
+    biasDetectionError: v.optional(v.string()),
 
     status: v.union(
       v.literal("unprocessed"),

@@ -137,6 +137,22 @@ type ArticleBiasResult = {
   biasAnalyzedAt: number;
 };
 
+type ArticleAiStatus = {
+  status: "succeeded" | "failed" | "skipped";
+  error?: string;
+  analyzedAt?: number;
+};
+
+type FactExtractionResult = {
+  factsByArticleId: Map<string, string[]>;
+  statusByArticleId: Map<Id<"articles">, ArticleAiStatus>;
+};
+
+type BiasScoringResult = {
+  biasByArticleId: Map<Id<"articles">, ArticleBiasResult>;
+  statusByArticleId: Map<Id<"articles">, ArticleAiStatus>;
+};
+
 type PreparedArticle = {
   _id: Id<"articles">;
   title: string;
@@ -332,11 +348,7 @@ function combineBiasScore(components: BiasComponents): number {
     0,
     5,
   );
-  const factOpinionRatio = clamp(
-    Math.round(components.factOpinionRatio),
-    0,
-    5,
-  );
+  const factOpinionRatio = clamp(Math.round(components.factOpinionRatio), 0, 5);
   const sourceDiversity = clamp(Math.round(components.sourceDiversity), 0, 5);
 
   const intensity = (emotionalLanguage + factOpinionRatio) / 2;
@@ -388,7 +400,9 @@ function parseBiasScoringResponse(
     throw new Error("Bias scoring JSON is missing an articles array");
   }
 
-  const byArticleId = new Map(selectedArticles.map((article) => [article._id, article]));
+  const byArticleId = new Map(
+    selectedArticles.map((article) => [article._id, article]),
+  );
   const results = new Map<Id<"articles">, ArticleBiasResult>();
   const analyzedAt = Date.now();
 
@@ -408,8 +422,7 @@ function parseBiasScoringResponse(
       aiBiasScore,
       biasComponents,
       sourceBiasDelta,
-      sourceBiasOutlierFlag:
-        Math.abs(sourceBiasDelta) >= sourceDeltaThreshold,
+      sourceBiasOutlierFlag: Math.abs(sourceBiasDelta) >= sourceDeltaThreshold,
       biasAnalyzedAt: analyzedAt,
     });
   }
@@ -421,7 +434,7 @@ async function scoreBiasForArticles(
   ctx: ActionCtx,
   articles: PreparedArticle[],
   settings: BiasDetectionSettings,
-): Promise<Map<Id<"articles">, ArticleBiasResult>> {
+): Promise<BiasScoringResult> {
   const selectedArticles = articles
     .filter(
       (article) =>
@@ -430,9 +443,27 @@ async function scoreBiasForArticles(
         article.rssSnippet?.trim(),
     )
     .slice(0, settings.maxArticles);
+  const statusByArticleId = new Map<Id<"articles">, ArticleAiStatus>();
+  const markSelected = (
+    status: ArticleAiStatus["status"],
+    error?: string,
+    analyzedAt?: number,
+  ) => {
+    const nextStatus: ArticleAiStatus = { status };
+    if (error !== undefined) nextStatus.error = error;
+    if (analyzedAt !== undefined) nextStatus.analyzedAt = analyzedAt;
+    for (const article of selectedArticles) {
+      statusByArticleId.set(article._id, nextStatus);
+    }
+  };
 
-  if (!settings.enabled || selectedArticles.length === 0) {
-    return new Map();
+  if (selectedArticles.length === 0) {
+    return { biasByArticleId: new Map(), statusByArticleId };
+  }
+
+  if (!settings.enabled) {
+    markSelected("skipped", "Article bias detection is disabled");
+    return { biasByArticleId: new Map(), statusByArticleId };
   }
 
   const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
@@ -440,7 +471,8 @@ async function scoreBiasForArticles(
     console.warn(
       `[enrichment] AI budget exhausted before bias scoring ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping article bias detection`,
     );
-    return new Map();
+    markSelected("failed", "AI budget exhausted");
+    return { biasByArticleId: new Map(), statusByArticleId };
   }
 
   const prompt = buildArticleBiasScoringPrompt({
@@ -478,7 +510,9 @@ async function scoreBiasForArticles(
 
     const content = response.result;
     if (!content) {
-      throw new Error(response.error ?? "Bias scoring returned an empty response");
+      throw new Error(
+        response.error ?? "Bias scoring returned an empty response",
+      );
     }
 
     const results = parseBiasScoringResponse(
@@ -486,6 +520,15 @@ async function scoreBiasForArticles(
       selectedArticles,
       settings.sourceDeltaThreshold,
     );
+    const analyzedAt = Date.now();
+    for (const article of selectedArticles) {
+      statusByArticleId.set(
+        article._id,
+        results.has(article._id)
+          ? { status: "succeeded", analyzedAt }
+          : { status: "failed", error: "Bias scoring omitted this article" },
+      );
+    }
 
     const inputTokens = response.usage.inputTokens;
     const outputTokens = response.usage.outputTokens;
@@ -494,12 +537,14 @@ async function scoreBiasForArticles(
       `[enrichment] Scored bias for ${results.size}/${selectedArticles.length} articles (${inputTokens}/${outputTokens} tokens)`,
     );
 
-    return results;
+    return { biasByArticleId: results, statusByArticleId };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error(
-      `[enrichment] Article bias scoring failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `[enrichment] Article bias scoring failed: ${message}`,
     );
-    return new Map();
+    markSelected("failed", message.slice(0, 500));
+    return { biasByArticleId: new Map(), statusByArticleId };
   }
 }
 
@@ -507,7 +552,7 @@ async function extractAtomicFactsForArticles(
   ctx: ActionCtx,
   articles: PreparedArticle[],
   settings: FactExtractionSettings,
-): Promise<Map<string, string[]>> {
+): Promise<FactExtractionResult> {
   const selectedArticles = articles
     .filter(
       (article) =>
@@ -516,9 +561,27 @@ async function extractAtomicFactsForArticles(
         article.rssSnippet?.trim(),
     )
     .slice(0, settings.maxArticles);
+  const statusByArticleId = new Map<Id<"articles">, ArticleAiStatus>();
+  const markSelected = (
+    status: ArticleAiStatus["status"],
+    error?: string,
+    analyzedAt?: number,
+  ) => {
+    const nextStatus: ArticleAiStatus = { status };
+    if (error !== undefined) nextStatus.error = error;
+    if (analyzedAt !== undefined) nextStatus.analyzedAt = analyzedAt;
+    for (const article of selectedArticles) {
+      statusByArticleId.set(article._id, nextStatus);
+    }
+  };
 
-  if (!settings.enabled || selectedArticles.length === 0) {
-    return new Map();
+  if (selectedArticles.length === 0) {
+    return { factsByArticleId: new Map(), statusByArticleId };
+  }
+
+  if (!settings.enabled) {
+    markSelected("skipped", "Atomic fact extraction is disabled");
+    return { factsByArticleId: new Map(), statusByArticleId };
   }
 
   const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
@@ -526,7 +589,8 @@ async function extractAtomicFactsForArticles(
     console.warn(
       `[enrichment] AI budget exhausted before fact extraction ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping atomic facts`,
     );
-    return new Map();
+    markSelected("failed", "AI budget exhausted");
+    return { factsByArticleId: new Map(), statusByArticleId };
   }
 
   const prompt = buildArticleFactExtractionPrompt({
@@ -566,7 +630,9 @@ async function extractAtomicFactsForArticles(
 
     const content = response.result;
     if (!content) {
-      throw new Error(response.error ?? "Fact extraction returned an empty response");
+      throw new Error(
+        response.error ?? "Fact extraction returned an empty response",
+      );
     }
 
     const factsByArticleId = parseAtomicFactsResponse(
@@ -574,6 +640,13 @@ async function extractAtomicFactsForArticles(
       new Set(selectedArticles.map((article) => article._id)),
       settings.maxFactsPerArticle,
     );
+    const analyzedAt = Date.now();
+    for (const article of selectedArticles) {
+      statusByArticleId.set(article._id, {
+        status: "succeeded",
+        analyzedAt,
+      });
+    }
 
     const inputTokens = response.usage.inputTokens;
     const outputTokens = response.usage.outputTokens;
@@ -586,12 +659,14 @@ async function extractAtomicFactsForArticles(
       `[enrichment] Extracted ${factCount} atomic facts across ${factsByArticleId.size} articles (${inputTokens}/${outputTokens} tokens)`,
     );
 
-    return factsByArticleId;
+    return { factsByArticleId, statusByArticleId };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error(
-      `[enrichment] Atomic fact extraction failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `[enrichment] Atomic fact extraction failed: ${message}`,
     );
-    return new Map();
+    markSelected("failed", message.slice(0, 500));
+    return { factsByArticleId: new Map(), statusByArticleId };
   }
 }
 
@@ -760,10 +835,12 @@ async function runEnrichmentBatch(
       ),
     };
 
-    const [factsByArticleId, biasByArticleId] = await Promise.all([
+    const [factResult, biasResult] = await Promise.all([
       extractAtomicFactsForArticles(ctx, preparedArticles, factSettings),
       scoreBiasForArticles(ctx, preparedArticles, biasSettings),
     ]);
+    const factsByArticleId = factResult.factsByArticleId;
+    const biasByArticleId = biasResult.biasByArticleId;
 
     let enriched = 0;
     let failed = 0;
@@ -776,6 +853,8 @@ async function runEnrichmentBatch(
 
       if (embedding) {
         const bias = biasByArticleId.get(article._id);
+        const factStatus = factResult.statusByArticleId.get(article._id);
+        const biasStatus = biasResult.statusByArticleId.get(article._id);
         const result = await ctx.runMutation(
           internal.enrichment.markArticleEnriched,
           {
@@ -786,8 +865,13 @@ async function runEnrichmentBatch(
             sourceBiasDelta: bias?.sourceBiasDelta,
             sourceBiasOutlierFlag: bias?.sourceBiasOutlierFlag,
             biasAnalyzedAt: bias?.biasAnalyzedAt,
+            biasDetectionStatus: biasStatus?.status,
+            biasDetectionError: biasStatus?.error,
             summary: prepared.extractedSummary,
             atomicFacts: factsByArticleId.get(article._id),
+            factExtractionStatus: factStatus?.status,
+            factExtractionError: factStatus?.error,
+            factExtractedAt: factStatus?.analyzedAt,
             resolvedUrl: prepared.resolvedUrl,
             imageUrl: prepared.imageUrl,
             imageWidth: prepared.imageWidth,
@@ -933,7 +1017,9 @@ export const reenrichArticlesBackfill = internalAction({
   handler: async (ctx, { limit }) => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
-      console.log("[enrichment] Pipeline paused — skipping re-enrichment backfill");
+      console.log(
+        "[enrichment] Pipeline paused — skipping re-enrichment backfill",
+      );
       return { enriched: 0, failed: 0, skipped: true };
     }
 
@@ -978,7 +1064,9 @@ export const reenrichEventArticles = internalAction({
   handler: async (ctx, { eventId, limit }) => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
-      console.log("[enrichment] Pipeline paused — skipping event re-enrichment");
+      console.log(
+        "[enrichment] Pipeline paused — skipping event re-enrichment",
+      );
       return { enriched: 0, failed: 0, skipped: true };
     }
 

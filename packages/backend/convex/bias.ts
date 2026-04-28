@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_MIN_SAMPLES = 10;
@@ -47,13 +48,33 @@ function standardDeviation(values: number[], average: number): number {
   return Math.sqrt(variance);
 }
 
+async function clearSourceBiasOutlierState(
+  ctx: MutationCtx,
+  sourceId: Id<"sources">,
+  recentArticles: Array<{ _id: Id<"articles">; biasOutlierFlag?: boolean }>,
+  sampleSize: number,
+) {
+  for (const article of recentArticles) {
+    if (article.biasOutlierFlag !== false) {
+      await ctx.db.patch(article._id, { biasOutlierFlag: false });
+    }
+  }
+
+  await ctx.db.patch(sourceId, {
+    rollingBiasMean: undefined,
+    rollingBiasStddev: undefined,
+    rollingBiasSampleSize: sampleSize,
+    rollingBiasUpdatedAt: Date.now(),
+  });
+}
+
 export const flagBiasOutliers = internalMutation({
   args: {
     sourceId: v.optional(v.id("sources")),
   },
   handler: async (ctx, args) => {
-    const [windowDays, minSamples, multiplier, stddevFloor] =
-      await Promise.all([
+    const [windowDays, minSamples, multiplier, stddevFloor] = await Promise.all(
+      [
         getConfigNumber(
           ctx,
           "article_bias_outlier_window_days",
@@ -82,7 +103,8 @@ export const flagBiasOutliers = internalMutation({
           0.1,
           3,
         ),
-      ]);
+      ],
+    );
 
     const cutoff = Date.now() - windowDays * 24 * 60 * 60 * 1000;
     const sources = args.sourceId
@@ -105,10 +127,7 @@ export const flagBiasOutliers = internalMutation({
         (article) => typeof article.aiBiasScore === "number",
       );
       if (scored.length < minSamples) {
-        await ctx.db.patch(source._id, {
-          rollingBiasSampleSize: scored.length,
-          rollingBiasUpdatedAt: Date.now(),
-        });
+        await clearSourceBiasOutlierState(ctx, source._id, recent, scored.length);
         continue;
       }
 
@@ -127,10 +146,7 @@ export const flagBiasOutliers = internalMutation({
             error instanceof Error ? error.message : "unknown error"
           }`,
         );
-        await ctx.db.patch(source._id, {
-          rollingBiasSampleSize: scored.length,
-          rollingBiasUpdatedAt: Date.now(),
-        });
+        await clearSourceBiasOutlierState(ctx, source._id, recent, scored.length);
         continue;
       }
       const threshold = multiplier * rollingBiasStddev;

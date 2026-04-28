@@ -7,10 +7,7 @@ import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
 import { callOpenAI } from "./lib/aiCall";
-import {
-  buildEventSummaryPrompt,
-  type EventSummaryOutput,
-} from "./prompts";
+import { buildEventSummaryPrompt, type EventSummaryOutput } from "./prompts";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_ENQUEUE_LIMIT = 40;
@@ -82,7 +79,10 @@ function cleanSummaryField(value: unknown, fallback: string): string {
   return cleaned.length > 0 ? cleaned.slice(0, 1200) : fallback;
 }
 
-function parseSummaryOutput(raw: unknown, eventTitle: string): EventSummaryOutput {
+function parseSummaryOutput(
+  raw: unknown,
+  eventTitle: string,
+): EventSummaryOutput {
   let parsed: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -123,7 +123,9 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS)) {
     const wordCount = countWords(summary[field as keyof EventSummaryOutput]);
     if (wordCount > maxWords) {
-      violations.push(`${field} has ${wordCount} words; maximum is ${maxWords}`);
+      violations.push(
+        `${field} has ${wordCount} words; maximum is ${maxWords}`,
+      );
     }
   }
   return violations;
@@ -158,9 +160,7 @@ function buildSummarySignature(input: {
       }))
       .sort((a, b) => a.id.localeCompare(b.id)),
   };
-  return createHash("sha256")
-    .update(JSON.stringify(payload))
-    .digest("hex");
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 function retryDelayMs(attempts: number): number {
@@ -272,9 +272,13 @@ export const summarizeQueuedEvents = internalAction({
     );
 
     for (const job of dueJobs) {
-      await ctx.scheduler.runAfter(0, internal.summarizationNode.processSummaryJob, {
-        jobId: job._id,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.summarizationNode.processSummaryJob,
+        {
+          jobId: job._id,
+        },
+      );
     }
 
     console.log(
@@ -325,10 +329,10 @@ export const processSummaryJob = internalAction({
     const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
     if (!budget.allowed) {
       budgetExhausted = true;
-      await ctx.runMutation(internal.summarization.markSummaryJobSkipped, {
+      await ctx.runMutation(internal.summarization.deferSummaryJob, {
         jobId,
-        runId,
         reason: `AI budget exhausted ($${budget.spentUsd}/$${budget.dailyLimitUsd})`,
+        retryAfterMs: 60 * 60 * 1000,
       });
       return {
         processed: true,
@@ -340,12 +344,15 @@ export const processSummaryJob = internalAction({
     }
 
     const leaseExpiresAt = Date.now() + JOB_LEASE_TTL_MS;
-    const started = await ctx.runMutation(internal.summarization.startSummaryJob, {
-      jobId,
-      runId,
-      leaseExpiresAt,
-      maxAttempts: settings.maxAttempts,
-    });
+    const started = await ctx.runMutation(
+      internal.summarization.startSummaryJob,
+      {
+        jobId,
+        runId,
+        leaseExpiresAt,
+        maxAttempts: settings.maxAttempts,
+      },
+    );
 
     if (!started.started) {
       return {
@@ -547,7 +554,15 @@ export const processSummaryJob = internalAction({
         budgetExhausted,
       };
     } finally {
-      await shutdownPostHog();
+      try {
+        await shutdownPostHog();
+      } catch (error) {
+        console.error(
+          `[summarization] Failed to flush PostHog events: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   },
 });
