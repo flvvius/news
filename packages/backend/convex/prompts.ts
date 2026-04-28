@@ -91,10 +91,29 @@ function trimField(value: string | undefined, maxLength: number): string {
 const GLOBAL_IMPACT_FALLBACK =
   "Concrete downstream impact not stated in the supplied coverage.";
 
+function perspectiveCaseFor(count: number, side: "left" | "right"): string {
+  const sideGroup = side === "left" ? "left/left-center" : "right/right-center";
+  const fallback = `Limited ${side}-leaning coverage in the input.`;
+  if (count <= 1) {
+    return `CASE A - ${count} ${sideGroup} articles in input; write exactly "${fallback}"`;
+  }
+  return `CASE B or C - ${count} ${sideGroup} articles in input; choose CASE B if they mirror the shared factual core. Choose CASE C if they have distinct framing, emphasis, or exclusive facts.`;
+}
+
 export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
   system: string;
   user: string;
 } {
+  const leftArticleCount = input.articles.filter((article) => {
+    const label = article.sourceBiasLabel.toLowerCase();
+    return label === "left" || label === "left-center";
+  }).length;
+  const rightArticleCount = input.articles.filter((article) => {
+    const label = article.sourceBiasLabel.toLowerCase();
+    return label === "right" || label === "right-center";
+  }).length;
+  const leftCase = perspectiveCaseFor(leftArticleCount, "left");
+  const rightCase = perspectiveCaseFor(rightArticleCount, "right");
   const articleBlocks = input.articles
     .map((article, index) => {
       const facts = article.atomicFacts
@@ -131,9 +150,29 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- If sources contradict on a fact, call out the disagreement with attribution. Do not silently pick one.",
       '- Group articles by sourceBiasLabel: "left" and "left-center" inform the left field; "right" and "right-center" inform the right field; all reliable sources can inform center.',
       "- Prefer sources with sourceReliability >= 7 when describing the current factual core. Attribute claims from sources with sourceReliability < 5.",
-      '- If left or right has 0-1 articles in the input, set that side field to exactly "Limited left-leaning coverage in the input." or "Limited right-leaning coverage in the input." Do not speculate.',
       "- When articles conflict, use the most recent publishedAt as the current state only if it directly addresses the conflict.",
       "- Write neutral, source-grounded prose. No bullet points. No marketing language. No editorializing.",
+      "",
+      "PERSPECTIVE FIELD COUNTS (precomputed; treat as ground truth):",
+      `- left/left-center article count: ${leftArticleCount}`,
+      `- right/right-center article count: ${rightArticleCount}`,
+      "- Count by article sourceBiasLabel, not by distinct source name.",
+      `LEFT CASE: ${leftCase}`,
+      `RIGHT CASE: ${rightCase}`,
+      "",
+      "PERSPECTIVE CASE DEFINITIONS:",
+      "- CASE A: use the exact limited-coverage fallback supplied in LEFT CASE or RIGHT CASE. Do not add explanation.",
+      "- CASE B: write 25-50 words noting that the relevant side's sources largely mirrored the shared factual account. Name 1-2 sources and cite one or two specific shared elements they emphasized. Do not invent unique framing.",
+      "- CASE C: write 25-70 words describing distinct framing, emphasis, or exclusive facts from that side, with source names.",
+      '- Never use a "Limited..." fallback for a side whose article count is 2 or more.',
+      "",
+      "GLOBAL IMPACT RULES:",
+      "- globalImpact must state one concrete, source-supported significance of the event.",
+      "- Valid impact forms, in priority order: a specific downstream consequence; an already-stated effect such as market reactions, casualties, diplomacy, ceasefire status, sanctions, or commodity price moves; or direct stakes named by an article.",
+      "- A stake exists when any article mentions specific risk to a person, group, market, region, treaty, election, ceasefire, supply, price, position, or institution.",
+      "- If unsure whether a mention qualifies as a concrete stake, treat it as valid and write the impact.",
+      "- Cite the source name when stating the impact.",
+      `- Use exactly "${GLOBAL_IMPACT_FALLBACK}" only when the supplied articles are purely procedural or informational and contain no risk, effect, consequence, or stake language.`,
       "",
       "OUTPUT:",
       "- Return ONLY JSON with exactly these keys: center, left, right, globalImpact.",
@@ -144,15 +183,16 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Mention URLs in prose.",
       '- Use evaluative language about source motives or the word "spin".',
       '- Use words like "could", "may", or "might" unless a supplied article uses that uncertainty.',
+      '- Use marketing or vague hype words such as "transformative", "unprecedented", "historic", "crucial", or "critical" unless quoted by a source or tied to literal safety, medical, or emergency stakes.',
     ].join("\n"),
     user: [
       `Event: ${input.eventTitle}`,
       "",
       "Write:",
       "- center (60-110 words): shared factual core, preferring facts confirmed across multiple sources. Note disagreements with attribution.",
-      "- left (25-70 words): framing or emphasis from left/left-center sources, including atomic facts only they reported. Use the exact limited-coverage fallback if absent or thin.",
-      "- right (25-70 words): framing or emphasis from right/right-center sources, including atomic facts only they reported. Use the exact limited-coverage fallback if absent or thin.",
-      `- globalImpact (25-50 words): one concrete, source-supported downstream consequence: what changes, for whom, and on what timeline. If no article supports a concrete impact, write exactly "${GLOBAL_IMPACT_FALLBACK}"`,
+      "- left (25-70 words for CASE C; 25-50 words for CASE B): execute the LEFT CASE you were told above.",
+      "- right (25-70 words for CASE C; 25-50 words for CASE B): execute the RIGHT CASE you were told above.",
+      "- globalImpact (25-50 words): apply the GLOBAL IMPACT RULES. Prefer concrete stated effects or stakes over the fallback.",
       "",
       "Keep each field within its word limit. Avoid bullet points. Avoid unsupported certainty.",
       "",
@@ -198,7 +238,7 @@ export function buildArticleFactExtractionPrompt(
       "- Use ONLY the supplied article material. Never infer, complete, or add facts from outside knowledge.",
       "- Each fact must be a single verifiable claim with a clear subject, action/state, and object or consequence.",
       "- Preserve specific numbers, dates, places, named actors, votes, charges, amounts, and deadlines when supplied.",
-      "- Use detectedEntities as grounding hints for names, organizations, and places, but do not output an entity unless the article text supports a factual claim about it.",
+      "- Use detectedEntities to normalize entity names. When extracting a fact about an entity, prefer the most specific supported form found in detectedEntities or the article text.",
       "- If the article attributes a claim to an official, company, filing, court, witness, or other source, keep that attribution in the fact.",
       "- Exclude opinions, predictions, vague context, rhetoric, duplicate facts, and generic background that is not central to the article.",
       "- Do not mention article IDs, URLs, or source indexes in facts.",
@@ -210,8 +250,8 @@ export function buildArticleFactExtractionPrompt(
       "- If an article has no extractable factual claims, return an empty facts array for that id.",
     ].join("\n"),
     user: [
-      `Extract up to ${input.maxFactsPerArticle} atomic facts per article.`,
-      "Prefer 3-8 facts when the article has enough concrete information.",
+      `Cap at ${input.maxFactsPerArticle} atomic facts per article.`,
+      "Output only facts the article actually supports. Do not pad to a target count.",
       "Facts should be understandable without reading the original article.",
       "",
       "Articles:",
@@ -231,8 +271,6 @@ export function buildArticleBiasScoringPrompt(
       [
         `id: ${article.id}`,
         `sourceName: ${article.sourceName ?? "Unknown"}`,
-        `sourceLean: ${article.sourceLean}`,
-        `sourceReliability: ${article.sourceReliability}/10`,
         article.publishedAt ? `publishedAt: ${article.publishedAt}` : "",
         `title: ${trimField(article.title, 240)}`,
         article.summary ? `summary: ${trimField(article.summary, 900)}` : "",
@@ -254,7 +292,7 @@ export function buildArticleBiasScoringPrompt(
       "Score each article on four sub-dimensions. Return only JSON matching the schema.",
       "",
       "CORE RULES:",
-      "- Score the article text, not the outlet's reputation. Source lean is context only.",
+      "- Score the article text, not the outlet's reputation. Source name is attribution metadata only; do not use it as a proxy for political lean.",
       "- Use only supplied article material. Do not infer author intent or facts beyond the text.",
       "- Treat straight-news attribution as lower opinion, even when quoted sources use partisan language.",
       "- Rationale must cite specific wording, sourcing, or structure from the article.",
@@ -346,12 +384,13 @@ export function buildClaimAnalysisPrompt(input: ClaimAnalysisPromptInput): {
       "- Cluster facts by their underlying assertion, not by surface wording.",
       "- Quantitative claims with different values are divergence, not framing.",
       "- Different dates, attributions, outcomes, or current status are divergence, not framing.",
+      "- If variants describe the same outcome and differ only in precision versus vagueness, classify as framing, not divergence.",
       "- Trivial wording differences, synonyms, and sentence structure differences are agreement, not framing.",
       "- Do not classify a claim as agreement unless it has support from at least 2 distinct sources.",
       "- Do not classify a claim as divergence or framing unless it has at least 2 variants from distinct sources.",
       "- Do not reference a factIndex unless that atomic fact directly supports the canonical claim.",
       "- Do not mention URLs or article indexes in the canonical statement.",
-      "- Importance rates how central the claim is to the news event, 1-5. Most events have 3-8 importance-3-or-higher claims.",
+      "- Importance rates how central the claim is to the news event, 1-5. Cap output at 12 claims total. If an event has fewer than 5 importance-3-or-higher claims, that is fine; quality over quantity.",
       "- Confidence is your certainty in the grouping and classification, 0-1. Lower it when facts are sparse or ambiguous.",
       "",
       "OUTPUT:",
