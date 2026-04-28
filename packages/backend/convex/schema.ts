@@ -30,6 +30,12 @@ export default defineSchema({
     mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
     mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"
     mbfcLastChecked: v.optional(v.number()), // Timestamp of last MBFC lookup
+
+    // Rolling article-level AI bias stats, updated by the daily outlier job.
+    rollingBiasMean: v.optional(v.number()),
+    rollingBiasStddev: v.optional(v.number()),
+    rollingBiasSampleSize: v.optional(v.number()),
+    rollingBiasUpdatedAt: v.optional(v.number()),
   })
     .index("by_domain", ["domain"])
     .index("by_mbfc_last_checked", ["mbfcLastChecked"]),
@@ -59,9 +65,20 @@ export default defineSchema({
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
+    lastSummarySignature: v.optional(v.string()),
+    lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
+    lastClaimAnalysisSignature: v.optional(v.string()),
+    factualArticleCount: v.optional(v.number()),
+    factualSourceCount: v.optional(v.number()),
+    lastFactualUpdateAt: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
     .index("by_status_recency", ["status", "firstPublishedAt"])
+    .index("by_status_factual_coverage", [
+      "status",
+      "factualSourceCount",
+      "factualArticleCount",
+    ])
     .searchIndex("by_search_text", {
       searchField: "title",
       filterFields: ["status"],
@@ -114,7 +131,72 @@ export default defineSchema({
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
-  // 3d. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // 3d. EVENT SUMMARY JOBS (Durable queue for AI summarization)
+  // =========================================================================
+  eventSummaryJobs: defineTable({
+    eventId: v.id("events"),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    reason: v.optional(v.string()),
+    attempts: v.number(),
+    requestedAt: v.number(),
+    nextAttemptAt: v.number(),
+    updatedAt: v.number(),
+    processingRunId: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_updatedAt", ["eventId", "updatedAt"])
+    .index("by_status_next_attempt", ["status", "nextAttemptAt"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
+
+  // =========================================================================
+  // 3e. EVENT CLAIMS (Agreement/divergence graph for clustered coverage)
+  // =========================================================================
+  eventClaims: defineTable({
+    eventId: v.id("events"),
+    canonicalStatement: v.string(),
+    claimType: v.union(
+      v.literal("quantitative"),
+      v.literal("event"),
+      v.literal("attribution"),
+      v.literal("policy"),
+      v.literal("characterization"),
+    ),
+    status: v.union(
+      v.literal("agreement"),
+      v.literal("divergence"),
+      v.literal("framing"),
+      v.literal("exclusive_left"),
+      v.literal("exclusive_right"),
+      v.literal("exclusive_center"),
+    ),
+    variants: v.array(
+      v.object({
+        articleId: v.id("articles"),
+        sourceId: v.id("sources"),
+        sourceLean: v.string(),
+        sourceFactIndex: v.optional(v.number()),
+        statement: v.string(),
+        value: v.optional(v.string()),
+      }),
+    ),
+    importance: v.number(),
+    confidence: v.number(),
+    generatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_status", ["eventId", "status"])
+    .index("by_event_importance", ["eventId", "importance"]),
+
+  // =========================================================================
+  // 3f. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
   // =========================================================================
   clusterPairLabels: defineTable({
     pairKey: v.string(),
@@ -162,9 +244,39 @@ export default defineSchema({
 
     // Feed THIS to the Event Synthesizer (cheap tokens), not the full text.
     atomicFacts: v.optional(v.array(v.string())), // ["Vote count: 60-40", "Passed on: Tuesday", "Opposition: GOP"]
+    factExtractionStatus: v.optional(
+      v.union(
+        v.literal("succeeded"),
+        v.literal("failed"),
+        v.literal("skipped"),
+      ),
+    ),
+    factExtractionError: v.optional(v.string()),
+    factExtractedAt: v.optional(v.number()),
 
     // Populated by enrichment pipeline (AI bias detection)
     aiBiasScore: v.optional(v.number()),
+    biasComponents: v.optional(
+      v.object({
+        politicalLean: v.number(),
+        emotionalLanguage: v.number(),
+        sourceDiversity: v.number(),
+        factOpinionRatio: v.number(),
+        rationale: v.string(),
+      }),
+    ),
+    sourceBiasDelta: v.optional(v.number()),
+    sourceBiasOutlierFlag: v.optional(v.boolean()),
+    biasOutlierFlag: v.optional(v.boolean()),
+    biasAnalyzedAt: v.optional(v.number()),
+    biasDetectionStatus: v.optional(
+      v.union(
+        v.literal("succeeded"),
+        v.literal("failed"),
+        v.literal("skipped"),
+      ),
+    ),
+    biasDetectionError: v.optional(v.string()),
 
     status: v.union(
       v.literal("unprocessed"),
@@ -183,6 +295,7 @@ export default defineSchema({
     .index("by_status_published", ["status", "publishedAt"])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
     .index("by_source", ["sourceId"])
+    .index("by_source_analyzed", ["sourceId", "biasAnalyzedAt"])
     .index("by_published", ["publishedAt"]),
 
   // =========================================================================
@@ -378,16 +491,34 @@ export default defineSchema({
     date: v.string(), // "YYYY-MM-DD" for daily grouping
     model: v.string(), // "gpt-4o-mini", "text-embedding-3-small"
     operation: v.string(), // "summarize_event", "generate_embedding", "bias_detection"
+    callType: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
     inputTokens: v.number(),
     outputTokens: v.number(),
     costUsd: v.number(), // Pre-calculated
+    latencyMs: v.optional(v.number()),
     timestamp: v.number(),
   })
     .index("by_date", ["date"])
     .index("by_date_model", ["date", "model"])
-    .index("by_operation", ["operation", "date"]),
+    .index("by_operation", ["operation", "date"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_event", ["eventId"])
+    .index("by_callType_timestamp", ["callType", "timestamp"]),
+
+  // =========================================================================
+  // 11a. AI BUDGET RESERVATIONS (In-flight budget holds)
+  // =========================================================================
+  aiBudgetReservations: defineTable({
+    model: v.string(),
+    callType: v.optional(v.string()),
+    eventId: v.optional(v.id("events")),
+    articleId: v.optional(v.id("articles")),
+    costUsd: v.number(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_expiresAt", ["expiresAt"]),
 
   // =========================================================================
   // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)

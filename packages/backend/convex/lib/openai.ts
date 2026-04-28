@@ -72,11 +72,12 @@ export async function getOpenAI(): Promise<
       _openai = new PostHogOpenAI({
         apiKey: openaiKey,
         posthog: ph,
+        maxRetries: 0,
       });
     } else {
       // Fallback: plain OpenAI client (no analytics in dev)
       const OpenAI = (await import("openai")).default;
-      _openai = new OpenAI({ apiKey: openaiKey });
+      _openai = new OpenAI({ apiKey: openaiKey, maxRetries: 0 });
     }
 
     return _openai;

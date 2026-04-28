@@ -413,6 +413,204 @@ export const seedDefaults = internalMutation({
           "When true, all automatic processing (ingestion, enrichment, MBFC) is paused. Toggle via config:togglePipeline.",
       },
       {
+        key: "ai_daily_budget_usd",
+        value: 1,
+        description:
+          "Daily AI spend cap in USD. AI workers check this before model calls and log usage to aiUsage.",
+      },
+      {
+        key: "event_summary_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for event perspective summaries.",
+      },
+      {
+        key: "event_summary_enqueue_limit",
+        value: 40,
+        description:
+          "Maximum number of recent published events inspected for summary eligibility per summarization run.",
+      },
+      {
+        key: "event_summary_batch_size",
+        value: 4,
+        description:
+          "Maximum number of queued event summary jobs processed per summarization run.",
+      },
+      {
+        key: "event_summary_max_attempts",
+        value: 3,
+        description:
+          "Maximum retry attempts for a failed event summary job before it stops retrying.",
+      },
+      {
+        key: "event_summary_min_articles",
+        value: 3,
+        description:
+          "Minimum number of articles an event needs before AI summarization is queued.",
+      },
+      {
+        key: "event_summary_min_sources",
+        value: 2,
+        description:
+          "Minimum number of distinct sources an event needs before AI summarization is queued.",
+      },
+      {
+        key: "event_summary_max_input_articles",
+        value: 12,
+        description:
+          "Maximum number of recent articles included in one event summarization prompt.",
+      },
+      {
+        key: "article_fact_extraction_enabled",
+        value: true,
+        description:
+          "When true, enrichment extracts structured atomic facts from article text using the configured chat model.",
+      },
+      {
+        key: "article_fact_extraction_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used to extract atomic facts from articles during enrichment.",
+      },
+      {
+        key: "article_fact_extraction_max_articles_per_run",
+        value: 20,
+        description:
+          "Maximum number of articles in one enrichment run that receive atomic fact extraction.",
+      },
+      {
+        key: "article_fact_extraction_max_facts_per_article",
+        value: 8,
+        description:
+          "Maximum number of atomic facts stored per article.",
+      },
+      {
+        key: "article_fact_extraction_max_input_chars",
+        value: 2600,
+        description:
+          "Maximum extracted article text characters sent to the atomic fact extraction prompt per article.",
+      },
+      {
+        key: "article_bias_detection_enabled",
+        value: true,
+        description:
+          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call.",
+      },
+      {
+        key: "article_bias_detection_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for per-article bias component scoring during enrichment.",
+      },
+      {
+        key: "article_bias_detection_max_articles_per_run",
+        value: 20,
+        description:
+          "Maximum number of articles in one enrichment run that receive AI bias component scoring.",
+      },
+      {
+        key: "article_bias_detection_max_input_chars",
+        value: 6000,
+        description:
+          "Maximum extracted article text characters sent to the bias scoring prompt per article.",
+      },
+      {
+        key: "article_bias_source_delta_threshold",
+        value: 2,
+        description:
+          "Absolute difference between article aiBiasScore and source baseBias required to flag source-level bias divergence.",
+      },
+      {
+        key: "article_bias_outlier_window_days",
+        value: 30,
+        description:
+          "Rolling window, in days, used by the daily article bias outlier detection job.",
+      },
+      {
+        key: "article_bias_outlier_min_samples",
+        value: 10,
+        description:
+          "Minimum scored articles required for a source before z-score bias outlier detection runs.",
+      },
+      {
+        key: "article_bias_outlier_stddev_multiplier",
+        value: 2,
+        description:
+          "Standard-deviation multiplier used to flag articles unusually biased for their source.",
+      },
+      {
+        key: "article_bias_outlier_stddev_floor",
+        value: 0.5,
+        description:
+          "Minimum standard deviation used by article bias outlier detection to avoid over-flagging uniform sources.",
+      },
+      {
+        key: "claim_analysis_enabled",
+        value: true,
+        description:
+          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims.",
+      },
+      {
+        key: "claim_analysis_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for event-level claim divergence analysis.",
+      },
+      {
+        key: "claim_analysis_batch_size",
+        value: 4,
+        description:
+          "Maximum number of stale events analyzed for claim divergence in one cron run.",
+      },
+      {
+        key: "claim_analysis_scan_limit",
+        value: 60,
+        description:
+          "Maximum number of recent published events inspected for stale claim analysis in one run.",
+      },
+      {
+        key: "claim_analysis_min_articles",
+        value: 3,
+        description:
+          "Minimum number of articles with atomic facts required before claim divergence analysis runs for an event.",
+      },
+      {
+        key: "claim_analysis_min_sources",
+        value: 2,
+        description:
+          "Minimum number of distinct sources with atomic facts required before claim divergence analysis runs for an event.",
+      },
+      {
+        key: "claim_analysis_stale_after_ms",
+        value: 3600000,
+        description:
+          "Minimum time between claim divergence analyses for an unchanged event.",
+      },
+      {
+        key: "claim_analysis_max_input_articles",
+        value: 12,
+        description:
+          "Maximum number of recent event articles included in one claim divergence prompt.",
+      },
+      {
+        key: "claim_analysis_max_facts_per_article",
+        value: 10,
+        description:
+          "Maximum number of atomic facts included per article in one claim divergence prompt.",
+      },
+      {
+        key: "claim_analysis_max_claims_per_event",
+        value: 12,
+        description:
+          "Maximum number of high-importance claims stored per event after claim divergence analysis.",
+      },
+      {
+        key: "claim_analysis_min_confidence",
+        value: 0.5,
+        description:
+          "Minimum model confidence required before a detected event claim is stored.",
+      },
+      {
         key: "clustering_min_similarity",
         value: 0.74,
         description:

@@ -70,4 +70,52 @@ crons.interval(
   internal.clustering.reclusterRecentSingletonEvents,
 );
 
+// ---------------------------------------------------------------------------
+// Event Summarization — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Generates GPT-backed perspective summaries for published events that have
+// enough source diversity. Runs independently so clustering is never blocked on
+// model latency or budget state.
+crons.interval(
+  "summarize-published-events",
+  { minutes: 30 },
+  internal.summarizationNode.summarizeQueuedEvents,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Claim Divergence Detection — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Builds the eventClaims graph from atomic facts so the product can show
+// agreements, conflicts, framing differences, and lean-specific exclusives.
+crons.interval(
+  "detect-event-claims",
+  { minutes: 30 },
+  internal.claimDivergenceNode.processStaleEventClaims,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Article Bias Outlier Detection — Daily
+// ---------------------------------------------------------------------------
+// Computes rolling per-source article bias stats and flags articles that are
+// unusually partisan for their outlet.
+crons.daily(
+  "flag-bias-outliers",
+  { hourUTC: 5, minuteUTC: 0 },
+  internal.bias.flagBiasOutliers,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// AI Budget Reservation Cleanup — Hourly
+// ---------------------------------------------------------------------------
+// Deletes expired budget reservations outside the OpenAI-call hot path.
+crons.interval(
+  "cleanup-ai-budget-reservations",
+  { hours: 1 },
+  internal.aiBudget.cleanupExpiredAiBudgetReservations,
+  {},
+);
+
 export default crons;

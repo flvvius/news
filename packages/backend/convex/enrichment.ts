@@ -9,6 +9,32 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+
+const ARTICLE_AI_STATUS_VALIDATOR = v.union(
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("skipped"),
+);
+
+function sourceBiasLabel(source: Doc<"sources">): string {
+  const mbfcCategory = source.mbfcCategory?.toLowerCase();
+  if (
+    mbfcCategory === "left" ||
+    mbfcCategory === "left-center" ||
+    mbfcCategory === "center" ||
+    mbfcCategory === "right-center" ||
+    mbfcCategory === "right"
+  ) {
+    return mbfcCategory;
+  }
+  if (source.baseBias === 0) return "center";
+  if (source.baseBias <= -3) return "left";
+  if (source.baseBias < 0) return "left-center";
+  if (source.baseBias >= 3) return "right";
+  if (source.baseBias > 0) return "right-center";
+  return "center";
+}
 
 // ---------------------------------------------------------------------------
 // Internal Queries
@@ -40,9 +66,13 @@ export const getUnprocessedArticles = internalQuery({
             url: article.url,
             canonicalUrl: article.canonicalUrl,
             rssSnippet: article.rssSnippet ?? "",
+            publishedAt: article.publishedAt,
             entities: article.entities ?? [],
             extractionQuality: article.extractionQuality,
             sourceBaseBias: source.baseBias,
+            sourceName: source.name,
+            sourceLean: sourceBiasLabel(source),
+            sourceReliability: source.reliabilityScore,
           };
         }),
       )
@@ -74,9 +104,13 @@ async function toClaimedArticle(
     url: article.url,
     canonicalUrl: article.canonicalUrl,
     rssSnippet: article.rssSnippet ?? "",
+    publishedAt: article.publishedAt,
     entities: article.entities ?? [],
     extractionQuality: article.extractionQuality,
     sourceBaseBias: source.baseBias,
+    sourceName: source.name,
+    sourceLean: sourceBiasLabel(source),
+    sourceReliability: source.reliabilityScore,
   };
 }
 
@@ -136,6 +170,20 @@ function articleNeedsReenrichment(
 ): boolean {
   if (embeddingVersion < targetVersion) return true;
   if ((article.summary ?? "").trim().length < 120) return true;
+  if (
+    article.atomicFacts === undefined &&
+    article.factExtractionStatus !== "skipped"
+  ) {
+    return true;
+  }
+  if (article.factExtractionStatus === "failed") return true;
+  if (
+    article.biasAnalyzedAt === undefined &&
+    article.biasDetectionStatus !== "skipped"
+  ) {
+    return true;
+  }
+  if (article.biasDetectionStatus === "failed") return true;
   if (article.url.includes("news.google.com")) return true;
   if (article.canonicalUrl.includes("news.google.com")) return true;
   return false;
@@ -194,13 +242,69 @@ export const claimArticlesForReenrichment = internalMutation({
   },
 });
 
+export const claimEventArticlesForReenrichment = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    limit: v.number(),
+    runId: v.string(),
+    leaseExpiresAt: v.number(),
+  },
+  handler: async (ctx, { eventId, limit, runId, leaseExpiresAt }) => {
+    const batchSize = Math.max(0, Math.floor(limit));
+    if (batchSize === 0) return [];
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    const claimed = [];
+    for (const article of articles) {
+      if (claimed.length >= batchSize) break;
+      if (article.status === "processing" || article.status === "discarded") {
+        continue;
+      }
+
+      const enriched = await toClaimedArticle(ctx, article);
+      if (!enriched) continue;
+
+      await ctx.db.patch(article._id, {
+        status: "processing",
+        enrichmentRunId: runId,
+        enrichmentLeaseExpiresAt: leaseExpiresAt,
+      });
+      claimed.push(enriched);
+    }
+
+    return claimed;
+  },
+});
+
 /** Update an article's bias score, mark as enriched, and store embedding in separate table. */
 export const markArticleEnriched = internalMutation({
   args: {
     articleId: v.id("articles"),
     embedding: v.array(v.number()),
-    aiBiasScore: v.number(),
+    aiBiasScore: v.optional(v.number()),
+    biasComponents: v.optional(
+      v.object({
+        politicalLean: v.number(),
+        emotionalLanguage: v.number(),
+        sourceDiversity: v.number(),
+        factOpinionRatio: v.number(),
+        rationale: v.string(),
+      }),
+    ),
+    sourceBiasDelta: v.optional(v.number()),
+    sourceBiasOutlierFlag: v.optional(v.boolean()),
+    biasAnalyzedAt: v.optional(v.number()),
+    biasDetectionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    biasDetectionError: v.optional(v.string()),
     summary: v.optional(v.string()),
+    atomicFacts: v.optional(v.array(v.string())),
+    factExtractionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    factExtractionError: v.optional(v.string()),
+    factExtractedAt: v.optional(v.number()),
     resolvedUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     imageWidth: v.optional(v.number()),
@@ -227,7 +331,17 @@ export const markArticleEnriched = internalMutation({
       articleId,
       embedding,
       aiBiasScore,
+      biasComponents,
+      sourceBiasDelta,
+      sourceBiasOutlierFlag,
+      biasAnalyzedAt,
+      biasDetectionStatus,
+      biasDetectionError,
       summary,
+      atomicFacts,
+      factExtractionStatus,
+      factExtractionError,
+      factExtractedAt,
       resolvedUrl,
       imageUrl,
       imageWidth,
@@ -266,8 +380,27 @@ export const markArticleEnriched = internalMutation({
 
     // Update article status & bias score (no embedding on the article itself)
     await ctx.db.patch(articleId, {
-      aiBiasScore,
+      aiBiasScore: aiBiasScore ?? article.aiBiasScore,
+      biasComponents: biasComponents ?? article.biasComponents,
+      sourceBiasDelta: sourceBiasDelta ?? article.sourceBiasDelta,
+      sourceBiasOutlierFlag:
+        sourceBiasOutlierFlag ?? article.sourceBiasOutlierFlag,
+      biasAnalyzedAt: biasAnalyzedAt ?? article.biasAnalyzedAt,
+      ...(biasDetectionStatus !== undefined
+        ? {
+            biasDetectionStatus,
+            biasDetectionError,
+          }
+        : {}),
       summary: summary ?? article.summary,
+      atomicFacts: atomicFacts ?? article.atomicFacts,
+      ...(factExtractionStatus !== undefined
+        ? {
+            factExtractionStatus,
+            factExtractionError,
+            factExtractedAt: factExtractedAt ?? article.factExtractedAt,
+          }
+        : {}),
       url: resolvedUrl ?? article.url,
       canonicalUrl: resolvedUrl ?? article.canonicalUrl,
       imageUrl: imageUrl ?? article.imageUrl,
@@ -281,6 +414,10 @@ export const markArticleEnriched = internalMutation({
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
     });
+
+    if (article.eventId) {
+      await refreshEventClaimCoverage(ctx, article.eventId);
+    }
 
     return { updated: true, eventId: article.eventId };
   },
@@ -304,6 +441,9 @@ export const markArticleDiscarded = internalMutation({
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
     });
+    if (article.eventId) {
+      await refreshEventClaimCoverage(ctx, article.eventId);
+    }
     return { updated: true };
   },
 });

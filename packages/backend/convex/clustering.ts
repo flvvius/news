@@ -28,6 +28,7 @@ import type { MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { requireAdminUser } from "./lib/betaAccess";
+import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { buildEventShareRenderSignature } from "./shareAssets";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
@@ -1541,6 +1542,7 @@ export const createEventFromArticle = internalMutation({
       status: "clustered",
     });
 
+    await refreshEventClaimCoverage(ctx, eventId);
     await refreshEventPresentation(ctx, eventId);
 
     return {
@@ -1680,6 +1682,7 @@ export const attachArticleToEvent = internalMutation({
       }
     }
 
+    await refreshEventClaimCoverage(ctx, eventId);
     await refreshEventPresentation(ctx, eventId);
 
     return {
@@ -2935,6 +2938,7 @@ export const mergeEvents = internalMutation({
       imageUrl: mergedImageUrl,
     });
 
+    await refreshEventClaimCoverage(ctx, keepEventId);
     await refreshEventPresentation(ctx, keepEventId);
 
     await ctx.db.delete(removeEventId);
