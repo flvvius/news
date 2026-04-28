@@ -27,6 +27,7 @@ type SummaryEligibility = {
 function sourceBiasLabel(source: Doc<"sources"> | null): string {
   if (!source) return "unknown";
   if (source.mbfcCategory) return source.mbfcCategory;
+  if (source.baseBias === 0) return "center";
   if (source.baseBias <= -3) return "left";
   if (source.baseBias < 0) return "left-center";
   if (source.baseBias >= 3) return "right";

@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
 // ---------------------------------------------------------------------------
 // Internal Queries
@@ -328,6 +329,10 @@ export const markArticleEnriched = internalMutation({
       enrichmentLeaseExpiresAt: undefined,
     });
 
+    if (article.eventId) {
+      await refreshEventClaimCoverage(ctx, article.eventId);
+    }
+
     return { updated: true, eventId: article.eventId };
   },
 });
@@ -350,6 +355,9 @@ export const markArticleDiscarded = internalMutation({
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
     });
+    if (article.eventId) {
+      await refreshEventClaimCoverage(ctx, article.eventId);
+    }
     return { updated: true };
   },
 });

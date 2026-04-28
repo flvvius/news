@@ -60,9 +60,17 @@ export default defineSchema({
     lastUpdatedAt: v.optional(v.number()),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
+    factualArticleCount: v.optional(v.number()),
+    factualSourceCount: v.optional(v.number()),
+    lastFactualUpdateAt: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
     .index("by_status_recency", ["status", "firstPublishedAt"])
+    .index("by_status_factual_coverage", [
+      "status",
+      "factualSourceCount",
+      "factualArticleCount",
+    ])
     .searchIndex("by_search_text", {
       searchField: "title",
       filterFields: ["status"],

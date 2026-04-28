@@ -541,10 +541,12 @@ async function detectEventClaimsForEvent(
   );
 
   if (!input.eligible) {
-    await ctx.runMutation(
-      internal.claimDivergence.markEventClaimAnalysisSkipped,
-      { eventId },
-    );
+    if (input.reason !== "event_missing") {
+      await ctx.runMutation(
+        internal.claimDivergence.markEventClaimAnalysisSkipped,
+        { eventId },
+      );
+    }
     return { skipped: true as const, reason: input.reason };
   }
 

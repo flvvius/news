@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
   internalQuery,
@@ -69,7 +69,8 @@ function eventNeedsAnalysis(
   staleAfterMs: number,
 ): boolean {
   const lastAnalysisAt = event.lastClaimAnalysisAt ?? 0;
-  const changedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  const changedAt =
+    event.lastFactualUpdateAt ?? event.lastUpdatedAt ?? event.firstPublishedAt;
   return lastAnalysisAt < changedAt || now - lastAnalysisAt >= staleAfterMs;
 }
 
@@ -83,10 +84,13 @@ export const getStaleEventsForClaimAnalysis = internalQuery({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const minArticles = Math.max(1, Math.floor(args.minArticles));
+    const minSources = Math.max(1, Math.floor(args.minSources));
     const events = await ctx.db
       .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
+      .withIndex("by_status_factual_coverage", (q) =>
+        q.eq("status", "published").gte("factualSourceCount", minSources),
+      )
       .take(Math.max(1, Math.min(250, Math.floor(args.scanLimit))));
 
     const candidates = [];
@@ -97,23 +101,15 @@ export const getStaleEventsForClaimAnalysis = internalQuery({
         continue;
       }
 
-      const articles = await ctx.db
-        .query("articles")
-        .withIndex("by_event", (q) => q.eq("eventId", event._id))
-        .collect();
-      const factualArticles = articles.filter(hasAtomicFacts);
-      const sourceCount = new Set(factualArticles.map((article) => article.sourceId))
-        .size;
-
       if (
-        factualArticles.length >= Math.max(1, Math.floor(args.minArticles)) &&
-        sourceCount >= Math.max(1, Math.floor(args.minSources))
+        (event.factualArticleCount ?? 0) >= minArticles &&
+        (event.factualSourceCount ?? 0) >= minSources
       ) {
         candidates.push({
           _id: event._id,
           title: event.title,
-          articleCount: factualArticles.length,
-          sourceCount,
+          articleCount: event.factualArticleCount ?? 0,
+          sourceCount: event.factualSourceCount ?? 0,
           lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
           lastClaimAnalysisAt: event.lastClaimAnalysisAt,
         });
@@ -269,6 +265,11 @@ export const getEventClaims = query({
   },
   handler: async (ctx, args) => {
     await requireBetaAccess(ctx);
+
+    const event = await ctx.db.get(args.eventId);
+    if (!event || event.status !== "published") {
+      throw new ConvexError("Event is not readable");
+    }
 
     const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 20)));
     const rows = args.status

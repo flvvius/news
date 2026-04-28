@@ -361,9 +361,9 @@ async function mapWithConcurrency<T, R>(
 }
 
 async function runEnrichmentBatch(
-  ctx: any,
+  ctx: ActionCtx,
   articles: Array<{
-    _id: string;
+    _id: Id<"articles">;
     title: string;
     url: string;
     canonicalUrl: string;
