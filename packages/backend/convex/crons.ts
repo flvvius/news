@@ -83,4 +83,16 @@ crons.interval(
   {},
 );
 
+// ---------------------------------------------------------------------------
+// Claim Divergence Detection — Every 30 minutes
+// ---------------------------------------------------------------------------
+// Builds the eventClaims graph from atomic facts so the product can show
+// agreements, conflicts, framing differences, and lean-specific exclusives.
+crons.interval(
+  "detect-event-claims",
+  { minutes: 30 },
+  internal.claimDivergenceNode.processStaleEventClaims,
+  {},
+);
+
 export default crons;

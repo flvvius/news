@@ -199,6 +199,44 @@ export const claimArticlesForReenrichment = internalMutation({
   },
 });
 
+export const claimEventArticlesForReenrichment = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    limit: v.number(),
+    runId: v.string(),
+    leaseExpiresAt: v.number(),
+  },
+  handler: async (ctx, { eventId, limit, runId, leaseExpiresAt }) => {
+    const batchSize = Math.max(0, Math.floor(limit));
+    if (batchSize === 0) return [];
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    const claimed = [];
+    for (const article of articles) {
+      if (claimed.length >= batchSize) break;
+      if (article.status === "processing" || article.status === "discarded") {
+        continue;
+      }
+
+      const enriched = await toClaimedArticle(ctx, article);
+      if (!enriched) continue;
+
+      await ctx.db.patch(article._id, {
+        status: "processing",
+        enrichmentRunId: runId,
+        enrichmentLeaseExpiresAt: leaseExpiresAt,
+      });
+      claimed.push(enriched);
+    }
+
+    return claimed;
+  },
+});
+
 /** Update an article's bias score, mark as enriched, and store embedding in separate table. */
 export const markArticleEnriched = internalMutation({
   args: {

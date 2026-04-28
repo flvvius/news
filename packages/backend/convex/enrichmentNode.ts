@@ -685,3 +685,48 @@ export const reenrichArticlesBackfill = internalAction({
     }
   },
 });
+
+export const reenrichEventArticles = internalAction({
+  args: {
+    eventId: v.id("events"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { eventId, limit }) => {
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[enrichment] Pipeline paused — skipping event re-enrichment");
+      return { enriched: 0, failed: 0, skipped: true };
+    }
+
+    const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
+    if (!budget.allowed) {
+      console.warn(
+        `[enrichment] AI budget exhausted ($${budget.spentUsd}/$${budget.dailyLimitUsd}). Skipping event re-enrichment.`,
+      );
+      return { enriched: 0, failed: 0, skipped: true };
+    }
+
+    const runId = randomUUID();
+    const articles = await ctx.runMutation(
+      internal.enrichment.claimEventArticlesForReenrichment,
+      {
+        eventId,
+        limit: Math.max(1, Math.min(30, Math.floor(limit ?? 12))),
+        runId,
+        leaseExpiresAt: Date.now() + ARTICLE_LEASE_TTL_MS,
+      },
+    );
+
+    if (articles.length === 0) {
+      console.log("[enrichment] No articles found for event re-enrichment");
+      return { enriched: 0, failed: 0, skipped: false };
+    }
+
+    try {
+      const result = await runEnrichmentBatch(ctx, articles, runId);
+      return { ...result, skipped: false };
+    } finally {
+      await shutdownPostHog();
+    }
+  },
+});

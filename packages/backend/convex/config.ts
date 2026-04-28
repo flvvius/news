@@ -491,6 +491,72 @@ export const seedDefaults = internalMutation({
           "Maximum extracted article text characters sent to the atomic fact extraction prompt per article.",
       },
       {
+        key: "claim_analysis_enabled",
+        value: true,
+        description:
+          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims.",
+      },
+      {
+        key: "claim_analysis_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for event-level claim divergence analysis.",
+      },
+      {
+        key: "claim_analysis_batch_size",
+        value: 4,
+        description:
+          "Maximum number of stale events analyzed for claim divergence in one cron run.",
+      },
+      {
+        key: "claim_analysis_scan_limit",
+        value: 60,
+        description:
+          "Maximum number of recent published events inspected for stale claim analysis in one run.",
+      },
+      {
+        key: "claim_analysis_min_articles",
+        value: 3,
+        description:
+          "Minimum number of articles with atomic facts required before claim divergence analysis runs for an event.",
+      },
+      {
+        key: "claim_analysis_min_sources",
+        value: 2,
+        description:
+          "Minimum number of distinct sources with atomic facts required before claim divergence analysis runs for an event.",
+      },
+      {
+        key: "claim_analysis_stale_after_ms",
+        value: 3600000,
+        description:
+          "Minimum time between claim divergence analyses for an unchanged event.",
+      },
+      {
+        key: "claim_analysis_max_input_articles",
+        value: 12,
+        description:
+          "Maximum number of recent event articles included in one claim divergence prompt.",
+      },
+      {
+        key: "claim_analysis_max_facts_per_article",
+        value: 10,
+        description:
+          "Maximum number of atomic facts included per article in one claim divergence prompt.",
+      },
+      {
+        key: "claim_analysis_max_claims_per_event",
+        value: 12,
+        description:
+          "Maximum number of high-importance claims stored per event after claim divergence analysis.",
+      },
+      {
+        key: "claim_analysis_min_confidence",
+        value: 0.5,
+        description:
+          "Minimum model confidence required before a detected event claim is stored.",
+      },
+      {
         key: "clustering_min_similarity",
         value: 0.74,
         description:

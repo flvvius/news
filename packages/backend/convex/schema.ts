@@ -59,6 +59,7 @@ export default defineSchema({
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
+    lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
   })
     .index("by_slug", ["slug"])
     .index("by_status_recency", ["status", "firstPublishedAt"])
@@ -140,7 +141,46 @@ export default defineSchema({
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
-  // 3e. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // 3e. EVENT CLAIMS (Agreement/divergence graph for clustered coverage)
+  // =========================================================================
+  eventClaims: defineTable({
+    eventId: v.id("events"),
+    canonicalStatement: v.string(),
+    claimType: v.union(
+      v.literal("quantitative"),
+      v.literal("event"),
+      v.literal("attribution"),
+      v.literal("policy"),
+      v.literal("characterization"),
+    ),
+    status: v.union(
+      v.literal("agreement"),
+      v.literal("divergence"),
+      v.literal("framing"),
+      v.literal("exclusive_left"),
+      v.literal("exclusive_right"),
+      v.literal("exclusive_center"),
+    ),
+    variants: v.array(
+      v.object({
+        articleId: v.id("articles"),
+        sourceId: v.id("sources"),
+        sourceLean: v.string(),
+        sourceFactIndex: v.optional(v.number()),
+        statement: v.string(),
+        value: v.optional(v.string()),
+      }),
+    ),
+    importance: v.number(),
+    confidence: v.number(),
+    generatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_status", ["eventId", "status"])
+    .index("by_event_importance", ["eventId", "importance"]),
+
+  // =========================================================================
+  // 3f. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
   // =========================================================================
   clusterPairLabels: defineTable({
     pairKey: v.string(),

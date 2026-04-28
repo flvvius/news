@@ -38,6 +38,35 @@ export type ArticleFactExtractionPromptInput = {
   articles: ArticleFactExtractionInput[];
 };
 
+export type ClaimDivergenceStatus =
+  | "agreement"
+  | "divergence"
+  | "framing"
+  | "exclusive_left"
+  | "exclusive_right"
+  | "exclusive_center";
+
+export type ClaimType =
+  | "quantitative"
+  | "event"
+  | "attribution"
+  | "policy"
+  | "characterization";
+
+export type ClaimAnalysisArticleInput = {
+  title: string;
+  sourceName: string;
+  sourceLean: string;
+  sourceReliability: number;
+  publishedAt: string;
+  atomicFacts: string[];
+};
+
+export type ClaimAnalysisPromptInput = {
+  eventTitle: string;
+  articles: ClaimAnalysisArticleInput[];
+};
+
 function trimField(value: string | undefined, maxLength: number): string {
   return (value ?? "").trim().slice(0, maxLength);
 }
@@ -170,6 +199,78 @@ export function buildArticleFactExtractionPrompt(
       "",
       "Articles:",
       articleBlocks,
+    ].join("\n"),
+  };
+}
+
+export function buildClaimAnalysisPrompt(input: ClaimAnalysisPromptInput): {
+  system: string;
+  user: string;
+} {
+  const articleBlocks = input.articles
+    .map((article, index) => {
+      const facts = article.atomicFacts
+        .slice(0, 10)
+        .map((fact, factIndex) => `  [${factIndex}] ${trimField(fact, 260)}`)
+        .join("\n");
+
+      return [
+        `Article ${index}`,
+        `Source: ${article.sourceName}`,
+        `Lean: ${article.sourceLean}`,
+        `Reliability: ${article.sourceReliability}/10`,
+        `PublishedAt: ${article.publishedAt}`,
+        `Title: ${trimField(article.title, 220)}`,
+        `Facts:\n${facts || "  - No atomic facts supplied."}`,
+      ].join("\n");
+    })
+    .join("\n\n---\n\n");
+
+  return {
+    system: [
+      "You are Biviant's claim divergence engine.",
+      "",
+      "Given atomic facts extracted from multiple articles covering the same news event, group facts that refer to the same underlying claim and classify how sources relate.",
+      "",
+      "STATUS DEFINITIONS:",
+      "- agreement: 2 or more sources from 2 or more different lean groups state the same fact with the same values/details.",
+      "- divergence: 2 or more sources state the same underlying claim with materially different values, numbers, dates, attributions, outcomes, or current status.",
+      "- framing: 2 or more sources state the same fact but use materially different language that changes perspective, emphasis, or characterization.",
+      "- exclusive_left: only left or left-center sources report a substantive fact.",
+      "- exclusive_right: only right or right-center sources report a substantive fact.",
+      "- exclusive_center: only center sources report a substantive fact.",
+      "",
+      "CLAIM TYPE DEFINITIONS:",
+      "- quantitative: numbers, money, dates, vote counts, percentages, timelines, casualty counts, or other measurable values.",
+      "- event: concrete occurrence, action, decision, filing, vote, arrest, appointment, meeting, statement release, or outcome.",
+      "- attribution: who said, alleged, accused, reported, confirmed, denied, ordered, or promised something.",
+      "- policy: laws, regulations, executive actions, court orders, program rules, institutional policies, or implementation effects.",
+      "- characterization: descriptive labels or assessments such as peaceful/violent, legal/illegal, historic/routine, or success/failure.",
+      "",
+      "RULES:",
+      "- A claim must be supported by at least one atomic fact from the input. Do not invent claims.",
+      "- Each variant must reference the exact articleIndex and factIndex of an input atomic fact that supports it.",
+      "- Cluster facts by their underlying assertion, not by surface wording.",
+      "- Quantitative claims with different values are divergence, not framing.",
+      "- Different dates, attributions, outcomes, or current status are divergence, not framing.",
+      "- Trivial wording differences, synonyms, and sentence structure differences are agreement, not framing.",
+      "- Do not classify a claim as agreement unless it has support from at least 2 distinct sources.",
+      "- Do not classify a claim as divergence or framing unless it has at least 2 variants from distinct sources.",
+      "- Do not reference a factIndex unless that atomic fact directly supports the canonical claim.",
+      "- Do not mention URLs or article indexes in the canonical statement.",
+      "- Importance rates how central the claim is to the news event, 1-5. Most events have 3-8 importance-3-or-higher claims.",
+      "- Confidence is your certainty in the grouping and classification, 0-1. Lower it when facts are sparse or ambiguous.",
+      "",
+      "OUTPUT:",
+      "- Return only JSON matching the schema. No prose, markdown, or code fences.",
+    ].join("\n"),
+    user: [
+      `Event: ${input.eventTitle}`,
+      "",
+      `Articles (${input.articles.length}):`,
+      articleBlocks,
+      "",
+      "Analyze claims across all articles and return the most important grouped claims per the schema.",
     ].join("\n"),
   };
 }

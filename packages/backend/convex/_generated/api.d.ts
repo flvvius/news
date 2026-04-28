@@ -10,6 +10,8 @@
 
 import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
+import type * as claimDivergence from "../claimDivergence.js";
+import type * as claimDivergenceNode from "../claimDivergenceNode.js";
 import type * as clustering from "../clustering.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
@@ -48,6 +50,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiBudget: typeof aiBudget;
   auth: typeof auth;
+  claimDivergence: typeof claimDivergence;
+  claimDivergenceNode: typeof claimDivergenceNode;
   clustering: typeof clustering;
   config: typeof config;
   crons: typeof crons;
