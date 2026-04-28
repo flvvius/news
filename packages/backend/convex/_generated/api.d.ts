@@ -37,6 +37,7 @@ import type * as prompts from "../prompts.js";
 import type * as seeds from "../seeds.js";
 import type * as shareAssets from "../shareAssets.js";
 import type * as shareAssetsNode from "../shareAssetsNode.js";
+import type * as sources from "../sources.js";
 import type * as summarization from "../summarization.js";
 import type * as summarizationNode from "../summarizationNode.js";
 import type * as topicCatalog from "../topicCatalog.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   seeds: typeof seeds;
   shareAssets: typeof shareAssets;
   shareAssetsNode: typeof shareAssetsNode;
+  sources: typeof sources;
   summarization: typeof summarization;
   summarizationNode: typeof summarizationNode;
   topicCatalog: typeof topicCatalog;

@@ -3,7 +3,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { usePaginatedQuery, useQuery } from "convex/react";
-import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  FilterIcon,
+  TrendingUpIcon,
+  XIcon,
+} from "lucide-react";
 import EarlyAccessRequired from "@/components/early-access-required";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
@@ -280,6 +287,7 @@ function FeedContent() {
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
+  const [feedSort, setFeedSort] = useState<"recent" | "trending">("recent");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -339,7 +347,9 @@ function FeedContent() {
     loadMore,
   } = usePaginatedQuery(
     api.events.getPublishedEvents,
-    selectedTopic === "all" ? {} : { topicId: selectedTopic },
+    selectedTopic === "all"
+      ? { sort: feedSort }
+      : { topicId: selectedTopic, sort: feedSort },
     { initialNumItems: pageSize },
   );
   const isSearching = debouncedSearch.length >= 2;
@@ -476,6 +486,47 @@ function FeedContent() {
                     />
                   </div>
                 </div>
+                {!isSearching && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+                    <div className="inline-grid h-9 grid-cols-2 rounded-full bg-muted/70 p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 rounded-full px-3 text-xs",
+                          feedSort === "recent" &&
+                            "bg-background text-foreground shadow-sm",
+                        )}
+                        onClick={() => setFeedSort("recent")}
+                        aria-pressed={feedSort === "recent"}
+                      >
+                        <ClockIcon className="size-3.5" />
+                        Recent
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 rounded-full px-3 text-xs",
+                          feedSort === "trending" &&
+                            "bg-background text-foreground shadow-sm",
+                        )}
+                        onClick={() => setFeedSort("trending")}
+                        aria-pressed={feedSort === "trending"}
+                      >
+                        <TrendingUpIcon className="size-3.5" />
+                        Trending
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {feedSort === "recent"
+                        ? "Newest published events first."
+                        : "Ranked by source diversity, article volume, and recency."}
+                    </p>
+                  </div>
+                )}
                 {shouldShowThresholdHint && (
                   <p className="text-xs text-muted-foreground">
                     Type 2+ characters to search.
@@ -535,10 +586,10 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    Lead Story
+                    {feedSort === "recent" ? "Lead Story" : "Trending Story"}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Featured
+                    {feedSort === "recent" ? "Featured" : "Ranked"}
                   </p>
                 </div>
                 <EventCard
@@ -578,7 +629,11 @@ function FeedContent() {
                     {isSearching ? "More Search Results" : "More Events"}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {isSearching ? "Best matches" : "Latest coverage"}
+                    {isSearching
+                      ? "Best matches"
+                      : feedSort === "recent"
+                        ? "Latest coverage"
+                        : "Ranked coverage"}
                   </p>
                 </div>
                 <div className="grid gap-5">

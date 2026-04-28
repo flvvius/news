@@ -75,6 +75,24 @@ function highlightTitle(title: string, query?: string): ReactNode {
   );
 }
 
+type BiasBucket = "left" | "center" | "right";
+
+function getBiasBucket(source: NonNullable<EventCardProps["event"]["sources"]>[number]): BiasBucket {
+  const category = source.mbfcCategory?.toLowerCase();
+  if (category === "left" || category === "left-center") return "left";
+  if (category === "right" || category === "right-center") return "right";
+  if (category === "center") return "center";
+  if (source.baseBias < 0) return "left";
+  if (source.baseBias > 0) return "right";
+  return "center";
+}
+
+function biasBucketClass(bucket: BiasBucket) {
+  if (bucket === "left") return "bg-bias-left-muted";
+  if (bucket === "right") return "bg-bias-right-muted";
+  return "bg-bias-center";
+}
+
 const EventCard = ({
   event,
   topicNamesById,
@@ -94,6 +112,14 @@ const EventCard = ({
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt);
   const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
+  const biasDistribution = (event.sources ?? []).reduce(
+    (counts, source) => {
+      counts[getBiasBucket(source)]++;
+      return counts;
+    },
+    { left: 0, center: 0, right: 0 } as Record<BiasBucket, number>,
+  );
+  const distributionTotal = Math.max(1, event.sources?.length ?? 0);
 
   return (
     <Link
@@ -191,7 +217,7 @@ const EventCard = ({
           </p>
 
           <div className="border-t border-border/70 pt-4">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 {event.sources && event.sources.length > 0 && (
                   <div className="flex -space-x-3">
@@ -227,6 +253,37 @@ const EventCard = ({
                   </p>
                 </div>
               </div>
+
+              {(event.sources?.length ?? 0) > 0 && (
+                <div className="space-y-1.5">
+                  <div
+                    className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"
+                    aria-label={`Source bias distribution: ${biasDistribution.left} left, ${biasDistribution.center} center, ${biasDistribution.right} right`}
+                    role="img"
+                  >
+                    {(["left", "center", "right"] as BiasBucket[]).map(
+                      (bucket) => {
+                        const count = biasDistribution[bucket];
+                        if (count === 0) return null;
+                        return (
+                          <div
+                            key={bucket}
+                            className={biasBucketClass(bucket)}
+                            style={{
+                              width: `${(count / distributionTotal) * 100}%`,
+                            }}
+                          />
+                        );
+                      },
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>{biasDistribution.left} left</span>
+                    <span>{biasDistribution.center} center</span>
+                    <span>{biasDistribution.right} right</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

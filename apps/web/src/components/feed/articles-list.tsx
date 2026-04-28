@@ -1,4 +1,5 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,13 +30,20 @@ type ArticlesListProps = {
   articles: Article[];
 };
 
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
 const ArticlesList = ({ articles }: ArticlesListProps) => {
   // Single subscription for the whole list — passed down to each BiasIndicator
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
-  const thresholds =
-    (thresholdsConfig?.value as number[] | undefined) ?? undefined;
+  const thresholdsValue = thresholdsConfig?.value;
+  const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
 
   return (
     <Card className="overflow-hidden border-border/80 py-0">
@@ -73,7 +81,12 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                   <div className="flex flex-wrap items-center gap-3">
                     {article.source && (
                       <>
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background">
+                        <Link
+                          to="/source/$sourceId"
+                          params={{ sourceId: article.source._id }}
+                          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
+                          aria-label={`View ${article.source.name} source profile`}
+                        >
                           {article.source.logoUrl ? (
                             <img
                               src={article.source.logoUrl}
@@ -85,11 +98,15 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                               {article.source.name.charAt(0)}
                             </span>
                           )}
-                        </div>
+                        </Link>
                         <div className="flex min-w-0 flex-wrap items-center gap-3">
-                          <span className="text-sm font-medium text-card-foreground">
+                          <Link
+                            to="/source/$sourceId"
+                            params={{ sourceId: article.source._id }}
+                            className="text-sm font-medium text-card-foreground hover:underline"
+                          >
                             {article.source.name}
-                          </span>
+                          </Link>
                           <BiasIndicator
                             bias={article.source.baseBias}
                             size="sm"

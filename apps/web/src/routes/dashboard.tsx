@@ -277,9 +277,9 @@ function AuthenticatedDashboard() {
                 >
                   Sign out
                 </Button>
-                <Link to="/">
-                  <Button variant="ghost">Back to homepage</Button>
-                </Link>
+                <Button asChild variant="ghost">
+                  <Link to="/">Back to homepage</Link>
+                </Button>
               </CardContent>
             </Card>
 
