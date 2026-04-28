@@ -57,6 +57,15 @@ const BLOCKED_PAGE_PATTERNS = [
 
 const nlp = winkNLP(model);
 const its = nlp.its;
+
+type NormalizedEntityCandidate = {
+  value: string;
+  wasAllUppercase: boolean;
+};
+
+interface TokenLike {
+  out(method?: unknown): string;
+}
 const ENTITY_MAX_TEXT_CHARS = 6000;
 const ENTITY_MAX_COUNT = 32;
 const ENTITY_NOISE_TERMS = new Set([
@@ -168,23 +177,34 @@ function buildEmbeddingText(title: string, bodyText: string, rssSnippet: string)
   return parts.join("\n\n").slice(0, MAX_EMBEDDING_CHARS);
 }
 
-function normalizeEntityCandidate(value: string): string {
-  let entity = normalizeWhitespace(value)
-    .replace(/^[^A-Za-z0-9$]+|[^A-Za-z0-9%]+$/g, "")
-    .toLowerCase();
+function normalizeEntityCandidate(value: string): NormalizedEntityCandidate {
+  const cleaned = normalizeWhitespace(value).replace(
+    /^[^A-Za-z0-9$]+|[^A-Za-z0-9%]+$/g,
+    "",
+  );
+  const letters = cleaned.match(/[A-Za-z]/g) ?? [];
+  const wasAllUppercase =
+    letters.length > 0 &&
+    letters.every((letter) => letter === letter.toUpperCase());
+  let entity = cleaned.toLowerCase();
 
   for (const prefix of ENTITY_ROLE_PREFIXES) {
-    if (entity === prefix) return "";
+    if (entity === prefix) return { value: "", wasAllUppercase };
     if (entity.startsWith(`${prefix} `)) {
       entity = entity.slice(prefix.length + 1).trim();
       break;
     }
   }
 
-  return entity;
+  return { value: entity, wasAllUppercase };
 }
 
-function isUsefulEntityCandidate(entity: string, count: number, titleEntities: Set<string>): boolean {
+function isUsefulEntityCandidate(
+  entity: string,
+  count: number,
+  titleEntities: Set<string>,
+  allUppercaseEntities: Set<string>,
+): boolean {
   if (entity.length < 3 || entity.length > 80) return false;
   if (!/[a-z0-9]/.test(entity)) return false;
   if (/^(?:[a-z]\s*)+$/.test(entity)) return false;
@@ -195,7 +215,12 @@ function isUsefulEntityCandidate(entity: string, count: number, titleEntities: S
   if (ENTITY_NOISE_TERMS.has(entity)) return false;
 
   if (words.length === 1) {
-    return titleEntities.has(entity) || count > 1 || /^[a-z]{2,6}$/.test(entity.toLowerCase()) && entity.toUpperCase() === entity;
+    return (
+      titleEntities.has(entity) ||
+      count > 1 ||
+      (/^[a-z]{2,6}$/.test(entity.toLowerCase()) &&
+        allUppercaseEntities.has(entity))
+    );
   }
 
   return true;
@@ -204,7 +229,7 @@ function isUsefulEntityCandidate(entity: string, count: number, titleEntities: S
 function addNumericEntities(text: string, scores: Map<string, number>, weight: number) {
   const numericMatches = text.match(NUMERIC_ENTITY_PATTERN) ?? [];
   for (const match of numericMatches) {
-    const normalized = normalizeEntityCandidate(match);
+    const normalized = normalizeEntityCandidate(match).value;
     if (normalized.length >= 2) {
       scores.set(normalized, (scores.get(normalized) ?? 0) + weight);
     }
@@ -215,12 +240,13 @@ function collectProperNounCandidates(
   text: string,
   scores: Map<string, number>,
   titleEntities: Set<string>,
+  allUppercaseEntities: Set<string>,
   weight: number,
 ) {
   const doc = nlp.readDoc(text.slice(0, ENTITY_MAX_TEXT_CHARS));
   const tokens: Array<{ value: string; normal: string; pos: string; type: string }> = [];
 
-  doc.tokens().each((token: any) => {
+  doc.tokens().each((token: TokenLike) => {
     tokens.push({
       value: token.out(),
       normal: token.out(its.normal),
@@ -233,9 +259,10 @@ function collectProperNounCandidates(
   const flush = () => {
     if (phrase.length === 0) return;
     const normalized = normalizeEntityCandidate(phrase.join(" "));
-    if (normalized) {
-      scores.set(normalized, (scores.get(normalized) ?? 0) + weight);
-      if (weight >= 3) titleEntities.add(normalized);
+    if (normalized.value) {
+      scores.set(normalized.value, (scores.get(normalized.value) ?? 0) + weight);
+      if (normalized.wasAllUppercase) allUppercaseEntities.add(normalized.value);
+      if (weight >= 3) titleEntities.add(normalized.value);
     }
     phrase = [];
   };
@@ -253,21 +280,34 @@ function collectProperNounCandidates(
 function extractEntityCandidates(title: string, ...texts: string[]): string[] {
   const scores = new Map<string, number>();
   const titleEntities = new Set<string>();
+  const allUppercaseEntities = new Set<string>();
   const cleanedTitle = stripTags(title);
 
-  collectProperNounCandidates(cleanedTitle, scores, titleEntities, 3);
+  collectProperNounCandidates(
+    cleanedTitle,
+    scores,
+    titleEntities,
+    allUppercaseEntities,
+    3,
+  );
   addNumericEntities(cleanedTitle, scores, 3);
 
   for (const rawText of texts) {
     const text = stripTags(rawText);
     if (!text) continue;
-    collectProperNounCandidates(text, scores, titleEntities, 1);
+    collectProperNounCandidates(
+      text,
+      scores,
+      titleEntities,
+      allUppercaseEntities,
+      1,
+    );
     addNumericEntities(text, scores, 1);
   }
 
   return Array.from(scores.entries())
     .filter(([entity, score]) =>
-      isUsefulEntityCandidate(entity, score, titleEntities),
+      isUsefulEntityCandidate(entity, score, titleEntities, allUppercaseEntities),
     )
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([entity]) => entity)

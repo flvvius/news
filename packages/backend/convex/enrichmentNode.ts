@@ -16,6 +16,7 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { ActionCtx } from "./_generated/server";
 import { getOpenAI, shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
 import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
@@ -234,7 +235,7 @@ function parseAtomicFactsResponse(
 }
 
 async function extractAtomicFactsForArticles(
-  ctx: any,
+  ctx: ActionCtx,
   articles: PreparedArticle[],
   settings: FactExtractionSettings,
 ): Promise<Map<string, string[]>> {

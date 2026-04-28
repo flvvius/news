@@ -135,6 +135,7 @@ export default defineSchema({
     lastError: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
+    .index("by_event_updatedAt", ["eventId", "updatedAt"])
     .index("by_status_next_attempt", ["status", "nextAttemptAt"])
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 

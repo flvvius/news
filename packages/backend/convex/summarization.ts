@@ -54,12 +54,11 @@ async function getLatestSummaryJob(
   ctx: QueryCtx | MutationCtx,
   eventId: Id<"events">,
 ) {
-  const jobs = await ctx.db
+  return await ctx.db
     .query("eventSummaryJobs")
-    .withIndex("by_event", (q) => q.eq("eventId", eventId))
-    .collect();
-
-  return jobs.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+    .withIndex("by_event_updatedAt", (q) => q.eq("eventId", eventId))
+    .order("desc")
+    .first();
 }
 
 async function getEventEligibility(
