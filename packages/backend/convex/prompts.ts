@@ -38,6 +38,23 @@ export type ArticleFactExtractionPromptInput = {
   articles: ArticleFactExtractionInput[];
 };
 
+export type ArticleBiasScoringInput = {
+  id: string;
+  title: string;
+  sourceName?: string;
+  sourceLean: string;
+  sourceReliability: number;
+  publishedAt?: string;
+  summary?: string;
+  rssSnippet?: string;
+  bodyText?: string;
+};
+
+export type ArticleBiasScoringPromptInput = {
+  maxInputChars: number;
+  articles: ArticleBiasScoringInput[];
+};
+
 export type ClaimDivergenceStatus =
   | "agreement"
   | "divergence"
@@ -196,6 +213,82 @@ export function buildArticleFactExtractionPrompt(
       `Extract up to ${input.maxFactsPerArticle} atomic facts per article.`,
       "Prefer 3-8 facts when the article has enough concrete information.",
       "Facts should be understandable without reading the original article.",
+      "",
+      "Articles:",
+      articleBlocks,
+    ].join("\n"),
+  };
+}
+
+export function buildArticleBiasScoringPrompt(
+  input: ArticleBiasScoringPromptInput,
+): {
+  system: string;
+  user: string;
+} {
+  const articleBlocks = input.articles
+    .map((article) =>
+      [
+        `id: ${article.id}`,
+        `sourceName: ${article.sourceName ?? "Unknown"}`,
+        `sourceLean: ${article.sourceLean}`,
+        `sourceReliability: ${article.sourceReliability}/10`,
+        article.publishedAt ? `publishedAt: ${article.publishedAt}` : "",
+        `title: ${trimField(article.title, 240)}`,
+        article.summary ? `summary: ${trimField(article.summary, 900)}` : "",
+        article.rssSnippet
+          ? `rssSnippet: ${trimField(article.rssSnippet, 700)}`
+          : "",
+        article.bodyText
+          ? `bodyText: ${trimField(article.bodyText, input.maxInputChars)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n---\n\n");
+
+  return {
+    system: [
+      "You are Biviant's per-article bias scoring engine.",
+      "Score each article on four sub-dimensions. Return only JSON matching the schema.",
+      "",
+      "CORE RULES:",
+      "- Score the article text, not the outlet's reputation. Source lean is context only.",
+      "- Use only supplied article material. Do not infer author intent or facts beyond the text.",
+      "- Treat straight-news attribution as lower opinion, even when quoted sources use partisan language.",
+      "- Rationale must cite specific wording, sourcing, or structure from the article.",
+      "",
+      "POLITICAL LEAN ANCHORS (-5 to +5):",
+      "-5: Strongly left. Frames events through a left-progressive lens, uses left-coded terms such as working class, corporate greed, undocumented immigrants, or highlights mostly left-aligned voices.",
+      "-2: Left-center. Subtle left framing in word choice; often quotes left and center sources.",
+      " 0: Neutral wire-style. Reuters, AP, or BBC straight-news templates. Symmetric attribution and descriptive language.",
+      "+2: Right-center. Subtle right framing in word choice; often quotes right and center sources.",
+      "+5: Strongly right. Frames events through a right-conservative lens, uses right-coded terms such as illegal aliens, elites, radical left, or highlights mostly right-aligned voices.",
+      "",
+      "EMOTIONAL LANGUAGE ANCHORS (0 to 5):",
+      "0: Pure neutral language, such as 'The bill passed 60 to 40.'",
+      "2: Mild evaluative language, such as 'The contentious bill narrowly passed.'",
+      "5: Heavy loaded language, such as 'The disastrous bill was rammed through despite fierce opposition.'",
+      "",
+      "SOURCE DIVERSITY ANCHORS (0 to 5):",
+      "0: Anonymous sources only, or a single named voice.",
+      "2: Two or three sources from one perspective.",
+      "5: Four or more sources spanning multiple political or expert perspectives, with direct quotes.",
+      "",
+      "FACT/OPINION ANCHORS (0 to 5):",
+      "0: Pure reporting: who, what, when, where, and how. Attributed claims only.",
+      "3: Reported with mild interpretive framing.",
+      "5: Op-ed, editorial, analysis, or explicit author judgment.",
+      "",
+      "OUTPUT:",
+      '- Return only JSON with exactly one key: "articles".',
+      "- Each item must include the original id and all four scores.",
+      "- No prose, markdown, or code fences outside the JSON.",
+    ].join("\n"),
+    user: [
+      "Score these articles for per-article bias components.",
+      "Keep each rationale to 1-2 concise sentences and cite article phrasing, sourcing, or structure.",
       "",
       "Articles:",
       articleBlocks,

@@ -30,6 +30,12 @@ export default defineSchema({
     mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
     mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"
     mbfcLastChecked: v.optional(v.number()), // Timestamp of last MBFC lookup
+
+    // Rolling article-level AI bias stats, updated by the daily outlier job.
+    rollingBiasMean: v.optional(v.number()),
+    rollingBiasStddev: v.optional(v.number()),
+    rollingBiasSampleSize: v.optional(v.number()),
+    rollingBiasUpdatedAt: v.optional(v.number()),
   })
     .index("by_domain", ["domain"])
     .index("by_mbfc_last_checked", ["mbfcLastChecked"]),
@@ -239,6 +245,19 @@ export default defineSchema({
 
     // Populated by enrichment pipeline (AI bias detection)
     aiBiasScore: v.optional(v.number()),
+    biasComponents: v.optional(
+      v.object({
+        politicalLean: v.number(),
+        emotionalLanguage: v.number(),
+        sourceDiversity: v.number(),
+        factOpinionRatio: v.number(),
+        rationale: v.string(),
+      }),
+    ),
+    sourceBiasDelta: v.optional(v.number()),
+    sourceBiasOutlierFlag: v.optional(v.boolean()),
+    biasOutlierFlag: v.optional(v.boolean()),
+    biasAnalyzedAt: v.optional(v.number()),
 
     status: v.union(
       v.literal("unprocessed"),
@@ -257,6 +276,7 @@ export default defineSchema({
     .index("by_status_published", ["status", "publishedAt"])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
     .index("by_source", ["sourceId"])
+    .index("by_source_analyzed", ["sourceId", "biasAnalyzedAt"])
     .index("by_published", ["publishedAt"]),
 
   // =========================================================================

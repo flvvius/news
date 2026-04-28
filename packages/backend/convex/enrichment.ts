@@ -11,6 +11,25 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
+function sourceBiasLabel(source: Doc<"sources">): string {
+  const mbfcCategory = source.mbfcCategory?.toLowerCase();
+  if (
+    mbfcCategory === "left" ||
+    mbfcCategory === "left-center" ||
+    mbfcCategory === "center" ||
+    mbfcCategory === "right-center" ||
+    mbfcCategory === "right"
+  ) {
+    return mbfcCategory;
+  }
+  if (source.baseBias === 0) return "center";
+  if (source.baseBias <= -3) return "left";
+  if (source.baseBias < 0) return "left-center";
+  if (source.baseBias >= 3) return "right";
+  if (source.baseBias > 0) return "right-center";
+  return "center";
+}
+
 // ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------
@@ -46,6 +65,8 @@ export const getUnprocessedArticles = internalQuery({
             extractionQuality: article.extractionQuality,
             sourceBaseBias: source.baseBias,
             sourceName: source.name,
+            sourceLean: sourceBiasLabel(source),
+            sourceReliability: source.reliabilityScore,
           };
         }),
       )
@@ -82,6 +103,8 @@ async function toClaimedArticle(
     extractionQuality: article.extractionQuality,
     sourceBaseBias: source.baseBias,
     sourceName: source.name,
+    sourceLean: sourceBiasLabel(source),
+    sourceReliability: source.reliabilityScore,
   };
 }
 
@@ -142,6 +165,7 @@ function articleNeedsReenrichment(
   if (embeddingVersion < targetVersion) return true;
   if ((article.summary ?? "").trim().length < 120) return true;
   if (article.atomicFacts === undefined) return true;
+  if (article.biasAnalyzedAt === undefined) return true;
   if (article.url.includes("news.google.com")) return true;
   if (article.canonicalUrl.includes("news.google.com")) return true;
   return false;
@@ -243,7 +267,19 @@ export const markArticleEnriched = internalMutation({
   args: {
     articleId: v.id("articles"),
     embedding: v.array(v.number()),
-    aiBiasScore: v.number(),
+    aiBiasScore: v.optional(v.number()),
+    biasComponents: v.optional(
+      v.object({
+        politicalLean: v.number(),
+        emotionalLanguage: v.number(),
+        sourceDiversity: v.number(),
+        factOpinionRatio: v.number(),
+        rationale: v.string(),
+      }),
+    ),
+    sourceBiasDelta: v.optional(v.number()),
+    sourceBiasOutlierFlag: v.optional(v.boolean()),
+    biasAnalyzedAt: v.optional(v.number()),
     summary: v.optional(v.string()),
     atomicFacts: v.optional(v.array(v.string())),
     resolvedUrl: v.optional(v.string()),
@@ -272,6 +308,10 @@ export const markArticleEnriched = internalMutation({
       articleId,
       embedding,
       aiBiasScore,
+      biasComponents,
+      sourceBiasDelta,
+      sourceBiasOutlierFlag,
+      biasAnalyzedAt,
       summary,
       atomicFacts,
       resolvedUrl,
@@ -312,7 +352,12 @@ export const markArticleEnriched = internalMutation({
 
     // Update article status & bias score (no embedding on the article itself)
     await ctx.db.patch(articleId, {
-      aiBiasScore,
+      aiBiasScore: aiBiasScore ?? article.aiBiasScore,
+      biasComponents: biasComponents ?? article.biasComponents,
+      sourceBiasDelta: sourceBiasDelta ?? article.sourceBiasDelta,
+      sourceBiasOutlierFlag:
+        sourceBiasOutlierFlag ?? article.sourceBiasOutlierFlag,
+      biasAnalyzedAt: biasAnalyzedAt ?? article.biasAnalyzedAt,
       summary: summary ?? article.summary,
       atomicFacts: atomicFacts ?? article.atomicFacts,
       url: resolvedUrl ?? article.url,

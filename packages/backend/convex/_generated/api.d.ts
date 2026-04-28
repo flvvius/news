@@ -10,6 +10,7 @@
 
 import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
+import type * as bias from "../bias.js";
 import type * as claimDivergence from "../claimDivergence.js";
 import type * as claimDivergenceNode from "../claimDivergenceNode.js";
 import type * as clustering from "../clustering.js";
@@ -51,6 +52,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiBudget: typeof aiBudget;
   auth: typeof auth;
+  bias: typeof bias;
   claimDivergence: typeof claimDivergence;
   claimDivergenceNode: typeof claimDivergenceNode;
   clustering: typeof clustering;

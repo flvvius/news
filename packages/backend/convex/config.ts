@@ -491,6 +491,60 @@ export const seedDefaults = internalMutation({
           "Maximum extracted article text characters sent to the atomic fact extraction prompt per article.",
       },
       {
+        key: "article_bias_detection_enabled",
+        value: true,
+        description:
+          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call.",
+      },
+      {
+        key: "article_bias_detection_model",
+        value: "gpt-4o-mini",
+        description:
+          "OpenAI chat model used for per-article bias component scoring during enrichment.",
+      },
+      {
+        key: "article_bias_detection_max_articles_per_run",
+        value: 20,
+        description:
+          "Maximum number of articles in one enrichment run that receive AI bias component scoring.",
+      },
+      {
+        key: "article_bias_detection_max_input_chars",
+        value: 6000,
+        description:
+          "Maximum extracted article text characters sent to the bias scoring prompt per article.",
+      },
+      {
+        key: "article_bias_source_delta_threshold",
+        value: 2,
+        description:
+          "Absolute difference between article aiBiasScore and source baseBias required to flag source-level bias divergence.",
+      },
+      {
+        key: "article_bias_outlier_window_days",
+        value: 30,
+        description:
+          "Rolling window, in days, used by the daily article bias outlier detection job.",
+      },
+      {
+        key: "article_bias_outlier_min_samples",
+        value: 10,
+        description:
+          "Minimum scored articles required for a source before z-score bias outlier detection runs.",
+      },
+      {
+        key: "article_bias_outlier_stddev_multiplier",
+        value: 2,
+        description:
+          "Standard-deviation multiplier used to flag articles unusually biased for their source.",
+      },
+      {
+        key: "article_bias_outlier_stddev_floor",
+        value: 0.5,
+        description:
+          "Minimum standard deviation used by article bias outlier detection to avoid over-flagging uniform sources.",
+      },
+      {
         key: "claim_analysis_enabled",
         value: true,
         description:

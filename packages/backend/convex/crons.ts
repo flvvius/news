@@ -95,4 +95,16 @@ crons.interval(
   {},
 );
 
+// ---------------------------------------------------------------------------
+// Article Bias Outlier Detection — Daily
+// ---------------------------------------------------------------------------
+// Computes rolling per-source article bias stats and flags articles that are
+// unusually partisan for their outlet.
+crons.daily(
+  "flag-bias-outliers",
+  { hourUTC: 5, minuteUTC: 0 },
+  internal.bias.flagBiasOutliers,
+  {},
+);
+
 export default crons;
