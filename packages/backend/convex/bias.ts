@@ -31,6 +31,20 @@ async function getConfigNumber(
   }
 }
 
+async function isPipelinePaused(ctx: MutationCtx): Promise<boolean> {
+  const row = await ctx.db
+    .query("config")
+    .withIndex("by_key", (q) => q.eq("key", "pipeline_paused"))
+    .unique();
+  if (!row) return false;
+
+  try {
+    return JSON.parse(row.value) === true;
+  } catch {
+    return false;
+  }
+}
+
 function mean(values: number[]): number {
   if (values.length === 0) {
     throw new Error("mean requires non-empty array");
@@ -73,6 +87,17 @@ export const flagBiasOutliers = internalMutation({
     sourceId: v.optional(v.id("sources")),
   },
   handler: async (ctx, args) => {
+    if (await isPipelinePaused(ctx)) {
+      console.log("[bias] Pipeline paused - skipping bias outlier detection");
+      return {
+        sourcesChecked: 0,
+        sourcesUpdated: 0,
+        articlesChecked: 0,
+        articlesFlagged: 0,
+        skipped: true,
+      };
+    }
+
     const [windowDays, minSamples, multiplier, stddevFloor] = await Promise.all(
       [
         getConfigNumber(

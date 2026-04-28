@@ -117,6 +117,24 @@ async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
   return parseDailyLimitUsd(limitConfig);
 }
 
+async function getConfigBoolean(
+  ctx: QueryCtx | MutationCtx,
+  key: string,
+  fallback: boolean,
+): Promise<boolean> {
+  const row = await ctx.db
+    .query("config")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (!row) return fallback;
+
+  try {
+    return JSON.parse(row.value) === true;
+  } catch {
+    return fallback;
+  }
+}
+
 async function getActiveReservationTotal(
   ctx: QueryCtx | MutationCtx,
   now: number,
@@ -210,14 +228,6 @@ export const reserveBudget = internalMutation({
       ),
     );
 
-    const expired = await ctx.db
-      .query("aiBudgetReservations")
-      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
-      .collect();
-    for (const row of expired) {
-      await ctx.db.delete(row._id);
-    }
-
     const since = startOfUtcDay(now);
     const dailyLimitUsd = await getDailyLimitUsd(ctx);
     const todaysUsage = await ctx.db
@@ -270,6 +280,33 @@ export const releaseReservation = internalMutation({
     if (!reservation) return { released: false };
     await ctx.db.delete(reservationId);
     return { released: true };
+  },
+});
+
+export const cleanupExpiredAiBudgetReservations = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { limit }) => {
+    if (await getConfigBoolean(ctx, "pipeline_paused", false)) {
+      console.log(
+        "[aiBudget] Pipeline paused - skipping expired reservation cleanup",
+      );
+      return { deleted: 0, remainingMayExist: false, skipped: true };
+    }
+
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit ?? 100)));
+    const now = Date.now();
+    const expired = await ctx.db
+      .query("aiBudgetReservations")
+      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
+      .take(safeLimit);
+
+    for (const row of expired) {
+      await ctx.db.delete(row._id);
+    }
+
+    return { deleted: expired.length, remainingMayExist: expired.length === safeLimit };
   },
 });
 

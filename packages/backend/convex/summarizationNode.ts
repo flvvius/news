@@ -539,7 +539,7 @@ export const processSummaryJob = internalAction({
           maxAttempts: settings.maxAttempts,
         },
       );
-      if (!failedResult.attemptsExhausted) {
+      if (failedResult.updated && !failedResult.attemptsExhausted) {
         await ctx.scheduler.runAfter(
           retryAfterMs,
           internal.summarizationNode.processSummaryJob,

@@ -94,7 +94,7 @@ async function backfillClaimCoverage(
   let skipped = 0;
 
   for (const event of events) {
-    if (inspected >= limit) break;
+    if (refreshed >= limit) break;
     inspected++;
 
     if (

@@ -107,4 +107,15 @@ crons.daily(
   {},
 );
 
+// ---------------------------------------------------------------------------
+// AI Budget Reservation Cleanup — Hourly
+// ---------------------------------------------------------------------------
+// Deletes expired budget reservations outside the OpenAI-call hot path.
+crons.interval(
+  "cleanup-ai-budget-reservations",
+  { hours: 1 },
+  internal.aiBudget.cleanupExpiredAiBudgetReservations,
+  {},
+);
+
 export default crons;
