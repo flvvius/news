@@ -65,7 +65,9 @@ export default defineSchema({
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
+    lastSummarySignature: v.optional(v.string()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
+    lastClaimAnalysisSignature: v.optional(v.string()),
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
     lastFactualUpdateAt: v.optional(v.number()),
@@ -472,16 +474,21 @@ export default defineSchema({
     date: v.string(), // "YYYY-MM-DD" for daily grouping
     model: v.string(), // "gpt-4o-mini", "text-embedding-3-small"
     operation: v.string(), // "summarize_event", "generate_embedding", "bias_detection"
+    callType: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
     inputTokens: v.number(),
     outputTokens: v.number(),
     costUsd: v.number(), // Pre-calculated
+    latencyMs: v.optional(v.number()),
     timestamp: v.number(),
   })
     .index("by_date", ["date"])
     .index("by_date_model", ["date", "model"])
-    .index("by_operation", ["operation", "date"]),
+    .index("by_operation", ["operation", "date"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_event", ["eventId"])
+    .index("by_callType_timestamp", ["callType", "timestamp"]),
 
   // =========================================================================
   // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)

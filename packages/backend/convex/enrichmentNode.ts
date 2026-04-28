@@ -17,11 +17,11 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
-import { getOpenAI, shutdownPostHog } from "./lib/openai";
+import { shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
 import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
 import { v } from "convex/values";
-import { calculateCost } from "./aiBudget";
+import { callOpenAI } from "./lib/aiCall";
 import {
   buildArticleBiasScoringPrompt,
   buildArticleFactExtractionPrompt,
@@ -189,23 +189,30 @@ type BiasDetectionSettings = {
  * automatically tracked in PostHog LLM Analytics.
  */
 async function generateEmbeddings(
+  ctx: ActionCtx,
   texts: string[],
 ): Promise<{ embeddings: Array<number[] | null>; tokensUsed: number }> {
-  const openai = await getOpenAI();
-
-  const response = await openai.embeddings.create({
+  const response = await callOpenAI<
+    Array<{ index: number; embedding: number[] }>
+  >({
+    kind: "embedding",
     model: EMBEDDING_MODEL,
     input: texts,
     dimensions: EMBEDDING_DIMENSIONS,
+    context: { callType: "embedding" },
+    runtime: ctx,
   });
+  if (!response.result) {
+    throw new Error(response.error ?? "Embedding generation failed");
+  }
 
   // Map back to input order
   const embeddings: Array<number[] | null> = new Array(texts.length).fill(null);
-  for (const item of response.data) {
+  for (const item of response.result) {
     embeddings[item.index] = item.embedding;
   }
 
-  return { embeddings, tokensUsed: response.usage.total_tokens };
+  return { embeddings, tokensUsed: response.usage.inputTokens };
 }
 
 function safeInteger(
@@ -456,24 +463,27 @@ async function scoreBiasForArticles(
   });
 
   try {
-    const openai = await getOpenAI();
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI<string>({
+      kind: "chat",
       model: settings.model,
       temperature: 0,
-      max_tokens: Math.min(2500, 220 + selectedArticles.length * 120),
-      response_format: {
+      maxTokens: Math.min(2500, 220 + selectedArticles.length * 120),
+      responseFormat: {
         type: "json_schema",
         json_schema: ARTICLE_BIAS_JSON_SCHEMA,
       },
+      parseJson: false,
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
       ],
+      context: { callType: "bias_scoring" },
+      runtime: ctx,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.result;
     if (!content) {
-      throw new Error("Bias scoring returned an empty response");
+      throw new Error(response.error ?? "Bias scoring returned an empty response");
     }
 
     const results = parseBiasScoringResponse(
@@ -482,21 +492,8 @@ async function scoreBiasForArticles(
       settings.sourceDeltaThreshold,
     );
 
-    const inputTokens = response.usage?.prompt_tokens ?? 0;
-    const outputTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
-    const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
-      model: settings.model,
-      operation: "score_article_bias",
-      inputTokens,
-      outputTokens,
-      costUsd,
-    });
-    if (!usage.allowed) {
-      console.warn(
-        `[enrichment] Article bias usage log rejected because budget would be exceeded ($${usage.spentUsd}/$${usage.dailyLimitUsd})`,
-      );
-    }
+    const inputTokens = response.usage.inputTokens;
+    const outputTokens = response.usage.outputTokens;
 
     console.log(
       `[enrichment] Scored bias for ${results.size}/${selectedArticles.length} articles (${inputTokens}/${outputTokens} tokens)`,
@@ -552,27 +549,30 @@ async function extractAtomicFactsForArticles(
   });
 
   try {
-    const openai = await getOpenAI();
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI<string>({
+      kind: "chat",
       model: settings.model,
       temperature: 0,
-      max_tokens: Math.min(
+      maxTokens: Math.min(
         3000,
         250 + selectedArticles.length * settings.maxFactsPerArticle * 32,
       ),
-      response_format: {
+      responseFormat: {
         type: "json_schema",
         json_schema: ARTICLE_FACTS_JSON_SCHEMA,
       },
+      parseJson: false,
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
       ],
+      context: { callType: "fact_extraction" },
+      runtime: ctx,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.result;
     if (!content) {
-      throw new Error("Fact extraction returned an empty response");
+      throw new Error(response.error ?? "Fact extraction returned an empty response");
     }
 
     const factsByArticleId = parseAtomicFactsResponse(
@@ -581,21 +581,8 @@ async function extractAtomicFactsForArticles(
       settings.maxFactsPerArticle,
     );
 
-    const inputTokens = response.usage?.prompt_tokens ?? 0;
-    const outputTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
-    const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
-      model: settings.model,
-      operation: "extract_atomic_facts",
-      inputTokens,
-      outputTokens,
-      costUsd,
-    });
-    if (!usage.allowed) {
-      console.warn(
-        `[enrichment] Atomic fact usage log rejected because budget would be exceeded ($${usage.spentUsd}/$${usage.dailyLimitUsd})`,
-      );
-    }
+    const inputTokens = response.usage.inputTokens;
+    const outputTokens = response.usage.outputTokens;
 
     const factCount = Array.from(factsByArticleId.values()).reduce(
       (sum, facts) => sum + facts.length,
@@ -702,25 +689,11 @@ async function runEnrichmentBatch(
   ).length;
 
   try {
-    const { embeddings, tokensUsed } = await generateEmbeddings(texts);
+    const { embeddings, tokensUsed } = await generateEmbeddings(ctx, texts);
 
     console.log(
       `[enrichment] Generated embeddings, ${tokensUsed} tokens used (${extractedCount}/${articles.length} extracted, ${fetchSuccessCount}/${articles.length} fetches succeeded, ${resolvedUrlCount}/${articles.length} URLs resolved)`,
     );
-
-    const cost = calculateCost(EMBEDDING_MODEL, tokensUsed, 0);
-    const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
-      model: EMBEDDING_MODEL,
-      operation: "generate_embedding",
-      inputTokens: tokensUsed,
-      outputTokens: 0,
-      costUsd: cost,
-    });
-    if (!usage.allowed) {
-      console.warn(
-        `[enrichment] AI budget would be exceeded by this run ($${usage.spentUsd}/$${usage.dailyLimitUsd}); usage was not recorded.`,
-      );
-    }
 
     const factConfig = await ctx.runQuery(internal.config.getBatch, {
       keys: [

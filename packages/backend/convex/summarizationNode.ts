@@ -1,11 +1,11 @@
 "use node";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getOpenAI, shutdownPostHog } from "./lib/openai";
-import { calculateCost } from "./aiBudget";
+import { shutdownPostHog } from "./lib/openai";
+import { callOpenAI } from "./lib/aiCall";
 import {
   buildEventSummaryPrompt,
   type EventSummaryOutput,
@@ -132,6 +132,40 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
     }
   }
   return violations;
+}
+
+function buildSummarySignature(input: {
+  event: { _id: string; title: string };
+  articles: Array<{
+    _id: string;
+    canonicalUrl: string;
+    publishedAt: number;
+    summary?: string;
+    rssSnippet?: string;
+    atomicFacts: string[];
+    source?: { _id: string; baseBias: number; reliabilityScore: number } | null;
+  }>;
+}): string {
+  const payload = {
+    eventId: input.event._id,
+    title: input.event.title,
+    articles: input.articles
+      .map((article) => ({
+        id: article._id,
+        canonicalUrl: article.canonicalUrl,
+        publishedAt: article.publishedAt,
+        sourceId: article.source?._id ?? null,
+        sourceBaseBias: article.source?.baseBias ?? null,
+        sourceReliability: article.source?.reliabilityScore ?? null,
+        summary: article.summary ?? "",
+        rssSnippet: article.rssSnippet ?? "",
+        atomicFacts: article.atomicFacts,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(payload))
+    .digest("hex");
 }
 
 function retryDelayMs(attempts: number): number {
@@ -281,6 +315,19 @@ export const summarizeQueuedEvents = internalAction({
         }
 
         try {
+          const summarySignature = buildSummarySignature(input);
+          if (input.event.lastSummarySignature === summarySignature) {
+            await ctx.runMutation(internal.summarization.markSummaryJobSkipped, {
+              jobId: job._id,
+              runId,
+              reason: "no_change_since_last_run",
+              eventId: input.event._id,
+              summarySignature,
+            });
+            skipped++;
+            continue;
+          }
+
           const prompt = buildEventSummaryPrompt({
             eventTitle: input.event.title,
             articles: input.articles.map((article) => ({
@@ -296,21 +343,22 @@ export const summarizeQueuedEvents = internalAction({
             })),
           });
 
-          const openai = await getOpenAI();
           let summary: EventSummaryOutput | null = null;
           let inputTokens = 0;
           let outputTokens = 0;
           let retryInstruction: string | null = null;
 
           for (let attempt = 0; attempt < 2; attempt++) {
-            const response = await openai.chat.completions.create({
+            const response = await callOpenAI<string>({
+              kind: "chat",
               model: settings.model,
               temperature: 0.2,
-              max_tokens: 900,
-              response_format: {
+              maxTokens: 900,
+              responseFormat: {
                 type: "json_schema",
                 json_schema: EVENT_SUMMARY_JSON_SCHEMA,
               },
+              parseJson: false,
               messages: [
                 { role: "system", content: prompt.system },
                 { role: "user", content: prompt.user },
@@ -318,14 +366,21 @@ export const summarizeQueuedEvents = internalAction({
                   ? [{ role: "user" as const, content: retryInstruction }]
                   : []),
               ],
+              context: {
+                callType: "event_summary",
+                eventId: input.event._id,
+              },
+              runtime: ctx,
             });
 
-            inputTokens += response.usage?.prompt_tokens ?? 0;
-            outputTokens += response.usage?.completion_tokens ?? 0;
+            inputTokens += response.usage.inputTokens;
+            outputTokens += response.usage.outputTokens;
 
-            const content = response.choices[0]?.message?.content;
+            const content = response.result;
             if (!content) {
-              throw new Error("Model returned an empty summary response");
+              throw new Error(
+                response.error ?? "Model returned an empty summary response",
+              );
             }
 
             const candidate = parseSummaryOutput(content, input.event.title);
@@ -352,21 +407,6 @@ export const summarizeQueuedEvents = internalAction({
             throw new Error("Model did not produce a usable event summary");
           }
 
-          const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
-          const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
-            model: settings.model,
-            operation: "summarize_event",
-            inputTokens,
-            outputTokens,
-            costUsd,
-            eventId: input.event._id,
-          });
-          if (!usage.allowed) {
-            console.warn(
-              `[summarization] Usage log rejected because budget would be exceeded ($${usage.spentUsd}/$${usage.dailyLimitUsd})`,
-            );
-          }
-
           const result = await ctx.runMutation(
             internal.summarization.applyEventSummaryResult,
             {
@@ -377,6 +417,7 @@ export const summarizeQueuedEvents = internalAction({
               left: summary.left,
               right: summary.right,
               globalImpact: summary.globalImpact,
+              summarySignature,
             },
           );
 

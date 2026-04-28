@@ -1,12 +1,13 @@
 "use node";
 
+import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
-import { getOpenAI, shutdownPostHog } from "./lib/openai";
-import { calculateCost } from "./aiBudget";
+import { shutdownPostHog } from "./lib/openai";
+import { callOpenAI } from "./lib/aiCall";
 import {
   buildClaimAnalysisPrompt,
   type ClaimDivergenceStatus,
@@ -127,6 +128,7 @@ type ClaimAnalysisInput = {
   event: {
     _id: Id<"events">;
     title: string;
+    lastClaimAnalysisSignature?: string;
   };
   articles: ClaimAnalysisArticle[];
 };
@@ -392,15 +394,35 @@ function sanitizeClaims(
     .slice(0, maxClaims);
 }
 
-function parseClaimResponse(raw: string): ParsedClaimResponse {
-  const parsed = JSON.parse(raw) as unknown;
+function parseClaimResponse(raw: unknown): ParsedClaimResponse {
+  const parsed = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { claims?: unknown }).claims)) {
     throw new Error("Model returned an invalid claim response shape");
   }
   return parsed as ParsedClaimResponse;
 }
 
+function buildClaimAnalysisSignature(input: ClaimAnalysisInput): string {
+  const payload = {
+    eventId: input.event._id,
+    title: input.event.title,
+    articles: input.articles
+      .map((article) => ({
+        id: article._id,
+        sourceId: article.sourceId,
+        sourceLean: article.sourceLean,
+        publishedAt: article.publishedAt,
+        atomicFacts: article.atomicFacts,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(payload))
+    .digest("hex");
+}
+
 async function detectEventClaimsForInput(
+  ctx: ActionCtx,
   input: ClaimAnalysisInput,
   settings: {
     model: string;
@@ -411,6 +433,7 @@ async function detectEventClaimsForInput(
   claims: StoredClaim[];
   inputTokens: number;
   outputTokens: number;
+  costUsd: number;
 }> {
   const prompt = buildClaimAnalysisPrompt({
     eventTitle: input.event.title,
@@ -424,12 +447,12 @@ async function detectEventClaimsForInput(
     })),
   });
 
-  const openai = await getOpenAI();
-  const response = await openai.chat.completions.create({
+  const response = await callOpenAI<ParsedClaimResponse>({
+    kind: "chat",
     model: settings.model,
     temperature: 0.1,
-    max_tokens: 2200,
-    response_format: {
+    maxTokens: 2200,
+    responseFormat: {
       type: "json_schema",
       json_schema: EVENT_CLAIMS_JSON_SCHEMA,
     },
@@ -437,14 +460,18 @@ async function detectEventClaimsForInput(
       { role: "system", content: prompt.system },
       { role: "user", content: prompt.user },
     ],
+    context: {
+      callType: "claim_divergence",
+      eventId: input.event._id,
+    },
+    runtime: ctx,
   });
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("Model returned an empty claim analysis response");
+  if (!response.result) {
+    throw new Error(response.error ?? "Model returned an empty claim analysis response");
   }
 
-  const parsed = parseClaimResponse(content);
+  const parsed = parseClaimResponse(response.result);
   return {
     claims: sanitizeClaims(
       parsed.claims,
@@ -452,8 +479,9 @@ async function detectEventClaimsForInput(
       settings.maxClaims,
       settings.minConfidence,
     ),
-    inputTokens: response.usage?.prompt_tokens ?? 0,
-    outputTokens: response.usage?.completion_tokens ?? 0,
+    inputTokens: response.usage.inputTokens,
+    outputTokens: response.usage.outputTokens,
+    costUsd: response.usage.costUsd,
   };
 }
 
@@ -551,30 +579,27 @@ async function detectEventClaimsForEvent(
   }
 
   try {
-    const { claims, inputTokens, outputTokens } =
-      await detectEventClaimsForInput(input, settings);
-
-    const costUsd = calculateCost(settings.model, inputTokens, outputTokens);
-    const usage = await ctx.runMutation(internal.aiBudget.logUsage, {
-      model: settings.model,
-      operation: "analyze_event_claims",
-      inputTokens,
-      outputTokens,
-      costUsd,
-      eventId: input.event._id,
-    });
-
-    if (!usage.allowed) {
-      console.warn(
-        `[claimDivergence] Usage log rejected because budget would be exceeded ($${usage.spentUsd}/$${usage.dailyLimitUsd})`,
+    const analysisSignature = buildClaimAnalysisSignature(input);
+    if (input.event.lastClaimAnalysisSignature === analysisSignature) {
+      await ctx.runMutation(
+        internal.claimDivergence.markEventClaimAnalysisSkipped,
+        {
+          eventId: input.event._id,
+          analysisSignature,
+        },
       );
+      return { skipped: true as const, reason: "no_change_since_last_run" };
     }
+
+    const { claims, inputTokens, outputTokens, costUsd } =
+      await detectEventClaimsForInput(ctx, input, settings);
 
     const result = await ctx.runMutation(
       internal.claimDivergence.replaceEventClaims,
       {
         eventId: input.event._id,
         claims,
+        analysisSignature,
       },
     );
 

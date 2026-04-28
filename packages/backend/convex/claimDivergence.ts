@@ -179,6 +179,7 @@ export const getClaimAnalysisInput = internalQuery({
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,
         lastClaimAnalysisAt: event.lastClaimAnalysisAt,
+        lastClaimAnalysisSignature: event.lastClaimAnalysisSignature,
       },
       articleCount: factualArticles.length,
       sourceCount: sourceIds.length,
@@ -206,6 +207,7 @@ export const replaceEventClaims = internalMutation({
   args: {
     eventId: v.id("events"),
     claims: v.array(CLAIM_INPUT_VALIDATOR),
+    analysisSignature: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -238,8 +240,11 @@ export const replaceEventClaims = internalMutation({
       });
     }
 
+    const event = await ctx.db.get(args.eventId);
     await ctx.db.patch(args.eventId, {
       lastClaimAnalysisAt: now,
+      lastClaimAnalysisSignature:
+        args.analysisSignature ?? event?.lastClaimAnalysisSignature,
     });
 
     return { replaced: existing.length, inserted: args.claims.length };
@@ -249,10 +254,15 @@ export const replaceEventClaims = internalMutation({
 export const markEventClaimAnalysisSkipped = internalMutation({
   args: {
     eventId: v.id("events"),
+    analysisSignature: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const event = await ctx.db.get(args.eventId);
+    if (!event) return;
     await ctx.db.patch(args.eventId, {
       lastClaimAnalysisAt: Date.now(),
+      lastClaimAnalysisSignature:
+        args.analysisSignature ?? event.lastClaimAnalysisSignature,
     });
   },
 });

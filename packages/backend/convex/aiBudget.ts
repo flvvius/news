@@ -17,6 +17,8 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
 // Cost rates (USD per token) — update when pricing changes.
@@ -28,6 +30,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 const DEFAULT_MODEL_RATES: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini": { input: 0.00000015, output: 0.0000006 },
   "gpt-4o": { input: 0.0000025, output: 0.00001 },
+  "gpt-4.1-nano": { input: 0.0000001, output: 0.0000004 },
   "text-embedding-3-small": { input: 0.00000002, output: 0 },
   "text-embedding-3-large": { input: 0.00000013, output: 0 },
 };
@@ -80,6 +83,7 @@ export function calculateCost(
 
 /** Default daily budget in USD if not configured. */
 const DEFAULT_DAILY_BUDGET_USD = 1.0;
+const SOFT_THRESHOLD = 0.8;
 
 function roundUsd(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -100,6 +104,23 @@ function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
   return DEFAULT_DAILY_BUDGET_USD;
 }
 
+function startOfUtcDay(timestamp: number): number {
+  const date = new Date(timestamp);
+  return Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+  );
+}
+
+async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
+  const limitConfig = await ctx.db
+    .query("config")
+    .withIndex("by_key", (q) => q.eq("key", "ai_daily_budget_usd"))
+    .unique();
+  return parseDailyLimitUsd(limitConfig);
+}
+
 /**
  * Check if today's AI spend is under the daily budget limit.
  * Returns { allowed, spentUsd, remainingUsd, dailyLimitUsd }.
@@ -107,31 +128,42 @@ function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
 export const checkBudget = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const today = new Date().toISOString().split("T")[0]!;
-
-    // Get daily limit from config table
-    const limitConfig = await ctx.db
-      .query("config")
-      .withIndex("by_key", (q) => q.eq("key", "ai_daily_budget_usd"))
-      .unique();
-
-    const dailyLimitUsd = parseDailyLimitUsd(limitConfig);
-
-    // Sum today's spend
-    const todaysUsage = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_date", (q) => q.eq("date", today))
-      .collect();
-
-    const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+    const budget = await getDailyBudgetState(ctx);
 
     return {
-      allowed: spentUsd < dailyLimitUsd,
-      spentUsd: roundUsd(spentUsd),
-      remainingUsd: Math.max(0, dailyLimitUsd - spentUsd),
-      dailyLimitUsd,
+      allowed: budget.withinBudget,
+      spentUsd: budget.spentUsd,
+      remainingUsd: budget.remainingUsd,
+      dailyLimitUsd: budget.dailyLimitUsd,
     };
   },
+});
+
+async function getDailyBudgetState(ctx: QueryCtx) {
+  const now = Date.now();
+  const since = startOfUtcDay(now);
+  const dailyLimitUsd = await getDailyLimitUsd(ctx);
+  const todaysUsage = await ctx.db
+    .query("aiUsage")
+    .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
+    .collect();
+  const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+  const roundedSpent = roundUsd(spentUsd);
+  const remainingUsd = roundUsd(Math.max(0, dailyLimitUsd - spentUsd));
+
+  return {
+    spentUsd: roundedSpent,
+    remainingUsd,
+    dailyLimitUsd,
+    capUsd: dailyLimitUsd,
+    withinBudget: spentUsd < dailyLimitUsd,
+    nearCap: spentUsd >= dailyLimitUsd * SOFT_THRESHOLD,
+  };
+}
+
+export const checkDailyBudget = internalQuery({
+  args: {},
+  handler: async (ctx) => getDailyBudgetState(ctx),
 });
 
 // ---------------------------------------------------------------------------
@@ -149,13 +181,36 @@ export const logUsage = internalMutation({
   args: {
     model: v.string(),
     operation: v.string(),
+    callType: v.optional(v.string()),
     inputTokens: v.number(),
     outputTokens: v.number(),
     costUsd: v.number(),
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
+    latencyMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    return recordUsageInternal(ctx, {
+      ...args,
+      callType: args.callType ?? args.operation,
+    });
+  },
+});
+
+async function recordUsageInternal(
+  ctx: MutationCtx,
+  args: {
+    model: string;
+    operation: string;
+    callType: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    eventId?: Id<"events">;
+    articleId?: Id<"articles">;
+    latencyMs?: number;
+  },
+) {
     if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
       throw new Error("costUsd must be a finite number");
     }
@@ -164,16 +219,11 @@ export const logUsage = internalMutation({
     }
 
     const today = new Date().toISOString().split("T")[0]!;
-
-    const limitConfig = await ctx.db
-      .query("config")
-      .withIndex("by_key", (q) => q.eq("key", "ai_daily_budget_usd"))
-      .unique();
-    const dailyLimitUsd = parseDailyLimitUsd(limitConfig);
+    const dailyLimitUsd = await getDailyLimitUsd(ctx);
 
     const todaysUsage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_date", (q) => q.eq("date", today))
+      .withIndex("by_timestamp", (q) => q.gt("timestamp", startOfUtcDay(Date.now())))
       .collect();
     const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
 
@@ -190,11 +240,13 @@ export const logUsage = internalMutation({
       date: today,
       model: args.model,
       operation: args.operation,
+      callType: args.callType,
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
       costUsd: args.costUsd,
       eventId: args.eventId,
       articleId: args.articleId,
+      latencyMs: args.latencyMs,
       timestamp: Date.now(),
     });
 
@@ -205,7 +257,24 @@ export const logUsage = internalMutation({
       remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd),
       dailyLimitUsd,
     };
+}
+
+export const recordUsage = internalMutation({
+  args: {
+    callType: v.string(),
+    model: v.string(),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    costUsd: v.number(),
+    eventId: v.optional(v.id("events")),
+    articleId: v.optional(v.id("articles")),
+    latencyMs: v.optional(v.number()),
   },
+  handler: async (ctx, args) =>
+    recordUsageInternal(ctx, {
+      ...args,
+      operation: args.callType,
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -220,34 +289,41 @@ export const getTodaysUsage = internalQuery({
   args: {},
   handler: async (ctx) => {
     const today = new Date().toISOString().split("T")[0]!;
+    const since = startOfUtcDay(Date.now());
     const usage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_date", (q) => q.eq("date", today))
+      .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
       .collect();
 
-    // Group by model
-    const byModel: Record<
-      string,
-      {
-        calls: number;
-        inputTokens: number;
-        outputTokens: number;
-        costUsd: number;
-      }
-    > = {};
+    type UsageGroup = {
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+      latencyMs: number;
+    };
+    const byModel: Record<string, UsageGroup> = {};
+    const byCallType: Record<string, UsageGroup> = {};
 
-    for (const row of usage) {
-      const existing = byModel[row.model] ?? {
+    function addUsage(group: Record<string, UsageGroup>, key: string, row: typeof usage[number]) {
+      const existing = group[key] ?? {
         calls: 0,
         inputTokens: 0,
         outputTokens: 0,
         costUsd: 0,
+        latencyMs: 0,
       };
       existing.calls++;
       existing.inputTokens += row.inputTokens;
       existing.outputTokens += row.outputTokens;
       existing.costUsd += row.costUsd;
-      byModel[row.model] = existing;
+      existing.latencyMs += row.latencyMs ?? 0;
+      group[key] = existing;
+    }
+
+    for (const row of usage) {
+      addUsage(byModel, row.model, row);
+      addUsage(byCallType, row.callType ?? row.operation, row);
     }
 
     const totalCostUsd = usage.reduce((sum, r) => sum + r.costUsd, 0);
@@ -257,6 +333,7 @@ export const getTodaysUsage = internalQuery({
       totalCalls: usage.length,
       totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
       byModel,
+      byCallType,
     };
   },
 });

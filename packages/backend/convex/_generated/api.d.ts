@@ -25,6 +25,7 @@ import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as ingestion from "../ingestion.js";
 import type * as interactions from "../interactions.js";
+import type * as lib_aiCall from "../lib/aiCall.js";
 import type * as lib_articleExtraction from "../lib/articleExtraction.js";
 import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   ingestion: typeof ingestion;
   interactions: typeof interactions;
+  "lib/aiCall": typeof lib_aiCall;
   "lib/articleExtraction": typeof lib_articleExtraction;
   "lib/betaAccess": typeof lib_betaAccess;
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;

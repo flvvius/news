@@ -312,6 +312,7 @@ export const getEventSummaryInput = internalQuery({
         slug: event.slug,
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,
+        lastSummarySignature: event.lastSummarySignature,
       },
       articleCount: articles.length,
       sourceCount: eligibility.sourceCount,
@@ -350,10 +351,11 @@ export const applyEventSummaryResult = internalMutation({
     left: v.string(),
     right: v.string(),
     globalImpact: v.string(),
+    summarySignature: v.optional(v.string()),
   },
   handler: async (
     ctx,
-    { jobId, eventId, runId, center, left, right, globalImpact },
+    { jobId, eventId, runId, center, left, right, globalImpact, summarySignature },
   ) => {
     const job = await ctx.db.get(jobId);
     if (
@@ -385,6 +387,7 @@ export const applyEventSummaryResult = internalMutation({
       },
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),
+      lastSummarySignature: summarySignature ?? event.lastSummarySignature,
     });
 
     await ctx.db.patch(jobId, {
@@ -450,8 +453,10 @@ export const markSummaryJobSkipped = internalMutation({
     jobId: v.id("eventSummaryJobs"),
     runId: v.string(),
     reason: v.string(),
+    eventId: v.optional(v.id("events")),
+    summarySignature: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, runId, reason }) => {
+  handler: async (ctx, { jobId, runId, reason, eventId, summarySignature }) => {
     const job = await ctx.db.get(jobId);
     if (
       !job ||
@@ -459,6 +464,20 @@ export const markSummaryJobSkipped = internalMutation({
       job.processingRunId !== runId
     ) {
       return { updated: false as const };
+    }
+
+    if (
+      eventId &&
+      job.eventId === eventId &&
+      reason === "no_change_since_last_run"
+    ) {
+      const event = await ctx.db.get(eventId);
+      if (event) {
+        await ctx.db.patch(eventId, {
+          lastSummarizedAt: Date.now(),
+          lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+        });
+      }
     }
 
     await ctx.db.patch(jobId, {
