@@ -1,0 +1,152 @@
+import { v } from "convex/values";
+import { query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import { requireBetaAccess } from "./lib/betaAccess";
+import type { Doc, Id } from "./_generated/dataModel";
+
+function sourceBiasLabel(source: Doc<"sources">): string {
+  const mbfcCategory = source.mbfcCategory?.toLowerCase();
+  if (
+    mbfcCategory === "left" ||
+    mbfcCategory === "left-center" ||
+    mbfcCategory === "center" ||
+    mbfcCategory === "right-center" ||
+    mbfcCategory === "right"
+  ) {
+    return mbfcCategory;
+  }
+  if (source.baseBias === 0) return "center";
+  if (source.baseBias <= -3) return "left";
+  if (source.baseBias < 0) return "left-center";
+  if (source.baseBias >= 3) return "right";
+  if (source.baseBias > 0) return "right-center";
+  return "center";
+}
+
+async function getEventTopics(
+  ctx: QueryCtx,
+  eventId: Id<"events">,
+) {
+  const rows = await ctx.db
+    .query("eventTopics")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  const topics = await Promise.all(rows.map((row) => ctx.db.get(row.topicId)));
+  return topics
+    .filter((topic) => topic !== null)
+    .map((topic) => ({
+      _id: topic._id,
+      displayName: topic.displayName,
+    }));
+}
+
+export const getSourceProfile = query({
+  args: {
+    sourceId: v.id("sources"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireBetaAccess(ctx);
+
+    const source = await ctx.db.get(args.sourceId);
+    if (!source) return null;
+
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)));
+    const rawArticles = await ctx.db
+      .query("articles")
+      .withIndex("by_source", (q) => q.eq("sourceId", args.sourceId))
+      .collect();
+
+    const sortedArticles = rawArticles
+      .sort((a, b) => b.publishedAt - a.publishedAt)
+      .slice(0, safeLimit);
+
+    const eventIds = Array.from(
+      new Set(
+        sortedArticles
+          .map((article) => article.eventId)
+          .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
+      ),
+    );
+    const eventRows = await Promise.all(eventIds.map((eventId) => ctx.db.get(eventId)));
+    const eventsById = new Map(
+      eventRows
+        .filter(
+          (event): event is Doc<"events"> =>
+            event !== null && event.status === "published",
+        )
+        .map((event) => [event._id, event]),
+    );
+    const topicRows = await Promise.all(
+      Array.from(eventsById.keys()).map(async (eventId) => [
+        eventId,
+        await getEventTopics(ctx, eventId),
+      ] as const),
+    );
+    const topicsByEventId = new Map(topicRows);
+
+    const scoredArticles = rawArticles.filter(
+      (article) => typeof article.aiBiasScore === "number",
+    );
+    const averageAiBias =
+      scoredArticles.length > 0
+        ? scoredArticles.reduce(
+            (sum, article) => sum + (article.aiBiasScore ?? 0),
+            0,
+          ) / scoredArticles.length
+        : null;
+
+    const eventCount = new Set(
+      rawArticles
+        .map((article) => article.eventId)
+        .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
+    ).size;
+
+    return {
+      source: {
+        ...source,
+        biasLabel: sourceBiasLabel(source),
+      },
+      stats: {
+        totalArticles: rawArticles.length,
+        eventCount,
+        scoredArticleCount: scoredArticles.length,
+        averageAiBias,
+        biasOutlierCount: rawArticles.filter((article) => article.biasOutlierFlag)
+          .length,
+        sourceBiasOutlierCount: rawArticles.filter(
+          (article) => article.sourceBiasOutlierFlag,
+        ).length,
+      },
+      articles: sortedArticles.map((article) => {
+        const event = article.eventId
+          ? eventsById.get(article.eventId) ?? null
+          : null;
+        return {
+          _id: article._id,
+          title: article.title,
+          summary: article.summary,
+          rssSnippet: article.rssSnippet,
+          canonicalUrl: article.canonicalUrl,
+          publishedAt: article.publishedAt,
+          imageUrl: article.imageUrl,
+          imageAlt: article.imageAlt,
+          aiBiasScore: article.aiBiasScore,
+          biasOutlierFlag: article.biasOutlierFlag,
+          sourceBiasOutlierFlag: article.sourceBiasOutlierFlag,
+          event: event
+            ? {
+                _id: event._id,
+                slug: event.slug,
+                title: event.title,
+                imageUrl: event.imageUrl,
+                firstPublishedAt: event.firstPublishedAt,
+                lastUpdatedAt: event.lastUpdatedAt,
+                topics: topicsByEventId.get(event._id) ?? [],
+              }
+            : null,
+        };
+      }),
+    };
+  },
+});

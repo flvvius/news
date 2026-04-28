@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
+import EventClaimComparison from "@/components/feed/event-claim-comparison";
+import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
@@ -493,82 +495,108 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
             </div>
           </section>
 
-          {hasPerspectives ? (
-            <Card className="overflow-hidden border-border/80 py-0">
-              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="text-xl tracking-tight">
-                  Multiple Perspectives
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-6 py-6 sm:px-8">
-                <Tabs defaultValue="center" className="w-full gap-5">
-                  <TabsList
-                    className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
-                  >
-                    {event.perspectiveSummaries?.left && (
-                      <TabsTrigger value="left">Left</TabsTrigger>
-                    )}
-                    <TabsTrigger value="center">Center</TabsTrigger>
-                    {event.perspectiveSummaries?.right && (
-                      <TabsTrigger value="right">Right</TabsTrigger>
-                    )}
-                  </TabsList>
+          <Tabs defaultValue="perspectives" className="gap-5">
+            <TabsList className="grid h-11 w-full grid-cols-2 rounded-full bg-muted/70 p-1">
+              <TabsTrigger
+                className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
+                value="perspectives"
+              >
+                Perspectives
+              </TabsTrigger>
+              <TabsTrigger
+                className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
+                value="claims"
+              >
+                Claim Breakdown
+              </TabsTrigger>
+            </TabsList>
 
-                  {event.perspectiveSummaries?.left && (
-                    <TabsContent value="left">
-                      <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                        {event.perspectiveSummaries.left}
-                      </p>
-                    </TabsContent>
-                  )}
+            <TabsContent value="perspectives" className="space-y-5 sm:space-y-8">
+              {hasPerspectives ? (
+                <Card className="overflow-hidden border-border/80 py-0">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                    <CardTitle className="text-xl tracking-tight">
+                      Multiple Perspectives
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 py-6 sm:px-8">
+                    <Tabs defaultValue="center" className="w-full gap-5">
+                      <TabsList
+                        className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
+                      >
+                        {event.perspectiveSummaries?.left && (
+                          <TabsTrigger value="left">Left</TabsTrigger>
+                        )}
+                        <TabsTrigger value="center">Center</TabsTrigger>
+                        {event.perspectiveSummaries?.right && (
+                          <TabsTrigger value="right">Right</TabsTrigger>
+                        )}
+                      </TabsList>
 
-                  <TabsContent value="center">
+                      {event.perspectiveSummaries?.left && (
+                        <TabsContent value="left">
+                          <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                            {event.perspectiveSummaries.left}
+                          </p>
+                        </TabsContent>
+                      )}
+
+                      <TabsContent value="center">
+                        <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                          {event.perspectiveSummaries?.center ??
+                            "Summary pending…"}
+                        </p>
+                      </TabsContent>
+
+                      {event.perspectiveSummaries?.right && (
+                        <TabsContent value="right">
+                          <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                            {event.perspectiveSummaries.right}
+                          </p>
+                        </TabsContent>
+                      )}
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="overflow-hidden border-border/80 py-0">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                    <CardTitle className="text-xl tracking-tight">
+                      Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 py-6 sm:px-8">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.perspectiveSummaries?.center ?? "Summary pending…"}
+                      {event.perspectiveSummaries?.center ??
+                        event.globalImpact ??
+                        "Coverage grouped from multiple sources. Compare the original reporting below."}
                     </p>
-                  </TabsContent>
+                  </CardContent>
+                </Card>
+              )}
 
-                  {event.perspectiveSummaries?.right && (
-                    <TabsContent value="right">
-                      <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                        {event.perspectiveSummaries.right}
-                      </p>
-                    </TabsContent>
-                  )}
-                </Tabs>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="overflow-hidden border-border/80 py-0">
-              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="text-xl tracking-tight">
-                  Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-6 py-6 sm:px-8">
-                <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                  {event.perspectiveSummaries?.center ??
-                    event.globalImpact ??
-                    "Coverage grouped from multiple sources. Compare the original reporting below."}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+              {event.globalImpact && (
+                <Card className="overflow-hidden border-border/80 py-0">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                    <CardTitle className="text-xl tracking-tight">
+                      What This Means
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 py-6 sm:px-8">
+                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
+                      {event.globalImpact}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-          {event.globalImpact && (
-            <Card className="overflow-hidden border-border/80 py-0">
-              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="text-xl tracking-tight">
-                  What This Means
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-6 py-6 sm:px-8">
-                <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                  {event.globalImpact}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+              <SourceCoverageSummary articles={articles} />
+            </TabsContent>
+
+            <TabsContent value="claims">
+              <EventClaimComparison eventId={event._id} articles={articles} />
+            </TabsContent>
+          </Tabs>
 
           <ArticlesList articles={articles} />
         </div>

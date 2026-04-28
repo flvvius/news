@@ -14,6 +14,7 @@ import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as BookmarksRouteImport } from './routes/bookmarks'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
 import { Route as EventSlugRouteImport } from './routes/event.$slug'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SourceSourceIdRoute = SourceSourceIdRouteImport.update({
+  id: '/source/$sourceId',
+  path: '/source/$sourceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventSlugRoute = EventSlugRouteImport.update({
   id: '/event/$slug',
   path: '/event/$slug',
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/feed': typeof FeedRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
+  '/source/$sourceId': typeof SourceSourceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/feed': typeof FeedRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
+  '/source/$sourceId': typeof SourceSourceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/feed': typeof FeedRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
+  '/source/$sourceId': typeof SourceSourceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/unsubscribe'
     | '/event/$slug'
+    | '/source/$sourceId'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/unsubscribe'
     | '/event/$slug'
+    | '/source/$sourceId'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/unsubscribe'
     | '/event/$slug'
+    | '/source/$sourceId'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   FeedRoute: typeof FeedRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EventSlugRoute: typeof EventSlugRoute
+  SourceSourceIdRoute: typeof SourceSourceIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/source/$sourceId': {
+      id: '/source/$sourceId'
+      path: '/source/$sourceId'
+      fullPath: '/source/$sourceId'
+      preLoaderRoute: typeof SourceSourceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/event/$slug': {
       id: '/event/$slug'
       path: '/event/$slug'
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   FeedRoute: FeedRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EventSlugRoute: EventSlugRoute,
+  SourceSourceIdRoute: SourceSourceIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

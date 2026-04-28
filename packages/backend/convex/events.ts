@@ -6,6 +6,13 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireBetaAccess } from "./lib/betaAccess";
 
 const TOPIC_CURSOR_PREFIX = "topic:";
+const RANKED_CURSOR_PREFIX = "ranked:";
+const TRENDING_SCAN_LIMIT = 250;
+
+const FEED_SORT_VALIDATOR = v.union(
+  v.literal("recent"),
+  v.literal("trending"),
+);
 
 function encodeTopicCursor(eventId: Id<"events">): string {
   return `${TOPIC_CURSOR_PREFIX}${eventId}`;
@@ -16,9 +23,19 @@ function decodeTopicCursor(cursor: string | null): Id<"events"> | null {
   return cursor.slice(TOPIC_CURSOR_PREFIX.length) as Id<"events">;
 }
 
+function encodeRankedCursor(eventId: Id<"events">): string {
+  return `${RANKED_CURSOR_PREFIX}${eventId}`;
+}
+
+function decodeRankedCursor(cursor: string | null): Id<"events"> | null {
+  if (!cursor?.startsWith(RANKED_CURSOR_PREFIX)) return null;
+  return cursor.slice(RANKED_CURSOR_PREFIX.length) as Id<"events">;
+}
+
 type EnrichableEvent = Pick<
   Doc<"events">,
   | "_id"
+  | "_creationTime"
   | "slug"
   | "title"
   | "imageUrl"
@@ -27,7 +44,63 @@ type EnrichableEvent = Pick<
   | "globalImpact"
   | "firstPublishedAt"
   | "lastUpdatedAt"
+  | "factualArticleCount"
+  | "factualSourceCount"
 >;
+
+function trendingScore(event: EnrichableEvent, now: number): number {
+  const sourceScore = (event.factualSourceCount ?? 0) * 10;
+  const articleScore = (event.factualArticleCount ?? 0) * 3;
+  const updatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  const ageHours = Math.max(0, (now - updatedAt) / 3_600_000);
+  const recencyScore = Math.max(0, 48 - ageHours);
+  return sourceScore + articleScore + recencyScore;
+}
+
+function sortEventsForFeed(
+  events: EnrichableEvent[],
+  sort: "recent" | "trending",
+) {
+  const now = Date.now();
+  return [...events].sort((a, b) => {
+    if (sort === "trending") {
+      return (
+        trendingScore(b, now) - trendingScore(a, now) ||
+        (b.lastUpdatedAt ?? b.firstPublishedAt) -
+          (a.lastUpdatedAt ?? a.firstPublishedAt) ||
+        b.firstPublishedAt - a.firstPublishedAt ||
+        b._creationTime - a._creationTime
+      );
+    }
+
+    return (
+      b.firstPublishedAt - a.firstPublishedAt ||
+      b._creationTime - a._creationTime
+    );
+  });
+}
+
+function paginateRankedEvents(
+  events: EnrichableEvent[],
+  cursor: string | null,
+  targetSize: number,
+) {
+  const resumeAfterId = decodeRankedCursor(cursor) ?? decodeTopicCursor(cursor);
+  const resumeIndex = resumeAfterId
+    ? events.findIndex((event) => event._id === resumeAfterId)
+    : -1;
+  const startIndex = resumeIndex >= 0 ? resumeIndex + 1 : 0;
+  const page = events.slice(startIndex, startIndex + targetSize);
+  const isDone = startIndex + page.length >= events.length;
+  const lastReturned = page[page.length - 1];
+
+  return {
+    page,
+    isDone,
+    continueCursor:
+      isDone || !lastReturned ? "" : encodeRankedCursor(lastReturned._id),
+  };
+}
 
 async function enrichEventsWithTopicsAndSources(
   ctx: QueryCtx,
@@ -127,9 +200,11 @@ export const getPublishedEvents = query({
   args: {
     paginationOpts: paginationOptsValidator,
     topicId: v.optional(v.id("topics")),
+    sort: v.optional(FEED_SORT_VALIDATOR),
   },
   handler: async (ctx, args) => {
     await requireBetaAccess(ctx);
+    const sort = args.sort ?? "recent";
 
     // When filtering by topic, collect matching IDs first so pagination can
     // resume after the last matching event returned to the client.
@@ -144,46 +219,41 @@ export const getPublishedEvents = query({
 
     let events;
 
-    if (matchingEventIds !== null) {
+    if (matchingEventIds !== null || sort === "trending") {
       // Topic filtering uses a custom cursor based on the last returned event.
       // This avoids dropping matching events that appear later in an over-fetched
       // database page after the UI page has already reached its target size.
       const targetSize = args.paginationOpts.numItems;
-      const matchingEvents = await Promise.all(
-        Array.from(matchingEventIds).map((eventId) => ctx.db.get(eventId)),
-      );
+      const matchingEvents =
+        matchingEventIds !== null
+          ? await Promise.all(
+              Array.from(matchingEventIds).map((eventId) => ctx.db.get(eventId)),
+            )
+          : await ctx.db
+              .query("events")
+              .withIndex("by_status_recency", (q) =>
+                q.eq("status", "published"),
+              )
+              .order("desc")
+              .take(TRENDING_SCAN_LIMIT);
       const publishedMatches = matchingEvents
         .filter(
           (event): event is Doc<"events"> =>
             event !== null && event.status === "published",
-        )
-        .sort(
-          (a, b) =>
-            b.firstPublishedAt - a.firstPublishedAt ||
-            b._creationTime - a._creationTime,
         );
+      const sortedMatches = sortEventsForFeed(publishedMatches, sort);
 
-      const resumeAfterId = decodeTopicCursor(args.paginationOpts.cursor);
-      const resumeIndex = resumeAfterId
-        ? publishedMatches.findIndex((event) => event._id === resumeAfterId)
-        : -1;
-      const startIndex = resumeIndex >= 0 ? resumeIndex + 1 : 0;
-      const page = publishedMatches.slice(startIndex, startIndex + targetSize);
-      const isDone = startIndex + page.length >= publishedMatches.length;
-      const lastReturned = page[page.length - 1];
-
-      events = {
-        page,
-        isDone,
-        continueCursor:
-          isDone || !lastReturned ? "" : encodeTopicCursor(lastReturned._id),
-      };
+      events = paginateRankedEvents(
+        sortedMatches,
+        args.paginationOpts.cursor,
+        targetSize,
+      );
     } else {
       // Defensive reset in case a topic cursor is reused after the topic filter
       // is cleared.
-      const paginationOpts = args.paginationOpts.cursor?.startsWith(
-        TOPIC_CURSOR_PREFIX,
-      )
+      const paginationOpts =
+        args.paginationOpts.cursor?.startsWith(TOPIC_CURSOR_PREFIX) ||
+        args.paginationOpts.cursor?.startsWith(RANKED_CURSOR_PREFIX)
         ? { ...args.paginationOpts, cursor: null }
         : args.paginationOpts;
 

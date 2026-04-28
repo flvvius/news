@@ -1,4 +1,5 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,7 +74,12 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                   <div className="flex flex-wrap items-center gap-3">
                     {article.source && (
                       <>
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background">
+                        <Link
+                          to="/source/$sourceId"
+                          params={{ sourceId: article.source._id }}
+                          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
+                          aria-label={`View ${article.source.name} source profile`}
+                        >
                           {article.source.logoUrl ? (
                             <img
                               src={article.source.logoUrl}
@@ -85,11 +91,15 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                               {article.source.name.charAt(0)}
                             </span>
                           )}
-                        </div>
+                        </Link>
                         <div className="flex min-w-0 flex-wrap items-center gap-3">
-                          <span className="text-sm font-medium text-card-foreground">
+                          <Link
+                            to="/source/$sourceId"
+                            params={{ sourceId: article.source._id }}
+                            className="text-sm font-medium text-card-foreground hover:underline"
+                          >
                             {article.source.name}
-                          </span>
+                          </Link>
                           <BiasIndicator
                             bias={article.source.baseBias}
                             size="sm"
