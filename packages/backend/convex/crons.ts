@@ -80,7 +80,6 @@ crons.interval(
   "summarize-published-events",
   { minutes: 30 },
   internal.summarizationNode.summarizeQueuedEvents,
-  {},
 );
 
 // ---------------------------------------------------------------------------
@@ -92,7 +91,6 @@ crons.interval(
   "detect-event-claims",
   { minutes: 30 },
   internal.claimDivergenceNode.processStaleEventClaims,
-  {},
 );
 
 // ---------------------------------------------------------------------------
@@ -104,7 +102,6 @@ crons.daily(
   "flag-bias-outliers",
   { hourUTC: 5, minuteUTC: 0 },
   internal.bias.flagBiasOutliers,
-  {},
 );
 
 export default crons;

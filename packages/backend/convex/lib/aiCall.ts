@@ -20,6 +20,10 @@ type AICallContext = {
   articleId?: Id<"articles">;
 };
 
+type BudgetReservation = {
+  reservationId: Id<"aiBudgetReservations">;
+};
+
 type AICallUsage = {
   inputTokens: number;
   outputTokens: number;
@@ -97,111 +101,193 @@ function retryDelayMs(attempt: number): number {
   return Math.round(baseDelay * jitter);
 }
 
+function estimateTokensFromText(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function estimateChatInputTokens(messages: ChatMessage[]): number {
+  let tokens = 0;
+  for (const message of messages) {
+    tokens += estimateTokensFromText(message.content) + 4;
+  }
+  return tokens + 2;
+}
+
+function estimateEmbeddingInputTokens(input: string[]): number {
+  return input.reduce((sum, text) => sum + estimateTokensFromText(text), 0);
+}
+
+function estimateCallCostUsd(args: ChatArgs<unknown> | EmbeddingArgs<unknown>): {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+} {
+  if (args.kind === "embedding") {
+    const inputTokens = estimateEmbeddingInputTokens(args.input);
+    return {
+      inputTokens,
+      outputTokens: 0,
+      costUsd: calculateCost(args.model, inputTokens, 0) * 1.1,
+    };
+  }
+
+  const inputTokens = estimateChatInputTokens(args.messages);
+  const outputTokens = Math.max(0, Math.floor(args.maxTokens ?? 0));
+  return {
+    inputTokens,
+    outputTokens,
+    costUsd: calculateCost(args.model, inputTokens, outputTokens) * 1.1,
+  };
+}
+
 async function logUsage(
   runtime: ActionCtx,
   context: AICallContext,
   model: string,
   usage: AICallUsage,
+  reservationId?: Id<"aiBudgetReservations">,
 ): Promise<void> {
-  const result = await runtime.runMutation(internal.aiBudget.recordUsage, {
-    callType: context.callType,
-    model,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    costUsd: usage.costUsd,
-    latencyMs: usage.latencyMs,
-    eventId: context.eventId,
-    articleId: context.articleId,
-  });
+  try {
+    const result = await runtime.runMutation(internal.aiBudget.recordUsage, {
+      callType: context.callType,
+      model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      costUsd: usage.costUsd,
+      latencyMs: usage.latencyMs,
+      eventId: context.eventId,
+      articleId: context.articleId,
+      reservationId,
+    });
 
-  if (!result.allowed) {
-    console.warn(
-      `[aiCall] Usage log rejected for ${context.callType}; budget would be exceeded ($${result.spentUsd}/$${result.dailyLimitUsd})`,
+    if (!result.allowed) {
+      console.warn(
+        `[aiCall] Usage log exceeded budget for ${context.callType} ($${result.spentUsd}/$${result.dailyLimitUsd})`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      `[aiCall] Usage log failed for ${context.callType} (event ${context.eventId ?? "n/a"}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 }
 
-async function checkBudget(
+async function reserveBudget(
   runtime: ActionCtx,
   context: AICallContext,
-): Promise<AICallResult<never> | null> {
-  const budget = await runtime.runQuery(internal.aiBudget.checkDailyBudget, {});
-  if (budget.withinBudget) return null;
+  model: string,
+  estimatedCostUsd: number,
+): Promise<BudgetReservation | null> {
+  const reservation = await runtime.runMutation(internal.aiBudget.reserveBudget, {
+    model,
+    callType: context.callType,
+    costUsd: estimatedCostUsd,
+    eventId: context.eventId,
+    articleId: context.articleId,
+  });
 
-  console.warn(
-    `[aiCall] Daily AI budget exhausted before ${context.callType} ($${budget.spentUsd}/$${budget.dailyLimitUsd})`,
-  );
-  return {
-    result: null,
-    usage: zeroUsage(),
-    error: "budget_exhausted",
-  };
+  if (!reservation.allowed || !reservation.reservationId) {
+    console.warn(
+      `[aiCall] Daily AI budget exhausted before ${context.callType} ($${reservation.spentUsd}/$${reservation.dailyLimitUsd})`,
+    );
+    return null;
+  }
+
+  return { reservationId: reservation.reservationId };
 }
 
 export async function callOpenAI<T>(
   args: ChatArgs<T> | EmbeddingArgs<T>,
 ): Promise<AICallResult<T>> {
-  const budgetResult = await checkBudget(args.runtime, args.context);
-  if (budgetResult) return budgetResult;
+  const estimate = estimateCallCostUsd(args as ChatArgs<unknown> | EmbeddingArgs<unknown>);
+  const reservation = await reserveBudget(
+    args.runtime,
+    args.context,
+    args.model,
+    estimate.costUsd,
+  );
+  if (!reservation) {
+    return {
+      result: null,
+      usage: zeroUsage(),
+      error: "budget_exhausted",
+    };
+  }
+  let reservationId: Id<"aiBudgetReservations"> | null = reservation.reservationId;
+  let usageLogged = false;
 
   let lastError: unknown;
   const maxRetries = Math.max(1, Math.floor(args.maxRetries ?? 3));
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const openai = await getOpenAI();
-      const startedAt = Date.now();
+  try {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const openai = await getOpenAI();
+        const startedAt = Date.now();
 
-      if (args.kind === "embedding") {
-        const response = await openai.embeddings.create({
+        if (args.kind === "embedding") {
+          const response = await openai.embeddings.create({
+            model: args.model,
+            input: args.input,
+            ...(args.dimensions ? { dimensions: args.dimensions } : {}),
+          });
+          const inputTokens = response.usage.total_tokens ?? 0;
+          const usage = {
+            inputTokens,
+            outputTokens: 0,
+            costUsd: calculateCost(args.model, inputTokens, 0),
+            latencyMs: Date.now() - startedAt,
+          };
+          await logUsage(args.runtime, args.context, args.model, usage, reservationId ?? undefined);
+          usageLogged = true;
+          reservationId = null;
+          return { result: response.data as T, usage };
+        }
+
+        const response = await openai.chat.completions.create({
           model: args.model,
-          input: args.input,
-          ...(args.dimensions ? { dimensions: args.dimensions } : {}),
+          temperature: args.temperature ?? 0.1,
+          ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
+          ...(args.responseFormat
+            ? { response_format: args.responseFormat as never }
+            : {}),
+          messages: args.messages,
         });
-        const inputTokens = response.usage.total_tokens ?? 0;
+
+        const inputTokens = response.usage?.prompt_tokens ?? 0;
+        const outputTokens = response.usage?.completion_tokens ?? 0;
         const usage = {
           inputTokens,
-          outputTokens: 0,
-          costUsd: calculateCost(args.model, inputTokens, 0),
+          outputTokens,
+          costUsd: calculateCost(args.model, inputTokens, outputTokens),
           latencyMs: Date.now() - startedAt,
         };
-        await logUsage(args.runtime, args.context, args.model, usage);
-        return { result: response.data as T, usage };
-      }
+        await logUsage(args.runtime, args.context, args.model, usage, reservationId ?? undefined);
+        usageLogged = true;
+        reservationId = null;
 
-      const response = await openai.chat.completions.create({
-        model: args.model,
-        temperature: args.temperature ?? 0.1,
-        ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
-        ...(args.responseFormat
-          ? { response_format: args.responseFormat as never }
-          : {}),
-        messages: args.messages,
+        const content = response.choices[0]?.message?.content;
+        if (!content) throw new Error("OpenAI returned empty response content");
+
+        const shouldParseJson =
+          args.parseJson ?? Boolean(args.responseFormat);
+        const result = shouldParseJson ? JSON.parse(content) : content;
+        return { result: result as T, usage };
+      } catch (error) {
+        lastError = error;
+        if (isFatalError(error) || !isRetryableError(error) || attempt === maxRetries - 1) {
+          break;
+        }
+        await sleep(retryDelayMs(attempt));
+      }
+    }
+  } finally {
+    if (reservationId && !usageLogged) {
+      await args.runtime.runMutation(internal.aiBudget.releaseReservation, {
+        reservationId,
       });
-
-      const inputTokens = response.usage?.prompt_tokens ?? 0;
-      const outputTokens = response.usage?.completion_tokens ?? 0;
-      const usage = {
-        inputTokens,
-        outputTokens,
-        costUsd: calculateCost(args.model, inputTokens, outputTokens),
-        latencyMs: Date.now() - startedAt,
-      };
-      await logUsage(args.runtime, args.context, args.model, usage);
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) throw new Error("OpenAI returned empty response content");
-
-      const shouldParseJson =
-        args.parseJson ?? Boolean(args.responseFormat);
-      const result = shouldParseJson ? JSON.parse(content) : content;
-      return { result: result as T, usage };
-    } catch (error) {
-      lastError = error;
-      if (isFatalError(error) || !isRetryableError(error) || attempt === maxRetries - 1) {
-        break;
-      }
-      await sleep(retryDelayMs(attempt));
     }
   }
 

@@ -491,6 +491,19 @@ export default defineSchema({
     .index("by_callType_timestamp", ["callType", "timestamp"]),
 
   // =========================================================================
+  // 11a. AI BUDGET RESERVATIONS (In-flight budget holds)
+  // =========================================================================
+  aiBudgetReservations: defineTable({
+    model: v.string(),
+    callType: v.optional(v.string()),
+    eventId: v.optional(v.id("events")),
+    articleId: v.optional(v.id("articles")),
+    costUsd: v.number(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_expiresAt", ["expiresAt"]),
+
+  // =========================================================================
   // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)
   // =========================================================================
   pipelineLocks: defineTable({

@@ -224,6 +224,47 @@ function normalizeForComparison(value: string): string {
     .trim();
 }
 
+const CLAIM_DEBUG_ENABLED = process.env.CLAIM_ANALYSIS_DEBUG === "true";
+const TOKEN_SYNONYMS: Record<string, string> = {
+  rise: "increase",
+  rises: "increase",
+  increased: "increase",
+  grow: "increase",
+  grows: "increase",
+  drop: "decrease",
+  drops: "decrease",
+  fell: "decrease",
+  fall: "decrease",
+  reduce: "decrease",
+  reduced: "decrease",
+  ban: "prohibit",
+  bans: "prohibit",
+  banned: "prohibit",
+  pass: "approve",
+  passed: "approve",
+  approve: "approve",
+  approved: "approve",
+  bill: "law",
+  legislation: "law",
+  vote: "voting",
+  voted: "voting",
+};
+
+function stemToken(token: string): string {
+  const suffixes = ["ing", "ers", "er", "ed", "es", "s"];
+  for (const suffix of suffixes) {
+    if (token.endsWith(suffix) && token.length > suffix.length + 2) {
+      return token.slice(0, -suffix.length);
+    }
+  }
+  return token;
+}
+
+function canonicalizeToken(token: string): string {
+  const stemmed = stemToken(token);
+  return TOKEN_SYNONYMS[stemmed] ?? stemmed;
+}
+
 function meaningfulTokens(value: string): Set<string> {
   const stopwords = new Set([
     "about",
@@ -243,11 +284,11 @@ function meaningfulTokens(value: string): Set<string> {
     "were",
     "will",
   ]);
-  return new Set(
-    normalizeForComparison(value)
-      .split(/\s+/)
-      .filter((token) => token.length > 3 && !stopwords.has(token)),
-  );
+  const tokens = normalizeForComparison(value)
+    .split(/\s+/)
+    .map((token) => canonicalizeToken(token))
+    .filter((token) => token.length > 2 && !stopwords.has(token));
+  return new Set(tokens);
 }
 
 function statementSupportsClaim(
@@ -257,20 +298,49 @@ function statementSupportsClaim(
 ): boolean {
   const canonicalTokens = meaningfulTokens(canonicalStatement);
   const statementTokens = meaningfulTokens(statement);
+  if (canonicalTokens.size === 0 || statementTokens.size === 0) {
+    if (CLAIM_DEBUG_ENABLED) {
+      console.debug("[claimDivergence] Filtered variant", {
+        canonicalStatement,
+        statement,
+        value,
+        overlap: 0,
+        canonicalTokenCount: canonicalTokens.size,
+        reason: "no_tokens",
+      });
+    }
+    return false;
+  }
+
   let overlap = 0;
   for (const token of statementTokens) {
     if (canonicalTokens.has(token)) overlap++;
   }
 
   const canonicalTokenCount = Math.max(1, canonicalTokens.size);
-  if (overlap >= 3 && overlap / canonicalTokenCount >= 0.35) return true;
-  if (
+  const overlapRatio = overlap / canonicalTokenCount;
+  const valueMatch =
     value &&
-    normalizeForComparison(statement).includes(normalizeForComparison(value))
-  ) {
-    return true;
+    normalizeForComparison(statement).includes(normalizeForComparison(value));
+
+  if (overlap >= 2 && overlapRatio >= 0.25) return true;
+  if (valueMatch) return true;
+  if (canonicalTokens.size <= 5 && overlap >= 1) return true;
+
+  if (CLAIM_DEBUG_ENABLED) {
+    const reason = valueMatch ? "value_match" : "low_overlap";
+    console.debug("[claimDivergence] Filtered variant", {
+      canonicalStatement,
+      statement,
+      value,
+      overlap,
+      canonicalTokenCount: canonicalTokens.size,
+      overlapRatio,
+      reason,
+    });
   }
-  return canonicalTokens.size <= 3 && overlap >= 2;
+
+  return false;
 }
 
 function leanGroup(lean: string): "left" | "center" | "right" | "other" {

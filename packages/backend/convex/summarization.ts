@@ -16,6 +16,8 @@ import {
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "processing", "failed"]);
 const TERMINAL_SUCCESS_WINDOW_MS = 60 * 60 * 1000;
+const DEFAULT_MIN_ARTICLES = 3;
+const DEFAULT_MIN_SOURCES = 2;
 
 type SummaryEligibility = {
   eligible: boolean;
@@ -33,6 +35,17 @@ function sourceBiasLabel(source: Doc<"sources"> | null): string {
   if (source.baseBias >= 3) return "right";
   if (source.baseBias > 0) return "right-center";
   return "center";
+}
+
+function safeInteger(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
 function shouldResummarize(event: Doc<"events">): boolean {
@@ -208,17 +221,40 @@ export const enqueueEligibleEventSummaries = internalMutation({
   },
 });
 
-export const claimSummaryJobs = internalMutation({
+export const listDueSummaryJobs = internalQuery({
   args: {
     limit: v.number(),
-    runId: v.string(),
-    leaseExpiresAt: v.number(),
-    maxAttempts: v.number(),
   },
-  handler: async (ctx, { limit, runId, leaseExpiresAt, maxAttempts }) => {
+  handler: async (ctx, { limit }) => {
     const now = Date.now();
-    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 20);
-    const jobs: Doc<"eventSummaryJobs">[] = [];
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
+    const now = Date.now();
+    const event = await ctx.db.get(eventId);
+    if (!event) {
+      return { queued: false as const, warning: "event_missing" };
+    }
+
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["event_summary_min_articles", "event_summary_min_sources"],
+    });
+    const minArticles = safeInteger(
+      cfg.event_summary_min_articles,
+      DEFAULT_MIN_ARTICLES,
+      1,
+      20,
+    );
+    const minSources = safeInteger(
+      cfg.event_summary_min_sources,
+      DEFAULT_MIN_SOURCES,
+      1,
+      20,
+    );
+    const eligibility = await getEventEligibility(
+      ctx,
+      event,
+      minArticles,
+      minSources,
+    );
 
     const queued = await ctx.db
       .query("eventSummaryJobs")
@@ -230,7 +266,10 @@ export const claimSummaryJobs = internalMutation({
 
     if (jobs.length < safeLimit) {
       const failed = await ctx.db
-        .query("eventSummaryJobs")
+    return {
+      queued: true as const,
+      warning: eligibility.eligible ? undefined : eligibility.reason,
+    };
         .withIndex("by_status_next_attempt", (q) =>
           q.eq("status", "failed").lte("nextAttemptAt", now),
         )
@@ -238,28 +277,62 @@ export const claimSummaryJobs = internalMutation({
       jobs.push(...failed);
     }
 
-    const claimed = [];
-    for (const job of jobs) {
-      if (claimed.length >= safeLimit) break;
-      if (job.attempts >= maxAttempts) continue;
+    return jobs.map((job) => ({
+      _id: job._id,
+      eventId: job.eventId,
+      attempts: job.attempts,
+      status: job.status,
+      leaseExpiresAt: job.leaseExpiresAt,
+    }));
+  },
+});
 
-      await ctx.db.patch(job._id, {
-        status: "processing",
-        attempts: job.attempts + 1,
-        processingRunId: runId,
-        leaseExpiresAt,
-        updatedAt: now,
-        lastError: undefined,
-      });
+export const startSummaryJob = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    runId: v.string(),
+    leaseExpiresAt: v.number(),
+    maxAttempts: v.number(),
+  },
+  handler: async (ctx, { jobId, runId, leaseExpiresAt, maxAttempts }) => {
+    const now = Date.now();
+    const job = await ctx.db.get(jobId);
+    if (!job) {
+      return { started: false as const, reason: "missing" };
+    }
 
-      claimed.push({
+    if (job.status === "succeeded" || job.status === "skipped") {
+      return { started: false as const, reason: "completed" };
+    }
+
+    if (
+      job.status === "processing" &&
+      (job.leaseExpiresAt ?? Number.POSITIVE_INFINITY) > now
+    ) {
+      return { started: false as const, reason: "lease_active" };
+    }
+
+    if (job.attempts >= maxAttempts) {
+      return { started: false as const, reason: "max_attempts" };
+    }
+
+    await ctx.db.patch(jobId, {
+      status: "processing",
+      attempts: job.attempts + 1,
+      processingRunId: runId,
+      leaseExpiresAt,
+      updatedAt: now,
+      lastError: undefined,
+    });
+
+    return {
+      started: true as const,
+      job: {
         _id: job._id,
         eventId: job.eventId,
         attempts: job.attempts + 1,
-      });
-    }
-
-    return claimed;
+      },
+    };
   },
 });
 
@@ -458,11 +531,13 @@ export const markSummaryJobSkipped = internalMutation({
   },
   handler: async (ctx, { jobId, runId, reason, eventId, summarySignature }) => {
     const job = await ctx.db.get(jobId);
-    if (
-      !job ||
-      job.status !== "processing" ||
-      job.processingRunId !== runId
-    ) {
+    if (!job) {
+      return { updated: false as const };
+    }
+    const matchesProcessingLease =
+      job.status === "processing" && job.processingRunId === runId;
+    const isUnclaimed = job.status === "queued" || job.status === "failed";
+    if (!matchesProcessingLease && !isUnclaimed) {
       return { updated: false as const };
     }
 

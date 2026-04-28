@@ -31,10 +31,16 @@ async function getConfigNumber(
 }
 
 function mean(values: number[]): number {
+  if (values.length === 0) {
+    throw new Error("mean requires non-empty array");
+  }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function standardDeviation(values: number[], average: number): number {
+  if (values.length === 0) {
+    throw new Error("standardDeviation requires non-empty array");
+  }
   const variance =
     values.reduce((sum, value) => sum + (value - average) ** 2, 0) /
     values.length;
@@ -107,11 +113,26 @@ export const flagBiasOutliers = internalMutation({
       }
 
       const scores = scored.map((article) => article.aiBiasScore!);
-      const rollingBiasMean = mean(scores);
-      const rollingBiasStddev = Math.max(
-        standardDeviation(scores, rollingBiasMean),
-        stddevFloor,
-      );
+      let rollingBiasMean: number;
+      let rollingBiasStddev: number;
+      try {
+        rollingBiasMean = mean(scores);
+        rollingBiasStddev = Math.max(
+          standardDeviation(scores, rollingBiasMean),
+          stddevFloor,
+        );
+      } catch (error) {
+        console.error(
+          `[bias] Failed to compute rolling stats for source ${source._id}: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+        );
+        await ctx.db.patch(source._id, {
+          rollingBiasSampleSize: scored.length,
+          rollingBiasUpdatedAt: Date.now(),
+        });
+        continue;
+      }
       const threshold = multiplier * rollingBiasStddev;
 
       for (const article of scored) {

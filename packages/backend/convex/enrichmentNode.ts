@@ -247,14 +247,6 @@ function safeString(value: unknown, fallback: string): string {
     : fallback;
 }
 
-function stripJsonFences(value: string): string {
-  return value
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
 function sanitizeAtomicFacts(
   rawFacts: unknown,
   maxFactsPerArticle: number,
@@ -278,17 +270,19 @@ function sanitizeAtomicFacts(
 }
 
 function parseAtomicFactsResponse(
-  raw: string,
+  raw: unknown,
   articleIds: Set<string>,
   maxFactsPerArticle: number,
 ): Map<string, string[]> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonFences(raw));
-  } catch (error) {
-    throw new Error(
-      `Fact extraction returned invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`,
-    );
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(
+        `Fact extraction returned invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`,
+      );
+    }
   }
 
   if (!parsed || typeof parsed !== "object") {
@@ -370,17 +364,19 @@ function sanitizeBiasComponents(raw: unknown): BiasComponents | null {
 }
 
 function parseBiasScoringResponse(
-  raw: string,
+  raw: unknown,
   selectedArticles: PreparedArticle[],
   sourceDeltaThreshold: number,
 ): Map<Id<"articles">, ArticleBiasResult> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonFences(raw));
-  } catch (error) {
-    throw new Error(
-      `Bias scoring returned invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`,
-    );
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(
+        `Bias scoring returned invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`,
+      );
+    }
   }
 
   if (!parsed || typeof parsed !== "object") {
@@ -463,7 +459,7 @@ async function scoreBiasForArticles(
   });
 
   try {
-    const response = await callOpenAI<string>({
+    const response = await callOpenAI<unknown>({
       kind: "chat",
       model: settings.model,
       temperature: 0,
@@ -472,7 +468,6 @@ async function scoreBiasForArticles(
         type: "json_schema",
         json_schema: ARTICLE_BIAS_JSON_SCHEMA,
       },
-      parseJson: false,
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
@@ -549,7 +544,7 @@ async function extractAtomicFactsForArticles(
   });
 
   try {
-    const response = await callOpenAI<string>({
+    const response = await callOpenAI<unknown>({
       kind: "chat",
       model: settings.model,
       temperature: 0,
@@ -561,7 +556,6 @@ async function extractAtomicFactsForArticles(
         type: "json_schema",
         json_schema: ARTICLE_FACTS_JSON_SCHEMA,
       },
-      parseJson: false,
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },

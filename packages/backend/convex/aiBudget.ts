@@ -121,6 +121,17 @@ async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
   return parseDailyLimitUsd(limitConfig);
 }
 
+async function getActiveReservationTotal(
+  ctx: QueryCtx | MutationCtx,
+  now: number,
+): Promise<number> {
+  const reservations = await ctx.db
+    .query("aiBudgetReservations")
+    .withIndex("by_expiresAt", (q) => q.gt("expiresAt", now))
+    .collect();
+  return reservations.reduce((sum, row) => sum + row.costUsd, 0);
+}
+
 /**
  * Check if today's AI spend is under the daily budget limit.
  * Returns { allowed, spentUsd, remainingUsd, dailyLimitUsd }.
@@ -133,13 +144,14 @@ export const checkBudget = internalQuery({
     return {
       allowed: budget.withinBudget,
       spentUsd: budget.spentUsd,
+      reservedUsd: budget.reservedUsd,
       remainingUsd: budget.remainingUsd,
       dailyLimitUsd: budget.dailyLimitUsd,
     };
   },
 });
 
-async function getDailyBudgetState(ctx: QueryCtx) {
+async function getDailyBudgetState(ctx: QueryCtx | MutationCtx) {
   const now = Date.now();
   const since = startOfUtcDay(now);
   const dailyLimitUsd = await getDailyLimitUsd(ctx);
@@ -148,22 +160,116 @@ async function getDailyBudgetState(ctx: QueryCtx) {
     .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
     .collect();
   const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+  const reservedUsd = await getActiveReservationTotal(ctx, now);
+  const committedUsd = spentUsd + reservedUsd;
   const roundedSpent = roundUsd(spentUsd);
-  const remainingUsd = roundUsd(Math.max(0, dailyLimitUsd - spentUsd));
+  const roundedReserved = roundUsd(reservedUsd);
+  const remainingUsd = roundUsd(Math.max(0, dailyLimitUsd - committedUsd));
 
   return {
     spentUsd: roundedSpent,
+    reservedUsd: roundedReserved,
     remainingUsd,
     dailyLimitUsd,
     capUsd: dailyLimitUsd,
-    withinBudget: spentUsd < dailyLimitUsd,
-    nearCap: spentUsd >= dailyLimitUsd * SOFT_THRESHOLD,
+    withinBudget: committedUsd < dailyLimitUsd,
+    nearCap: committedUsd >= dailyLimitUsd * SOFT_THRESHOLD,
   };
 }
 
 export const checkDailyBudget = internalQuery({
   args: {},
   handler: async (ctx) => getDailyBudgetState(ctx),
+});
+
+// ---------------------------------------------------------------------------
+// Budget Reservations (call BEFORE any OpenAI API call)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_RESERVATION_TTL_MS = 10 * 60 * 1000;
+
+export const reserveBudget = internalMutation({
+  args: {
+    model: v.string(),
+    callType: v.optional(v.string()),
+    costUsd: v.number(),
+    ttlMs: v.optional(v.number()),
+    eventId: v.optional(v.id("events")),
+    articleId: v.optional(v.id("articles")),
+  },
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
+      throw new Error("costUsd must be a finite number");
+    }
+    if (args.costUsd < 0) {
+      throw new Error("costUsd must be non-negative");
+    }
+
+    const now = Date.now();
+    const ttlMs = Math.max(
+      60_000,
+      Math.min(30 * 60 * 1000, Math.floor(args.ttlMs ?? DEFAULT_RESERVATION_TTL_MS)),
+    );
+
+    const expired = await ctx.db
+      .query("aiBudgetReservations")
+      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
+      .collect();
+    for (const row of expired) {
+      await ctx.db.delete(row._id);
+    }
+
+    const since = startOfUtcDay(now);
+    const dailyLimitUsd = await getDailyLimitUsd(ctx);
+    const todaysUsage = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_timestamp", (q) => q.gt("timestamp", since))
+      .collect();
+    const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
+    const reservedUsd = await getActiveReservationTotal(ctx, now);
+    const projectedUsd = spentUsd + reservedUsd + args.costUsd;
+
+    if (projectedUsd > dailyLimitUsd) {
+      return {
+        allowed: false,
+        spentUsd: roundUsd(spentUsd),
+        reservedUsd: roundUsd(reservedUsd),
+        remainingUsd: roundUsd(Math.max(0, dailyLimitUsd - (spentUsd + reservedUsd))),
+        dailyLimitUsd,
+      };
+    }
+
+    const reservationId = await ctx.db.insert("aiBudgetReservations", {
+      model: args.model,
+      callType: args.callType,
+      eventId: args.eventId,
+      articleId: args.articleId,
+      costUsd: args.costUsd,
+      createdAt: now,
+      expiresAt: now + ttlMs,
+    });
+
+    return {
+      allowed: true,
+      reservationId,
+      spentUsd: roundUsd(spentUsd),
+      reservedUsd: roundUsd(reservedUsd + args.costUsd),
+      remainingUsd: roundUsd(Math.max(0, dailyLimitUsd - projectedUsd)),
+      dailyLimitUsd,
+    };
+  },
+});
+
+export const releaseReservation = internalMutation({
+  args: {
+    reservationId: v.id("aiBudgetReservations"),
+  },
+  handler: async (ctx, { reservationId }) => {
+    const reservation = await ctx.db.get(reservationId);
+    if (!reservation) return { released: false };
+    await ctx.db.delete(reservationId);
+    return { released: true };
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -175,7 +281,8 @@ export const checkDailyBudget = internalQuery({
  * Call this after every successful OpenAI call for cost tracking.
  *
  * Convex mutations are transactions, so the budget read and usage insert happen
- * atomically here. If this call returns allowed=false, no aiUsage row was added.
+ * atomically here. The allowed flag reflects whether the budget remains within
+ * limits after accounting for active reservations.
  */
 export const logUsage = internalMutation({
   args: {
@@ -209,6 +316,7 @@ async function recordUsageInternal(
     eventId?: Id<"events">;
     articleId?: Id<"articles">;
     latencyMs?: number;
+    reservationId?: Id<"aiBudgetReservations">;
   },
 ) {
     if (!Number.isFinite(args.costUsd) || Number.isNaN(args.costUsd)) {
@@ -218,23 +326,25 @@ async function recordUsageInternal(
       throw new Error("costUsd must be non-negative");
     }
 
-    const today = new Date().toISOString().split("T")[0]!;
+    const now = Date.now();
+    const today = new Date(now).toISOString().split("T")[0]!;
     const dailyLimitUsd = await getDailyLimitUsd(ctx);
+
+    if (args.reservationId) {
+      const reservation = await ctx.db.get(args.reservationId);
+      if (reservation) {
+        await ctx.db.delete(reservation._id);
+      }
+    }
 
     const todaysUsage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gt("timestamp", startOfUtcDay(Date.now())))
+      .withIndex("by_timestamp", (q) => q.gt("timestamp", startOfUtcDay(now)))
       .collect();
     const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
-
-    if (spentUsd + args.costUsd > dailyLimitUsd) {
-      return {
-        allowed: false,
-        spentUsd: roundUsd(spentUsd),
-        remainingUsd: Math.max(0, dailyLimitUsd - spentUsd),
-        dailyLimitUsd,
-      };
-    }
+    const reservedUsd = await getActiveReservationTotal(ctx, now);
+    const projectedSpentUsd = spentUsd + args.costUsd;
+    const allowed = projectedSpentUsd + reservedUsd <= dailyLimitUsd;
 
     await ctx.db.insert("aiUsage", {
       date: today,
@@ -247,14 +357,15 @@ async function recordUsageInternal(
       eventId: args.eventId,
       articleId: args.articleId,
       latencyMs: args.latencyMs,
-      timestamp: Date.now(),
+      timestamp: now,
     });
 
-    const updatedSpentUsd = spentUsd + args.costUsd;
+    const updatedSpentUsd = projectedSpentUsd;
     return {
-      allowed: true,
+      allowed,
       spentUsd: roundUsd(updatedSpentUsd),
-      remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd),
+      reservedUsd: roundUsd(reservedUsd),
+      remainingUsd: Math.max(0, dailyLimitUsd - updatedSpentUsd - reservedUsd),
       dailyLimitUsd,
     };
 }
@@ -269,6 +380,7 @@ export const recordUsage = internalMutation({
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
     latencyMs: v.optional(v.number()),
+    reservationId: v.optional(v.id("aiBudgetReservations")),
   },
   handler: async (ctx, args) =>
     recordUsageInternal(ctx, {
