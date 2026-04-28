@@ -5,7 +5,6 @@ import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireBetaAccess } from "./lib/betaAccess";
 
-const TOPIC_CURSOR_PREFIX = "topic:";
 const RANKED_CURSOR_PREFIX = "ranked:";
 const TRENDING_SCAN_LIMIT = 250;
 
@@ -14,23 +13,7 @@ const FEED_SORT_VALIDATOR = v.union(
   v.literal("trending"),
 );
 
-function encodeTopicCursor(eventId: Id<"events">): string {
-  return `${TOPIC_CURSOR_PREFIX}${eventId}`;
-}
-
-function decodeTopicCursor(cursor: string | null): Id<"events"> | null {
-  if (!cursor?.startsWith(TOPIC_CURSOR_PREFIX)) return null;
-  return cursor.slice(TOPIC_CURSOR_PREFIX.length) as Id<"events">;
-}
-
-function encodeRankedCursor(eventId: Id<"events">): string {
-  return `${RANKED_CURSOR_PREFIX}${eventId}`;
-}
-
-function decodeRankedCursor(cursor: string | null): Id<"events"> | null {
-  if (!cursor?.startsWith(RANKED_CURSOR_PREFIX)) return null;
-  return cursor.slice(RANKED_CURSOR_PREFIX.length) as Id<"events">;
-}
+type FeedSort = "recent" | "trending";
 
 type EnrichableEvent = Pick<
   Doc<"events">,
@@ -48,35 +31,88 @@ type EnrichableEvent = Pick<
   | "factualSourceCount"
 >;
 
-function trendingScore(event: EnrichableEvent, now: number): number {
+type RankedCursorPayload = {
+  eventId: Id<"events">;
+  score: number;
+  updatedAt: number;
+  firstPublishedAt: number;
+  createdAt: number;
+};
+
+function updatedAtForSort(event: EnrichableEvent): number {
+  return event.lastUpdatedAt ?? event.firstPublishedAt;
+}
+
+function trendingScore(event: EnrichableEvent): number {
   const sourceScore = (event.factualSourceCount ?? 0) * 10;
   const articleScore = (event.factualArticleCount ?? 0) * 3;
-  const updatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
-  const ageHours = Math.max(0, (now - updatedAt) / 3_600_000);
-  const recencyScore = Math.max(0, 48 - ageHours);
+  const recencyScore = updatedAtForSort(event) / 3_600_000;
   return sourceScore + articleScore + recencyScore;
+}
+
+function rankedPayload(
+  event: EnrichableEvent,
+  sort: FeedSort,
+): RankedCursorPayload {
+  return {
+    eventId: event._id,
+    score: sort === "trending" ? trendingScore(event) : event.firstPublishedAt,
+    updatedAt: updatedAtForSort(event),
+    firstPublishedAt: event.firstPublishedAt,
+    createdAt: event._creationTime,
+  };
+}
+
+function compareRankedPayload(
+  a: RankedCursorPayload,
+  b: RankedCursorPayload,
+): number {
+  return (
+    b.score - a.score ||
+    b.updatedAt - a.updatedAt ||
+    b.firstPublishedAt - a.firstPublishedAt ||
+    b.createdAt - a.createdAt ||
+    String(a.eventId).localeCompare(String(b.eventId))
+  );
+}
+
+function encodeRankedCursor(event: EnrichableEvent, sort: FeedSort): string {
+  return `${RANKED_CURSOR_PREFIX}${encodeURIComponent(
+    JSON.stringify(rankedPayload(event, sort)),
+  )}`;
+}
+
+function decodeRankedCursor(cursor: string | null): RankedCursorPayload | null {
+  if (!cursor?.startsWith(RANKED_CURSOR_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(cursor.slice(RANKED_CURSOR_PREFIX.length)),
+    ) as Partial<RankedCursorPayload>;
+    if (
+      typeof parsed.eventId === "string" &&
+      typeof parsed.score === "number" &&
+      typeof parsed.updatedAt === "number" &&
+      typeof parsed.firstPublishedAt === "number" &&
+      typeof parsed.createdAt === "number"
+    ) {
+      return parsed as RankedCursorPayload;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function sortEventsForFeed(
   events: EnrichableEvent[],
-  sort: "recent" | "trending",
+  sort: FeedSort,
 ) {
-  const now = Date.now();
   return [...events].sort((a, b) => {
     if (sort === "trending") {
-      return (
-        trendingScore(b, now) - trendingScore(a, now) ||
-        (b.lastUpdatedAt ?? b.firstPublishedAt) -
-          (a.lastUpdatedAt ?? a.firstPublishedAt) ||
-        b.firstPublishedAt - a.firstPublishedAt ||
-        b._creationTime - a._creationTime
-      );
+      return compareRankedPayload(rankedPayload(a, sort), rankedPayload(b, sort));
     }
 
-    return (
-      b.firstPublishedAt - a.firstPublishedAt ||
-      b._creationTime - a._creationTime
-    );
+    return compareRankedPayload(rankedPayload(a, sort), rankedPayload(b, sort));
   });
 }
 
@@ -84,21 +120,32 @@ function paginateRankedEvents(
   events: EnrichableEvent[],
   cursor: string | null,
   targetSize: number,
+  sort: FeedSort,
 ) {
-  const resumeAfterId = decodeRankedCursor(cursor) ?? decodeTopicCursor(cursor);
-  const resumeIndex = resumeAfterId
-    ? events.findIndex((event) => event._id === resumeAfterId)
+  const resumePayload = decodeRankedCursor(cursor);
+  const resumeIndex = resumePayload
+    ? events.findIndex((event) => event._id === resumePayload.eventId)
     : -1;
-  const startIndex = resumeIndex >= 0 ? resumeIndex + 1 : 0;
-  const page = events.slice(startIndex, startIndex + targetSize);
-  const isDone = startIndex + page.length >= events.length;
+  const startIndex =
+    resumeIndex >= 0
+      ? resumeIndex + 1
+      : resumePayload
+        ? events.findIndex(
+            (event) =>
+              compareRankedPayload(rankedPayload(event, sort), resumePayload) >
+              0,
+          )
+        : 0;
+  const normalizedStartIndex = startIndex >= 0 ? startIndex : events.length;
+  const page = events.slice(normalizedStartIndex, normalizedStartIndex + targetSize);
+  const isDone = normalizedStartIndex + page.length >= events.length;
   const lastReturned = page[page.length - 1];
 
   return {
     page,
     isDone,
     continueCursor:
-      isDone || !lastReturned ? "" : encodeRankedCursor(lastReturned._id),
+      isDone || !lastReturned ? "" : encodeRankedCursor(lastReturned, sort),
   };
 }
 
@@ -176,6 +223,36 @@ async function enrichEventsWithTopicsAndSources(
   });
 }
 
+async function getRankedFeedCandidates(
+  ctx: QueryCtx,
+  topicId?: Id<"topics">,
+): Promise<Doc<"events">[]> {
+  const scanLimit = topicId ? TRENDING_SCAN_LIMIT * 2 : TRENDING_SCAN_LIMIT;
+  const recentPublished = await ctx.db
+    .query("events")
+    .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+    .order("desc")
+    .take(scanLimit);
+
+  if (!topicId) return recentPublished;
+
+  const topicMatches = await Promise.all(
+    recentPublished.map(async (event) => {
+      const eventTopic = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event_topic", (q) =>
+          q.eq("eventId", event._id).eq("topicId", topicId),
+        )
+        .unique();
+      return eventTopic ? event : null;
+    }),
+  );
+
+  return topicMatches
+    .filter((event): event is Doc<"events"> => event !== null)
+    .slice(0, TRENDING_SCAN_LIMIT);
+}
+
 function redactPublicEventPreview(
   event: Awaited<ReturnType<typeof enrichEventsWithTopicsAndSources>>[number],
 ) {
@@ -206,53 +283,25 @@ export const getPublishedEvents = query({
     await requireBetaAccess(ctx);
     const sort = args.sort ?? "recent";
 
-    // When filtering by topic, collect matching IDs first so pagination can
-    // resume after the last matching event returned to the client.
-    let matchingEventIds: Set<Id<"events">> | null = null;
-    if (args.topicId) {
-      const eventTopicRows = await ctx.db
-        .query("eventTopics")
-        .withIndex("by_topic", (q) => q.eq("topicId", args.topicId!))
-        .collect();
-      matchingEventIds = new Set(eventTopicRows.map((r) => r.eventId));
-    }
-
     let events;
 
-    if (matchingEventIds !== null || sort === "trending") {
-      // Topic filtering uses a custom cursor based on the last returned event.
-      // This avoids dropping matching events that appear later in an over-fetched
-      // database page after the UI page has already reached its target size.
+    if (args.topicId || sort === "trending") {
+      // Ranked/topic pages use bounded candidates and a cursor carrying the
+      // stable sort tuple, so pagination doesn't drift between requests.
       const targetSize = args.paginationOpts.numItems;
-      const matchingEvents =
-        matchingEventIds !== null
-          ? await Promise.all(
-              Array.from(matchingEventIds).map((eventId) => ctx.db.get(eventId)),
-            )
-          : await ctx.db
-              .query("events")
-              .withIndex("by_status_recency", (q) =>
-                q.eq("status", "published"),
-              )
-              .order("desc")
-              .take(TRENDING_SCAN_LIMIT);
-      const publishedMatches = matchingEvents
-        .filter(
-          (event): event is Doc<"events"> =>
-            event !== null && event.status === "published",
-        );
+      const publishedMatches = await getRankedFeedCandidates(ctx, args.topicId);
       const sortedMatches = sortEventsForFeed(publishedMatches, sort);
 
       events = paginateRankedEvents(
         sortedMatches,
         args.paginationOpts.cursor,
         targetSize,
+        sort,
       );
     } else {
-      // Defensive reset in case a topic cursor is reused after the topic filter
-      // is cleared.
+      // Defensive reset in case a ranked cursor is reused after ranked mode is
+      // cleared.
       const paginationOpts =
-        args.paginationOpts.cursor?.startsWith(TOPIC_CURSOR_PREFIX) ||
         args.paginationOpts.cursor?.startsWith(RANKED_CURSOR_PREFIX)
         ? { ...args.paginationOpts, cursor: null }
         : args.paginationOpts;

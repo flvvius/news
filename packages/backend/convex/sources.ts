@@ -52,18 +52,17 @@ export const getSourceProfile = query({
     if (!source) return null;
 
     const safeLimit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)));
-    const rawArticles = await ctx.db
+    const recentArticles = await ctx.db
       .query("articles")
-      .withIndex("by_source", (q) => q.eq("sourceId", args.sourceId))
-      .collect();
-
-    const sortedArticles = rawArticles
-      .sort((a, b) => b.publishedAt - a.publishedAt)
-      .slice(0, safeLimit);
+      .withIndex("by_source_publishedAt", (q) =>
+        q.eq("sourceId", args.sourceId),
+      )
+      .order("desc")
+      .take(safeLimit);
 
     const eventIds = Array.from(
       new Set(
-        sortedArticles
+        recentArticles
           .map((article) => article.eventId)
           .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
       ),
@@ -85,7 +84,7 @@ export const getSourceProfile = query({
     );
     const topicsByEventId = new Map(topicRows);
 
-    const scoredArticles = rawArticles.filter(
+    const scoredArticles = recentArticles.filter(
       (article) => typeof article.aiBiasScore === "number",
     );
     const averageAiBias =
@@ -97,7 +96,7 @@ export const getSourceProfile = query({
         : null;
 
     const eventCount = new Set(
-      rawArticles
+      recentArticles
         .map((article) => article.eventId)
         .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
     ).size;
@@ -108,17 +107,18 @@ export const getSourceProfile = query({
         biasLabel: sourceBiasLabel(source),
       },
       stats: {
-        totalArticles: rawArticles.length,
+        totalArticles: recentArticles.length,
         eventCount,
         scoredArticleCount: scoredArticles.length,
         averageAiBias,
-        biasOutlierCount: rawArticles.filter((article) => article.biasOutlierFlag)
-          .length,
-        sourceBiasOutlierCount: rawArticles.filter(
+        biasOutlierCount: recentArticles.filter(
+          (article) => article.biasOutlierFlag,
+        ).length,
+        sourceBiasOutlierCount: recentArticles.filter(
           (article) => article.sourceBiasOutlierFlag,
         ).length,
       },
-      articles: sortedArticles.map((article) => {
+      articles: recentArticles.map((article) => {
         const event = article.eventId
           ? eventsById.get(article.eventId) ?? null
           : null;

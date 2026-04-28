@@ -26,8 +26,8 @@ function getCoverageBucket(
   if (category === "left" || category === "left-center") return "left";
   if (category === "right" || category === "right-center") return "right";
   if (category === "center") return "center";
-  if (source.baseBias < -0.5) return "left";
-  if (source.baseBias > 0.5) return "right";
+  if (source.baseBias < 0) return "left";
+  if (source.baseBias > 0) return "right";
   return "center";
 }
 

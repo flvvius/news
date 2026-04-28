@@ -295,6 +295,7 @@ export default defineSchema({
     .index("by_status_published", ["status", "publishedAt"])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
     .index("by_source", ["sourceId"])
+    .index("by_source_publishedAt", ["sourceId", "publishedAt"])
     .index("by_source_analyzed", ["sourceId", "biasAnalyzedAt"])
     .index("by_published", ["publishedAt"]),
 

@@ -70,9 +70,9 @@ function UnsubscribePage() {
           This unsubscribe link is missing the email address. Please use the
           link from your email.
         </p>
-        <Link to="/" className="mt-6">
-          <Button variant="outline">Go to homepage</Button>
-        </Link>
+        <Button asChild variant="outline" className="mt-6">
+          <Link to="/">Go to homepage</Link>
+        </Button>
       </PageShell>
     );
   }
@@ -123,12 +123,12 @@ function UnsubscribePage() {
       </p>
       <div className="flex flex-col items-center gap-3 mt-8">
         <p className="text-sm text-muted-foreground">Changed your mind?</p>
-        <Link to="/">
-          <Button variant="outline" className="gap-2">
+        <Button asChild variant="outline" className="gap-2">
+          <Link to="/">
             <Mail className="size-4" />
             Re-join the waitlist
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     </PageShell>
   );

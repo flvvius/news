@@ -172,9 +172,9 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
           <p className="mb-4 text-muted-foreground">
             The event you&apos;re looking for doesn&apos;t exist.
           </p>
-          <Link to="/">
-            <Button>Back to homepage</Button>
-          </Link>
+          <Button asChild>
+            <Link to="/">Back to homepage</Link>
+          </Button>
         </div>
       </div>
     );
@@ -296,7 +296,6 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
             <CardContent className="px-6 py-6 sm:px-8">
               <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                 {event.perspectiveSummaries?.center ??
-                  event.globalImpact ??
                   "Coverage grouped from multiple sources on Biviant."}
               </p>
             </CardContent>
@@ -328,12 +327,14 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
               </p>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
-              <Link to="/dashboard" search={{ redirect: `/event/${slug}` }}>
-                <Button>Get beta access</Button>
-              </Link>
-              <Link to="/">
-                <Button variant="ghost">Learn more</Button>
-              </Link>
+              <Button asChild>
+                <Link to="/dashboard" search={{ redirect: `/event/${slug}` }}>
+                  Get beta access
+                </Link>
+              </Button>
+              <Button asChild variant="ghost">
+                <Link to="/">Learn more</Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -368,9 +369,9 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
           <p className="text-muted-foreground mb-4">
             The event you&apos;re looking for doesn&apos;t exist.
           </p>
-          <Link to="/feed">
-            <Button>Back to feed</Button>
-          </Link>
+          <Button asChild>
+            <Link to="/feed">Back to feed</Link>
+          </Button>
         </div>
       </div>
     );
@@ -568,7 +569,6 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                   <CardContent className="px-6 py-6 sm:px-8">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.perspectiveSummaries?.center ??
-                        event.globalImpact ??
                         "Coverage grouped from multiple sources. Compare the original reporting below."}
                     </p>
                   </CardContent>

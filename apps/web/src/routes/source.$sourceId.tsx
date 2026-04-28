@@ -44,9 +44,23 @@ function formatOptional(value: string | undefined) {
     .join(" ");
 }
 
+function parseSourceId(value: string): Id<"sources"> | null {
+  const trimmed = value.trim();
+  if (!/^[a-z0-9]{16,64}$/i.test(trimmed)) return null;
+  return trimmed as Id<"sources">;
+}
+
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
 function SourceProfilePage() {
   const access = useQuery(api.user.getCurrentUserAccess);
   const { sourceId } = Route.useParams();
+  const parsedSourceId = parseSourceId(sourceId);
 
   if (access === undefined) {
     return (
@@ -72,7 +86,11 @@ function SourceProfilePage() {
     );
   }
 
-  return <SourceProfileContent sourceId={sourceId as Id<"sources">} />;
+  if (!parsedSourceId) {
+    return <InvalidSourceId />;
+  }
+
+  return <SourceProfileContent sourceId={parsedSourceId} />;
 }
 
 function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
@@ -83,8 +101,8 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
-  const thresholds =
-    (thresholdsConfig?.value as number[] | undefined) ?? undefined;
+  const thresholdsValue = thresholdsConfig?.value;
+  const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
 
   if (data === undefined) {
     return (
@@ -108,9 +126,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
           <p className="mb-4 text-muted-foreground">
             This source is not available.
           </p>
-          <Link to="/feed">
-            <Button>Back to feed</Button>
-          </Link>
+          <Button asChild>
+            <Link to="/feed">Back to feed</Link>
+          </Button>
         </div>
       </div>
     );
@@ -186,7 +204,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
 
               <div className="grid gap-3 border-t border-border/70 pt-5 sm:grid-cols-4">
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Articles</p>
+                  <p className="text-xs text-muted-foreground">
+                    Recent Articles
+                  </p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.totalArticles}
                   </p>
@@ -344,6 +364,22 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
             </Card>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InvalidSourceId() {
+  return (
+    <div className="container mx-auto max-w-5xl px-4 py-8">
+      <div className="text-center">
+        <h1 className="mb-2 text-2xl font-semibold">Source not found</h1>
+        <p className="mb-4 text-muted-foreground">
+          This source link is invalid or no longer available.
+        </p>
+        <Button asChild>
+          <Link to="/feed">Back to feed</Link>
+        </Button>
       </div>
     </div>
   );

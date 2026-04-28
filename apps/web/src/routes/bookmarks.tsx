@@ -52,11 +52,11 @@ function BookmarksPage() {
                       Bookmark events to read later from any device. Your bookmarks sync across all your sessions.
                     </p>
                   </div>
-                  <Link to="/dashboard" className="w-full">
-                    <Button size="lg" className="w-full rounded-full">
+                  <Button asChild size="lg" className="w-full rounded-full">
+                    <Link to="/dashboard">
                       Sign in to continue
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -149,11 +149,11 @@ function BookmarksContent() {
                     When you find an interesting story, tap the bookmark icon to save it here for later reading.
                   </p>
                 </div>
-                <Link to="/feed">
-                  <Button variant="outline" className="rounded-full">
+                <Button asChild variant="outline" className="rounded-full">
+                  <Link to="/feed">
                     Browse the feed
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </div>
           ) : (

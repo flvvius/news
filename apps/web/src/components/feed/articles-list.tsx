@@ -30,13 +30,20 @@ type ArticlesListProps = {
   articles: Article[];
 };
 
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
 const ArticlesList = ({ articles }: ArticlesListProps) => {
   // Single subscription for the whole list — passed down to each BiasIndicator
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
-  const thresholds =
-    (thresholdsConfig?.value as number[] | undefined) ?? undefined;
+  const thresholdsValue = thresholdsConfig?.value;
+  const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
 
   return (
     <Card className="overflow-hidden border-border/80 py-0">

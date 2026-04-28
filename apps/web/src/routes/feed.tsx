@@ -486,45 +486,47 @@ function FeedContent() {
                     />
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                  <div className="inline-grid h-9 grid-cols-2 rounded-full bg-muted/70 p-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-7 rounded-full px-3 text-xs",
-                        feedSort === "recent" &&
-                          "bg-background text-foreground shadow-sm",
-                      )}
-                      onClick={() => setFeedSort("recent")}
-                      aria-pressed={feedSort === "recent"}
-                    >
-                      <ClockIcon className="size-3.5" />
-                      Recent
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-7 rounded-full px-3 text-xs",
-                        feedSort === "trending" &&
-                          "bg-background text-foreground shadow-sm",
-                      )}
-                      onClick={() => setFeedSort("trending")}
-                      aria-pressed={feedSort === "trending"}
-                    >
-                      <TrendingUpIcon className="size-3.5" />
-                      Trending
-                    </Button>
+                {!isSearching && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+                    <div className="inline-grid h-9 grid-cols-2 rounded-full bg-muted/70 p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 rounded-full px-3 text-xs",
+                          feedSort === "recent" &&
+                            "bg-background text-foreground shadow-sm",
+                        )}
+                        onClick={() => setFeedSort("recent")}
+                        aria-pressed={feedSort === "recent"}
+                      >
+                        <ClockIcon className="size-3.5" />
+                        Recent
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 rounded-full px-3 text-xs",
+                          feedSort === "trending" &&
+                            "bg-background text-foreground shadow-sm",
+                        )}
+                        onClick={() => setFeedSort("trending")}
+                        aria-pressed={feedSort === "trending"}
+                      >
+                        <TrendingUpIcon className="size-3.5" />
+                        Trending
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {feedSort === "recent"
+                        ? "Newest published events first."
+                        : "Ranked by source diversity, article volume, and recency."}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {feedSort === "recent"
-                      ? "Newest published events first."
-                      : "Ranked by source diversity, article volume, and recency."}
-                  </p>
-                </div>
+                )}
                 {shouldShowThresholdHint && (
                   <p className="text-xs text-muted-foreground">
                     Type 2+ characters to search.
