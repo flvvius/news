@@ -3046,11 +3046,15 @@ export const mergeNearDuplicateEvents = internalAction({
             continue;
           }
 
-          const similarity = cosineSimilarity(a.embedding, b.embedding);
+          const similarity = maxCrossEventSimilarity(a, b);
           const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
+          const entityOverlap = countTokenOverlap(
+            a.entityTokens,
+            b.entityTokens,
+          );
           if (
             similarity < settings.minSimilarity ||
-            titleJaccard < settings.minTitleJaccard
+            (titleJaccard < settings.minTitleJaccard && entityOverlap < 2)
           ) {
             continue;
           }

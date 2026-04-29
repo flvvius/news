@@ -221,6 +221,7 @@ export default defineSchema({
     title: v.string(),
     url: v.string(),
     canonicalUrl: v.string(),
+    contentFingerprint: v.optional(v.string()),
 
     // Populated by enrichment pipeline, not at ingestion time
     summary: v.optional(v.string()),
@@ -292,6 +293,7 @@ export default defineSchema({
   })
     .index("by_event", ["eventId"])
     .index("by_canonical_url", ["canonicalUrl"])
+    .index("by_source_content_fingerprint", ["sourceId", "contentFingerprint"])
     .index("by_status", ["status"])
     .index("by_status_published", ["status", "publishedAt"])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
