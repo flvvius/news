@@ -1,8 +1,5 @@
 import { api } from "@news-app/backend/convex/_generated/api";
-import type {
-  Doc,
-  Id,
-} from "@news-app/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
@@ -11,9 +8,11 @@ import {
   ExternalLinkIcon,
   MessageSquareTextIcon,
   MinusCircleIcon,
+  ChevronDownIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 type ClaimStatus = Doc<"eventClaims">["status"];
 type ClaimVariant = Doc<"eventClaims">["variants"][number];
@@ -47,8 +46,6 @@ const STATUS_COPY: Record<
     heading: string;
     description: string;
     icon: typeof AlertTriangleIcon;
-    className: string;
-    chipClassName: string;
   }
 > = {
   agreement: {
@@ -56,32 +53,25 @@ const STATUS_COPY: Record<
     heading: "Agreements",
     description: "Claims confirmed by multiple sources.",
     icon: CheckCircle2Icon,
-    className: "border-emerald-500/25 bg-emerald-50/60",
-    chipClassName: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
   },
   divergence: {
     label: "Divergence",
     heading: "Divergences",
     description: "Claims where sources report materially different details.",
     icon: AlertTriangleIcon,
-    className: "border-amber-500/30 bg-amber-50/70",
-    chipClassName: "border-amber-500/35 bg-amber-500/10 text-amber-800",
   },
   framing: {
     label: "Framing",
     heading: "Framing Differences",
     description: "Shared facts described with meaningfully different language.",
     icon: MessageSquareTextIcon,
-    className: "border-sky-500/25 bg-sky-50/60",
-    chipClassName: "border-sky-500/30 bg-sky-500/10 text-sky-800",
   },
   exclusive_left: {
     label: "Left Exclusive",
     heading: "Left-Side Exclusives",
-    description: "Substantive claims only found in left or left-center coverage.",
+    description:
+      "Substantive claims only found in left or left-center coverage.",
     icon: MinusCircleIcon,
-    className: "border-border/80 bg-muted/35",
-    chipClassName: "border-border/80 bg-muted text-muted-foreground",
   },
   exclusive_right: {
     label: "Right Exclusive",
@@ -89,16 +79,12 @@ const STATUS_COPY: Record<
     description:
       "Substantive claims only found in right or right-center coverage.",
     icon: MinusCircleIcon,
-    className: "border-border/80 bg-muted/35",
-    chipClassName: "border-border/80 bg-muted text-muted-foreground",
   },
   exclusive_center: {
     label: "Center Exclusive",
     heading: "Center Exclusives",
     description: "Substantive claims only found in center coverage.",
     icon: MinusCircleIcon,
-    className: "border-border/80 bg-muted/35",
-    chipClassName: "border-border/80 bg-muted text-muted-foreground",
   },
 };
 
@@ -134,62 +120,65 @@ function ClaimVariantRow({
   const source = getVariantSource(variant, articlesById, sourcesById);
 
   return (
-    <div className="rounded-lg border border-border/70 bg-background/70 px-3 py-3">
-      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background">
-            {source?.logoUrl ? (
-              <img
-                src={source.logoUrl}
-                alt={source.name}
-                className="h-full w-full object-contain p-1"
-                loading="lazy"
-              />
-            ) : (
-              <span className="text-[11px] font-medium text-foreground">
-                {(source?.name ?? "S").charAt(0)}
-              </span>
-            )}
-          </div>
-          {source ? (
-            <Link
-              to="/source/$sourceId"
-              params={{ sourceId: source._id }}
-              className="truncate text-sm font-medium text-card-foreground hover:underline"
-            >
-              {source.name}
-            </Link>
+    <div className="group relative border-l-2 border-border pl-4 py-3 transition-colors hover:border-primary/50">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-card">
+          {source?.logoUrl ? (
+            <img
+              src={source.logoUrl}
+              alt={source.name}
+              className="h-full w-full object-contain p-1.5"
+              loading="lazy"
+            />
           ) : (
-            <span className="truncate text-sm font-medium text-card-foreground">
-              Unknown source
+            <span className="text-xs font-semibold text-muted-foreground">
+              {(source?.name ?? "S").charAt(0)}
             </span>
           )}
         </div>
-        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground">
-          {formatLean(variant.sourceLean)}
-        </span>
-        {variant.value && (
-          <span className="rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] text-foreground">
-            {variant.value}
-          </span>
-        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            {source ? (
+              <Link
+                to="/source/$sourceId"
+                params={{ sourceId: source._id }}
+                className="text-sm font-semibold text-card-foreground hover:text-primary transition-colors"
+              >
+                {source.name}
+              </Link>
+            ) : (
+              <span className="text-sm font-semibold text-muted-foreground">
+                Unknown source
+              </span>
+            )}
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {formatLean(variant.sourceLean)}
+            </span>
+            {variant.value && (
+              <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-foreground">
+                {variant.value}
+              </span>
+            )}
+          </div>
+
+          <p className="text-sm leading-relaxed text-card-foreground max-w-[65ch]">
+            {variant.statement}
+          </p>
+
+          {article && (
+            <a
+              href={article.canonicalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              Read source article
+              <ExternalLinkIcon className="size-3" />
+            </a>
+          )}
+        </div>
       </div>
-
-      <p className="text-sm leading-relaxed text-card-foreground">
-        {variant.statement}
-      </p>
-
-      {article && (
-        <a
-          href={article.canonicalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-        >
-          Read source article
-          <ExternalLinkIcon className="size-3" />
-        </a>
-      )}
     </div>
   );
 }
@@ -198,52 +187,109 @@ function ClaimCard({
   claim,
   articlesById,
   sourcesById,
+  status,
 }: {
   claim: Doc<"eventClaims">;
   articlesById: Map<string, ClaimArticle>;
   sourcesById: Map<string, NonNullable<ClaimArticle["source"]>>;
+  status: ClaimStatus;
 }) {
-  const status = STATUS_COPY[claim.status];
-  const Icon = status.icon;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const statusConfig = STATUS_COPY[status];
+  const Icon = statusConfig.icon;
   const sourceCount = new Set(
     claim.variants.map((variant) => String(variant.sourceId)),
   ).size;
 
+  const showExpandButton = claim.variants.length > 2;
+  const visibleVariants = isExpanded
+    ? claim.variants
+    : claim.variants.slice(0, 2);
+
   return (
-    <div className={cn("rounded-xl border px-4 py-4", status.className)}>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium",
-            status.chipClassName,
-          )}
-        >
-          <Icon className="size-3.5" />
-          {status.label}
-        </span>
-        <span className="rounded-full border border-border/70 bg-background/65 px-2.5 py-1 text-xs text-muted-foreground">
-          Importance {claim.importance}/5
-        </span>
-        <span className="rounded-full border border-border/70 bg-background/65 px-2.5 py-1 text-xs text-muted-foreground">
-          {sourceCount} {sourceCount === 1 ? "source" : "sources"}
-        </span>
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-4 py-4 sm:px-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <Icon className="size-3.5" />
+              {statusConfig.label}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {claim.importance}/5 importance
+            </span>
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {sourceCount} {sourceCount === 1 ? "source" : "sources"}
+          </span>
+        </div>
+
+        <h4 className="text-base font-semibold leading-snug tracking-tight text-card-foreground max-w-[65ch]">
+          {claim.canonicalStatement}
+        </h4>
       </div>
 
-      <h4 className="text-base font-semibold leading-snug tracking-tight text-card-foreground">
-        {claim.canonicalStatement}
-      </h4>
+      <div className="border-t border-border bg-muted/30 px-4 py-3 sm:px-5">
+        <div className="space-y-0 divide-y divide-border/50">
+          {visibleVariants.map((variant, index) => (
+            <ClaimVariantRow
+              key={`${variant.articleId}-${variant.sourceFactIndex ?? index}-${index}`}
+              variant={variant}
+              articlesById={articlesById}
+              sourcesById={sourcesById}
+            />
+          ))}
+        </div>
 
-      <div className="mt-4 grid gap-3">
-        {claim.variants.map((variant, index) => (
-          <ClaimVariantRow
-            key={`${variant.articleId}-${variant.sourceFactIndex ?? index}-${index}`}
-            variant={variant}
-            articlesById={articlesById}
-            sourcesById={sourcesById}
-          />
-        ))}
+        {showExpandButton && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {isExpanded
+              ? "Show less"
+              : `Show ${claim.variants.length - 2} more sources`}
+            <ChevronDownIcon
+              className={cn(
+                "size-3.5 transition-transform",
+                isExpanded && "rotate-180",
+              )}
+            />
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  label,
+  count,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-center rounded-xl border px-4 py-3 transition-all text-center",
+        isActive
+          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+          : "border-border bg-card hover:border-primary/30 hover:bg-accent",
+      )}
+    >
+      <span className="text-2xl font-bold text-card-foreground tabular-nums">
+        {count}
+      </span>
+      <span className="text-xs font-medium text-muted-foreground mt-0.5">
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -254,12 +300,16 @@ export default function EventClaimComparison({
   eventId: Id<"events">;
   articles: ClaimArticle[];
 }) {
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+
   const claims = useQuery(api.claimDivergence.getEventClaims, {
     eventId,
     limit: 24,
   });
 
-  const articlesById = new Map(articles.map((article) => [String(article._id), article]));
+  const articlesById = new Map(
+    articles.map((article) => [String(article._id), article]),
+  );
   const sourcesById = new Map(
     articles
       .map((article) => article.source)
@@ -269,19 +319,18 @@ export default function EventClaimComparison({
 
   if (claims === undefined) {
     return (
-      <Card className="overflow-hidden border-border/80 py-0">
-        <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+      <Card className="overflow-hidden border-border py-0">
+        <CardHeader className="border-b border-border bg-muted/30 py-5">
           <CardTitle className="text-xl tracking-tight">
             Claim Breakdown
           </CardTitle>
         </CardHeader>
-        <CardContent className="px-6 py-6 sm:px-8">
-          <div
-            role="status"
-            aria-live="polite"
-            className="text-sm text-muted-foreground"
-          >
-            Loading claim analysis...
+        <CardContent className="px-4 py-6 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm text-muted-foreground">
+              Loading claim analysis...
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -290,18 +339,18 @@ export default function EventClaimComparison({
 
   if (claims.length === 0) {
     return (
-      <Card className="overflow-hidden border-border/80 py-0">
-        <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+      <Card className="overflow-hidden border-border py-0">
+        <CardHeader className="border-b border-border bg-muted/30 py-5">
           <CardTitle className="text-xl tracking-tight">
             Claim Breakdown
           </CardTitle>
         </CardHeader>
-        <CardContent className="px-6 py-6 sm:px-8">
-          <div className="rounded-xl border border-border/70 bg-background/65 px-4 py-5">
+        <CardContent className="px-4 py-6 sm:px-6">
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
             <p className="text-sm font-medium text-card-foreground">
-              Claim analysis is not available yet.
+              Claim analysis is not available yet
             </p>
-            <p className="mt-1 max-w-[60ch] text-sm text-muted-foreground">
+            <p className="mt-1.5 text-sm text-muted-foreground max-w-[55ch] mx-auto">
               This view appears once enough articles have atomic facts and the
               event-level claim worker has analyzed agreements, divergences, and
               exclusives.
@@ -319,9 +368,7 @@ export default function EventClaimComparison({
       claim,
     ]);
   }
-  const visibleStatuses = STATUS_ORDER.filter(
-    (status) => (claimsByStatus.get(status)?.length ?? 0) > 0,
-  );
+
   const summaryCounts = {
     agreements: claimsByStatus.get("agreement")?.length ?? 0,
     divergences: claimsByStatus.get("divergence")?.length ?? 0,
@@ -332,68 +379,120 @@ export default function EventClaimComparison({
       (claimsByStatus.get("exclusive_center")?.length ?? 0),
   };
 
+  const getFilteredStatuses = () => {
+    if (!activeFilter) return STATUS_ORDER;
+
+    switch (activeFilter) {
+      case "agreements":
+        return ["agreement"] as ClaimStatus[];
+      case "divergences":
+        return ["divergence"] as ClaimStatus[];
+      case "framing":
+        return ["framing"] as ClaimStatus[];
+      case "exclusives":
+        return [
+          "exclusive_left",
+          "exclusive_right",
+          "exclusive_center",
+        ] as ClaimStatus[];
+      default:
+        return STATUS_ORDER;
+    }
+  };
+
+  const filteredStatuses = getFilteredStatuses();
+  const visibleStatuses = filteredStatuses.filter(
+    (status) => (claimsByStatus.get(status)?.length ?? 0) > 0,
+  );
+
+  const toggleFilter = (filter: string) => {
+    setActiveFilter(activeFilter === filter ? null : filter);
+  };
+
   return (
-    <Card className="overflow-hidden border-border/80 py-0">
-      <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-        <CardTitle className="text-xl tracking-tight">
-          Claim Breakdown
-        </CardTitle>
+    <Card className="overflow-hidden border-border py-0">
+      <CardHeader className="border-b border-border bg-muted/30 py-5">
+        <div className="flex flex-col gap-1">
+          <CardTitle className="text-xl tracking-tight">
+            Claim Breakdown
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Compare how different sources report this story
+          </p>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6 px-6 py-6 sm:px-8">
-        <div className="grid gap-3 sm:grid-cols-4">
-          <div className="rounded-lg border border-emerald-500/25 bg-emerald-50/50 px-3 py-3">
-            <p className="text-xs text-muted-foreground">Agreements</p>
-            <p className="text-xl font-semibold text-card-foreground">
-              {summaryCounts.agreements}
-            </p>
+
+      <CardContent className="p-0">
+        {/* Stats Grid - Clickable Filters */}
+        <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+            <StatCard
+              label="Agreements"
+              count={summaryCounts.agreements}
+              isActive={activeFilter === "agreements"}
+              onClick={() => toggleFilter("agreements")}
+            />
+            <StatCard
+              label="Divergences"
+              count={summaryCounts.divergences}
+              isActive={activeFilter === "divergences"}
+              onClick={() => toggleFilter("divergences")}
+            />
+            <StatCard
+              label="Framing"
+              count={summaryCounts.framing}
+              isActive={activeFilter === "framing"}
+              onClick={() => toggleFilter("framing")}
+            />
+            <StatCard
+              label="Exclusives"
+              count={summaryCounts.exclusives}
+              isActive={activeFilter === "exclusives"}
+              onClick={() => toggleFilter("exclusives")}
+            />
           </div>
-          <div className="rounded-lg border border-amber-500/30 bg-amber-50/60 px-3 py-3">
-            <p className="text-xs text-muted-foreground">Divergences</p>
-            <p className="text-xl font-semibold text-card-foreground">
-              {summaryCounts.divergences}
-            </p>
-          </div>
-          <div className="rounded-lg border border-sky-500/25 bg-sky-50/50 px-3 py-3">
-            <p className="text-xs text-muted-foreground">Framing</p>
-            <p className="text-xl font-semibold text-card-foreground">
-              {summaryCounts.framing}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-background/65 px-3 py-3">
-            <p className="text-xs text-muted-foreground">Exclusives</p>
-            <p className="text-xl font-semibold text-card-foreground">
-              {summaryCounts.exclusives}
-            </p>
-          </div>
+
+          {activeFilter && (
+            <button
+              onClick={() => setActiveFilter(null)}
+              className="mt-3 text-xs font-medium text-primary hover:underline"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
 
-        <div className="space-y-6">
-          {visibleStatuses.map((status) => {
-            const statusClaims = claimsByStatus.get(status) ?? [];
-            const copy = STATUS_COPY[status];
-            return (
-              <section key={status} className="space-y-3">
-                <div>
-                  <h3 className="text-base font-semibold tracking-tight text-card-foreground">
-                    {copy.heading}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {copy.description}
-                  </p>
-                </div>
-                <div className="grid gap-4">
-                  {statusClaims.map((claim) => (
-                    <ClaimCard
-                      key={claim._id}
-                      claim={claim}
-                      articlesById={articlesById}
-                      sourcesById={sourcesById}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+        {/* Claims List */}
+        <div className="px-4 py-5 sm:px-6">
+          <div className="space-y-8">
+            {visibleStatuses.map((status) => {
+              const statusClaims = claimsByStatus.get(status) ?? [];
+              const copy = STATUS_COPY[status];
+              return (
+                <section key={status} className="space-y-4">
+                  <div className="border-l-2 border-primary pl-3">
+                    <h3 className="text-base font-semibold tracking-tight text-card-foreground">
+                      {copy.heading}
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-[55ch]">
+                      {copy.description}
+                    </p>
+                  </div>
+                  <div className="grid gap-4">
+                    {statusClaims.map((claim) => (
+                      <ClaimCard
+                        key={claim._id}
+                        claim={claim}
+                        articlesById={articlesById}
+                        sourcesById={sourcesById}
+                        status={status}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </div>
       </CardContent>
     </Card>

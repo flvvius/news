@@ -153,6 +153,7 @@ export default defineSchema({
   })
     .index("by_event", ["eventId"])
     .index("by_event_updatedAt", ["eventId", "updatedAt"])
+    .index("by_event_status", ["eventId", "status"])
     .index("by_status_next_attempt", ["status", "nextAttemptAt"])
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 

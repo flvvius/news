@@ -14,7 +14,6 @@ import {
   type EventShareRenderData,
 } from "./shareAssets";
 
-const ACTIVE_JOB_STATUSES = new Set(["queued", "processing", "failed"]);
 const TERMINAL_SUCCESS_WINDOW_MS = 60 * 60 * 1000;
 const DEFAULT_MIN_ARTICLES = 3;
 const DEFAULT_MIN_SOURCES = 2;
@@ -73,6 +72,51 @@ async function getLatestSummaryJob(
     .withIndex("by_event_updatedAt", (q) => q.eq("eventId", eventId))
     .order("desc")
     .first();
+}
+
+function summaryJobBlocksEnqueue(
+  job: Doc<"eventSummaryJobs">,
+  now: number,
+): boolean {
+  if (job.status === "queued") return true;
+  if (job.status === "processing") return (job.leaseExpiresAt ?? 0) > now;
+  if (job.status === "failed") {
+    return job.nextAttemptAt < Number.MAX_SAFE_INTEGER;
+  }
+  return false;
+}
+
+async function hasBlockingSummaryJob(
+  ctx: QueryCtx | MutationCtx,
+  eventId: Id<"events">,
+  now: number,
+): Promise<boolean> {
+  const [queued, processing, failed] = await Promise.all([
+    ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_event_status", (q) =>
+        q.eq("eventId", eventId).eq("status", "queued"),
+      )
+      .first(),
+    ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_event_status", (q) =>
+        q.eq("eventId", eventId).eq("status", "processing"),
+      )
+      .collect(),
+    ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_event_status", (q) =>
+        q.eq("eventId", eventId).eq("status", "failed"),
+      )
+      .collect(),
+  ]);
+
+  return Boolean(
+    queued ||
+      processing.some((job) => summaryJobBlocksEnqueue(job, now)) ||
+      failed.some((job) => summaryJobBlocksEnqueue(job, now)),
+  );
 }
 
 async function getEventEligibility(
@@ -151,6 +195,64 @@ async function buildShareRenderData(
   };
 }
 
+async function enqueueEligibleEvents(
+  ctx: MutationCtx,
+  events: Doc<"events">[],
+  safeLimit: number,
+  minArticles: number,
+  minSources: number,
+) {
+  const now = Date.now();
+  let queued = 0;
+  let inspected = 0;
+  let skipped = 0;
+
+  for (const event of events) {
+    if (queued >= safeLimit) break;
+    inspected++;
+
+    const eligibility = await getEventEligibility(
+      ctx,
+      event,
+      minArticles,
+      minSources,
+    );
+    if (!eligibility.eligible) {
+      skipped++;
+      continue;
+    }
+
+    const latestJob = await getLatestSummaryJob(ctx, event._id);
+    if (await hasBlockingSummaryJob(ctx, event._id, now)) {
+      skipped++;
+      continue;
+    }
+    if (
+      latestJob?.status === "succeeded" &&
+      event.lastSummarizedAt &&
+      now - latestJob.updatedAt < TERMINAL_SUCCESS_WINDOW_MS &&
+      (event.lastSummarizedAt ?? 0) >=
+        (event.lastUpdatedAt ?? event.firstPublishedAt)
+    ) {
+      skipped++;
+      continue;
+    }
+
+    await ctx.db.insert("eventSummaryJobs", {
+      eventId: event._id,
+      status: "queued",
+      reason: "eligible_event",
+      attempts: 0,
+      requestedAt: now,
+      nextAttemptAt: now,
+      updatedAt: now,
+    });
+    queued++;
+  }
+
+  return { queued, inspected, skipped };
+}
+
 export const enqueueEligibleEventSummaries = internalMutation({
   args: {
     limit: v.number(),
@@ -158,7 +260,6 @@ export const enqueueEligibleEventSummaries = internalMutation({
     minSources: v.number(),
   },
   handler: async (ctx, { limit, minArticles, minSources }) => {
-    const now = Date.now();
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
     const events = await ctx.db
       .query("events")
@@ -166,58 +267,174 @@ export const enqueueEligibleEventSummaries = internalMutation({
       .order("desc")
       .take(safeLimit * 3);
 
-    let queued = 0;
-    let inspected = 0;
-    let skipped = 0;
+    return enqueueEligibleEvents(ctx, events, safeLimit, minArticles, minSources);
+  },
+});
 
-    for (const event of events) {
-      if (queued >= safeLimit) break;
-      inspected++;
+export const enqueueEligibleEventSummariesBackfill = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    scanLimit: v.optional(v.number()),
+    minArticles: v.number(),
+    minSources: v.number(),
+    beforeFirstPublishedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const safeScanLimit = Math.min(
+      Math.max(Math.floor(args.scanLimit ?? safeLimit * 5), safeLimit),
+      1000,
+    );
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => {
+        const statusQuery = q.eq("status", "published");
+        return args.beforeFirstPublishedAt
+          ? statusQuery.lt("firstPublishedAt", args.beforeFirstPublishedAt)
+          : statusQuery;
+      })
+      .order("desc")
+      .take(safeScanLimit);
 
-      const eligibility = await getEventEligibility(
-        ctx,
-        event,
-        minArticles,
-        minSources,
+    const result = await enqueueEligibleEvents(
+      ctx,
+      events,
+      safeLimit,
+      args.minArticles,
+      args.minSources,
+    );
+    const lastScanned = events[events.length - 1];
+
+    return {
+      ...result,
+      scanned: events.length,
+      nextBeforeFirstPublishedAt: lastScanned?.firstPublishedAt,
+      done: events.length < safeScanLimit,
+    };
+  },
+});
+
+async function cleanupDuplicateQueuedSummaryJobs(
+  ctx: MutationCtx,
+  limit: number,
+  dryRun: boolean,
+) {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+  const queuedJobs = await ctx.db
+    .query("eventSummaryJobs")
+    .withIndex("by_status_next_attempt", (q) => q.eq("status", "queued"))
+    .take(safeLimit);
+
+  const seenEventIds = new Set<Id<"events">>();
+  const duplicateIds: Id<"eventSummaryJobs">[] = [];
+
+  for (const job of queuedJobs) {
+    if (seenEventIds.has(job.eventId)) {
+      duplicateIds.push(job._id);
+      continue;
+    }
+    seenEventIds.add(job.eventId);
+  }
+
+  if (!dryRun) {
+    for (const jobId of duplicateIds) {
+      await ctx.db.delete(jobId);
+    }
+  }
+
+  return {
+    scanned: queuedJobs.length,
+    uniqueEvents: seenEventIds.size,
+    duplicateQueuedJobs: duplicateIds.length,
+    deleted: dryRun ? 0 : duplicateIds.length,
+    remainingMayExist: queuedJobs.length === safeLimit,
+  };
+}
+
+export const cleanupDuplicateQueuedSummaryJobsInternal = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    return cleanupDuplicateQueuedSummaryJobs(
+      ctx,
+      args.limit ?? 500,
+      args.dryRun ?? false,
+    );
+  },
+});
+
+export const cleanupDuplicateQueuedSummaryJobsForAdmin = mutation({
+  args: {
+    limit: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+    return cleanupDuplicateQueuedSummaryJobs(
+      ctx,
+      args.limit ?? 500,
+      args.dryRun ?? true,
+    );
+  },
+});
+
+export const getSummaryQueueHealthForAdmin = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 1000), 1), 1000);
+    const queuedJobs = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_next_attempt", (q) => q.eq("status", "queued"))
+      .take(safeLimit);
+    const processingJobs = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_updatedAt", (q) => q.eq("status", "processing"))
+      .take(safeLimit);
+    const failedJobs = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_next_attempt", (q) => q.eq("status", "failed"))
+      .take(safeLimit);
+
+    const queuedEventCounts = new Map<Id<"events">, number>();
+    for (const job of queuedJobs) {
+      queuedEventCounts.set(
+        job.eventId,
+        (queuedEventCounts.get(job.eventId) ?? 0) + 1,
       );
-      if (!eligibility.eligible) {
-        skipped++;
-        continue;
-      }
-
-      const latestJob = await getLatestSummaryJob(ctx, event._id);
-      if (
-        latestJob &&
-        ACTIVE_JOB_STATUSES.has(latestJob.status) &&
-        (latestJob.leaseExpiresAt ?? 0) > now
-      ) {
-        skipped++;
-        continue;
-      }
-      if (
-        latestJob?.status === "succeeded" &&
-        event.lastSummarizedAt &&
-        now - latestJob.updatedAt < TERMINAL_SUCCESS_WINDOW_MS &&
-        (event.lastSummarizedAt ?? 0) >=
-          (event.lastUpdatedAt ?? event.firstPublishedAt)
-      ) {
-        skipped++;
-        continue;
-      }
-
-      await ctx.db.insert("eventSummaryJobs", {
-        eventId: event._id,
-        status: "queued",
-        reason: "eligible_event",
-        attempts: 0,
-        requestedAt: now,
-        nextAttemptAt: now,
-        updatedAt: now,
-      });
-      queued++;
     }
 
-    return { queued, inspected, skipped };
+    const duplicateQueuedEvents = Array.from(queuedEventCounts.values()).filter(
+      (count) => count > 1,
+    ).length;
+    const duplicateQueuedJobs = Array.from(queuedEventCounts.values()).reduce(
+      (sum, count) => sum + Math.max(0, count - 1),
+      0,
+    );
+
+    return {
+      scannedQueuedJobs: queuedJobs.length,
+      queuedJobs: queuedJobs.length,
+      queuedUniqueEvents: queuedEventCounts.size,
+      duplicateQueuedEvents,
+      duplicateQueuedJobs,
+      duplicateRatio:
+        queuedEventCounts.size === 0
+          ? 0
+          : queuedJobs.length / queuedEventCounts.size,
+      processingJobs: processingJobs.length,
+      failedJobs: failedJobs.length,
+      truncated: {
+        queued: queuedJobs.length === safeLimit,
+        processing: processingJobs.length === safeLimit,
+        failed: failedJobs.length === safeLimit,
+      },
+    };
   },
 });
 
