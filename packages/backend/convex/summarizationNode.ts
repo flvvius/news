@@ -401,7 +401,7 @@ export const runPhase5Backfill = internalAction({
     summaryProcessLimit: v.optional(v.number()),
     claimProcessLimit: v.optional(v.number()),
     claimScanLimit: v.optional(v.number()),
-    beforeFirstPublishedAt: v.optional(v.number()),
+    summaryCursor: v.optional(v.string()),
     includeExistingCoverage: v.optional(v.boolean()),
     force: v.optional(v.boolean()),
   },
@@ -417,12 +417,12 @@ export const runPhase5Backfill = internalAction({
       inspected: number;
       skipped: number;
       scanned: number;
-      nextBeforeFirstPublishedAt?: number;
+      nextCursor?: string;
       done: boolean;
     };
     scheduledSummaryJobs?: number;
     claims?: unknown;
-    nextBeforeFirstPublishedAt?: number;
+    nextCursor?: string;
     done?: boolean;
   }> => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
@@ -456,14 +456,14 @@ export const runPhase5Backfill = internalAction({
         ),
         minArticles: settings.minArticles,
         minSources: settings.minSources,
-        beforeFirstPublishedAt: args.beforeFirstPublishedAt,
+        cursor: args.summaryCursor,
       },
     )) as {
       queued: number;
       inspected: number;
       skipped: number;
       scanned: number;
-      nextBeforeFirstPublishedAt?: number;
+      nextCursor?: string;
       done: boolean;
     };
 
@@ -497,7 +497,7 @@ export const runPhase5Backfill = internalAction({
       summaryBackfill,
       scheduledSummaryJobs: dueJobs.length,
       claims,
-      nextBeforeFirstPublishedAt: summaryBackfill.nextBeforeFirstPublishedAt,
+      nextCursor: summaryBackfill.nextCursor,
       done: summaryBackfill.done,
     };
   },

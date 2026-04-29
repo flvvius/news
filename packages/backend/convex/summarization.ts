@@ -295,7 +295,7 @@ export const enqueueEligibleEventSummariesBackfill = internalMutation({
     scanLimit: v.optional(v.number()),
     minArticles: v.number(),
     minSources: v.number(),
-    beforeFirstPublishedAt: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
@@ -303,16 +303,15 @@ export const enqueueEligibleEventSummariesBackfill = internalMutation({
       Math.max(Math.floor(args.scanLimit ?? safeLimit * 5), safeLimit),
       1000,
     );
-    const events = await ctx.db
+    const page = await ctx.db
       .query("events")
-      .withIndex("by_status_recency", (q) => {
-        const statusQuery = q.eq("status", "published");
-        return args.beforeFirstPublishedAt
-          ? statusQuery.lt("firstPublishedAt", args.beforeFirstPublishedAt)
-          : statusQuery;
-      })
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
       .order("desc")
-      .take(safeScanLimit);
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: safeScanLimit,
+      });
+    const events = page.page;
 
     const result = await enqueueEligibleEvents(
       ctx,
@@ -321,13 +320,11 @@ export const enqueueEligibleEventSummariesBackfill = internalMutation({
       args.minArticles,
       args.minSources,
     );
-    const lastScanned = events[events.length - 1];
-
     return {
       ...result,
       scanned: events.length,
-      nextBeforeFirstPublishedAt: lastScanned?.firstPublishedAt,
-      done: events.length < safeScanLimit,
+      nextCursor: page.continueCursor ?? undefined,
+      done: page.isDone,
     };
   },
 });

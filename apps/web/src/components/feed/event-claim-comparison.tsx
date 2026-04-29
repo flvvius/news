@@ -202,6 +202,7 @@ function ClaimCard({
   ).size;
 
   const showExpandButton = claim.variants.length > 2;
+  const remainingVariantCount = claim.variants.length - 2;
   const visibleVariants = isExpanded
     ? claim.variants
     : claim.variants.slice(0, 2);
@@ -243,12 +244,16 @@ function ClaimCard({
 
         {showExpandButton && (
           <button
+            type="button"
+            aria-expanded={isExpanded}
             onClick={() => setIsExpanded(!isExpanded)}
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             {isExpanded
               ? "Show less"
-              : `Show ${claim.variants.length - 2} more sources`}
+              : `Show ${remainingVariantCount} more ${
+                  remainingVariantCount === 1 ? "source" : "sources"
+                }`}
             <ChevronDownIcon
               className={cn(
                 "size-3.5 transition-transform",
@@ -275,6 +280,8 @@ function StatCard({
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={isActive}
       onClick={onClick}
       className={cn(
         "flex flex-col items-center justify-center rounded-xl border px-4 py-3 transition-all text-center",
@@ -454,6 +461,7 @@ export default function EventClaimComparison({
 
           {activeFilter && (
             <button
+              type="button"
               onClick={() => setActiveFilter(null)}
               className="mt-3 text-xs font-medium text-primary hover:underline"
             >

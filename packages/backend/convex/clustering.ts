@@ -3115,8 +3115,21 @@ export const mergeNearDuplicateEvents = internalAction({
           keep.perspectiveSummaries = mergedPerspectiveSummaries;
           keep.globalImpact = mergedGlobalImpact;
           keep.imageUrl = mergedImageUrl;
+          keep.memberEmbeddings = [
+            ...keep.memberEmbeddings,
+            ...remove.memberEmbeddings,
+          ].slice(0, 3);
           for (const sourceId of remove.sourceIds) {
             keep.sourceIds.add(sourceId);
+          }
+          for (const token of remove.entityTokens) {
+            keep.entityTokens.add(token);
+          }
+          for (const token of remove.evidenceTokens) {
+            keep.evidenceTokens.add(token);
+          }
+          for (const token of remove.factTokens) {
+            keep.factTokens.add(token);
           }
         }
       }

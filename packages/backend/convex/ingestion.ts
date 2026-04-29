@@ -21,6 +21,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { ALL_FEEDS, type FeedEntry } from "./feeds";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
@@ -656,6 +657,88 @@ export const insertArticles = internalMutation({
   },
 });
 
+async function recomputeEventEmbeddingForEvent(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+): Promise<void> {
+  const articles = await ctx.db
+    .query("articles")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+
+  if (articles.length === 0) {
+    const existingRows = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of existingRows) {
+      await ctx.db.delete(row._id);
+    }
+    return;
+  }
+
+  const embeddingRows = await Promise.all(
+    articles.map(async (article) => {
+      const rows = await ctx.db
+        .query("articleEmbeddings")
+        .withIndex("by_article", (q) => q.eq("articleId", article._id))
+        .collect();
+      return (
+        rows.sort(
+          (a, b) => b.version - a.version || b._creationTime - a._creationTime,
+        )[0] ?? null
+      );
+    }),
+  );
+
+  const embeddings = embeddingRows
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+    .map((row) => row.embedding);
+
+  if (embeddings.length === 0) {
+    const existingRows = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of existingRows) {
+      await ctx.db.delete(row._id);
+    }
+    return;
+  }
+
+  const dimension = embeddings[0]!.length;
+  const sums = new Array(dimension).fill(0);
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimension; i++) {
+      sums[i] += embedding[i] ?? 0;
+    }
+  }
+
+  const averagedEmbedding = sums.map((sum) => sum / embeddings.length);
+  const latestVersion = embeddingRows.reduce(
+    (max, row) => (row && row.version > max ? row.version : max),
+    0,
+  );
+
+  const existingRow = await ctx.db
+    .query("eventEmbeddings")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .first();
+
+  if (existingRow) {
+    await ctx.db.patch(existingRow._id, {
+      embedding: averagedEmbedding,
+      version: latestVersion,
+    });
+  } else {
+    await ctx.db.insert("eventEmbeddings", {
+      eventId,
+      embedding: averagedEmbedding,
+      version: latestVersion,
+    });
+  }
+}
+
 export const cleanupDuplicateArticlesInEvents = internalMutation({
   args: {
     limit: v.optional(v.number()),
@@ -732,6 +815,7 @@ export const cleanupDuplicateArticlesInEvents = internalMutation({
 
     if (!dryRun) {
       for (const eventId of touchedEventIds) {
+        await recomputeEventEmbeddingForEvent(ctx, eventId);
         await refreshEventClaimCoverage(ctx, eventId);
         await ctx.runMutation(internal.clustering.refreshEventPresentationById, {
           eventId,
@@ -1028,10 +1112,13 @@ export const ingestSingleFeed = internalAction({
       const BATCH_SIZE = 50;
       for (let i = 0; i < articleRecords.length; i += BATCH_SIZE) {
         const batch = articleRecords.slice(i, i + BATCH_SIZE);
-        await ctx.runMutation(internal.ingestion.insertArticles, {
-          articles: batch,
-        });
-        articlesInserted += batch.length;
+        const insertedIds = await ctx.runMutation(
+          internal.ingestion.insertArticles,
+          {
+            articles: batch,
+          },
+        );
+        articlesInserted += insertedIds.length;
       }
 
       // 7. Update feed health (with sourceId link)
