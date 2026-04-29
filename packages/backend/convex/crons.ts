@@ -84,6 +84,18 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
+// Summary Queue Health — Hourly
+// ---------------------------------------------------------------------------
+// Warns in logs when queued jobs duplicate the same event or queue depth
+// grows enough to threaten coverage.
+crons.interval(
+  "summary-queue-health",
+  { hours: 1 },
+  internal.summarizationNode.alertOnSummaryQueueHealth,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Claim Divergence Detection — Every 30 minutes
 // ---------------------------------------------------------------------------
 // Builds the eventClaims graph from atomic facts so the product can show

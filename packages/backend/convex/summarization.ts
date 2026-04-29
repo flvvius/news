@@ -25,6 +25,22 @@ type SummaryEligibility = {
   reason?: string;
 };
 
+type SummaryQueueHealth = {
+  scannedQueuedJobs: number;
+  queuedJobs: number;
+  queuedUniqueEvents: number;
+  duplicateQueuedEvents: number;
+  duplicateQueuedJobs: number;
+  duplicateRatio: number;
+  processingJobs: number;
+  failedJobs: number;
+  truncated: {
+    queued: boolean;
+    processing: boolean;
+    failed: boolean;
+  };
+};
+
 function sourceBiasLabel(source: Doc<"sources"> | null): string {
   if (!source) return "unknown";
   if (source.mbfcCategory) return source.mbfcCategory;
@@ -246,6 +262,8 @@ async function enqueueEligibleEvents(
       requestedAt: now,
       nextAttemptAt: now,
       updatedAt: now,
+      articleCount: eligibility.articleCount,
+      sourceCount: eligibility.sourceCount,
     });
     queued++;
   }
@@ -380,61 +398,76 @@ export const cleanupDuplicateQueuedSummaryJobsForAdmin = mutation({
   },
 });
 
+async function getSummaryQueueHealth(
+  ctx: QueryCtx,
+  limit: number,
+): Promise<SummaryQueueHealth> {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+  const queuedJobs = await ctx.db
+    .query("eventSummaryJobs")
+    .withIndex("by_status_next_attempt", (q) => q.eq("status", "queued"))
+    .take(safeLimit);
+  const processingJobs = await ctx.db
+    .query("eventSummaryJobs")
+    .withIndex("by_status_updatedAt", (q) => q.eq("status", "processing"))
+    .take(safeLimit);
+  const failedJobs = await ctx.db
+    .query("eventSummaryJobs")
+    .withIndex("by_status_next_attempt", (q) => q.eq("status", "failed"))
+    .take(safeLimit);
+
+  const queuedEventCounts = new Map<Id<"events">, number>();
+  for (const job of queuedJobs) {
+    queuedEventCounts.set(
+      job.eventId,
+      (queuedEventCounts.get(job.eventId) ?? 0) + 1,
+    );
+  }
+
+  const duplicateQueuedEvents = Array.from(queuedEventCounts.values()).filter(
+    (count) => count > 1,
+  ).length;
+  const duplicateQueuedJobs = Array.from(queuedEventCounts.values()).reduce(
+    (sum, count) => sum + Math.max(0, count - 1),
+    0,
+  );
+
+  return {
+    scannedQueuedJobs: queuedJobs.length,
+    queuedJobs: queuedJobs.length,
+    queuedUniqueEvents: queuedEventCounts.size,
+    duplicateQueuedEvents,
+    duplicateQueuedJobs,
+    duplicateRatio:
+      queuedEventCounts.size === 0
+        ? 0
+        : queuedJobs.length / queuedEventCounts.size,
+    processingJobs: processingJobs.length,
+    failedJobs: failedJobs.length,
+    truncated: {
+      queued: queuedJobs.length === safeLimit,
+      processing: processingJobs.length === safeLimit,
+      failed: failedJobs.length === safeLimit,
+    },
+  };
+}
+
+export const getSummaryQueueHealthInternal = internalQuery({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return getSummaryQueueHealth(ctx, args.limit ?? 1000);
+  },
+});
+
 export const getSummaryQueueHealthForAdmin = query({
   args: {
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireAdminUser(ctx);
-
-    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 1000), 1), 1000);
-    const queuedJobs = await ctx.db
-      .query("eventSummaryJobs")
-      .withIndex("by_status_next_attempt", (q) => q.eq("status", "queued"))
-      .take(safeLimit);
-    const processingJobs = await ctx.db
-      .query("eventSummaryJobs")
-      .withIndex("by_status_updatedAt", (q) => q.eq("status", "processing"))
-      .take(safeLimit);
-    const failedJobs = await ctx.db
-      .query("eventSummaryJobs")
-      .withIndex("by_status_next_attempt", (q) => q.eq("status", "failed"))
-      .take(safeLimit);
-
-    const queuedEventCounts = new Map<Id<"events">, number>();
-    for (const job of queuedJobs) {
-      queuedEventCounts.set(
-        job.eventId,
-        (queuedEventCounts.get(job.eventId) ?? 0) + 1,
-      );
-    }
-
-    const duplicateQueuedEvents = Array.from(queuedEventCounts.values()).filter(
-      (count) => count > 1,
-    ).length;
-    const duplicateQueuedJobs = Array.from(queuedEventCounts.values()).reduce(
-      (sum, count) => sum + Math.max(0, count - 1),
-      0,
-    );
-
-    return {
-      scannedQueuedJobs: queuedJobs.length,
-      queuedJobs: queuedJobs.length,
-      queuedUniqueEvents: queuedEventCounts.size,
-      duplicateQueuedEvents,
-      duplicateQueuedJobs,
-      duplicateRatio:
-        queuedEventCounts.size === 0
-          ? 0
-          : queuedJobs.length / queuedEventCounts.size,
-      processingJobs: processingJobs.length,
-      failedJobs: failedJobs.length,
-      truncated: {
-        queued: queuedJobs.length === safeLimit,
-        processing: processingJobs.length === safeLimit,
-        failed: failedJobs.length === safeLimit,
-      },
-    };
+    return getSummaryQueueHealth(ctx, args.limit ?? 1000);
   },
 });
 
@@ -656,6 +689,7 @@ export const applyEventSummaryResult = internalMutation({
       processingRunId: undefined,
       leaseExpiresAt: undefined,
       lastError: undefined,
+      summarySignature,
       updatedAt: Date.now(),
     });
 
@@ -773,6 +807,7 @@ export const markSummaryJobSkipped = internalMutation({
       processingRunId: undefined,
       leaseExpiresAt: undefined,
       lastError: reason,
+      summarySignature,
       updatedAt: Date.now(),
     });
 
@@ -823,6 +858,8 @@ export const enqueueEventSummaryForAdmin = mutation({
       requestedAt: now,
       nextAttemptAt: now,
       updatedAt: now,
+      articleCount: eligibility.articleCount,
+      sourceCount: eligibility.sourceCount,
     });
 
     return {

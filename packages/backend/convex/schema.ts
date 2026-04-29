@@ -150,6 +150,9 @@ export default defineSchema({
     processingRunId: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
+    articleCount: v.optional(v.number()),
+    sourceCount: v.optional(v.number()),
+    summarySignature: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
     .index("by_event_updatedAt", ["eventId", "updatedAt"])
