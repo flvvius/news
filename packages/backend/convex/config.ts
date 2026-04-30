@@ -636,19 +636,19 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_same_source_min_similarity",
-        value: 0.88,
+        value: 0.84,
         description:
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
       },
       {
         key: "clustering_weak_extraction_min_similarity",
-        value: 0.9,
+        value: 0.82,
         description:
           "Minimum similarity required before a weak-extraction article can attach to an existing event.",
       },
       {
         key: "clustering_weak_extraction_strong_similarity",
-        value: 0.93,
+        value: 0.88,
         description:
           "High-confidence similarity override for weak-extraction articles.",
       },
@@ -696,13 +696,13 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "merge_max_time_delta_hours",
-        value: 24,
+        value: 48,
         description:
           "Maximum age difference in hours between two published events that are eligible for duplicate merging.",
       },
       {
         key: "singleton_recluster_min_similarity",
-        value: 0.8,
+        value: 0.74,
         description:
           "Minimum similarity required before merging two small recent singleton-ish events in the recluster pass.",
       },

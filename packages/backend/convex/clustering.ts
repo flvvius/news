@@ -34,19 +34,20 @@ import { buildEventShareRenderSignature } from "./shareAssets";
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
 const MERGE_LOCK_KEY = "mergeNearDuplicateEvents";
+const RECLUSTER_SINGLETONS_LOCK_KEY = "reclusterRecentSingletonEvents";
 const MERGE_LOCK_TTL_MS = 20 * 60 * 1000;
 const CLUSTER_BATCH_SIZE = 40;
-const RECENT_EVENT_WINDOW_MS = 72 * 60 * 60 * 1000;
-const MAX_CANDIDATE_EVENTS = 150;
+const RECENT_EVENT_WINDOW_MS = 96 * 60 * 60 * 1000;
+const MAX_CANDIDATE_EVENTS = 250;
 const EVENT_EMBEDDING_DIMENSIONS = 1536;
 const DEFAULT_MIN_CLUSTER_SIMILARITY = 0.74;
 const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.84;
 const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
 const DEFAULT_MIN_TITLE_JACCARD = 0.1;
-const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.88;
-const DEFAULT_WEAK_EXTRACTION_MIN_SIMILARITY = 0.9;
-const DEFAULT_WEAK_EXTRACTION_STRONG_SIMILARITY = 0.93;
-const DEFAULT_RECLUSTER_MIN_SIMILARITY = 0.8;
+const DEFAULT_SAME_SOURCE_MIN_SIMILARITY = 0.84;
+const DEFAULT_WEAK_EXTRACTION_MIN_SIMILARITY = 0.82;
+const DEFAULT_WEAK_EXTRACTION_STRONG_SIMILARITY = 0.88;
+const DEFAULT_RECLUSTER_MIN_SIMILARITY = 0.74;
 const DEFAULT_RECLUSTER_WINDOW_HOURS = 48;
 const DEFAULT_TOPIC_INFERENCE_MIN_SCORE = 4.5;
 const DEFAULT_TOPIC_INFERENCE_CONFIDENCE_RATIO = 0.55;
@@ -55,7 +56,9 @@ const DEFAULT_CLUSTER_PUBLISH_MIN_ARTICLES = 2;
 const DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES = 2;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
-const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 24;
+const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 48;
+const PRESENTATION_RECENCY_EPOCH_MS = Date.UTC(2024, 0, 1);
+const PRESENTATION_RECENCY_HORIZON_MS = 365 * 24 * 60 * 60 * 1000;
 
 const STOPWORDS = new Set([
   "a",
@@ -131,6 +134,24 @@ function toEventEmbedding(articleEmbedding: number[]): number[] {
     padded[i] = articleEmbedding[i]!;
   }
   return padded;
+}
+
+function appendArticleEmbeddingToEventMean(
+  existingEventEmbedding: number[],
+  currentArticleCount: number,
+  newArticleEmbedding: number[],
+): number[] {
+  // Invariant: eventEmbeddings.embedding is the arithmetic mean of all member
+  // article embeddings, padded to EVENT_EMBEDDING_DIMENSIONS. create/attach/
+  // merge/recompute paths must preserve this shape.
+  const existing = toEventEmbedding(existingEventEmbedding);
+  const incoming = toEventEmbedding(newArticleEmbedding);
+  if (currentArticleCount <= 0) return incoming;
+  return existing.map(
+    (value, index) =>
+      (value * currentArticleCount + incoming[index]!) /
+      (currentArticleCount + 1),
+  );
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -313,6 +334,7 @@ type ClusterCandidate = {
   evidenceTokens: Set<string>;
   factTokens: Set<string>;
   entityTokens: Set<string>;
+  topicSlugs: Set<string>;
   sourceIds: Set<string>;
   perspectiveSummaries?: {
     center?: string;
@@ -321,6 +343,8 @@ type ClusterCandidate = {
   };
   globalImpact?: string;
   imageUrl?: string;
+  perspectiveSource?: "heuristic" | "ai";
+  lastSummarizedAt?: number;
   creationTime: number;
 };
 
@@ -336,6 +360,7 @@ type ClusterCandidateQueryResult = {
   evidenceTokens: string[];
   factTokens: string[];
   entityTokens: string[];
+  topicSlugs: string[];
   perspectiveSummaries?: {
     center?: string;
     left?: string;
@@ -343,6 +368,8 @@ type ClusterCandidateQueryResult = {
   };
   globalImpact?: string;
   imageUrl?: string;
+  perspectiveSource?: "heuristic" | "ai";
+  lastSummarizedAt?: number;
   creationTime: number;
 };
 
@@ -817,13 +844,21 @@ function articlePresentationScore(
   const snippetOverlap = countTokenOverlap(snippetTokens, eventTitleTokens);
   const reliability = source?.reliabilityScore ?? 5;
   const biasDistance = Math.abs(source?.baseBias ?? 0);
+  const recencyTieBreaker = Math.max(
+    0,
+    Math.min(
+      1,
+      (article.publishedAt - PRESENTATION_RECENCY_EPOCH_MS) /
+        PRESENTATION_RECENCY_HORIZON_MS,
+    ),
+  );
 
   return (
     titleOverlap * 3 +
     snippetOverlap * 1.5 +
     reliability * 0.35 -
     biasDistance * 0.1 +
-    article.publishedAt / 1_000_000_000_000
+    recencyTieBreaker * 0.05
   );
 }
 
@@ -846,13 +881,21 @@ function articleImageScore(
     normalizeTitleTokens(normalizeTitleForClustering(article.title)),
     eventTitleTokens,
   );
+  const recencyTieBreaker = Math.max(
+    0,
+    Math.min(
+      1,
+      (article.publishedAt - PRESENTATION_RECENCY_EPOCH_MS) /
+        PRESENTATION_RECENCY_HORIZON_MS,
+    ),
+  );
 
   return (
     areaScore +
     widthBonus +
     reliabilityBonus +
     titleOverlap * 1.25 +
-    article.publishedAt / 1_000_000_000_000
+    recencyTieBreaker * 0.05
   );
 }
 
@@ -957,22 +1000,32 @@ async function refreshEventPresentation(
     latestArticlePublishedAt,
   );
   const nextImageUrl = bestImage?.article.imageUrl;
+  const resolvedImageUrl = nextImageUrl ?? event.imageUrl;
   const nextImageAlt =
     bestImage?.article.imageAlt ??
     (bestImage ? bestImage.article.title : event.imageAlt);
+  const isAiAuthored =
+    event.perspectiveSource === "ai" || Boolean(event.lastSummarizedAt);
 
   await ctx.db.patch(eventId, {
-    perspectiveSummaries: centerSummary
-      ? {
-          center: centerSummary,
-          left: event.perspectiveSummaries?.left,
-          right: event.perspectiveSummaries?.right,
-        }
-      : event.perspectiveSummaries,
-    globalImpact,
-    imageUrl: nextImageUrl,
-    imageWidth: bestImage?.article.imageWidth,
-    imageHeight: bestImage?.article.imageHeight,
+    perspectiveSummaries: isAiAuthored
+      ? event.perspectiveSummaries
+      : centerSummary
+        ? {
+            center: centerSummary,
+            left: event.perspectiveSummaries?.left,
+            right: event.perspectiveSummaries?.right,
+          }
+        : event.perspectiveSummaries,
+    perspectiveSource: isAiAuthored
+      ? "ai"
+      : centerSummary
+        ? "heuristic"
+        : event.perspectiveSource,
+    globalImpact: isAiAuthored ? event.globalImpact : globalImpact,
+    imageUrl: resolvedImageUrl,
+    imageWidth: bestImage?.article.imageWidth ?? event.imageWidth,
+    imageHeight: bestImage?.article.imageHeight ?? event.imageHeight,
     imageAlt: nextImageAlt,
     lastUpdatedAt: nextLastUpdatedAt,
   });
@@ -981,8 +1034,10 @@ async function refreshEventPresentation(
     eventId,
     renderSignature: buildEventShareRenderSignature({
       title: event.title,
-      summary: centerSummary ?? globalImpact,
-      imageUrl: nextImageUrl,
+      summary: isAiAuthored
+        ? (event.perspectiveSummaries?.center ?? event.globalImpact)
+        : (centerSummary ?? globalImpact),
+      imageUrl: resolvedImageUrl,
       imageAlt: nextImageAlt,
       lastUpdatedAt: nextLastUpdatedAt,
       articleCount: articles.length,
@@ -1039,11 +1094,13 @@ export const refreshEventPresentationById = internalMutation({
 
 function findBestCandidate(
   article: {
+    articleId: Id<"articles">;
     title: string;
     rssSnippet: string;
     summary: string;
     atomicFacts: string[];
     entities: string[];
+    topicSlugs: string[];
     extractionQuality: "strong" | "weak";
     publishedAt: number;
     embedding: number[];
@@ -1073,8 +1130,22 @@ function findBestCandidate(
     articleEntitySeed,
     normalizedFacts.join(" "),
   );
+  const articleTopicSlugs = new Set(article.topicSlugs);
 
   let best: { candidate: ClusterCandidate; score: number } | null = null;
+  let nearMiss:
+    | {
+        candidate: ClusterCandidate;
+        similarity: number;
+        effectiveMinSimilarity: number;
+        isWeakExtraction: boolean;
+        sameSource: boolean;
+        lexicalSupport: boolean;
+        semanticSupport: boolean;
+        topicSupport: boolean;
+        sameSourceMatch: boolean;
+      }
+    | null = null;
 
   for (const candidate of candidates) {
     const timeDeltaMs = Math.abs(
@@ -1117,6 +1188,11 @@ function findBestCandidate(
       articleEntityTokens,
       candidate.entityTokens,
     );
+    const topicOverlap = countTokenOverlap(
+      articleTopicSlugs,
+      candidate.topicSlugs,
+    );
+    const topicSupport = topicOverlap >= 1;
     const sameSource = candidate.sourceIds.has(String(article.sourceId));
     const isWeakExtraction = article.extractionQuality === "weak";
     const effectiveMinSimilarity = isWeakExtraction
@@ -1125,6 +1201,12 @@ function findBestCandidate(
     const effectiveStrongSimilarity = isWeakExtraction
       ? settings.weakExtractionStrongSimilarity
       : settings.strongSimilarity;
+    const topicMinSimilarity = topicSupport
+      ? Math.max(effectiveMinSimilarity - 0.04, settings.minSimilarity)
+      : effectiveMinSimilarity;
+    const topicStrongSimilarity = topicSupport
+      ? Math.max(effectiveStrongSimilarity - 0.02, settings.strongSimilarity)
+      : effectiveStrongSimilarity;
     const bodySupport =
       (evidenceOverlap + factOverlap + entityOverlap >= 2 &&
         Math.max(evidenceJaccard, factJaccard, entityJaccard) >=
@@ -1141,21 +1223,44 @@ function findBestCandidate(
       bodySupport;
 
     const semanticSupport =
-      similarity >= effectiveMinSimilarity + 0.05 &&
+      similarity >= topicMinSimilarity + 0.05 &&
       (evidenceJaccard >= settings.minTitleJaccard * 0.75 ||
         factJaccard >= settings.minTitleJaccard * 0.6 ||
         entityJaccard >= settings.minTitleJaccard * 0.6);
 
     const baseMatch =
-      similarity >= effectiveStrongSimilarity ||
-      (similarity >= effectiveMinSimilarity &&
-        (lexicalSupport || semanticSupport));
+      similarity >= topicStrongSimilarity ||
+      (similarity >= topicMinSimilarity &&
+        (lexicalSupport || semanticSupport || topicSupport));
 
     const sameSourceMatch = sameSource
-      ? similarity >= settings.sameSourceMinSimilarity && lexicalSupport
+      ? similarity >= settings.sameSourceMinSimilarity + 0.02 ||
+        (similarity >= settings.sameSourceMinSimilarity &&
+          (lexicalSupport || semanticSupport || topicSupport))
       : true;
 
-    if (!baseMatch || !sameSourceMatch) continue;
+    const isNearMiss =
+      similarity >= effectiveMinSimilarity - 0.05 &&
+      similarity < effectiveMinSimilarity;
+    if (!baseMatch || !sameSourceMatch) {
+      if (
+        isNearMiss &&
+        (!nearMiss || similarity > nearMiss.similarity)
+      ) {
+        nearMiss = {
+          candidate,
+          similarity,
+          effectiveMinSimilarity,
+          isWeakExtraction,
+          sameSource,
+          lexicalSupport,
+          semanticSupport,
+          topicSupport,
+          sameSourceMatch,
+        };
+      }
+      continue;
+    }
 
     const recencyScore = 1 - timeDeltaMs / RECENT_EVENT_WINDOW_MS;
     const overlapScore =
@@ -1166,6 +1271,7 @@ function findBestCandidate(
     const sourceDiversityBonus = sameSource
       ? 0
       : Math.min(candidate.sourceIds.size, 5) / 100;
+    const topicBonus = topicSupport ? 0.03 : 0;
     const score =
       similarity * 0.43 +
       titleJaccard * 0.12 +
@@ -1174,11 +1280,18 @@ function findBestCandidate(
       entityJaccard * 0.14 +
       recencyScore * 0.04 +
       overlapScore * 0.04 +
-      sourceDiversityBonus;
+      sourceDiversityBonus +
+      topicBonus;
 
     if (!best || score > best.score) {
       best = { candidate, score };
     }
+  }
+
+  if (!best && nearMiss) {
+    console.log(
+      `[clustering] Near-miss: article=${article.articleId} candidate=${nearMiss.candidate.eventId} sim=${nearMiss.similarity.toFixed(3)} min=${nearMiss.effectiveMinSimilarity.toFixed(3)} weak=${nearMiss.isWeakExtraction} sameSource=${nearMiss.sameSource} lexical=${nearMiss.lexicalSupport} semantic=${nearMiss.semanticSupport} topic=${nearMiss.topicSupport} sameSourceMatch=${nearMiss.sameSourceMatch}`,
+    );
   }
 
   return best?.candidate ?? null;
@@ -1284,10 +1397,6 @@ export const getEnrichedArticlesForClustering = internalQuery({
 
     const prioritizedArticles = [...articles]
       .sort((a, b) => {
-        const aHasNoEvent = a.eventId ? 0 : 1;
-        const bHasNoEvent = b.eventId ? 0 : 1;
-        if (aHasNoEvent !== bHasNoEvent) return bHasNoEvent - aHasNoEvent;
-
         const aHasImage = a.imageUrl ? 1 : 0;
         const bHasImage = b.imageUrl ? 1 : 0;
         if (aHasImage !== bHasImage) return bHasImage - aHasImage;
@@ -1383,6 +1492,17 @@ export const getRecentClusterCandidates = internalQuery({
             .query("articles")
             .withIndex("by_event", (q) => q.eq("eventId", event._id))
             .collect();
+          const eventTopicRows = await ctx.db
+            .query("eventTopics")
+            .withIndex("by_event", (q) => q.eq("eventId", event._id))
+            .collect();
+          const topicSlugs = (
+            await Promise.all(
+              eventTopicRows.map((row) => ctx.db.get(row.topicId)),
+            )
+          )
+            .filter((topic) => topic !== null)
+            .map((topic) => topic.slug);
           const articleEmbeddingRows = await Promise.all(
             articles.map((article) =>
               ctx.db
@@ -1455,9 +1575,12 @@ export const getRecentClusterCandidates = internalQuery({
             evidenceTokens: [...evidenceTokens],
             factTokens: [...factTokens],
             entityTokens: [...entityTokens],
+            topicSlugs,
             perspectiveSummaries: event.perspectiveSummaries,
             globalImpact: event.globalImpact,
             imageUrl: event.imageUrl,
+            perspectiveSource: event.perspectiveSource,
+            lastSummarizedAt: event.lastSummarizedAt,
             creationTime: event._creationTime,
           };
         }),
@@ -1505,6 +1628,7 @@ export const createEventFromArticle = internalMutation({
       perspectiveSummaries: centerSummary
         ? { center: centerSummary }
         : undefined,
+      perspectiveSource: centerSummary ? "heuristic" : undefined,
       status: initialStatus,
       firstPublishedAt: publishedAt,
       lastUpdatedAt: publishedAt,
@@ -1512,7 +1636,7 @@ export const createEventFromArticle = internalMutation({
 
     await ctx.db.insert("eventEmbeddings", {
       eventId,
-      embedding: eventEmbedding,
+      embedding: toEventEmbedding(eventEmbedding),
       version,
     });
 
@@ -1607,12 +1731,12 @@ export const attachArticleToEvent = internalMutation({
 
     const nextEmbedding =
       existingEmbeddingRow && currentCount > 0
-        ? existingEmbeddingRow.embedding.map(
-            (value, index) =>
-              (value * currentCount + (eventEmbedding[index] ?? 0)) /
-              (currentCount + 1),
+        ? appendArticleEmbeddingToEventMean(
+            existingEmbeddingRow.embedding,
+            currentCount,
+            eventEmbedding,
           )
-        : eventEmbedding;
+        : toEventEmbedding(eventEmbedding);
 
     if (existingEmbeddingRow) {
       await ctx.db.patch(existingEmbeddingRow._id, {
@@ -2812,6 +2936,9 @@ export const mergeEvents = internalMutation({
         right: v.optional(v.string()),
       }),
     ),
+    mergedPerspectiveSource: v.optional(
+      v.union(v.literal("heuristic"), v.literal("ai")),
+    ),
     mergedGlobalImpact: v.optional(v.string()),
     mergedImageUrl: v.optional(v.string()),
   },
@@ -2825,6 +2952,7 @@ export const mergeEvents = internalMutation({
       mergedFirstPublishedAt,
       mergedTitle,
       mergedPerspectiveSummaries,
+      mergedPerspectiveSource,
       mergedGlobalImpact,
       mergedImageUrl,
     },
@@ -2855,10 +2983,10 @@ export const mergeEvents = internalMutation({
       await ctx.db.patch(interaction._id, { eventId: keepEventId });
     }
 
-    const allInsights = await ctx.db.query("userInsights").collect();
-    const sourceInsights = allInsights.filter(
-      (insight) => insight.eventId === removeEventId,
-    );
+    const sourceInsights = await ctx.db
+      .query("userInsights")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
     for (const insight of sourceInsights) {
       const existingTarget = await ctx.db
         .query("userInsights")
@@ -2930,10 +3058,35 @@ export const mergeEvents = internalMutation({
       await ctx.db.delete(row._id);
     }
 
+    const removeShareAssets = await ctx.db
+      .query("eventShareAssets")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeShareAssets) {
+      await ctx.db.delete(row._id);
+    }
+
+    const removeSummaryJobs = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeSummaryJobs) {
+      await ctx.db.delete(row._id);
+    }
+
+    const removeClaims = await ctx.db
+      .query("eventClaims")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeClaims) {
+      await ctx.db.delete(row._id);
+    }
+
     await ctx.db.patch(keepEventId, {
       title: mergedTitle,
       firstPublishedAt: mergedFirstPublishedAt,
       perspectiveSummaries: mergedPerspectiveSummaries,
+      perspectiveSource: mergedPerspectiveSource,
       globalImpact: mergedGlobalImpact,
       imageUrl: mergedImageUrl,
     });
@@ -3021,6 +3174,7 @@ export const mergeNearDuplicateEvents = internalAction({
         evidenceTokens: new Set(candidate.evidenceTokens),
         factTokens: new Set(candidate.factTokens),
         entityTokens: new Set(candidate.entityTokens),
+        topicSlugs: new Set(candidate.topicSlugs ?? []),
         sourceIds: new Set(candidate.sourceIds),
       }));
 
@@ -3052,9 +3206,12 @@ export const mergeNearDuplicateEvents = internalAction({
             a.entityTokens,
             b.entityTokens,
           );
+          const topicOverlap = countTokenOverlap(a.topicSlugs, b.topicSlugs);
           if (
             similarity < settings.minSimilarity ||
-            (titleJaccard < settings.minTitleJaccard && entityOverlap < 2)
+            (titleJaccard < settings.minTitleJaccard &&
+              entityOverlap < 2 &&
+              topicOverlap < 1)
           ) {
             continue;
           }
@@ -3067,14 +3224,29 @@ export const mergeNearDuplicateEvents = internalAction({
                 (remove.embedding[index] ?? 0) * remove.articleCount) /
               Math.max(totalArticles, 1),
           );
-          const mergedPerspectiveSummaries = buildMergedPerspectiveSummaries(
-            keep,
-            remove,
-          );
-          const mergedGlobalImpact = preferLongerString(
-            keep.globalImpact,
-            remove.globalImpact,
-          );
+          const keepHasAiPerspective =
+            keep.perspectiveSource === "ai" || Boolean(keep.lastSummarizedAt);
+          const removeHasAiPerspective =
+            remove.perspectiveSource === "ai" ||
+            Boolean(remove.lastSummarizedAt);
+          const mergedPerspectiveSummaries =
+            keepHasAiPerspective && !removeHasAiPerspective
+              ? keep.perspectiveSummaries
+              : removeHasAiPerspective && !keepHasAiPerspective
+                ? remove.perspectiveSummaries
+                : buildMergedPerspectiveSummaries(keep, remove);
+          const mergedPerspectiveSource =
+            keepHasAiPerspective || removeHasAiPerspective
+              ? "ai"
+              : mergedPerspectiveSummaries
+                ? "heuristic"
+                : undefined;
+          const mergedGlobalImpact =
+            keepHasAiPerspective && !removeHasAiPerspective
+              ? keep.globalImpact
+              : removeHasAiPerspective && !keepHasAiPerspective
+                ? remove.globalImpact
+                : preferLongerString(keep.globalImpact, remove.globalImpact);
           const mergedImageUrl = keep.imageUrl ?? remove.imageUrl;
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
@@ -3092,6 +3264,7 @@ export const mergeNearDuplicateEvents = internalAction({
               ),
               mergedTitle,
               mergedPerspectiveSummaries,
+              mergedPerspectiveSource,
               mergedGlobalImpact,
               mergedImageUrl,
             },
@@ -3113,6 +3286,7 @@ export const mergeNearDuplicateEvents = internalAction({
           keep.title = mergedTitle;
           keep.titleTokens = normalizeTitleTokens(mergedTitle);
           keep.perspectiveSummaries = mergedPerspectiveSummaries;
+          keep.perspectiveSource = mergedPerspectiveSource;
           keep.globalImpact = mergedGlobalImpact;
           keep.imageUrl = mergedImageUrl;
           keep.memberEmbeddings = [
@@ -3130,6 +3304,9 @@ export const mergeNearDuplicateEvents = internalAction({
           }
           for (const token of remove.factTokens) {
             keep.factTokens.add(token);
+          }
+          for (const topicSlug of remove.topicSlugs) {
+            keep.topicSlugs.add(topicSlug);
           }
         }
       }
@@ -3173,7 +3350,7 @@ export const reclusterRecentSingletonEvents = internalAction({
 
     const lockOwner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
-      key: "reclusterRecentSingletonEvents",
+      key: RECLUSTER_SINGLETONS_LOCK_KEY,
       owner: lockOwner,
       expiresAt: Date.now() + MERGE_LOCK_TTL_MS,
     });
@@ -3225,6 +3402,7 @@ export const reclusterRecentSingletonEvents = internalAction({
           evidenceTokens: new Set(candidate.evidenceTokens),
           factTokens: new Set(candidate.factTokens),
           entityTokens: new Set(candidate.entityTokens),
+          topicSlugs: new Set(candidate.topicSlugs ?? []),
           sourceIds: new Set(candidate.sourceIds),
         }));
 
@@ -3252,8 +3430,23 @@ export const reclusterRecentSingletonEvents = internalAction({
             a.entityTokens,
             b.entityTokens,
           );
-          if (similarity < settings.minSimilarity || entityOverlap < 1)
+          const topicOverlap = countTokenOverlap(a.topicSlugs, b.topicSlugs);
+          const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
+          const hasEntitySupport = entityOverlap >= 1;
+          const hasTitleSupport =
+            titleJaccard >= DEFAULT_MIN_TITLE_JACCARD * 1.5;
+          const hasSimilaritySupport =
+            similarity >= settings.minSimilarity + 0.08;
+          const hasTopicSupport = topicOverlap >= 1;
+          if (
+            similarity < settings.minSimilarity ||
+            (!hasEntitySupport &&
+              !hasTitleSupport &&
+              !hasSimilaritySupport &&
+              !hasTopicSupport)
+          ) {
             continue;
+          }
 
           const { keep, remove } = chooseCanonicalEvent(a, b);
           const totalArticles = keep.articleCount + remove.articleCount;
@@ -3263,14 +3456,29 @@ export const reclusterRecentSingletonEvents = internalAction({
                 (remove.embedding[index] ?? 0) * remove.articleCount) /
               Math.max(totalArticles, 1),
           );
-          const mergedPerspectiveSummaries = buildMergedPerspectiveSummaries(
-            keep,
-            remove,
-          );
-          const mergedGlobalImpact = preferLongerString(
-            keep.globalImpact,
-            remove.globalImpact,
-          );
+          const keepHasAiPerspective =
+            keep.perspectiveSource === "ai" || Boolean(keep.lastSummarizedAt);
+          const removeHasAiPerspective =
+            remove.perspectiveSource === "ai" ||
+            Boolean(remove.lastSummarizedAt);
+          const mergedPerspectiveSummaries =
+            keepHasAiPerspective && !removeHasAiPerspective
+              ? keep.perspectiveSummaries
+              : removeHasAiPerspective && !keepHasAiPerspective
+                ? remove.perspectiveSummaries
+                : buildMergedPerspectiveSummaries(keep, remove);
+          const mergedPerspectiveSource =
+            keepHasAiPerspective || removeHasAiPerspective
+              ? "ai"
+              : mergedPerspectiveSummaries
+                ? "heuristic"
+                : undefined;
+          const mergedGlobalImpact =
+            keepHasAiPerspective && !removeHasAiPerspective
+              ? keep.globalImpact
+              : removeHasAiPerspective && !keepHasAiPerspective
+                ? remove.globalImpact
+                : preferLongerString(keep.globalImpact, remove.globalImpact);
           const mergedImageUrl = keep.imageUrl ?? remove.imageUrl;
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
@@ -3288,6 +3496,7 @@ export const reclusterRecentSingletonEvents = internalAction({
               ),
               mergedTitle,
               mergedPerspectiveSummaries,
+              mergedPerspectiveSource,
               mergedGlobalImpact,
               mergedImageUrl,
             },
@@ -3312,8 +3521,15 @@ export const reclusterRecentSingletonEvents = internalAction({
           );
           keep.title = mergedTitle;
           keep.titleTokens = normalizeTitleTokens(mergedTitle);
+          keep.perspectiveSummaries = mergedPerspectiveSummaries;
+          keep.perspectiveSource = mergedPerspectiveSource;
+          keep.globalImpact = mergedGlobalImpact;
+          keep.imageUrl = mergedImageUrl;
           for (const sourceId of remove.sourceIds) keep.sourceIds.add(sourceId);
           for (const token of remove.entityTokens) keep.entityTokens.add(token);
+          for (const topicSlug of remove.topicSlugs) {
+            keep.topicSlugs.add(topicSlug);
+          }
         }
       }
 
@@ -3325,7 +3541,7 @@ export const reclusterRecentSingletonEvents = internalAction({
     } finally {
       try {
         await ctx.runMutation(internal.ingestion.releasePipelineLock, {
-          key: "reclusterRecentSingletonEvents",
+          key: RECLUSTER_SINGLETONS_LOCK_KEY,
           owner: lockOwner,
         });
       } catch (error) {
@@ -3509,12 +3725,18 @@ export const clusterEnrichedArticles = internalAction({
         evidenceTokens: new Set(candidate.evidenceTokens),
         factTokens: new Set(candidate.factTokens),
         entityTokens: new Set(candidate.entityTokens),
+        topicSlugs: new Set(candidate.topicSlugs ?? []),
         sourceIds: new Set(candidate.sourceIds),
       }));
 
       let clusteredIntoExisting = 0;
       let createdEvents = 0;
       let skipped = 0;
+      const pendingArticles: Array<{
+        article: (typeof articles)[number];
+        paddedEmbedding: number[];
+        topicSlugs: string[];
+      }> = [];
 
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
@@ -3530,7 +3752,23 @@ export const clusterEnrichedArticles = internalAction({
           topicsForInference,
           topicSettings,
         );
-        const match = findBestCandidate(article, candidates, settings);
+        const match = findBestCandidate(
+          {
+            articleId: article._id,
+            title: article.title,
+            rssSnippet: article.rssSnippet,
+            summary: article.summary,
+            atomicFacts: article.atomicFacts,
+            entities: article.entities,
+            topicSlugs,
+            extractionQuality: article.extractionQuality,
+            publishedAt: article.publishedAt,
+            embedding: article.embedding,
+            sourceId: article.sourceId,
+          },
+          candidates,
+          settings,
+        );
 
         if (match) {
           const result = await ctx.runMutation(
@@ -3583,6 +3821,89 @@ export const clusterEnrichedArticles = internalAction({
                 article.atomicFacts.join(" "),
               ),
             );
+            for (const topicSlug of topicSlugs) {
+              candidate.topicSlugs.add(topicSlug);
+            }
+          }
+          continue;
+        }
+        pendingArticles.push({ article, paddedEmbedding, topicSlugs });
+      }
+
+      for (const pending of pendingArticles) {
+        const { article, paddedEmbedding, topicSlugs } = pending;
+        const match = findBestCandidate(
+          {
+            articleId: article._id,
+            title: article.title,
+            rssSnippet: article.rssSnippet,
+            summary: article.summary,
+            atomicFacts: article.atomicFacts,
+            entities: article.entities,
+            topicSlugs,
+            extractionQuality: article.extractionQuality,
+            publishedAt: article.publishedAt,
+            embedding: article.embedding,
+            sourceId: article.sourceId,
+          },
+          candidates,
+          settings,
+        );
+
+        if (match) {
+          const result = await ctx.runMutation(
+            internal.clustering.attachArticleToEvent,
+            {
+              articleId: article._id,
+              eventId: match.eventId,
+              publishedAt: article.publishedAt,
+              eventEmbedding: paddedEmbedding,
+              version: 1,
+              topicSlugs,
+              publishMinArticles: publishSettings.minArticles,
+              publishMinSources: publishSettings.minSources,
+            },
+          );
+
+          if (!result.updated) {
+            skipped++;
+            continue;
+          }
+
+          clusteredIntoExisting++;
+
+          const candidate = candidates.find((c) => c.eventId === match.eventId);
+          if (candidate) {
+            candidate.embedding = result.embedding;
+            candidate.memberEmbeddings = [
+              paddedEmbedding,
+              ...candidate.memberEmbeddings,
+            ].slice(0, 3);
+            candidate.articleCount = result.articleCount;
+            candidate.firstPublishedAt = result.firstPublishedAt;
+            candidate.sourceIds.add(String(article.sourceId));
+            candidate.evidenceTokens = mergeTokenSets(
+              candidate.evidenceTokens,
+              normalizeTitleTokens(article.rssSnippet),
+              normalizeTitleTokens(article.summary),
+            );
+            candidate.factTokens = mergeTokenSets(
+              candidate.factTokens,
+              normalizeTitleTokens(article.atomicFacts.join(" ")),
+            );
+            candidate.entityTokens = mergeTokenSets(
+              candidate.entityTokens,
+              extractEntityTokens(
+                article.title,
+                article.rssSnippet,
+                article.summary,
+                article.entities.join(" "),
+                article.atomicFacts.join(" "),
+              ),
+            );
+            for (const topicSlug of topicSlugs) {
+              candidate.topicSlugs.add(topicSlug);
+            }
           }
           continue;
         }
@@ -3641,6 +3962,7 @@ export const clusterEnrichedArticles = internalAction({
             article.entities.join(" "),
             article.atomicFacts.join(" "),
           ),
+          topicSlugs: new Set(topicSlugs),
           sourceIds: new Set([String(article.sourceId)]),
           perspectiveSummaries: centerSummary
             ? { center: centerSummary }

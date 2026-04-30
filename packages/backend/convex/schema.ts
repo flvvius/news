@@ -59,6 +59,9 @@ export default defineSchema({
         right: v.optional(v.string()),
       }),
     ),
+    perspectiveSource: v.optional(
+      v.union(v.literal("heuristic"), v.literal("ai")),
+    ),
     globalImpact: v.optional(v.string()), // The "Consensus So What?" for guest users
 
     status: v.union(v.literal("processing"), v.literal("published")),
@@ -387,6 +390,7 @@ export default defineSchema({
     lastNotifiedAt: v.optional(v.number()),
   })
     .index("by_user_event", ["userId", "eventId"])
+    .index("by_event", ["eventId"])
     .index("by_user", ["userId"])
     .index("by_expires_at", ["expiresAt"]),
 
