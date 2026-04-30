@@ -781,7 +781,10 @@ function buildMergedPerspectiveSummaries(
 
 function pickMergedSummaryMetadata(
   primary: Pick<ClusterCandidate, "lastSummarizedAt" | "lastSummarySignature">,
-  secondary: Pick<ClusterCandidate, "lastSummarizedAt" | "lastSummarySignature">,
+  secondary: Pick<
+    ClusterCandidate,
+    "lastSummarizedAt" | "lastSummarySignature"
+  >,
 ): {
   lastSummarizedAt?: number;
   lastSummarySignature?: string;
@@ -3306,8 +3309,7 @@ export const mergeNearDuplicateEvents = internalAction({
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
           const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
-          const mergedLastSummarizedAt =
-            mergedSummaryMetadata.lastSummarizedAt;
+          const mergedLastSummarizedAt = mergedSummaryMetadata.lastSummarizedAt;
           const mergedLastSummarySignature =
             mergedSummaryMetadata.lastSummarySignature;
 
@@ -3551,8 +3553,7 @@ export const reclusterRecentSingletonEvents = internalAction({
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
           const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
-          const mergedLastSummarizedAt =
-            mergedSummaryMetadata.lastSummarizedAt;
+          const mergedLastSummarizedAt = mergedSummaryMetadata.lastSummarizedAt;
           const mergedLastSummarySignature =
             mergedSummaryMetadata.lastSummarySignature;
 
