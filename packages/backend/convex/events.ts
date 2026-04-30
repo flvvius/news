@@ -8,10 +8,7 @@ import { requireBetaAccess } from "./lib/betaAccess";
 const RANKED_CURSOR_PREFIX = "ranked:";
 const TRENDING_SCAN_LIMIT = 250;
 
-const FEED_SORT_VALIDATOR = v.union(
-  v.literal("recent"),
-  v.literal("trending"),
-);
+const FEED_SORT_VALIDATOR = v.union(v.literal("recent"), v.literal("trending"));
 
 type FeedSort = "recent" | "trending";
 
@@ -103,13 +100,13 @@ function decodeRankedCursor(cursor: string | null): RankedCursorPayload | null {
   return null;
 }
 
-function sortEventsForFeed(
-  events: EnrichableEvent[],
-  sort: FeedSort,
-) {
+function sortEventsForFeed(events: EnrichableEvent[], sort: FeedSort) {
   return [...events].sort((a, b) => {
     if (sort === "trending") {
-      return compareRankedPayload(rankedPayload(a, sort), rankedPayload(b, sort));
+      return compareRankedPayload(
+        rankedPayload(a, sort),
+        rankedPayload(b, sort),
+      );
     }
 
     return compareRankedPayload(rankedPayload(a, sort), rankedPayload(b, sort));
@@ -137,7 +134,10 @@ function paginateRankedEvents(
           )
         : 0;
   const normalizedStartIndex = startIndex >= 0 ? startIndex : events.length;
-  const page = events.slice(normalizedStartIndex, normalizedStartIndex + targetSize);
+  const page = events.slice(
+    normalizedStartIndex,
+    normalizedStartIndex + targetSize,
+  );
   const isDone = normalizedStartIndex + page.length >= events.length;
   const lastReturned = page[page.length - 1];
 
@@ -301,8 +301,9 @@ export const getPublishedEvents = query({
     } else {
       // Defensive reset in case a ranked cursor is reused after ranked mode is
       // cleared.
-      const paginationOpts =
-        args.paginationOpts.cursor?.startsWith(RANKED_CURSOR_PREFIX)
+      const paginationOpts = args.paginationOpts.cursor?.startsWith(
+        RANKED_CURSOR_PREFIX,
+      )
         ? { ...args.paginationOpts, cursor: null }
         : args.paginationOpts;
 
@@ -412,11 +413,11 @@ export const getPublicPublishedEventsPreview = query({
   },
   handler: async (ctx, args) => {
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 3), 1), 20);
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
-      .take(safeLimit);
+    const candidates = await getRankedFeedCandidates(ctx);
+    const events = sortEventsForFeed(candidates, "trending").slice(
+      0,
+      safeLimit,
+    );
 
     const enriched = await enrichEventsWithTopicsAndSources(ctx, events);
     return enriched.map(redactPublicEventPreview);
