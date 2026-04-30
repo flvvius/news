@@ -99,6 +99,15 @@ const ENTITY_NOISE_TERMS = new Set([
   "typically",
   "watch",
 ]);
+const WEEKDAY_ENTITY_NOISE_TERMS = new Set([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+]);
 const ENTITY_ROLE_PREFIXES = [
   "former",
   "president",
@@ -204,18 +213,35 @@ function isUsefulEntityCandidate(
   count: number,
   titleEntities: Set<string>,
   allUppercaseEntities: Set<string>,
+  numericEntities: Set<string>,
 ): boolean {
   if (entity.length < 3 || entity.length > 80) return false;
   if (!/[a-z0-9]/.test(entity)) return false;
   if (/^(?:[a-z]\s*)+$/.test(entity)) return false;
 
   const words = entity.split(/\s+/).filter(Boolean);
-  if (words.length === 0 || words.length > 5) return false;
-  if (words.some((word) => ENTITY_NOISE_TERMS.has(word))) return false;
+  if (words.length === 0 || words.length > 7) return false;
+  if (
+    words.length === 1 &&
+    (ENTITY_NOISE_TERMS.has(entity) || WEEKDAY_ENTITY_NOISE_TERMS.has(entity))
+  ) {
+    return false;
+  }
+  if (
+    words.length > 1 &&
+    words.some(
+      (word) =>
+        ENTITY_NOISE_TERMS.has(word) &&
+        !WEEKDAY_ENTITY_NOISE_TERMS.has(word),
+    )
+  ) {
+    return false;
+  }
   if (ENTITY_NOISE_TERMS.has(entity)) return false;
 
   if (words.length === 1) {
     return (
+      numericEntities.has(entity) ||
       titleEntities.has(entity) ||
       count > 1 ||
       (/^[a-z]{2,6}$/.test(entity.toLowerCase()) &&
@@ -226,12 +252,18 @@ function isUsefulEntityCandidate(
   return true;
 }
 
-function addNumericEntities(text: string, scores: Map<string, number>, weight: number) {
+function addNumericEntities(
+  text: string,
+  scores: Map<string, number>,
+  numericEntities: Set<string>,
+  weight: number,
+) {
   const numericMatches = text.match(NUMERIC_ENTITY_PATTERN) ?? [];
   for (const match of numericMatches) {
     const normalized = normalizeEntityCandidate(match).value;
     if (normalized.length >= 2) {
       scores.set(normalized, (scores.get(normalized) ?? 0) + weight);
+      numericEntities.add(normalized);
     }
   }
 }
@@ -262,6 +294,8 @@ function collectProperNounCandidates(
     if (normalized.value) {
       scores.set(normalized.value, (scores.get(normalized.value) ?? 0) + weight);
       if (normalized.wasAllUppercase) allUppercaseEntities.add(normalized.value);
+      // Only proper nouns collected from the title get title-entity priority.
+      // Body matches use lower weights and must earn their way in by repetition.
       if (weight >= 3) titleEntities.add(normalized.value);
     }
     phrase = [];
@@ -281,6 +315,7 @@ function extractEntityCandidates(title: string, ...texts: string[]): string[] {
   const scores = new Map<string, number>();
   const titleEntities = new Set<string>();
   const allUppercaseEntities = new Set<string>();
+  const numericEntities = new Set<string>();
   const cleanedTitle = stripTags(title);
 
   collectProperNounCandidates(
@@ -290,7 +325,7 @@ function extractEntityCandidates(title: string, ...texts: string[]): string[] {
     allUppercaseEntities,
     3,
   );
-  addNumericEntities(cleanedTitle, scores, 3);
+  addNumericEntities(cleanedTitle, scores, numericEntities, 3);
 
   for (const rawText of texts) {
     const text = stripTags(rawText);
@@ -302,12 +337,18 @@ function extractEntityCandidates(title: string, ...texts: string[]): string[] {
       allUppercaseEntities,
       1,
     );
-    addNumericEntities(text, scores, 1);
+    addNumericEntities(text, scores, numericEntities, 1);
   }
 
   return Array.from(scores.entries())
     .filter(([entity, score]) =>
-      isUsefulEntityCandidate(entity, score, titleEntities, allUppercaseEntities),
+      isUsefulEntityCandidate(
+        entity,
+        score,
+        titleEntities,
+        allUppercaseEntities,
+        numericEntities,
+      ),
     )
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([entity]) => entity)
@@ -553,6 +594,19 @@ function absolutizeUrl(candidate: string | undefined, baseUrl: string): string |
   }
 }
 
+function isAvatarImagePath(pathname: string): boolean {
+  const segments = pathname
+    .toLowerCase()
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return segments.some((segment, index) => {
+    if (segment === "avatar") return true;
+    if (index !== segments.length - 1) return false;
+    return /^avatar(?:[-_.]|$)/.test(segment);
+  });
+}
+
 function isLikelyValidImageUrl(url: string | undefined): boolean {
   if (!url) return false;
   try {
@@ -560,7 +614,7 @@ function isLikelyValidImageUrl(url: string | undefined): boolean {
     if (!/^https?:$/.test(parsed.protocol)) return false;
     const path = parsed.pathname.toLowerCase();
     if (
-      path.includes("avatar") ||
+      isAvatarImagePath(path) ||
       path.includes("author") ||
       path.includes("logo") ||
       path.includes("icon") ||
@@ -587,6 +641,12 @@ function normalizeEscapedUrl(candidate: string | undefined): string | undefined 
 function scoreRawImageCandidate(url: string, hostname: string): number {
   let score = 0;
   const lower = url.toLowerCase();
+  let pathname = "";
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    pathname = url;
+  }
 
   if (/\.(avif|jpe?g|png|webp)(?:$|\?)/i.test(lower)) score += 4;
   if (lower.includes("reutersmedia.net")) score += 6;
@@ -607,7 +667,7 @@ function scoreRawImageCandidate(url: string, hostname: string): number {
     lower.includes("logo") ||
     lower.includes("icon") ||
     lower.includes("sprite") ||
-    lower.includes("avatar") ||
+    isAvatarImagePath(pathname) ||
     lower.includes("author") ||
     lower.includes("thumbnail")
   ) {

@@ -32,6 +32,7 @@ import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
+import type * as pipelineDiagnostics from "../pipelineDiagnostics.js";
 import type * as privateData from "../privateData.js";
 import type * as prompts from "../prompts.js";
 import type * as seeds from "../seeds.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   "lib/openai": typeof lib_openai;
   mbfc: typeof mbfc;
   migrations: typeof migrations;
+  pipelineDiagnostics: typeof pipelineDiagnostics;
   privateData: typeof privateData;
   prompts: typeof prompts;
   seeds: typeof seeds;
