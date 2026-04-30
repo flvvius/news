@@ -676,6 +676,7 @@ export const applyEventSummaryResult = internalMutation({
         left: left.trim(),
         right: right.trim(),
       },
+      perspectiveSource: "ai",
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,

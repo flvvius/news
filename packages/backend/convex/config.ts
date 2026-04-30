@@ -421,8 +421,7 @@ export const seedDefaults = internalMutation({
       {
         key: "event_summary_model",
         value: "gpt-5-nano",
-        description:
-          "OpenAI chat model used for event perspective summaries.",
+        description: "OpenAI chat model used for event perspective summaries.",
       },
       {
         key: "event_summary_enqueue_limit",
@@ -481,8 +480,7 @@ export const seedDefaults = internalMutation({
       {
         key: "article_fact_extraction_max_facts_per_article",
         value: 8,
-        description:
-          "Maximum number of atomic facts stored per article.",
+        description: "Maximum number of atomic facts stored per article.",
       },
       {
         key: "article_fact_extraction_max_input_chars",
@@ -636,19 +634,19 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_same_source_min_similarity",
-        value: 0.88,
+        value: 0.84,
         description:
           "Stricter embedding cosine similarity required before attaching another article from the same source to an event.",
       },
       {
         key: "clustering_weak_extraction_min_similarity",
-        value: 0.9,
+        value: 0.82,
         description:
           "Minimum similarity required before a weak-extraction article can attach to an existing event.",
       },
       {
         key: "clustering_weak_extraction_strong_similarity",
-        value: 0.93,
+        value: 0.88,
         description:
           "High-confidence similarity override for weak-extraction articles.",
       },
@@ -696,13 +694,13 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "merge_max_time_delta_hours",
-        value: 24,
+        value: 48,
         description:
           "Maximum age difference in hours between two published events that are eligible for duplicate merging.",
       },
       {
         key: "singleton_recluster_min_similarity",
-        value: 0.8,
+        value: 0.74,
         description:
           "Minimum similarity required before merging two small recent singleton-ish events in the recluster pass.",
       },
@@ -714,25 +712,59 @@ export const seedDefaults = internalMutation({
       },
     ];
 
+    const forcedDefaultKeys = new Set([
+      "clustering_same_source_min_similarity",
+      "clustering_min_similarity",
+      "clustering_weak_extraction_min_similarity",
+      "clustering_weak_extraction_strong_similarity",
+      "cluster_publish_min_articles",
+      "cluster_publish_min_sources",
+      "topic_inference_min_score",
+      "topic_inference_confidence_ratio",
+      "topic_inference_max_topics",
+      "merge_min_similarity",
+      "merge_min_title_jaccard",
+      "merge_max_time_delta_hours",
+      "singleton_recluster_min_similarity",
+    ]);
+
     let created = 0;
+    let updated = 0;
     for (const { key, value, description } of defaults) {
       const existing = await ctx.db
         .query("config")
         .withIndex("by_key", (q) => q.eq("key", key))
         .unique();
-      if (!existing) {
-        await ctx.db.insert("config", {
-          key,
-          value: JSON.stringify(value),
-          description,
-          updatedAt: Date.now(),
-        });
-        created++;
+      const nextValue = JSON.stringify(value);
+
+      if (existing) {
+        if (!forcedDefaultKeys.has(key)) continue;
+
+        if (
+          existing.value !== nextValue ||
+          (description !== undefined && existing.description !== description)
+        ) {
+          await ctx.db.patch(existing._id, {
+            value: nextValue,
+            description,
+            updatedAt: Date.now(),
+          });
+          updated++;
+        }
+        continue;
       }
+
+      await ctx.db.insert("config", {
+        key,
+        value: nextValue,
+        description,
+        updatedAt: Date.now(),
+      });
+      created++;
     }
 
     console.log(
-      `✅ Config seeded: ${created} created, ${defaults.length - created} already existed`,
+      `✅ Config seeded: ${created} created, ${updated} updated, ${defaults.length - created - updated} unchanged`,
     );
   },
 });

@@ -39,6 +39,7 @@ const USER_AGENT =
 /** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
 const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
 const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
+const EVENT_EMBEDDING_DIMENSIONS = 1536;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,6 +72,7 @@ const KNOWN_HEADLINE_SUFFIXES = [
   "Axios",
   "Politico",
   "Bloomberg",
+  "Bloomberg.com",
   "CNBC",
   "The Guardian",
   "Fox News",
@@ -316,7 +318,6 @@ function extractFeedImage(
 /** Strip HTML tags and decode common entities. */
 function stripHtml(text: string): string {
   return decodeHtmlEntities(text)
-    .replace(/<a\s+href[^ ]*/gi, " ")
     .replace(/<a\s+href=["'][^"']*["']?/gi, " ")
     .replace(/<\/?a>/gi, " ")
     .replace(/<[^>\n]*$/g, " ")
@@ -388,14 +389,6 @@ function canonicalizeUrl(raw: string): string {
       "mc_cid",
       "mc_eid",
       "mkt_tok",
-      "ocid",
-      "ref",
-      "ref_src",
-      "smid",
-      "cmpid",
-      "cid",
-      "source",
-      "output",
     ];
     for (const param of trackingParams) {
       url.searchParams.delete(param);
@@ -451,12 +444,16 @@ function normalizeFingerprintText(value: string): string {
 }
 
 function stableStringHash(value: string): string {
-  let hash = 2166136261;
+  let hashA = 2166136261;
+  let hashB = 0x811c9dc5 ^ 0x9e3779b9;
   for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+    const code = value.charCodeAt(i);
+    hashA ^= code;
+    hashA = Math.imul(hashA, 16777619);
+    hashB ^= code + i;
+    hashB = Math.imul(hashB, 16777619);
   }
-  return (hash >>> 0).toString(36);
+  return `${(hashA >>> 0).toString(36)}${(hashB >>> 0).toString(36)}`;
 }
 
 function articleContentFingerprint(article: Pick<ParsedArticle, "title" | "snippet">): string {
@@ -467,6 +464,21 @@ function articleContentFingerprint(article: Pick<ParsedArticle, "title" | "snipp
     .filter(Boolean)
     .join(" ");
   return stableStringHash(fingerprintText);
+}
+
+function parsePublishedAt(raw: string): number | undefined {
+  if (!raw.trim()) return undefined;
+  const parsed = new Date(raw).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toEventEmbedding(articleEmbedding: number[]): number[] {
+  const padded = new Array(EVENT_EMBEDDING_DIMENSIONS).fill(0);
+  const limit = Math.min(articleEmbedding.length, EVENT_EMBEDDING_DIMENSIONS);
+  for (let i = 0; i < limit; i++) {
+    padded[i] = articleEmbedding[i]!;
+  }
+  return padded;
 }
 
 /** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
@@ -601,6 +613,49 @@ export const createSource = internalMutation({
   },
 });
 
+/** Atomically find or create a source for a feed domain. */
+export const getOrCreateSource = internalMutation({
+  args: {
+    domain: v.string(),
+    name: v.string(),
+    baseBias: v.number(),
+    reliabilityScore: v.number(),
+    mbfcCategory: v.string(),
+    mbfcFactual: v.optional(v.string()),
+    mbfcCredibility: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    {
+      domain,
+      name,
+      baseBias,
+      reliabilityScore,
+      mbfcCategory,
+      mbfcFactual,
+      mbfcCredibility,
+    },
+  ): Promise<Id<"sources">> => {
+    const existing = await ctx.db
+      .query("sources")
+      .withIndex("by_domain", (q) => q.eq("domain", domain))
+      .first();
+    if (existing) return existing._id;
+
+    return ctx.db.insert("sources", {
+      domain,
+      name,
+      baseBias,
+      reliabilityScore,
+      logoUrl: `https://logo.clearbit.com/${domain}`,
+      mbfcCategory,
+      mbfcFactual,
+      mbfcCredibility,
+      mbfcLastChecked: Date.now(),
+    });
+  },
+});
+
 /** Insert a batch of articles. */
 export const insertArticles = internalMutation({
   args: {
@@ -706,15 +761,15 @@ async function recomputeEventEmbeddingForEvent(
     return;
   }
 
-  const dimension = embeddings[0]!.length;
-  const sums = new Array(dimension).fill(0);
-  for (const embedding of embeddings) {
-    for (let i = 0; i < dimension; i++) {
+  const normalizedEmbeddings = embeddings.map(toEventEmbedding);
+  const sums = new Array(EVENT_EMBEDDING_DIMENSIONS).fill(0);
+  for (const embedding of normalizedEmbeddings) {
+    for (let i = 0; i < EVENT_EMBEDDING_DIMENSIONS; i++) {
       sums[i] += embedding[i] ?? 0;
     }
   }
 
-  const averagedEmbedding = sums.map((sum) => sum / embeddings.length);
+  const averagedEmbedding = sums.map((sum) => sum / normalizedEmbeddings.length);
   const latestVersion = embeddingRows.reduce(
     (max, row) => (row && row.version > max ? row.version : max),
     0,
@@ -755,11 +810,25 @@ export const cleanupDuplicateArticlesInEvents = internalMutation({
         Math.floor(args.maxPublishedDeltaMs ?? 24 * 60 * 60 * 1000),
       ),
     );
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
-      .take(safeLimit);
+    const [publishedEvents, processingEvents] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .order("desc")
+        .take(safeLimit),
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "processing"))
+        .order("desc")
+        .take(safeLimit),
+    ]);
+    const events = [...publishedEvents, ...processingEvents]
+      .sort(
+        (a, b) =>
+          b.firstPublishedAt - a.firstPublishedAt ||
+          b._creationTime - a._creationTime,
+      )
+      .slice(0, safeLimit);
 
     let inspectedEvents = 0;
     let duplicateArticles = 0;
@@ -980,22 +1049,18 @@ export const ingestSingleFeed = internalAction({
 
     try {
       // Ensure source exists first — needed for ingestionMeta updates.
-      const existingSource = await ctx.runQuery(
-        internal.ingestion.getSourceByDomain,
-        { domain: feedDomain },
+      const resolvedSourceId: Id<"sources"> = await ctx.runMutation(
+        internal.ingestion.getOrCreateSource,
+        {
+          domain: feedDomain,
+          name: feedName,
+          baseBias,
+          reliabilityScore,
+          mbfcCategory,
+          mbfcFactual,
+          mbfcCredibility,
+        },
       );
-
-      const resolvedSourceId: Id<"sources"> = existingSource
-        ? existingSource._id
-        : await ctx.runMutation(internal.ingestion.createSource, {
-            domain: feedDomain,
-            name: feedName,
-            baseBias,
-            reliabilityScore,
-            mbfcCategory,
-            mbfcFactual,
-            mbfcCredibility,
-          });
       sourceId = resolvedSourceId;
 
       // 1. Fetch RSS XML
@@ -1037,14 +1102,14 @@ export const ingestSingleFeed = internalAction({
           ...a,
           canonicalUrl: canonicalizeUrl(a.url),
           contentFingerprint: articleContentFingerprint(a),
+          parsedPublishedAt: parsePublishedAt(a.publishedAt),
         }));
 
       // 2.5 Filter out articles older than 72 hours
       const cutoffMs = Date.now() - 72 * 60 * 60 * 1000;
       const recentArticles = articlesWithCanonical.filter((a) => {
-        if (!a.publishedAt) return true; // Keep articles with no date (err on side of inclusion)
-        const pubTime = new Date(a.publishedAt).getTime();
-        return Number.isNaN(pubTime) || pubTime > cutoffMs;
+        if (!a.publishedAt) return true; // Keep dateless feed entries, but do not rescue malformed dates.
+        return a.parsedPublishedAt !== undefined && a.parsedPublishedAt > cutoffMs;
       });
 
       // 3. Batch dedup check
@@ -1103,9 +1168,7 @@ export const ingestSingleFeed = internalAction({
         imageAlt: a.imageAlt,
         imageSource: a.imageSource,
         status: "unprocessed" as const,
-        publishedAt: a.publishedAt
-          ? new Date(a.publishedAt).getTime() || Date.now()
-          : Date.now(),
+        publishedAt: a.parsedPublishedAt ?? Date.now(),
       }));
 
       // 6. Insert articles in batches of 50 (Convex mutation limits)
