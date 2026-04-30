@@ -8,16 +8,13 @@ import { useConvexMutation } from "@convex-dev/react-query";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   ArrowRight,
   Eye,
   Shield,
   Target,
   Zap,
-  TrendingUp,
-  Users,
-  Sparkles,
+  ChevronDown,
 } from "lucide-react";
 
 function WaitlistForm({
@@ -102,7 +99,7 @@ function WaitlistForm({
   if (variant === "hero") {
     return (
       <form onSubmit={handleSubmit} className={className}>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row gap-3">
             <Input
               type="email"
@@ -136,7 +133,7 @@ function WaitlistForm({
             aria-label="Your name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-12 px-4 text-base bg-card border-border"
+            className="h-11 px-4 text-base bg-card border-border"
             disabled={isPending}
           />
         </div>
@@ -244,9 +241,7 @@ function LandingPage() {
 
   const events = useQuery(
     api.events.getPublicPublishedEventsPreview,
-    previewCountConfig !== undefined
-      ? { limit: previewCount }
-      : "skip",
+    previewCountConfig !== undefined ? { limit: previewCount } : "skip",
   );
   const topics = useQuery(api.topics.getTopics);
 
@@ -257,6 +252,12 @@ function LandingPage() {
     });
     return map;
   }, [topics]);
+
+  const scrollToEvents = () => {
+    document
+      .getElementById("live-events")
+      ?.scrollIntoView({ behavior: "smooth" });
+  };
 
   return (
     <div className="flex flex-col">
@@ -274,255 +275,186 @@ function LandingPage() {
         }}
       />
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-background to-background" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-primary/10 rounded-full blur-3xl opacity-30" />
-
-        <div className="container relative mx-auto max-w-5xl px-4 py-20 md:py-32">
-          <div className="flex flex-col items-center text-center gap-8">
+      {/* Hero Section - Compact with immediate value prop */}
+      <section className="relative">
+        <div className="container relative mx-auto max-w-5xl px-4 pt-16 pb-12 md:pt-24 md:pb-16">
+          <div className="flex flex-col items-center text-center gap-6">
             {/* Main headline */}
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-balance">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-balance">
               Stop Reading the{" "}
-              <span className="relative">
+              <span className="relative inline-block">
                 <span className="relative z-10 text-primary">News Blind</span>
-                <span className="absolute bottom-2 left-0 right-0 h-3 bg-primary/20 -z-0" />
+                <span className="absolute bottom-1 md:bottom-2 left-0 right-0 h-2 md:h-3 bg-primary/20 -z-0" />
               </span>
             </h1>
 
-            {/* Subtitle */}
-            <p className="text-lg md:text-xl text-muted-foreground max-w-[55ch] leading-relaxed text-balance">
+            {/* Subtitle - more compact */}
+            <p className="text-base md:text-lg text-muted-foreground max-w-[50ch] leading-relaxed text-balance">
               Every story has a left version, a right version, and what actually
-              happened. Biviant shows you all three, scores every source for
-              bias and reliability, and tells you exactly how it affects your
-              life.
+              happened. Biviant shows you all three.
             </p>
 
             {/* Email Capture */}
-            <WaitlistForm className="w-full max-w-lg mt-4" variant="hero" />
+            <WaitlistForm className="w-full max-w-md mt-2" variant="hero" />
 
-            {/* Trust indicators */}
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Shield className="size-4 text-primary" />
-                Free during beta
-              </div>
-              <div className="flex items-center gap-2">
-                <Zap className="size-4 text-primary" />
-                No credit card required
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="size-4 text-primary" />
-                Join 50+ early adopters
-              </div>
-            </div>
+            {/* Scroll indicator */}
+            <button
+              onClick={scrollToEvents}
+              className="mt-4 flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground transition-colors group"
+              aria-label="Scroll to live events"
+            >
+              <span className="text-xs font-medium uppercase tracking-wider">
+                See it live
+              </span>
+              <ChevronDown className="size-5 animate-bounce" />
+            </button>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="border-y border-border bg-muted/30">
-        <div className="container mx-auto max-w-5xl px-4 py-20">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              How It Works
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-[50ch] mx-auto">
-              Three simple steps to break free from your filter bubble
-            </p>
-          </div>
+      {/* Live Events Showcase - THE HERO OF THE PAGE */}
+      <section
+        id="live-events"
+        className="relative bg-muted/30 border-y border-border"
+      >
+        {/* Subtle gradient overlay */}
+        <div className="absolute inset-0 bg-linear-to-b from-background via-transparent to-background pointer-events-none" />
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                step: 1,
-                icon: Eye,
-                title: "One Story, Every Angle",
-                description:
-                  "When a story breaks, Biviant collects coverage from across the political spectrum and groups it into one event. No more Googling to see what the other side is saying.",
-              },
-              {
-                step: 2,
-                icon: Shield,
-                title: "Know Who to Trust",
-                description:
-                  "Every source gets a bias score from far-left to far-right and a reliability score from tabloid to wire service. You always know exactly where your information is coming from.",
-              },
-              {
-                step: 3,
-                icon: Target,
-                title: "See Why It Matters to You",
-                description:
-                  "Biviant doesn't just summarize the news — it tells you how each story affects you personally, based on your job, your location, and what you care about.",
-              },
-            ].map(({ step, icon: Icon, title, description }) => (
-              <Card
-                key={step}
-                className="group relative overflow-hidden border-border hover:border-primary/30 transition-colors"
-              >
-                <CardContent className="pt-8 pb-8">
-                  <div className="flex flex-col items-center text-center gap-4">
-                    {/* Step indicator */}
-                    <div className="relative">
-                      <div className="flex items-center justify-center size-14 rounded-2xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                        <Icon className="size-7" />
-                      </div>
-                      <span className="absolute -top-2 -right-2 flex items-center justify-center size-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                        {step}
-                      </span>
-                    </div>
-
-                    <h3 className="font-semibold text-lg">{title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {description}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Personal Impact */}
-      <section className="border-b border-border">
-        <div className="container mx-auto max-w-5xl px-4 py-20">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left column - text */}
-            <div className="flex flex-col gap-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium w-fit">
-                <Target className="size-4" />
-                Personalized insights
-              </div>
-
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-                News That&apos;s Actually About You
-              </h2>
-
-              <p className="text-muted-foreground text-lg leading-relaxed">
-                Biviant doesn&apos;t just tell you what happened — it tells you
-                what it means for you. No more wondering how a story affects
-                your life.
-              </p>
-
-              <div className="grid gap-4 mt-2">
-                {[
-                  {
-                    title: "Personal Impact",
-                    description:
-                      "Every story comes with a breakdown of how it affects you based on your profile.",
-                  },
-                  {
-                    title: "Actionable Tips",
-                    description:
-                      "Clear next steps — not just 'be informed,' but what you can actually do.",
-                  },
-                ].map(({ title, description }) => (
-                  <div key={title} className="flex gap-4">
-                    <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-lg bg-primary/10 text-primary">
-                      <Zap className="size-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-1">{title}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {description}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Right column - feature cards */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              {[
-                {
-                  icon: TrendingUp,
-                  title: "Bias Balance Tracker",
-                  description:
-                    "Track your reading habits and see when you're drifting into a bubble.",
-                },
-                {
-                  icon: Sparkles,
-                  title: "Reading Streaks",
-                  description:
-                    "Build a daily habit of balanced reading with streaks.",
-                },
-              ].map(({ icon: Icon, title, description }) => (
-                <Card
-                  key={title}
-                  className="group border-border hover:border-primary/30 transition-colors"
-                >
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                        <Icon className="size-6" />
-                      </div>
-                      <h3 className="font-semibold">{title}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {description}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feed Preview */}
-      <section className="bg-muted/20">
-        <div className="container mx-auto max-w-5xl px-4 py-20">
+        <div className="container relative mx-auto max-w-4xl px-4 py-12 md:py-16">
           <div className="flex flex-col gap-8">
-            <div className="text-center">
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-                See How It Actually Looks
+            {/* Section header */}
+            <div className="flex flex-col items-center text-center gap-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium">
+                <span className="relative flex size-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full size-2 bg-primary" />
+                </span>
+                Live Events
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+                This Is Your News Feed
               </h2>
-              <p className="text-muted-foreground text-lg max-w-[50ch] mx-auto">
-                Real stories, real perspectives. This is what your daily feed
-                looks like on Biviant.
+              <p className="text-sm text-muted-foreground max-w-[45ch]">
+                Real stories from multiple perspectives. Tap any event to
+                explore.
               </p>
             </div>
 
-            <div className="grid gap-6 max-w-4xl mx-auto w-full">
-                  {events?.map((event) => (
-                <EventCard
-                  key={event._id}
-                  event={event}
-                  topicNamesById={topicNamesById}
-                  maxSources={maxSources}
-                />
-              ))}
+            {/* Events grid - the star of the show */}
+            <div className="grid gap-4 md:gap-5">
+              {events === undefined ? (
+                // Loading skeleton
+                <div className="flex flex-col gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-48 rounded-xl bg-card border border-border animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : events.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  No events available right now. Check back soon.
+                </div>
+              ) : (
+                events.map((event, index) => (
+                  <div
+                    key={event._id}
+                    className="transform transition-all duration-300"
+                    style={{
+                      animationDelay: `${index * 100}ms`,
+                    }}
+                  >
+                    <EventCard
+                      event={event}
+                      topicNamesById={topicNamesById}
+                      maxSources={maxSources}
+                    />
+                  </div>
+                ))
+              )}
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Bottom CTA */}
-      <section className="border-t border-border">
-        <div className="container mx-auto max-w-3xl px-4 py-20">
-          <div className="relative overflow-hidden rounded-3xl bg-primary/5 border border-primary/20 p-8 md:p-12">
-            {/* Background decoration */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-
-            <div className="relative flex flex-col items-center text-center gap-6">
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-balance">
-                You Deserve to Know the Whole Story
-              </h2>
-              <p className="text-lg text-muted-foreground max-w-[50ch] leading-relaxed">
-                Most news apps optimize for engagement. Biviant optimizes for
-                understanding. Join the waitlist and be first to try a news
-                experience built around clarity, not clicks.
-              </p>
-
+            {/* CTA under events */}
+            <div className="flex justify-center pt-4">
               <WaitlistForm
-                className="w-full max-w-md"
-                buttonText="Claim Your Spot"
+                className="w-full max-w-sm"
+                buttonText="Join to See More"
                 variant="hero"
               />
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works - Compact horizontal strip */}
+      <section className="border-b border-border">
+        <div className="container mx-auto max-w-5xl px-4 py-10 md:py-12">
+          <div className="flex flex-col gap-6">
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight text-center">
+              How It Works
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+              {[
+                {
+                  icon: Eye,
+                  title: "Every Angle",
+                  description: "One story, all perspectives grouped together.",
+                },
+                {
+                  icon: Shield,
+                  title: "Trust Scores",
+                  description: "Bias and reliability ratings for every source.",
+                },
+                {
+                  icon: Target,
+                  title: "Personal Impact",
+                  description: "How each story affects you specifically.",
+                },
+              ].map(({ icon: Icon, title, description }) => (
+                <div
+                  key={title}
+                  className="flex items-start gap-3 p-4 rounded-xl bg-card border border-border"
+                >
+                  <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-lg bg-primary/10 text-primary">
+                    <Icon className="size-5" />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="font-semibold text-sm">{title}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA - Compact */}
+      <section>
+        <div className="container mx-auto max-w-2xl px-4 py-12 md:py-16">
+          <div className="flex flex-col items-center text-center gap-5">
+            <div className="flex items-center gap-2 text-primary">
+              <Zap className="size-5" />
+              <span className="text-sm font-medium">Free during beta</span>
+            </div>
+
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-balance">
+              You Deserve the Whole Story
+            </h2>
+
+            <p className="text-muted-foreground max-w-[45ch] text-sm md:text-base">
+              Join 50+ early adopters getting news that informs, not inflames.
+            </p>
+
+            <WaitlistForm
+              className="w-full max-w-sm"
+              buttonText="Claim Your Spot"
+              variant="hero"
+            />
           </div>
         </div>
       </section>

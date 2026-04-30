@@ -3310,11 +3310,6 @@ export const mergeNearDuplicateEvents = internalAction({
             mergedSummaryMetadata.lastSummarizedAt;
           const mergedLastSummarySignature =
             mergedSummaryMetadata.lastSummarySignature;
-          const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
-          const mergedLastSummarizedAt =
-            mergedSummaryMetadata.lastSummarizedAt;
-          const mergedLastSummarySignature =
-            mergedSummaryMetadata.lastSummarySignature;
 
           const result = await ctx.runMutation(
             internal.clustering.mergeEvents,
@@ -3555,6 +3550,11 @@ export const reclusterRecentSingletonEvents = internalAction({
           const mergedImageUrl = keep.imageUrl ?? remove.imageUrl;
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
+          const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
+          const mergedLastSummarizedAt =
+            mergedSummaryMetadata.lastSummarizedAt;
+          const mergedLastSummarySignature =
+            mergedSummaryMetadata.lastSummarySignature;
 
           const result = await ctx.runMutation(
             internal.clustering.mergeEvents,
