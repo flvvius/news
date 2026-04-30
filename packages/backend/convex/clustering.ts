@@ -1133,19 +1133,17 @@ function findBestCandidate(
   const articleTopicSlugs = new Set(article.topicSlugs);
 
   let best: { candidate: ClusterCandidate; score: number } | null = null;
-  let nearMiss:
-    | {
-        candidate: ClusterCandidate;
-        similarity: number;
-        effectiveMinSimilarity: number;
-        isWeakExtraction: boolean;
-        sameSource: boolean;
-        lexicalSupport: boolean;
-        semanticSupport: boolean;
-        topicSupport: boolean;
-        sameSourceMatch: boolean;
-      }
-    | null = null;
+  let nearMiss: {
+    candidate: ClusterCandidate;
+    similarity: number;
+    effectiveMinSimilarity: number;
+    isWeakExtraction: boolean;
+    sameSource: boolean;
+    lexicalSupport: boolean;
+    semanticSupport: boolean;
+    topicSupport: boolean;
+    sameSourceMatch: boolean;
+  } | null = null;
 
   for (const candidate of candidates) {
     const timeDeltaMs = Math.abs(
@@ -1243,10 +1241,7 @@ function findBestCandidate(
       similarity >= effectiveMinSimilarity - 0.05 &&
       similarity < effectiveMinSimilarity;
     if (!baseMatch || !sameSourceMatch) {
-      if (
-        isNearMiss &&
-        (!nearMiss || similarity > nearMiss.similarity)
-      ) {
+      if (isNearMiss && (!nearMiss || similarity > nearMiss.similarity)) {
         nearMiss = {
           candidate,
           similarity,
@@ -3732,11 +3727,123 @@ export const clusterEnrichedArticles = internalAction({
       let clusteredIntoExisting = 0;
       let createdEvents = 0;
       let skipped = 0;
-      const pendingArticles: Array<{
+      type AttachPayload = {
         article: (typeof articles)[number];
         paddedEmbedding: number[];
         topicSlugs: string[];
-      }> = [];
+      };
+      type PendingArticle = AttachPayload & {
+        seedRank: {
+          extractionRank: number;
+          entityTokenCount: number;
+          titleLength: number;
+          publishedAt: number;
+          id: string;
+        };
+      };
+      const pendingArticles: PendingArticle[] = [];
+
+      const applyCandidateUpdate = (
+        candidate: ClusterCandidate,
+        article: (typeof articles)[number],
+        paddedEmbedding: number[],
+        topicSlugs: string[],
+        result: {
+          embedding: number[];
+          articleCount: number;
+          firstPublishedAt: number;
+        },
+      ) => {
+        candidate.embedding = result.embedding;
+        candidate.memberEmbeddings = [
+          paddedEmbedding,
+          ...candidate.memberEmbeddings,
+        ].slice(0, 3);
+        candidate.articleCount = result.articleCount;
+        candidate.firstPublishedAt = result.firstPublishedAt;
+        candidate.sourceIds.add(String(article.sourceId));
+        candidate.evidenceTokens = mergeTokenSets(
+          candidate.evidenceTokens,
+          normalizeTitleTokens(article.rssSnippet),
+          normalizeTitleTokens(article.summary),
+        );
+        candidate.factTokens = mergeTokenSets(
+          candidate.factTokens,
+          normalizeTitleTokens(article.atomicFacts.join(" ")),
+        );
+        candidate.entityTokens = mergeTokenSets(
+          candidate.entityTokens,
+          extractEntityTokens(
+            article.title,
+            article.rssSnippet,
+            article.summary,
+            article.entities.join(" "),
+            article.atomicFacts.join(" "),
+          ),
+        );
+        for (const topicSlug of topicSlugs) {
+          candidate.topicSlugs.add(topicSlug);
+        }
+      };
+
+      const tryAttach = async (
+        payload: AttachPayload,
+      ): Promise<"attached" | "unmatched" | "skipped"> => {
+        const { article, paddedEmbedding, topicSlugs } = payload;
+        const match = findBestCandidate(
+          {
+            articleId: article._id,
+            title: article.title,
+            rssSnippet: article.rssSnippet,
+            summary: article.summary,
+            atomicFacts: article.atomicFacts,
+            entities: article.entities,
+            topicSlugs,
+            extractionQuality: article.extractionQuality,
+            publishedAt: article.publishedAt,
+            embedding: article.embedding,
+            sourceId: article.sourceId,
+          },
+          candidates,
+          settings,
+        );
+
+        if (!match) return "unmatched";
+
+        const result = await ctx.runMutation(
+          internal.clustering.attachArticleToEvent,
+          {
+            articleId: article._id,
+            eventId: match.eventId,
+            publishedAt: article.publishedAt,
+            eventEmbedding: paddedEmbedding,
+            version: 1,
+            topicSlugs,
+            publishMinArticles: publishSettings.minArticles,
+            publishMinSources: publishSettings.minSources,
+          },
+        );
+
+        if (!result.updated) {
+          skipped++;
+          return "skipped";
+        }
+
+        clusteredIntoExisting++;
+
+        const candidate = candidates.find((c) => c.eventId === match.eventId);
+        if (candidate) {
+          applyCandidateUpdate(
+            candidate,
+            article,
+            paddedEmbedding,
+            topicSlugs,
+            result,
+          );
+        }
+
+        return "attached";
+      };
 
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
@@ -3752,161 +3859,47 @@ export const clusterEnrichedArticles = internalAction({
           topicsForInference,
           topicSettings,
         );
-        const match = findBestCandidate(
-          {
-            articleId: article._id,
-            title: article.title,
-            rssSnippet: article.rssSnippet,
-            summary: article.summary,
-            atomicFacts: article.atomicFacts,
-            entities: article.entities,
-            topicSlugs,
-            extractionQuality: article.extractionQuality,
-            publishedAt: article.publishedAt,
-            embedding: article.embedding,
-            sourceId: article.sourceId,
-          },
-          candidates,
-          settings,
-        );
-
-        if (match) {
-          const result = await ctx.runMutation(
-            internal.clustering.attachArticleToEvent,
-            {
-              articleId: article._id,
-              eventId: match.eventId,
+        const payload: AttachPayload = {
+          article,
+          paddedEmbedding,
+          topicSlugs,
+        };
+        const outcome = await tryAttach(payload);
+        if (outcome === "unmatched") {
+          const entityTokenCount = extractEntityTokens(
+            article.title,
+            article.rssSnippet,
+            article.summary,
+            article.entities.join(" "),
+            article.atomicFacts.join(" "),
+          ).size;
+          pendingArticles.push({
+            ...payload,
+            seedRank: {
+              extractionRank: article.extractionQuality === "strong" ? 2 : 1,
+              entityTokenCount,
+              titleLength: article.title.length,
               publishedAt: article.publishedAt,
-              eventEmbedding: paddedEmbedding,
-              version: 1,
-              topicSlugs,
-              publishMinArticles: publishSettings.minArticles,
-              publishMinSources: publishSettings.minSources,
+              id: String(article._id),
             },
-          );
-
-          if (!result.updated) {
-            skipped++;
-            continue;
-          }
-
-          clusteredIntoExisting++;
-
-          const candidate = candidates.find((c) => c.eventId === match.eventId);
-          if (candidate) {
-            candidate.embedding = result.embedding;
-            candidate.memberEmbeddings = [
-              paddedEmbedding,
-              ...candidate.memberEmbeddings,
-            ].slice(0, 3);
-            candidate.articleCount = result.articleCount;
-            candidate.firstPublishedAt = result.firstPublishedAt;
-            candidate.sourceIds.add(String(article.sourceId));
-            candidate.evidenceTokens = mergeTokenSets(
-              candidate.evidenceTokens,
-              normalizeTitleTokens(article.rssSnippet),
-              normalizeTitleTokens(article.summary),
-            );
-            candidate.factTokens = mergeTokenSets(
-              candidate.factTokens,
-              normalizeTitleTokens(article.atomicFacts.join(" ")),
-            );
-            candidate.entityTokens = mergeTokenSets(
-              candidate.entityTokens,
-              extractEntityTokens(
-                article.title,
-                article.rssSnippet,
-                article.summary,
-                article.entities.join(" "),
-                article.atomicFacts.join(" "),
-              ),
-            );
-            for (const topicSlug of topicSlugs) {
-              candidate.topicSlugs.add(topicSlug);
-            }
-          }
-          continue;
+          });
         }
-        pendingArticles.push({ article, paddedEmbedding, topicSlugs });
       }
 
+      pendingArticles.sort(
+        (a, b) =>
+          b.seedRank.extractionRank - a.seedRank.extractionRank ||
+          b.seedRank.entityTokenCount - a.seedRank.entityTokenCount ||
+          b.seedRank.titleLength - a.seedRank.titleLength ||
+          b.seedRank.publishedAt - a.seedRank.publishedAt ||
+          a.seedRank.id.localeCompare(b.seedRank.id),
+      );
+
       for (const pending of pendingArticles) {
+        const outcome = await tryAttach(pending);
+        if (outcome !== "unmatched") continue;
+
         const { article, paddedEmbedding, topicSlugs } = pending;
-        const match = findBestCandidate(
-          {
-            articleId: article._id,
-            title: article.title,
-            rssSnippet: article.rssSnippet,
-            summary: article.summary,
-            atomicFacts: article.atomicFacts,
-            entities: article.entities,
-            topicSlugs,
-            extractionQuality: article.extractionQuality,
-            publishedAt: article.publishedAt,
-            embedding: article.embedding,
-            sourceId: article.sourceId,
-          },
-          candidates,
-          settings,
-        );
-
-        if (match) {
-          const result = await ctx.runMutation(
-            internal.clustering.attachArticleToEvent,
-            {
-              articleId: article._id,
-              eventId: match.eventId,
-              publishedAt: article.publishedAt,
-              eventEmbedding: paddedEmbedding,
-              version: 1,
-              topicSlugs,
-              publishMinArticles: publishSettings.minArticles,
-              publishMinSources: publishSettings.minSources,
-            },
-          );
-
-          if (!result.updated) {
-            skipped++;
-            continue;
-          }
-
-          clusteredIntoExisting++;
-
-          const candidate = candidates.find((c) => c.eventId === match.eventId);
-          if (candidate) {
-            candidate.embedding = result.embedding;
-            candidate.memberEmbeddings = [
-              paddedEmbedding,
-              ...candidate.memberEmbeddings,
-            ].slice(0, 3);
-            candidate.articleCount = result.articleCount;
-            candidate.firstPublishedAt = result.firstPublishedAt;
-            candidate.sourceIds.add(String(article.sourceId));
-            candidate.evidenceTokens = mergeTokenSets(
-              candidate.evidenceTokens,
-              normalizeTitleTokens(article.rssSnippet),
-              normalizeTitleTokens(article.summary),
-            );
-            candidate.factTokens = mergeTokenSets(
-              candidate.factTokens,
-              normalizeTitleTokens(article.atomicFacts.join(" ")),
-            );
-            candidate.entityTokens = mergeTokenSets(
-              candidate.entityTokens,
-              extractEntityTokens(
-                article.title,
-                article.rssSnippet,
-                article.summary,
-                article.entities.join(" "),
-                article.atomicFacts.join(" "),
-              ),
-            );
-            for (const topicSlug of topicSlugs) {
-              candidate.topicSlugs.add(topicSlug);
-            }
-          }
-          continue;
-        }
 
         const slug = buildEventSlug(
           article.title,

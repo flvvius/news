@@ -421,8 +421,7 @@ export const seedDefaults = internalMutation({
       {
         key: "event_summary_model",
         value: "gpt-5-nano",
-        description:
-          "OpenAI chat model used for event perspective summaries.",
+        description: "OpenAI chat model used for event perspective summaries.",
       },
       {
         key: "event_summary_enqueue_limit",
@@ -481,8 +480,7 @@ export const seedDefaults = internalMutation({
       {
         key: "article_fact_extraction_max_facts_per_article",
         value: 8,
-        description:
-          "Maximum number of atomic facts stored per article.",
+        description: "Maximum number of atomic facts stored per article.",
       },
       {
         key: "article_fact_extraction_max_input_chars",
