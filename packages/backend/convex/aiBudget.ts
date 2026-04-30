@@ -28,6 +28,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 /** Default model pricing as of 2025. Add new models as needed. */
 const DEFAULT_MODEL_RATES: Record<string, { input: number; output: number }> = {
+  "gpt-5-nano": { input: 0.00000005, output: 0.0000004 },
+  "gpt-5-mini": { input: 0.00000025, output: 0.000002 },
   "gpt-4o-mini": { input: 0.00000015, output: 0.0000006 },
   "gpt-4o": { input: 0.0000025, output: 0.00001 },
   "gpt-4.1-nano": { input: 0.0000001, output: 0.0000004 },
@@ -68,13 +70,32 @@ export function calculateCost(
   inputTokens: number,
   outputTokens: number,
 ): number {
+  return calculateCostWithCachedInput(model, inputTokens, 0, outputTokens);
+}
+
+export function calculateCostWithCachedInput(
+  model: string,
+  inputTokens: number,
+  cachedInputTokens: number,
+  outputTokens: number,
+): number {
   const rates = MODEL_RATES[model];
+  const cachedInputRate = rates ? rates.input * 0.1 : undefined;
   if (!rates) {
     // Unknown model — use gpt-4o-mini rates as conservative fallback
     const fallback = MODEL_RATES["gpt-4o-mini"]!;
     return inputTokens * fallback.input + outputTokens * fallback.output;
   }
-  return inputTokens * rates.input + outputTokens * rates.output;
+  const safeCachedInputTokens = Math.min(
+    Math.max(0, cachedInputTokens),
+    Math.max(0, inputTokens),
+  );
+  const billableInputTokens = Math.max(0, inputTokens - safeCachedInputTokens);
+  return (
+    billableInputTokens * rates.input +
+    safeCachedInputTokens * (cachedInputRate ?? rates.input) +
+    outputTokens * rates.output
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +350,7 @@ export const logUsage = internalMutation({
     callType: v.optional(v.string()),
     inputTokens: v.number(),
     outputTokens: v.number(),
+    cachedInputTokens: v.optional(v.number()),
     costUsd: v.number(),
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
@@ -350,6 +372,7 @@ async function recordUsageInternal(
     callType: string;
     inputTokens: number;
     outputTokens: number;
+    cachedInputTokens?: number;
     costUsd: number;
     eventId?: Id<"events">;
     articleId?: Id<"articles">;
@@ -391,6 +414,7 @@ async function recordUsageInternal(
     callType: args.callType,
     inputTokens: args.inputTokens,
     outputTokens: args.outputTokens,
+    cachedInputTokens: args.cachedInputTokens,
     costUsd: args.costUsd,
     eventId: args.eventId,
     articleId: args.articleId,
@@ -414,6 +438,7 @@ export const recordUsage = internalMutation({
     model: v.string(),
     inputTokens: v.number(),
     outputTokens: v.number(),
+    cachedInputTokens: v.optional(v.number()),
     costUsd: v.number(),
     eventId: v.optional(v.id("events")),
     articleId: v.optional(v.id("articles")),
@@ -449,6 +474,7 @@ export const getTodaysUsage = internalQuery({
       calls: number;
       inputTokens: number;
       outputTokens: number;
+      cachedInputTokens: number;
       costUsd: number;
       latencyMs: number;
     };
@@ -464,12 +490,14 @@ export const getTodaysUsage = internalQuery({
         calls: 0,
         inputTokens: 0,
         outputTokens: 0,
+        cachedInputTokens: 0,
         costUsd: 0,
         latencyMs: 0,
       };
       existing.calls++;
       existing.inputTokens += row.inputTokens;
       existing.outputTokens += row.outputTokens;
+      existing.cachedInputTokens += row.cachedInputTokens ?? 0;
       existing.costUsd += row.costUsd;
       existing.latencyMs += row.latencyMs ?? 0;
       group[key] = existing;

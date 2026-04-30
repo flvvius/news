@@ -420,7 +420,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_model",
-        value: "gpt-4o-mini",
+        value: "gpt-5-nano",
         description:
           "OpenAI chat model used for event perspective summaries.",
       },
@@ -468,7 +468,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_model",
-        value: "gpt-4o-mini",
+        value: "gpt-5-nano",
         description:
           "OpenAI chat model used to extract atomic facts from articles during enrichment.",
       },
@@ -498,7 +498,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_bias_detection_model",
-        value: "gpt-4o-mini",
+        value: "gpt-5-nano",
         description:
           "OpenAI chat model used for per-article bias component scoring during enrichment.",
       },
@@ -552,7 +552,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "claim_analysis_model",
-        value: "gpt-4o-mini",
+        value: "gpt-5-nano",
         description:
           "OpenAI chat model used for event-level claim divergence analysis.",
       },

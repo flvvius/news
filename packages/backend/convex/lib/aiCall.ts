@@ -3,7 +3,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { calculateCost } from "../aiBudget";
+import { calculateCost, calculateCostWithCachedInput } from "../aiBudget";
 import { getOpenAI } from "./openai";
 
 export type AICallType =
@@ -27,6 +27,7 @@ type BudgetReservation = {
 type AICallUsage = {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
   costUsd: number;
   latencyMs: number;
 };
@@ -44,6 +45,9 @@ type ChatArgs<T> = {
   maxTokens?: number;
   temperature?: number;
   parseJson?: boolean;
+  promptCacheKey?: string;
+  promptCacheRetention?: "24h";
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
   context: AICallContext;
   runtime: ActionCtx;
   maxRetries?: number;
@@ -69,6 +73,7 @@ function zeroUsage(): AICallUsage {
   return {
     inputTokens: 0,
     outputTokens: 0,
+    cachedInputTokens: 0,
     costUsd: 0,
     latencyMs: 0,
   };
@@ -99,6 +104,10 @@ function isRetryableError(error: unknown): boolean {
 function isFatalError(error: unknown): boolean {
   const status = errorStatus(error);
   return status === 401 || status === 403 || status === 404;
+}
+
+function isGpt5FamilyModel(model: string): boolean {
+  return model.startsWith("gpt-5");
 }
 
 function retryDelayMs(attempt: number): number {
@@ -161,6 +170,7 @@ async function logUsage(
       model,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
+      cachedInputTokens: usage.cachedInputTokens,
       costUsd: usage.costUsd,
       latencyMs: usage.latencyMs,
       eventId: context.eventId,
@@ -253,6 +263,7 @@ export async function callOpenAI<T>(
           const usage = {
             inputTokens,
             outputTokens: 0,
+            cachedInputTokens: 0,
             costUsd: calculateCost(args.model, inputTokens, 0),
             latencyMs: Date.now() - startedAt,
           };
@@ -272,20 +283,43 @@ export async function callOpenAI<T>(
 
         const response = await openai.chat.completions.create({
           model: args.model,
-          temperature: args.temperature ?? 0.1,
-          ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
+          ...(!isGpt5FamilyModel(args.model)
+            ? { temperature: args.temperature ?? 0.1 }
+            : { reasoning_effort: args.reasoningEffort ?? "minimal" }),
+          ...(args.maxTokens
+            ? isGpt5FamilyModel(args.model)
+              ? { max_completion_tokens: args.maxTokens }
+              : { max_tokens: args.maxTokens }
+            : {}),
           ...(args.responseFormat
             ? { response_format: args.responseFormat as never }
             : {}),
+          prompt_cache_key:
+            args.promptCacheKey ?? `biviant:${args.context.callType}`,
+          ...(args.promptCacheRetention
+            ? { prompt_cache_retention: args.promptCacheRetention }
+            : {}),
           messages: args.messages,
-        });
+        } as never);
 
         const inputTokens = response.usage?.prompt_tokens ?? 0;
         const outputTokens = response.usage?.completion_tokens ?? 0;
+        const cachedInputTokens =
+          (
+            response.usage as
+              | { prompt_tokens_details?: { cached_tokens?: number } }
+              | undefined
+          )?.prompt_tokens_details?.cached_tokens ?? 0;
         const usage = {
           inputTokens,
           outputTokens,
-          costUsd: calculateCost(args.model, inputTokens, outputTokens),
+          cachedInputTokens,
+          costUsd: calculateCostWithCachedInput(
+            args.model,
+            inputTokens,
+            cachedInputTokens,
+            outputTokens,
+          ),
           latencyMs: Date.now() - startedAt,
         };
         const logged = await logUsage(

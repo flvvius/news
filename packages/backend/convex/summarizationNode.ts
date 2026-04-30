@@ -10,7 +10,7 @@ import { shutdownPostHog } from "./lib/openai";
 import { callOpenAI } from "./lib/aiCall";
 import { buildEventSummaryPrompt, type EventSummaryOutput } from "./prompts";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_ENQUEUE_LIMIT = 40;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;

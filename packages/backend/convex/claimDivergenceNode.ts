@@ -14,7 +14,7 @@ import {
   type ClaimType,
 } from "./prompts";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_ENABLED = true;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_SCAN_LIMIT = 60;

@@ -511,6 +511,7 @@ export default defineSchema({
     articleId: v.optional(v.id("articles")),
     inputTokens: v.number(),
     outputTokens: v.number(),
+    cachedInputTokens: v.optional(v.number()),
     costUsd: v.number(), // Pre-calculated
     latencyMs: v.optional(v.number()),
     timestamp: v.number(),
