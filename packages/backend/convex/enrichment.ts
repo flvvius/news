@@ -11,11 +11,24 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
-const ARTICLE_AI_STATUS_VALIDATOR = v.union(
+const ARTICLE_FACT_STATUS_VALIDATOR = v.union(
+  v.literal("pending"),
+  v.literal("deferred"),
+  v.literal("succeeded"),
+  v.literal("succeeded_empty"),
+  v.literal("failed"),
+  v.literal("skipped"),
+);
+
+const ARTICLE_BIAS_STATUS_VALIDATOR = v.union(
+  v.literal("deferred"),
   v.literal("succeeded"),
   v.literal("failed"),
   v.literal("skipped"),
 );
+
+const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
+const MAX_BIAS_DETECTION_ATTEMPTS = 3;
 
 function sourceBiasLabel(source: Doc<"sources">): string {
   const mbfcCategory = source.mbfcCategory?.toLowerCase();
@@ -111,6 +124,7 @@ async function toClaimedArticle(
     sourceName: source.name,
     sourceLean: sourceBiasLabel(source),
     sourceReliability: source.reliabilityScore,
+    previousStatus: article.status,
   };
 }
 
@@ -172,18 +186,30 @@ function articleNeedsReenrichment(
   if ((article.summary ?? "").trim().length < 120) return true;
   if (
     article.atomicFacts === undefined &&
-    article.factExtractionStatus !== "skipped"
+    article.factExtractionStatus !== "skipped" &&
+    article.factExtractionStatus !== "succeeded_empty"
   ) {
     return true;
   }
-  if (article.factExtractionStatus === "failed") return true;
+  if (
+    article.factExtractionStatus === "failed" &&
+    (article.factExtractionAttempts ?? 0) < MAX_FACT_EXTRACTION_ATTEMPTS
+  ) {
+    return true;
+  }
+  if (article.factExtractionStatus === "deferred") return true;
   if (
     article.biasAnalyzedAt === undefined &&
     article.biasDetectionStatus !== "skipped"
   ) {
     return true;
   }
-  if (article.biasDetectionStatus === "failed") return true;
+  if (
+    article.biasDetectionStatus === "failed" ||
+    article.biasDetectionStatus === "deferred"
+  ) {
+    return (article.biasDetectionAttempts ?? 0) < MAX_BIAS_DETECTION_ATTEMPTS;
+  }
   if (article.url.includes("news.google.com")) return true;
   if (article.canonicalUrl.includes("news.google.com")) return true;
   return false;
@@ -239,6 +265,163 @@ export const claimArticlesForReenrichment = internalMutation({
     }
 
     return claimed;
+  },
+});
+
+export const claimArticlesNeedingFactExtraction = internalMutation({
+  args: {
+    limit: v.number(),
+    runId: v.string(),
+    leaseExpiresAt: v.number(),
+    beforePublishedAt: v.optional(v.number()),
+    includeFailed: v.optional(v.boolean()),
+    includeSucceededEmpty: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    {
+      limit,
+      runId,
+      leaseExpiresAt,
+      beforePublishedAt,
+      includeFailed,
+      includeSucceededEmpty,
+    },
+  ) => {
+    const batchSize = Math.max(0, Math.floor(limit));
+    if (batchSize === 0) return [];
+
+    const now = Date.now();
+    const candidates = await ctx.db
+      .query("articles")
+      .withIndex("by_published", (q) =>
+        beforePublishedAt ? q.lt("publishedAt", beforePublishedAt) : q,
+      )
+      .order("desc")
+      .take(Math.min(1000, Math.max(batchSize * 10, batchSize)));
+
+    const claimed = [];
+    for (const article of candidates) {
+      if (claimed.length >= batchSize) break;
+      if (article.status === "discarded") continue;
+      if (
+        article.status === "processing" &&
+        (article.enrichmentLeaseExpiresAt ?? 0) > now
+      ) {
+        continue;
+      }
+      if ((article.atomicFacts ?? []).some((fact) => fact.trim().length > 0)) {
+        continue;
+      }
+      if (article.factExtractionStatus === "skipped") continue;
+      if (article.factExtractionStatus === "deferred") {
+        // Deferred rows are first-class retry candidates.
+      } else if (article.factExtractionStatus === "succeeded_empty") {
+        if (!includeSucceededEmpty) continue;
+      } else if (article.factExtractionStatus === "succeeded") {
+        if (!includeSucceededEmpty) continue;
+      }
+      if (article.factExtractionStatus === "failed" && !includeFailed) {
+        continue;
+      }
+      if (
+        article.factExtractionStatus === "failed" &&
+        (article.factExtractionAttempts ?? 0) >= MAX_FACT_EXTRACTION_ATTEMPTS
+      ) {
+        continue;
+      }
+
+      const enriched = await toClaimedArticle(ctx, article);
+      if (!enriched) continue;
+
+      await ctx.db.patch(article._id, {
+        status: "processing",
+        enrichmentRunId: runId,
+        enrichmentLeaseExpiresAt: leaseExpiresAt,
+      });
+      claimed.push(enriched);
+    }
+
+    return claimed;
+  },
+});
+
+export const deferArticleFactExtraction = internalMutation({
+  args: {
+    articleId: v.id("articles"),
+    runId: v.string(),
+    previousStatus: v.union(
+      v.literal("unprocessed"),
+      v.literal("processing"),
+      v.literal("enriched"),
+      v.literal("clustered"),
+      v.literal("discarded"),
+    ),
+    reason: v.string(),
+    attemptedAt: v.number(),
+  },
+  handler: async (ctx, { articleId, runId, previousStatus, reason, attemptedAt }) => {
+    const article = await ctx.db.get(articleId);
+    if (
+      !article ||
+      article.status !== "processing" ||
+      article.enrichmentRunId !== runId
+    ) {
+      return { updated: false, eventId: undefined };
+    }
+
+    await ctx.db.patch(articleId, {
+      status: previousStatus === "processing" ? "unprocessed" : previousStatus,
+      enrichmentRunId: undefined,
+      enrichmentLeaseExpiresAt: undefined,
+      factExtractionStatus: "deferred",
+      factExtractionError: reason.slice(0, 500),
+      factExtractionAttempts: (article.factExtractionAttempts ?? 0) + 1,
+      factExtractionLastAttemptAt: attemptedAt,
+    });
+
+    if (article.eventId) {
+      await refreshEventClaimCoverage(ctx, article.eventId);
+    }
+
+    return { updated: true, eventId: article.eventId };
+  },
+});
+
+export const deferArticleBiasDetection = internalMutation({
+  args: {
+    articleId: v.id("articles"),
+    runId: v.string(),
+    previousStatus: v.union(
+      v.literal("unprocessed"),
+      v.literal("processing"),
+      v.literal("enriched"),
+      v.literal("clustered"),
+      v.literal("discarded"),
+    ),
+    reason: v.string(),
+  },
+  handler: async (ctx, { articleId, runId, previousStatus, reason }) => {
+    const article = await ctx.db.get(articleId);
+    if (
+      !article ||
+      article.status !== "processing" ||
+      article.enrichmentRunId !== runId
+    ) {
+      return { updated: false, eventId: undefined };
+    }
+
+    await ctx.db.patch(articleId, {
+      status: previousStatus === "processing" ? "unprocessed" : previousStatus,
+      enrichmentRunId: undefined,
+      enrichmentLeaseExpiresAt: undefined,
+      biasDetectionStatus: "deferred",
+      biasDetectionError: reason.slice(0, 500),
+      biasDetectionAttempts: (article.biasDetectionAttempts ?? 0) + 1,
+      biasDetectionLastAttemptAt: Date.now(),
+    });
+
+    return { updated: true, eventId: article.eventId };
   },
 });
 
@@ -298,11 +481,11 @@ export const markArticleEnriched = internalMutation({
     sourceBiasDelta: v.optional(v.number()),
     sourceBiasOutlierFlag: v.optional(v.boolean()),
     biasAnalyzedAt: v.optional(v.number()),
-    biasDetectionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    biasDetectionStatus: v.optional(ARTICLE_BIAS_STATUS_VALIDATOR),
     biasDetectionError: v.optional(v.string()),
     summary: v.optional(v.string()),
     atomicFacts: v.optional(v.array(v.string())),
-    factExtractionStatus: v.optional(ARTICLE_AI_STATUS_VALIDATOR),
+    factExtractionStatus: v.optional(ARTICLE_FACT_STATUS_VALIDATOR),
     factExtractionError: v.optional(v.string()),
     factExtractedAt: v.optional(v.number()),
     resolvedUrl: v.optional(v.string()),
@@ -371,6 +554,16 @@ export const markArticleEnriched = internalMutation({
       await ctx.db.delete(row._id);
     }
 
+    const shouldRecordFactAttempt =
+      factExtractionStatus !== undefined &&
+      factExtractionStatus !== "skipped" &&
+      !(
+        article.factExtractionStatus === "succeeded_empty" &&
+        factExtractionStatus === "succeeded_empty"
+      );
+    const shouldRecordBiasAttempt =
+      biasDetectionStatus !== undefined && biasDetectionStatus !== "skipped";
+
     // Store embedding in dedicated table (hot/cold split)
     await ctx.db.insert("articleEmbeddings", {
       articleId,
@@ -390,6 +583,10 @@ export const markArticleEnriched = internalMutation({
         ? {
             biasDetectionStatus,
             biasDetectionError,
+            biasDetectionAttempts: shouldRecordBiasAttempt
+              ? (article.biasDetectionAttempts ?? 0) + 1
+              : article.biasDetectionAttempts,
+            biasDetectionLastAttemptAt: biasAnalyzedAt ?? Date.now(),
           }
         : {}),
       summary: summary ?? article.summary,
@@ -399,6 +596,10 @@ export const markArticleEnriched = internalMutation({
             factExtractionStatus,
             factExtractionError,
             factExtractedAt: factExtractedAt ?? article.factExtractedAt,
+            factExtractionAttempts: shouldRecordFactAttempt
+              ? (article.factExtractionAttempts ?? 0) + 1
+              : article.factExtractionAttempts,
+            factExtractionLastAttemptAt: factExtractedAt ?? Date.now(),
           }
         : {}),
       url: resolvedUrl ?? article.url,

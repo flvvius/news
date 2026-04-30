@@ -251,13 +251,18 @@ export default defineSchema({
     atomicFacts: v.optional(v.array(v.string())), // ["Vote count: 60-40", "Passed on: Tuesday", "Opposition: GOP"]
     factExtractionStatus: v.optional(
       v.union(
+        v.literal("pending"),
+        v.literal("deferred"),
         v.literal("succeeded"),
+        v.literal("succeeded_empty"),
         v.literal("failed"),
         v.literal("skipped"),
       ),
     ),
     factExtractionError: v.optional(v.string()),
     factExtractedAt: v.optional(v.number()),
+    factExtractionAttempts: v.optional(v.number()),
+    factExtractionLastAttemptAt: v.optional(v.number()),
 
     // Populated by enrichment pipeline (AI bias detection)
     aiBiasScore: v.optional(v.number()),
@@ -276,12 +281,15 @@ export default defineSchema({
     biasAnalyzedAt: v.optional(v.number()),
     biasDetectionStatus: v.optional(
       v.union(
+        v.literal("deferred"),
         v.literal("succeeded"),
         v.literal("failed"),
         v.literal("skipped"),
       ),
     ),
     biasDetectionError: v.optional(v.string()),
+    biasDetectionAttempts: v.optional(v.number()),
+    biasDetectionLastAttemptAt: v.optional(v.number()),
 
     status: v.union(
       v.literal("unprocessed"),

@@ -138,10 +138,32 @@ type ArticleBiasResult = {
 };
 
 type ArticleAiStatus = {
-  status: "succeeded" | "failed" | "skipped";
+  status:
+    | "pending"
+    | "deferred"
+    | "succeeded"
+    | "succeeded_empty"
+    | "failed"
+    | "skipped";
   error?: string;
   analyzedAt?: number;
 };
+
+type ArticleBiasStatus = "deferred" | "succeeded" | "failed" | "skipped";
+
+function toArticleBiasStatus(
+  status: ArticleAiStatus["status"] | undefined,
+): ArticleBiasStatus | undefined {
+  if (
+    status === "deferred" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "skipped"
+  ) {
+    return status;
+  }
+  return undefined;
+}
 
 type FactExtractionResult = {
   factsByArticleId: Map<string, string[]>;
@@ -172,6 +194,7 @@ type PreparedArticle = {
   resolvedUrl?: string;
   sourceLean: string;
   sourceReliability: number;
+  previousStatus: "unprocessed" | "processing" | "enriched" | "clustered" | "discarded";
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -324,10 +347,6 @@ function parseAtomicFactsResponse(
     );
   }
 
-  for (const id of articleIds) {
-    if (!result.has(id)) result.set(id, []);
-  }
-
   return result;
 }
 
@@ -430,6 +449,15 @@ function parseBiasScoringResponse(
   return results;
 }
 
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const size = Math.max(1, Math.floor(chunkSize));
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function scoreBiasForArticles(
   ctx: ActionCtx,
   articles: PreparedArticle[],
@@ -441,10 +469,11 @@ async function scoreBiasForArticles(
         article.embeddingText.trim().length > 0 ||
         article.extractedSummary?.trim() ||
         article.rssSnippet?.trim(),
-    )
-    .slice(0, settings.maxArticles);
+    );
   const statusByArticleId = new Map<Id<"articles">, ArticleAiStatus>();
-  const markSelected = (
+  const biasByArticleId = new Map<Id<"articles">, ArticleBiasResult>();
+  const markArticles = (
+    targetArticles: PreparedArticle[],
     status: ArticleAiStatus["status"],
     error?: string,
     analyzedAt?: number,
@@ -452,7 +481,7 @@ async function scoreBiasForArticles(
     const nextStatus: ArticleAiStatus = { status };
     if (error !== undefined) nextStatus.error = error;
     if (analyzedAt !== undefined) nextStatus.analyzedAt = analyzedAt;
-    for (const article of selectedArticles) {
+    for (const article of targetArticles) {
       statusByArticleId.set(article._id, nextStatus);
     }
   };
@@ -462,90 +491,93 @@ async function scoreBiasForArticles(
   }
 
   if (!settings.enabled) {
-    markSelected("skipped", "Article bias detection is disabled");
+    markArticles(selectedArticles, "skipped", "Article bias detection is disabled");
     return { biasByArticleId: new Map(), statusByArticleId };
   }
 
-  const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
-  if (!budget.allowed) {
-    console.warn(
-      `[enrichment] AI budget exhausted before bias scoring ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping article bias detection`,
-    );
-    markSelected("failed", "AI budget exhausted");
-    return { biasByArticleId: new Map(), statusByArticleId };
-  }
+  for (const chunk of chunkArray(selectedArticles, settings.maxArticles)) {
+    const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
+    if (!budget.allowed) {
+      console.warn(
+        `[enrichment] AI budget exhausted before bias scoring ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping remaining article bias detection`,
+      );
+      markArticles(chunk, "deferred", "AI budget exhausted", Date.now());
+      continue;
+    }
 
-  const prompt = buildArticleBiasScoringPrompt({
-    maxInputChars: settings.maxInputChars,
-    articles: selectedArticles.map((article) => ({
-      id: article._id,
-      title: article.title,
-      sourceName: article.sourceName,
-      sourceLean: article.sourceLean,
-      sourceReliability: article.sourceReliability,
-      publishedAt: new Date(article.publishedAt).toISOString(),
-      summary: article.extractedSummary,
-      rssSnippet: article.rssSnippet ?? undefined,
-      bodyText: article.embeddingText.slice(0, settings.maxInputChars),
-    })),
-  });
-
-  try {
-    const response = await callOpenAI<unknown>({
-      kind: "chat",
-      model: settings.model,
-      temperature: 0,
-      maxTokens: Math.min(2500, 220 + selectedArticles.length * 120),
-      responseFormat: {
-        type: "json_schema",
-        json_schema: ARTICLE_BIAS_JSON_SCHEMA,
-      },
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-      context: { callType: "bias_scoring" },
-      runtime: ctx,
+    const prompt = buildArticleBiasScoringPrompt({
+      maxInputChars: settings.maxInputChars,
+      articles: chunk.map((article) => ({
+        id: article._id,
+        title: article.title,
+        sourceName: article.sourceName,
+        sourceLean: article.sourceLean,
+        sourceReliability: article.sourceReliability,
+        publishedAt: new Date(article.publishedAt).toISOString(),
+        summary: article.extractedSummary,
+        rssSnippet: article.rssSnippet ?? undefined,
+        bodyText: article.embeddingText.slice(0, settings.maxInputChars),
+      })),
     });
 
-    const content = response.result;
-    if (!content) {
-      throw new Error(
-        response.error ?? "Bias scoring returned an empty response",
+    try {
+      const response = await callOpenAI<unknown>({
+        kind: "chat",
+        model: settings.model,
+        temperature: 0,
+        maxTokens: Math.min(2500, 220 + chunk.length * 120),
+        responseFormat: {
+          type: "json_schema",
+          json_schema: ARTICLE_BIAS_JSON_SCHEMA,
+        },
+        messages: [
+          { role: "system", content: prompt.system },
+          { role: "user", content: prompt.user },
+        ],
+        context: { callType: "bias_scoring" },
+        runtime: ctx,
+      });
+
+      const content = response.result;
+      if (!content) {
+        throw new Error(
+          response.error ?? "Bias scoring returned an empty response",
+        );
+      }
+
+      const results = parseBiasScoringResponse(
+        content,
+        chunk,
+        settings.sourceDeltaThreshold,
       );
-    }
+      const analyzedAt = Date.now();
+      for (const [articleId, result] of results) {
+        biasByArticleId.set(articleId, result);
+      }
+      for (const article of chunk) {
+        statusByArticleId.set(
+          article._id,
+          results.has(article._id)
+            ? { status: "succeeded", analyzedAt }
+            : {
+                status: "deferred",
+                error: "Bias scoring omitted this article",
+                analyzedAt,
+              },
+        );
+      }
 
-    const results = parseBiasScoringResponse(
-      content,
-      selectedArticles,
-      settings.sourceDeltaThreshold,
-    );
-    const analyzedAt = Date.now();
-    for (const article of selectedArticles) {
-      statusByArticleId.set(
-        article._id,
-        results.has(article._id)
-          ? { status: "succeeded", analyzedAt }
-          : { status: "failed", error: "Bias scoring omitted this article" },
+      console.log(
+        `[enrichment] Scored bias for ${results.size}/${chunk.length} articles (${response.usage.inputTokens}/${response.usage.outputTokens} tokens)`,
       );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[enrichment] Article bias scoring failed: ${message}`);
+      markArticles(chunk, "failed", message.slice(0, 500));
     }
-
-    const inputTokens = response.usage.inputTokens;
-    const outputTokens = response.usage.outputTokens;
-
-    console.log(
-      `[enrichment] Scored bias for ${results.size}/${selectedArticles.length} articles (${inputTokens}/${outputTokens} tokens)`,
-    );
-
-    return { biasByArticleId: results, statusByArticleId };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(
-      `[enrichment] Article bias scoring failed: ${message}`,
-    );
-    markSelected("failed", message.slice(0, 500));
-    return { biasByArticleId: new Map(), statusByArticleId };
   }
+
+  return { biasByArticleId, statusByArticleId };
 }
 
 async function extractAtomicFactsForArticles(
@@ -559,10 +591,11 @@ async function extractAtomicFactsForArticles(
         article.embeddingText.trim().length > 0 ||
         article.extractedSummary?.trim() ||
         article.rssSnippet?.trim(),
-    )
-    .slice(0, settings.maxArticles);
+    );
   const statusByArticleId = new Map<Id<"articles">, ArticleAiStatus>();
-  const markSelected = (
+  const factsByArticleId = new Map<string, string[]>();
+  const markArticles = (
+    targetArticles: PreparedArticle[],
     status: ArticleAiStatus["status"],
     error?: string,
     analyzedAt?: number,
@@ -570,7 +603,7 @@ async function extractAtomicFactsForArticles(
     const nextStatus: ArticleAiStatus = { status };
     if (error !== undefined) nextStatus.error = error;
     if (analyzedAt !== undefined) nextStatus.analyzedAt = analyzedAt;
-    for (const article of selectedArticles) {
+    for (const article of targetArticles) {
       statusByArticleId.set(article._id, nextStatus);
     }
   };
@@ -580,94 +613,102 @@ async function extractAtomicFactsForArticles(
   }
 
   if (!settings.enabled) {
-    markSelected("skipped", "Atomic fact extraction is disabled");
+    markArticles(selectedArticles, "skipped", "Atomic fact extraction is disabled");
     return { factsByArticleId: new Map(), statusByArticleId };
   }
 
-  const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
-  if (!budget.allowed) {
-    console.warn(
-      `[enrichment] AI budget exhausted before fact extraction ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping atomic facts`,
-    );
-    markSelected("failed", "AI budget exhausted");
-    return { factsByArticleId: new Map(), statusByArticleId };
-  }
+  for (const chunk of chunkArray(selectedArticles, settings.maxArticles)) {
+    const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
+    if (!budget.allowed) {
+      console.warn(
+        `[enrichment] AI budget exhausted before fact extraction ($${budget.spentUsd}/$${budget.dailyLimitUsd}); skipping remaining atomic facts`,
+      );
+      markArticles(chunk, "deferred", "AI budget exhausted", Date.now());
+      continue;
+    }
 
-  const prompt = buildArticleFactExtractionPrompt({
-    maxFactsPerArticle: settings.maxFactsPerArticle,
-    articles: selectedArticles.map((article) => ({
-      id: article._id,
-      title: article.title,
-      sourceName: article.sourceName,
-      publishedAt: new Date(article.publishedAt).toISOString(),
-      entities: article.entities,
-      summary: article.extractedSummary,
-      rssSnippet: article.rssSnippet ?? undefined,
-      bodyText: article.embeddingText.slice(0, settings.maxInputChars),
-    })),
-  });
-
-  try {
-    const response = await callOpenAI<unknown>({
-      kind: "chat",
-      model: settings.model,
-      temperature: 0,
-      maxTokens: Math.min(
-        3000,
-        250 + selectedArticles.length * settings.maxFactsPerArticle * 32,
-      ),
-      responseFormat: {
-        type: "json_schema",
-        json_schema: ARTICLE_FACTS_JSON_SCHEMA,
-      },
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-      context: { callType: "fact_extraction" },
-      runtime: ctx,
+    const prompt = buildArticleFactExtractionPrompt({
+      maxFactsPerArticle: settings.maxFactsPerArticle,
+      articles: chunk.map((article) => ({
+        id: article._id,
+        title: article.title,
+        sourceName: article.sourceName,
+        publishedAt: new Date(article.publishedAt).toISOString(),
+        entities: article.entities,
+        summary: article.extractedSummary,
+        rssSnippet: article.rssSnippet ?? undefined,
+        bodyText: article.embeddingText.slice(0, settings.maxInputChars),
+      })),
     });
 
-    const content = response.result;
-    if (!content) {
-      throw new Error(
-        response.error ?? "Fact extraction returned an empty response",
-      );
-    }
-
-    const factsByArticleId = parseAtomicFactsResponse(
-      content,
-      new Set(selectedArticles.map((article) => article._id)),
-      settings.maxFactsPerArticle,
-    );
-    const analyzedAt = Date.now();
-    for (const article of selectedArticles) {
-      statusByArticleId.set(article._id, {
-        status: "succeeded",
-        analyzedAt,
+    try {
+      const response = await callOpenAI<unknown>({
+        kind: "chat",
+        model: settings.model,
+        temperature: 0,
+        maxTokens: Math.min(
+          3000,
+          250 + chunk.length * settings.maxFactsPerArticle * 32,
+        ),
+        responseFormat: {
+          type: "json_schema",
+          json_schema: ARTICLE_FACTS_JSON_SCHEMA,
+        },
+        messages: [
+          { role: "system", content: prompt.system },
+          { role: "user", content: prompt.user },
+        ],
+        context: { callType: "fact_extraction" },
+        runtime: ctx,
       });
+
+      const content = response.result;
+      if (!content) {
+        throw new Error(
+          response.error ?? "Fact extraction returned an empty response",
+        );
+      }
+
+      const chunkFacts = parseAtomicFactsResponse(
+        content,
+        new Set(chunk.map((article) => article._id)),
+        settings.maxFactsPerArticle,
+      );
+      for (const [articleId, facts] of chunkFacts) {
+        factsByArticleId.set(articleId, facts);
+      }
+      const analyzedAt = Date.now();
+      for (const article of chunk) {
+        if (!chunkFacts.has(article._id)) {
+          statusByArticleId.set(article._id, {
+            status: "deferred",
+            error: "Fact extraction omitted this article",
+            analyzedAt,
+          });
+          continue;
+        }
+        const facts = chunkFacts.get(article._id) ?? [];
+        statusByArticleId.set(article._id, {
+          status: facts.length > 0 ? "succeeded" : "succeeded_empty",
+          analyzedAt,
+        });
+      }
+
+      const factCount = Array.from(chunkFacts.values()).reduce(
+        (sum, facts) => sum + facts.length,
+        0,
+      );
+      console.log(
+        `[enrichment] Extracted ${factCount} atomic facts across ${chunkFacts.size} articles (${response.usage.inputTokens}/${response.usage.outputTokens} tokens)`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[enrichment] Atomic fact extraction failed: ${message}`);
+      markArticles(chunk, "failed", message.slice(0, 500));
     }
-
-    const inputTokens = response.usage.inputTokens;
-    const outputTokens = response.usage.outputTokens;
-
-    const factCount = Array.from(factsByArticleId.values()).reduce(
-      (sum, facts) => sum + facts.length,
-      0,
-    );
-    console.log(
-      `[enrichment] Extracted ${factCount} atomic facts across ${factsByArticleId.size} articles (${inputTokens}/${outputTokens} tokens)`,
-    );
-
-    return { factsByArticleId, statusByArticleId };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(
-      `[enrichment] Atomic fact extraction failed: ${message}`,
-    );
-    markSelected("failed", message.slice(0, 500));
-    return { factsByArticleId: new Map(), statusByArticleId };
   }
+
+  return { factsByArticleId, statusByArticleId };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -708,6 +749,7 @@ async function runEnrichmentBatch(
     sourceName?: string;
     sourceLean: string;
     sourceReliability: number;
+    previousStatus: "unprocessed" | "processing" | "enriched" | "clustered" | "discarded";
   }>,
   runId: string,
 ): Promise<{
@@ -835,10 +877,20 @@ async function runEnrichmentBatch(
       ),
     };
 
-    const [factResult, biasResult] = await Promise.all([
-      extractAtomicFactsForArticles(ctx, preparedArticles, factSettings),
-      scoreBiasForArticles(ctx, preparedArticles, biasSettings),
-    ]);
+    const factResult = await extractAtomicFactsForArticles(
+      ctx,
+      preparedArticles,
+      factSettings,
+    );
+    const biasEligibleArticles = preparedArticles.filter(
+      (article) =>
+        factResult.statusByArticleId.get(article._id)?.status !== "deferred",
+    );
+    const biasResult = await scoreBiasForArticles(
+      ctx,
+      biasEligibleArticles,
+      biasSettings,
+    );
     const factsByArticleId = factResult.factsByArticleId;
     const biasByArticleId = biasResult.biasByArticleId;
 
@@ -855,6 +907,51 @@ async function runEnrichmentBatch(
         const bias = biasByArticleId.get(article._id);
         const factStatus = factResult.statusByArticleId.get(article._id);
         const biasStatus = biasResult.statusByArticleId.get(article._id);
+        if (factStatus?.status === "deferred") {
+          const result = await ctx.runMutation(
+            internal.enrichment.deferArticleFactExtraction,
+            {
+              articleId: article._id,
+              runId,
+              previousStatus: article.previousStatus,
+              reason: factStatus.error ?? "Atomic fact extraction deferred",
+              attemptedAt: factStatus.analyzedAt ?? Date.now(),
+            },
+          );
+          if (result.updated) {
+            failed++;
+            if (result.eventId) {
+              touchedEventIds.add(result.eventId);
+            }
+          } else {
+            console.warn(
+              `[enrichment] Article ${article._id} lease no longer belongs to run ${runId}; leaving it unchanged`,
+            );
+          }
+          continue;
+        }
+        if (biasStatus?.status === "deferred") {
+          const result = await ctx.runMutation(
+            internal.enrichment.deferArticleBiasDetection,
+            {
+              articleId: article._id,
+              runId,
+              previousStatus: article.previousStatus,
+              reason: biasStatus.error ?? "Article bias detection deferred",
+            },
+          );
+          if (result.updated) {
+            failed++;
+            if (result.eventId) {
+              touchedEventIds.add(result.eventId);
+            }
+          } else {
+            console.warn(
+              `[enrichment] Article ${article._id} lease no longer belongs to run ${runId}; leaving it unchanged`,
+            );
+          }
+          continue;
+        }
         const result = await ctx.runMutation(
           internal.enrichment.markArticleEnriched,
           {
@@ -865,7 +962,7 @@ async function runEnrichmentBatch(
             sourceBiasDelta: bias?.sourceBiasDelta,
             sourceBiasOutlierFlag: bias?.sourceBiasOutlierFlag,
             biasAnalyzedAt: bias?.biasAnalyzedAt,
-            biasDetectionStatus: biasStatus?.status,
+            biasDetectionStatus: toArticleBiasStatus(biasStatus?.status),
             biasDetectionError: biasStatus?.error,
             summary: prepared.extractedSummary,
             atomicFacts: factsByArticleId.get(article._id),
@@ -1050,6 +1147,114 @@ export const reenrichArticlesBackfill = internalAction({
     try {
       const result = await runEnrichmentBatch(ctx, articles, runId);
       return { ...result, skipped: false };
+    } finally {
+      await shutdownPostHog();
+    }
+  },
+});
+
+export const backfillAtomicFacts = internalAction({
+  args: {
+    limit: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+    beforePublishedAt: v.optional(v.number()),
+    includeFailed: v.optional(v.boolean()),
+    includeSucceededEmpty: v.optional(v.boolean()),
+    force: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    {
+      limit,
+      batchSize,
+      beforePublishedAt,
+      includeFailed,
+      includeSucceededEmpty,
+      force,
+    },
+  ): Promise<{
+    processed: number;
+    enriched: number;
+    failed: number;
+    skipped: boolean;
+    budgetExhausted: boolean;
+    nextBeforePublishedAt?: number;
+  }> => {
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused && !force) {
+      console.log(
+        "[enrichment] Pipeline paused — skipping atomic facts backfill",
+      );
+      return {
+        processed: 0,
+        enriched: 0,
+        failed: 0,
+        skipped: true,
+        budgetExhausted: false,
+      };
+    }
+
+    const totalLimit = safeInteger(limit, 100, 1, 500);
+    const perBatch = safeInteger(batchSize, 20, 1, BATCH_SIZE);
+    let processed = 0;
+    let enriched = 0;
+    let failed = 0;
+    let cursor = beforePublishedAt;
+
+    try {
+      while (processed < totalLimit) {
+        const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
+        if (!budget.allowed) {
+          console.warn(
+            `[enrichment] AI budget exhausted ($${budget.spentUsd}/$${budget.dailyLimitUsd}). Stopping atomic facts backfill.`,
+          );
+          return {
+            processed,
+            enriched,
+            failed,
+            skipped: false,
+            budgetExhausted: true,
+            nextBeforePublishedAt: cursor,
+          };
+        }
+
+        const runId = randomUUID();
+        const articles = await ctx.runMutation(
+          internal.enrichment.claimArticlesNeedingFactExtraction,
+          {
+            limit: Math.min(perBatch, totalLimit - processed),
+            runId,
+            leaseExpiresAt: Date.now() + ARTICLE_LEASE_TTL_MS,
+            beforePublishedAt: cursor,
+            includeFailed: includeFailed ?? true,
+            includeSucceededEmpty: includeSucceededEmpty ?? false,
+          },
+        );
+
+        if (articles.length === 0) break;
+        const oldestPublishedAt = articles.reduce(
+          (oldest: number | undefined, article) =>
+            oldest === undefined
+              ? article.publishedAt
+              : Math.min(oldest, article.publishedAt),
+          undefined,
+        );
+
+        const result = await runEnrichmentBatch(ctx, articles, runId);
+        processed += articles.length;
+        enriched += result.enriched;
+        failed += result.failed;
+        cursor = oldestPublishedAt;
+      }
+
+      return {
+        processed,
+        enriched,
+        failed,
+        skipped: false,
+        budgetExhausted: false,
+        nextBeforePublishedAt: cursor,
+      };
     } finally {
       await shutdownPostHog();
     }
