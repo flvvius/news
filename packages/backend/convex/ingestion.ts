@@ -21,7 +21,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { ALL_FEEDS, type FeedEntry } from "./feeds";
+import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -362,23 +364,48 @@ function canonicalizeUrl(raw: string): string {
   try {
     const url = new URL(raw);
     url.hash = "";
-    // Remove common tracking params
+    url.protocol = "https:";
+    url.hostname = normalizeCanonicalHostname(url.hostname);
+    url.pathname = normalizeCanonicalPath(url.pathname);
+
+    // Remove common tracking/session params. Keep unknown params because some
+    // publishers use query strings as stable article identifiers.
     const trackingParams = [
       "utm_source",
       "utm_medium",
       "utm_campaign",
       "utm_term",
       "utm_content",
+      "utm_name",
+      "utm_cid",
+      "utm_reader",
+      "utm_viz_id",
+      "utm_pubreferrer",
+      "utm_swu",
       "fbclid",
       "gclid",
+      "dclid",
+      "mc_cid",
+      "mc_eid",
+      "mkt_tok",
+      "ocid",
       "ref",
+      "ref_src",
+      "smid",
+      "cmpid",
+      "cid",
       "source",
+      "output",
     ];
     for (const param of trackingParams) {
       url.searchParams.delete(param);
     }
-    // Lowercase host
-    url.hostname = url.hostname.toLowerCase();
+    for (const param of Array.from(url.searchParams.keys())) {
+      if (param.toLowerCase().startsWith("utm_")) {
+        url.searchParams.delete(param);
+      }
+    }
+    url.searchParams.sort();
     // Remove trailing slash (but not root "/")
     let normalized = url.toString();
     if (normalized.endsWith("/") && url.pathname !== "/") {
@@ -389,6 +416,57 @@ function canonicalizeUrl(raw: string): string {
     // If URL parsing fails, return as-is
     return raw.trim();
   }
+}
+
+function normalizeCanonicalHostname(hostname: string): string {
+  let host = hostname.toLowerCase();
+  host = host.replace(/^(www|m|mobile|amp)\./, "");
+  host = host.replace(/^edition\./, "");
+
+  const aliases: Record<string, string> = {
+    "bbc.co.uk": "bbc.com",
+    "www.bbc.co.uk": "bbc.com",
+    "edition.cnn.com": "cnn.com",
+    "m.cnn.com": "cnn.com",
+    "amp.cnn.com": "cnn.com",
+  };
+
+  return aliases[host] ?? host;
+}
+
+function normalizeCanonicalPath(pathname: string): string {
+  let path = pathname.replace(/\/+/g, "/");
+  path = path.replace(/\/amp\/?$/i, "");
+  path = path.replace(/\/amp(?=\/)/i, "");
+  path = path.replace(/\.amp\.html$/i, ".html");
+  return path || "/";
+}
+
+function normalizeFingerprintText(value: string): string {
+  return normalizeArticleSnippet(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stableStringHash(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function articleContentFingerprint(article: Pick<ParsedArticle, "title" | "snippet">): string {
+  const fingerprintText = [
+    normalizeFingerprintText(article.title),
+    normalizeFingerprintText(article.snippet).slice(0, 600),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return stableStringHash(fingerprintText);
 }
 
 /** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
@@ -435,6 +513,28 @@ export const findExistingCanonicalUrls = internalQuery({
       if (results[i]) existing.add(urls[i]!);
     }
     return [...existing];
+  },
+});
+
+export const findExistingContentFingerprints = internalQuery({
+  args: {
+    sourceId: v.id("sources"),
+    fingerprints: v.array(v.string()),
+  },
+  handler: async (ctx, { sourceId, fingerprints }) => {
+    const unique = Array.from(new Set(fingerprints.filter(Boolean)));
+    const existing = await Promise.all(
+      unique.map(async (fingerprint) => {
+        const article = await ctx.db
+          .query("articles")
+          .withIndex("by_source_content_fingerprint", (q) =>
+            q.eq("sourceId", sourceId).eq("contentFingerprint", fingerprint),
+          )
+          .first();
+        return article ? fingerprint : null;
+      }),
+    );
+    return existing.filter((fingerprint) => fingerprint !== null);
   },
 });
 
@@ -510,6 +610,7 @@ export const insertArticles = internalMutation({
         title: v.string(),
         url: v.string(),
         canonicalUrl: v.string(),
+        contentFingerprint: v.optional(v.string()),
         rssSnippet: v.optional(v.string()),
         imageUrl: v.optional(v.string()),
         imageWidth: v.optional(v.number()),
@@ -529,10 +630,206 @@ export const insertArticles = internalMutation({
   handler: async (ctx, { articles }) => {
     const ids: Id<"articles">[] = [];
     for (const article of articles) {
+      const existingCanonical = await ctx.db
+        .query("articles")
+        .withIndex("by_canonical_url", (q) =>
+          q.eq("canonicalUrl", article.canonicalUrl),
+        )
+        .first();
+      if (existingCanonical) continue;
+
+      if (article.contentFingerprint) {
+        const existingFingerprint = await ctx.db
+          .query("articles")
+          .withIndex("by_source_content_fingerprint", (q) =>
+            q
+              .eq("sourceId", article.sourceId)
+              .eq("contentFingerprint", article.contentFingerprint),
+          )
+          .first();
+        if (existingFingerprint) continue;
+      }
+
       const id = await ctx.db.insert("articles", article);
       ids.push(id);
     }
     return ids;
+  },
+});
+
+async function recomputeEventEmbeddingForEvent(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+): Promise<void> {
+  const articles = await ctx.db
+    .query("articles")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+
+  if (articles.length === 0) {
+    const existingRows = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of existingRows) {
+      await ctx.db.delete(row._id);
+    }
+    return;
+  }
+
+  const embeddingRows = await Promise.all(
+    articles.map(async (article) => {
+      const rows = await ctx.db
+        .query("articleEmbeddings")
+        .withIndex("by_article", (q) => q.eq("articleId", article._id))
+        .collect();
+      return (
+        rows.sort(
+          (a, b) => b.version - a.version || b._creationTime - a._creationTime,
+        )[0] ?? null
+      );
+    }),
+  );
+
+  const embeddings = embeddingRows
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+    .map((row) => row.embedding);
+
+  if (embeddings.length === 0) {
+    const existingRows = await ctx.db
+      .query("eventEmbeddings")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of existingRows) {
+      await ctx.db.delete(row._id);
+    }
+    return;
+  }
+
+  const dimension = embeddings[0]!.length;
+  const sums = new Array(dimension).fill(0);
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimension; i++) {
+      sums[i] += embedding[i] ?? 0;
+    }
+  }
+
+  const averagedEmbedding = sums.map((sum) => sum / embeddings.length);
+  const latestVersion = embeddingRows.reduce(
+    (max, row) => (row && row.version > max ? row.version : max),
+    0,
+  );
+
+  const existingRow = await ctx.db
+    .query("eventEmbeddings")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .first();
+
+  if (existingRow) {
+    await ctx.db.patch(existingRow._id, {
+      embedding: averagedEmbedding,
+      version: latestVersion,
+    });
+  } else {
+    await ctx.db.insert("eventEmbeddings", {
+      eventId,
+      embedding: averagedEmbedding,
+      version: latestVersion,
+    });
+  }
+}
+
+export const cleanupDuplicateArticlesInEvents = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+    maxPublishedDeltaMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
+    const dryRun = args.dryRun ?? true;
+    const maxPublishedDeltaMs = Math.max(
+      60_000,
+      Math.min(
+        7 * 24 * 60 * 60 * 1000,
+        Math.floor(args.maxPublishedDeltaMs ?? 24 * 60 * 60 * 1000),
+      ),
+    );
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(safeLimit);
+
+    let inspectedEvents = 0;
+    let duplicateArticles = 0;
+    let deletedArticles = 0;
+    const touchedEventIds = new Set<Id<"events">>();
+
+    for (const event of events) {
+      inspectedEvents++;
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      const groups = new Map<string, typeof articles>();
+      for (const article of articles) {
+        const normalizedTitle = normalizeFingerprintText(article.title);
+        if (normalizedTitle.length === 0) continue;
+        const key = `${article.sourceId}:${normalizedTitle}`;
+        const group = groups.get(key) ?? [];
+        group.push(article);
+        groups.set(key, group);
+      }
+
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        const sorted = [...group].sort(
+          (a, b) =>
+            a.publishedAt - b.publishedAt || a._creationTime - b._creationTime,
+        );
+        const keeper = sorted[0]!;
+        for (const duplicate of sorted.slice(1)) {
+          if (
+            Math.abs(duplicate.publishedAt - keeper.publishedAt) >
+            maxPublishedDeltaMs
+          ) {
+            continue;
+          }
+          duplicateArticles++;
+          touchedEventIds.add(event._id);
+          if (dryRun) continue;
+
+          const embeddingRows = await ctx.db
+            .query("articleEmbeddings")
+            .withIndex("by_article", (q) => q.eq("articleId", duplicate._id))
+            .collect();
+          for (const row of embeddingRows) {
+            await ctx.db.delete(row._id);
+          }
+          await ctx.db.delete(duplicate._id);
+          deletedArticles++;
+        }
+      }
+    }
+
+    if (!dryRun) {
+      for (const eventId of touchedEventIds) {
+        await recomputeEventEmbeddingForEvent(ctx, eventId);
+        await refreshEventClaimCoverage(ctx, eventId);
+        await ctx.runMutation(internal.clustering.refreshEventPresentationById, {
+          eventId,
+        });
+      }
+    }
+
+    return {
+      inspectedEvents,
+      duplicateArticles,
+      deletedArticles,
+      touchedEvents: touchedEventIds.size,
+      dryRun,
+    };
   },
 });
 
@@ -739,6 +1036,7 @@ export const ingestSingleFeed = internalAction({
         .map((a) => ({
           ...a,
           canonicalUrl: canonicalizeUrl(a.url),
+          contentFingerprint: articleContentFingerprint(a),
         }));
 
       // 2.5 Filter out articles older than 72 hours
@@ -751,7 +1049,11 @@ export const ingestSingleFeed = internalAction({
 
       // 3. Batch dedup check
       const dedupedRecentArticles = Array.from(
-        new Map(recentArticles.map((a) => [a.canonicalUrl, a])).values(),
+        new Map(
+          Array.from(
+            new Map(recentArticles.map((a) => [a.canonicalUrl, a])).values(),
+          ).map((a) => [a.contentFingerprint, a]),
+        ).values(),
       );
       const canonicalUrls = dedupedRecentArticles.map((a) => a.canonicalUrl);
       const existingUrls = await ctx.runQuery(
@@ -759,9 +1061,21 @@ export const ingestSingleFeed = internalAction({
         { urls: canonicalUrls },
       );
       const existingSet = new Set(existingUrls);
+      const existingFingerprints = await ctx.runQuery(
+        internal.ingestion.findExistingContentFingerprints,
+        {
+          sourceId: resolvedSourceId,
+          fingerprints: dedupedRecentArticles.map(
+            (a) => a.contentFingerprint,
+          ),
+        },
+      );
+      const existingFingerprintSet = new Set(existingFingerprints);
 
       const newArticles = dedupedRecentArticles.filter(
-        (a) => !existingSet.has(a.canonicalUrl),
+        (a) =>
+          !existingSet.has(a.canonicalUrl) &&
+          !existingFingerprintSet.has(a.contentFingerprint),
       );
       const skippedArticles = recentArticles.length - newArticles.length;
 
@@ -781,6 +1095,7 @@ export const ingestSingleFeed = internalAction({
         title: a.title,
         url: a.url,
         canonicalUrl: a.canonicalUrl,
+        contentFingerprint: a.contentFingerprint,
         rssSnippet: a.snippet || undefined,
         imageUrl: a.imageUrl,
         imageWidth: a.imageWidth,
@@ -797,10 +1112,13 @@ export const ingestSingleFeed = internalAction({
       const BATCH_SIZE = 50;
       for (let i = 0; i < articleRecords.length; i += BATCH_SIZE) {
         const batch = articleRecords.slice(i, i + BATCH_SIZE);
-        await ctx.runMutation(internal.ingestion.insertArticles, {
-          articles: batch,
-        });
-        articlesInserted += batch.length;
+        const insertedIds = await ctx.runMutation(
+          internal.ingestion.insertArticles,
+          {
+            articles: batch,
+          },
+        );
+        articlesInserted += insertedIds.length;
       }
 
       // 7. Update feed health (with sourceId link)

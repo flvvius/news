@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
 import { callOpenAI } from "./lib/aiCall";
@@ -23,6 +24,46 @@ const SUMMARY_WORD_LIMITS = {
   left: 70,
   right: 70,
   globalImpact: 50,
+};
+
+type SummarySettings = {
+  model: string;
+  enqueueLimit: number;
+  batchSize: number;
+  maxAttempts: number;
+  minArticles: number;
+  minSources: number;
+  maxInputArticles: number;
+};
+
+type SummaryQueueHealthResult = {
+  scannedQueuedJobs: number;
+  queuedJobs: number;
+  queuedUniqueEvents: number;
+  duplicateQueuedEvents: number;
+  duplicateQueuedJobs: number;
+  duplicateRatio: number;
+  processingJobs: number;
+  failedJobs: number;
+  truncated: {
+    queued: boolean;
+    processing: boolean;
+    failed: boolean;
+  };
+};
+
+type SummaryInputArticle = {
+  title: string;
+  source?: {
+    name: string;
+    biasLabel?: string;
+    reliabilityScore: number;
+  } | null;
+  publishedAt: number;
+  summary?: string;
+  rssSnippet?: string;
+  atomicFacts: string[];
+  canonicalUrl: string;
 };
 const EVENT_SUMMARY_JSON_SCHEMA = {
   name: "EventSummary",
@@ -170,8 +211,8 @@ function retryDelayMs(attempts: number): number {
 async function loadSummarySettings(
   ctx: ActionCtx,
   args: { enqueueLimit?: number; processLimit?: number },
-) {
-  const cfg = await ctx.runQuery(internal.config.getBatch, {
+): Promise<SummarySettings> {
+  const cfg = (await ctx.runQuery(internal.config.getBatch, {
     keys: [
       "event_summary_model",
       "event_summary_enqueue_limit",
@@ -181,7 +222,7 @@ async function loadSummarySettings(
       "event_summary_min_sources",
       "event_summary_max_input_articles",
     ],
-  });
+  })) as Record<string, unknown>;
 
   return {
     model: safeString(cfg.event_summary_model, DEFAULT_MODEL),
@@ -292,6 +333,172 @@ export const summarizeQueuedEvents = internalAction({
       failed: 0,
       skipped: 0,
       budgetExhausted: false,
+    };
+  },
+});
+
+export const alertOnSummaryQueueHealth = internalAction({
+  args: {
+    limit: v.optional(v.number()),
+    maxQueuedJobs: v.optional(v.number()),
+    maxDuplicateRatio: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    | { skipped: true; reason: string }
+    | {
+        healthy: boolean;
+        reasons: string[];
+        health: SummaryQueueHealthResult;
+      }
+  > => {
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      console.log("[summarization] Pipeline paused — skipping queue health check");
+      return { skipped: true as const, reason: "pipeline_paused" };
+    }
+
+    const health = (await ctx.runQuery(
+      internal.summarization.getSummaryQueueHealthInternal,
+      {
+        limit: args.limit ?? 1000,
+      },
+    )) as SummaryQueueHealthResult;
+    const maxQueuedJobs = safeInteger(args.maxQueuedJobs, 500, 1, 10_000);
+    const maxDuplicateRatio =
+      typeof args.maxDuplicateRatio === "number" &&
+      Number.isFinite(args.maxDuplicateRatio)
+        ? Math.max(1, args.maxDuplicateRatio)
+        : 1.2;
+
+    const unhealthyReasons: string[] = [
+      health.duplicateQueuedJobs > 0 ? "duplicate_queued_jobs" : null,
+      health.duplicateRatio > maxDuplicateRatio ? "high_duplicate_ratio" : null,
+      health.queuedJobs > maxQueuedJobs ? "queue_too_deep" : null,
+      health.truncated.queued ? "queue_health_truncated" : null,
+    ].filter((reason): reason is string => reason !== null);
+
+    if (unhealthyReasons.length > 0) {
+      console.error("[summarization] Queue health warning", {
+        reasons: unhealthyReasons,
+        health,
+      });
+      return { healthy: false as const, reasons: unhealthyReasons, health };
+    }
+
+    console.log("[summarization] Queue health OK", health);
+    return { healthy: true as const, reasons: [], health };
+  },
+});
+
+export const runPhase5Backfill = internalAction({
+  args: {
+    coverageLimit: v.optional(v.number()),
+    summaryEnqueueLimit: v.optional(v.number()),
+    summaryScanLimit: v.optional(v.number()),
+    summaryProcessLimit: v.optional(v.number()),
+    claimProcessLimit: v.optional(v.number()),
+    claimScanLimit: v.optional(v.number()),
+    summaryCursor: v.optional(v.string()),
+    includeExistingCoverage: v.optional(v.boolean()),
+    force: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    skipped: boolean;
+    reason?: string;
+    coverage?: unknown;
+    summaryBackfill?: {
+      queued: number;
+      inspected: number;
+      skipped: number;
+      scanned: number;
+      nextCursor?: string;
+      done: boolean;
+    };
+    scheduledSummaryJobs?: number;
+    claims?: unknown;
+    nextCursor?: string;
+    done?: boolean;
+  }> => {
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused && !args.force) {
+      console.log("[summarization] Pipeline paused — skipping Phase 5 backfill");
+      return { skipped: true as const, reason: "pipeline_paused" };
+    }
+
+    const settings: SummarySettings = await loadSummarySettings(ctx, {
+      enqueueLimit: args.summaryEnqueueLimit,
+      processLimit: args.summaryProcessLimit,
+    });
+
+    const coverage: unknown = await ctx.runMutation(
+      internal.claimDivergence.backfillEventClaimCoverage,
+      {
+        limit: safeInteger(args.coverageLimit, 200, 1, 500),
+        includeExisting: args.includeExistingCoverage ?? false,
+      },
+    );
+
+    const summaryBackfill = (await ctx.runMutation(
+      internal.summarization.enqueueEligibleEventSummariesBackfill,
+      {
+        limit: settings.enqueueLimit,
+        scanLimit: safeInteger(
+          args.summaryScanLimit,
+          Math.max(settings.enqueueLimit * 5, 100),
+          settings.enqueueLimit,
+          1000,
+        ),
+        minArticles: settings.minArticles,
+        minSources: settings.minSources,
+        cursor: args.summaryCursor,
+      },
+    )) as {
+      queued: number;
+      inspected: number;
+      skipped: number;
+      scanned: number;
+      nextCursor?: string;
+      done: boolean;
+    };
+
+    const dueJobs = (await ctx.runQuery(
+      internal.summarization.listDueSummaryJobs,
+      {
+        limit: settings.batchSize,
+      },
+    )) as Array<{ _id: Id<"eventSummaryJobs"> }>;
+    for (const job of dueJobs) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.summarizationNode.processSummaryJob,
+        {
+          jobId: job._id,
+        },
+      );
+    }
+
+    const claims: unknown = await ctx.runAction(
+      internal.claimDivergenceNode.processStaleEventClaims,
+      {
+        processLimit: safeInteger(args.claimProcessLimit, 4, 1, 10),
+        scanLimit: safeInteger(args.claimScanLimit, 120, 1, 250),
+      },
+    );
+
+    return {
+      skipped: false as const,
+      coverage,
+      summaryBackfill,
+      scheduledSummaryJobs: dueJobs.length,
+      claims,
+      nextCursor: summaryBackfill.nextCursor,
+      done: summaryBackfill.done,
     };
   },
 });
@@ -412,7 +619,7 @@ export const processSummaryJob = internalAction({
 
       const prompt = buildEventSummaryPrompt({
         eventTitle: input.event.title,
-        articles: input.articles.map((article) => ({
+        articles: input.articles.map((article: SummaryInputArticle) => ({
           title: article.title,
           sourceName: article.source?.name ?? "Unknown source",
           sourceBiasLabel: article.source?.biasLabel ?? "unknown",

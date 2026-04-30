@@ -3046,11 +3046,15 @@ export const mergeNearDuplicateEvents = internalAction({
             continue;
           }
 
-          const similarity = cosineSimilarity(a.embedding, b.embedding);
+          const similarity = maxCrossEventSimilarity(a, b);
           const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
+          const entityOverlap = countTokenOverlap(
+            a.entityTokens,
+            b.entityTokens,
+          );
           if (
             similarity < settings.minSimilarity ||
-            titleJaccard < settings.minTitleJaccard
+            (titleJaccard < settings.minTitleJaccard && entityOverlap < 2)
           ) {
             continue;
           }
@@ -3111,8 +3115,21 @@ export const mergeNearDuplicateEvents = internalAction({
           keep.perspectiveSummaries = mergedPerspectiveSummaries;
           keep.globalImpact = mergedGlobalImpact;
           keep.imageUrl = mergedImageUrl;
+          keep.memberEmbeddings = [
+            ...keep.memberEmbeddings,
+            ...remove.memberEmbeddings,
+          ].slice(0, 3);
           for (const sourceId of remove.sourceIds) {
             keep.sourceIds.add(sourceId);
+          }
+          for (const token of remove.entityTokens) {
+            keep.entityTokens.add(token);
+          }
+          for (const token of remove.evidenceTokens) {
+            keep.evidenceTokens.add(token);
+          }
+          for (const token of remove.factTokens) {
+            keep.factTokens.add(token);
           }
         }
       }
