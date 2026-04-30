@@ -713,6 +713,7 @@ export const seedDefaults = internalMutation({
     ];
 
     const forcedDefaultKeys = new Set([
+      "clustering_same_source_min_similarity",
       "clustering_min_similarity",
       "clustering_weak_extraction_min_similarity",
       "clustering_weak_extraction_strong_similarity",
