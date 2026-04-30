@@ -57,8 +57,6 @@ const DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES = 2;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 48;
-const PRESENTATION_RECENCY_EPOCH_MS = Date.UTC(2024, 0, 1);
-const PRESENTATION_RECENCY_HORIZON_MS = 365 * 24 * 60 * 60 * 1000;
 
 const STOPWORDS = new Set([
   "a",
@@ -345,6 +343,7 @@ type ClusterCandidate = {
   imageUrl?: string;
   perspectiveSource?: "heuristic" | "ai";
   lastSummarizedAt?: number;
+  lastSummarySignature?: string;
   creationTime: number;
 };
 
@@ -370,6 +369,7 @@ type ClusterCandidateQueryResult = {
   imageUrl?: string;
   perspectiveSource?: "heuristic" | "ai";
   lastSummarizedAt?: number;
+  lastSummarySignature?: string;
   creationTime: number;
 };
 
@@ -779,6 +779,40 @@ function buildMergedPerspectiveSummaries(
   return { center, left, right };
 }
 
+function pickMergedSummaryMetadata(
+  primary: Pick<ClusterCandidate, "lastSummarizedAt" | "lastSummarySignature">,
+  secondary: Pick<ClusterCandidate, "lastSummarizedAt" | "lastSummarySignature">,
+): {
+  lastSummarizedAt?: number;
+  lastSummarySignature?: string;
+} {
+  const primaryAt = primary.lastSummarizedAt;
+  const secondaryAt = secondary.lastSummarizedAt;
+
+  if (primaryAt === undefined && secondaryAt === undefined) {
+    const signature =
+      primary.lastSummarySignature ?? secondary.lastSummarySignature;
+    return {
+      lastSummarizedAt: undefined,
+      lastSummarySignature: signature || undefined,
+    };
+  }
+
+  if ((primaryAt ?? 0) >= (secondaryAt ?? 0)) {
+    return {
+      lastSummarizedAt: primaryAt,
+      lastSummarySignature:
+        primary.lastSummarySignature ?? secondary.lastSummarySignature,
+    };
+  }
+
+  return {
+    lastSummarizedAt: secondaryAt,
+    lastSummarySignature:
+      secondary.lastSummarySignature ?? primary.lastSummarySignature,
+  };
+}
+
 function chooseCanonicalEvent(
   a: ClusterCandidate,
   b: ClusterCandidate,
@@ -826,6 +860,21 @@ function summarizeText(
   return `${trimmed}.`;
 }
 
+function computePresentationRecency(
+  publishedAt: number,
+  referenceTime: number = Date.now(),
+  horizonMs: number = 365 * 24 * 60 * 60 * 1000,
+): number {
+  if (!Number.isFinite(publishedAt) || !Number.isFinite(referenceTime)) {
+    return 0;
+  }
+  if (horizonMs <= 0) return 0;
+  const delta = referenceTime - publishedAt;
+  if (!Number.isFinite(delta)) return 0;
+  const ratio = 1 - delta / horizonMs;
+  return Math.max(0, Math.min(1, ratio));
+}
+
 function articlePresentationScore(
   article: Pick<
     Doc<"articles">,
@@ -844,14 +893,7 @@ function articlePresentationScore(
   const snippetOverlap = countTokenOverlap(snippetTokens, eventTitleTokens);
   const reliability = source?.reliabilityScore ?? 5;
   const biasDistance = Math.abs(source?.baseBias ?? 0);
-  const recencyTieBreaker = Math.max(
-    0,
-    Math.min(
-      1,
-      (article.publishedAt - PRESENTATION_RECENCY_EPOCH_MS) /
-        PRESENTATION_RECENCY_HORIZON_MS,
-    ),
-  );
+  const recencyTieBreaker = computePresentationRecency(article.publishedAt);
 
   return (
     titleOverlap * 3 +
@@ -881,14 +923,7 @@ function articleImageScore(
     normalizeTitleTokens(normalizeTitleForClustering(article.title)),
     eventTitleTokens,
   );
-  const recencyTieBreaker = Math.max(
-    0,
-    Math.min(
-      1,
-      (article.publishedAt - PRESENTATION_RECENCY_EPOCH_MS) /
-        PRESENTATION_RECENCY_HORIZON_MS,
-    ),
-  );
+  const recencyTieBreaker = computePresentationRecency(article.publishedAt);
 
   return (
     areaScore +
@@ -1576,6 +1611,7 @@ export const getRecentClusterCandidates = internalQuery({
             imageUrl: event.imageUrl,
             perspectiveSource: event.perspectiveSource,
             lastSummarizedAt: event.lastSummarizedAt,
+            lastSummarySignature: event.lastSummarySignature,
             creationTime: event._creationTime,
           };
         }),
@@ -2936,6 +2972,8 @@ export const mergeEvents = internalMutation({
     ),
     mergedGlobalImpact: v.optional(v.string()),
     mergedImageUrl: v.optional(v.string()),
+    mergedLastSummarizedAt: v.optional(v.number()),
+    mergedLastSummarySignature: v.optional(v.string()),
   },
   handler: async (
     ctx,
@@ -2950,6 +2988,8 @@ export const mergeEvents = internalMutation({
       mergedPerspectiveSource,
       mergedGlobalImpact,
       mergedImageUrl,
+      mergedLastSummarizedAt,
+      mergedLastSummarySignature,
     },
   ) => {
     if (keepEventId === removeEventId) {
@@ -3077,6 +3117,20 @@ export const mergeEvents = internalMutation({
       await ctx.db.delete(row._id);
     }
 
+    const summaryMetadata =
+      mergedPerspectiveSource === "ai"
+        ? {
+            lastSummarizedAt:
+              mergedLastSummarizedAt ??
+              keepEvent.lastSummarizedAt ??
+              removeEvent.lastSummarizedAt,
+            lastSummarySignature:
+              mergedLastSummarySignature ??
+              keepEvent.lastSummarySignature ??
+              removeEvent.lastSummarySignature,
+          }
+        : undefined;
+
     await ctx.db.patch(keepEventId, {
       title: mergedTitle,
       firstPublishedAt: mergedFirstPublishedAt,
@@ -3084,6 +3138,12 @@ export const mergeEvents = internalMutation({
       perspectiveSource: mergedPerspectiveSource,
       globalImpact: mergedGlobalImpact,
       imageUrl: mergedImageUrl,
+      ...(summaryMetadata?.lastSummarizedAt !== undefined && {
+        lastSummarizedAt: summaryMetadata.lastSummarizedAt,
+      }),
+      ...(summaryMetadata?.lastSummarySignature !== undefined && {
+        lastSummarySignature: summaryMetadata.lastSummarySignature,
+      }),
     });
 
     await refreshEventClaimCoverage(ctx, keepEventId);
@@ -3245,6 +3305,16 @@ export const mergeNearDuplicateEvents = internalAction({
           const mergedImageUrl = keep.imageUrl ?? remove.imageUrl;
           const mergedTitle =
             preferLongerString(keep.title, remove.title) ?? keep.title;
+          const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
+          const mergedLastSummarizedAt =
+            mergedSummaryMetadata.lastSummarizedAt;
+          const mergedLastSummarySignature =
+            mergedSummaryMetadata.lastSummarySignature;
+          const mergedSummaryMetadata = pickMergedSummaryMetadata(keep, remove);
+          const mergedLastSummarizedAt =
+            mergedSummaryMetadata.lastSummarizedAt;
+          const mergedLastSummarySignature =
+            mergedSummaryMetadata.lastSummarySignature;
 
           const result = await ctx.runMutation(
             internal.clustering.mergeEvents,
@@ -3262,6 +3332,8 @@ export const mergeNearDuplicateEvents = internalAction({
               mergedPerspectiveSource,
               mergedGlobalImpact,
               mergedImageUrl,
+              mergedLastSummarizedAt,
+              mergedLastSummarySignature,
             },
           );
 
@@ -3284,6 +3356,12 @@ export const mergeNearDuplicateEvents = internalAction({
           keep.perspectiveSource = mergedPerspectiveSource;
           keep.globalImpact = mergedGlobalImpact;
           keep.imageUrl = mergedImageUrl;
+          if (mergedLastSummarizedAt !== undefined) {
+            keep.lastSummarizedAt = mergedLastSummarizedAt;
+          }
+          if (mergedLastSummarySignature !== undefined) {
+            keep.lastSummarySignature = mergedLastSummarySignature;
+          }
           keep.memberEmbeddings = [
             ...keep.memberEmbeddings,
             ...remove.memberEmbeddings,
@@ -3494,6 +3572,8 @@ export const reclusterRecentSingletonEvents = internalAction({
               mergedPerspectiveSource,
               mergedGlobalImpact,
               mergedImageUrl,
+              mergedLastSummarizedAt,
+              mergedLastSummarySignature,
             },
           );
 
@@ -3520,6 +3600,12 @@ export const reclusterRecentSingletonEvents = internalAction({
           keep.perspectiveSource = mergedPerspectiveSource;
           keep.globalImpact = mergedGlobalImpact;
           keep.imageUrl = mergedImageUrl;
+          if (mergedLastSummarizedAt !== undefined) {
+            keep.lastSummarizedAt = mergedLastSummarizedAt;
+          }
+          if (mergedLastSummarySignature !== undefined) {
+            keep.lastSummarySignature = mergedLastSummarySignature;
+          }
           for (const sourceId of remove.sourceIds) keep.sourceIds.add(sourceId);
           for (const token of remove.entityTokens) keep.entityTokens.add(token);
           for (const topicSlug of remove.topicSlugs) {

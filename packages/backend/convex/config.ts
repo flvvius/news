@@ -712,25 +712,58 @@ export const seedDefaults = internalMutation({
       },
     ];
 
+    const forcedDefaultKeys = new Set([
+      "clustering_min_similarity",
+      "clustering_weak_extraction_min_similarity",
+      "clustering_weak_extraction_strong_similarity",
+      "cluster_publish_min_articles",
+      "cluster_publish_min_sources",
+      "topic_inference_min_score",
+      "topic_inference_confidence_ratio",
+      "topic_inference_max_topics",
+      "merge_min_similarity",
+      "merge_min_title_jaccard",
+      "merge_max_time_delta_hours",
+      "singleton_recluster_min_similarity",
+    ]);
+
     let created = 0;
+    let updated = 0;
     for (const { key, value, description } of defaults) {
       const existing = await ctx.db
         .query("config")
         .withIndex("by_key", (q) => q.eq("key", key))
         .unique();
-      if (!existing) {
-        await ctx.db.insert("config", {
-          key,
-          value: JSON.stringify(value),
-          description,
-          updatedAt: Date.now(),
-        });
-        created++;
+      const nextValue = JSON.stringify(value);
+
+      if (existing) {
+        if (!forcedDefaultKeys.has(key)) continue;
+
+        if (
+          existing.value !== nextValue ||
+          (description !== undefined && existing.description !== description)
+        ) {
+          await ctx.db.patch(existing._id, {
+            value: nextValue,
+            description,
+            updatedAt: Date.now(),
+          });
+          updated++;
+        }
+        continue;
       }
+
+      await ctx.db.insert("config", {
+        key,
+        value: nextValue,
+        description,
+        updatedAt: Date.now(),
+      });
+      created++;
     }
 
     console.log(
-      `✅ Config seeded: ${created} created, ${defaults.length - created} already existed`,
+      `✅ Config seeded: ${created} created, ${updated} updated, ${defaults.length - created - updated} unchanged`,
     );
   },
 });
