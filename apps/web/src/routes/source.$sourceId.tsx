@@ -43,17 +43,23 @@ export const Route = createFileRoute("/source/$sourceId")({
   },
   head: ({ loaderData, params }) => {
     const sourceName = loaderData?.source.name ?? "Source Profile";
+    const title = `${sourceName} — ${SITE.name}`;
     const description = loaderData
       ? `Review ${sourceName}'s bias, reliability, credibility metadata, and recent coverage on ${SITE.name}.`
       : "Review source bias, reliability, credibility metadata, and recent articles on Biviant.";
 
     return {
       meta: [
-        { title: `${sourceName} — ${SITE.name}` },
+        { title },
         { name: "description", content: description },
-        { property: "og:title", content: `${sourceName} — ${SITE.name}` },
+        { property: "og:title", content: title },
+        { property: "og:site_name", content: SITE.name },
+        { property: "og:type", content: "website" },
         { property: "og:description", content: description },
         { property: "og:url", content: `${SITE.url}/source/${params.sourceId}` },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
       ],
       links: [{ rel: "canonical", href: `${SITE.url}/source/${params.sourceId}` }],
     };

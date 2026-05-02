@@ -147,3 +147,21 @@ export const getSourceProfile = query({
     };
   },
 });
+
+export const getSitemapSources = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5000), 1), 10000);
+    const sources = await ctx.db.query("sources").take(safeLimit);
+
+    return sources.map((source) => ({
+      sourceId: source._id,
+      lastModifiedAt:
+        source.rollingBiasUpdatedAt ??
+        source.mbfcLastChecked ??
+        source._creationTime,
+    }));
+  },
+});

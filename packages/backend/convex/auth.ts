@@ -208,7 +208,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       updateAge: 60 * 60 * 24, // refresh session token once per day
       cookieCache: {
         enabled: true,
-        maxAge: 7 * 60, // cache session in signed cookie for 7 min — skips DB on repeated get-session calls
+        maxAge: 10 * 60, // cache session in signed cookie for 10 min — skips DB on repeated get-session calls
       },
     },
     emailAndPassword: {

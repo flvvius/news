@@ -418,6 +418,25 @@ export const getPublicPublishedEventsPreview = query({
   },
 });
 
+export const getSitemapPublishedEvents = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5000), 1), 10000);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(safeLimit);
+
+    return events.map((event) => ({
+      slug: event.slug,
+      lastModifiedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
+    }));
+  },
+});
+
 export const getEventBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
