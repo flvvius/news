@@ -511,6 +511,7 @@ async function detectEventClaimsForInput(
   },
 ): Promise<{
   claims: StoredClaim[];
+  rawClaimCount: number;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -555,6 +556,7 @@ async function detectEventClaimsForInput(
 
   const parsed = parseClaimResponse(response.result);
   return {
+    rawClaimCount: parsed.claims.length,
     claims: sanitizeClaims(
       parsed.claims,
       input.articles,
@@ -673,8 +675,22 @@ async function detectEventClaimsForEvent(
       return { skipped: true as const, reason: "no_change_since_last_run" };
     }
 
-    const { claims, inputTokens, outputTokens, costUsd } =
+    const { claims, rawClaimCount, inputTokens, outputTokens, costUsd } =
       await detectEventClaimsForInput(ctx, input, settings);
+
+    if (claims.length === 0 && rawClaimCount > 0) {
+      console.warn(
+        `[claimDivergence] All variants filtered for ${input.event._id}, skipping replace`,
+      );
+      await ctx.runMutation(
+        internal.claimDivergence.markEventClaimAnalysisSkipped,
+        {
+          eventId: input.event._id,
+          analysisSignature,
+        },
+      );
+      return { skipped: true as const, reason: "post_filter_empty" };
+    }
 
     const result = await ctx.runMutation(
       internal.claimDivergence.replaceEventClaims,
@@ -750,7 +766,7 @@ export const processStaleEventClaims = internalAction({
         args.scanLimit ?? cfg.claim_analysis_scan_limit,
         DEFAULT_SCAN_LIMIT,
         1,
-        250,
+        1000,
       ),
       minArticles: safeInteger(
         cfg.claim_analysis_min_articles,
@@ -782,7 +798,12 @@ export const processStaleEventClaims = internalAction({
       };
     }
 
-    const candidates = await ctx.runQuery(
+    await ctx.runMutation(internal.claimDivergence.backfillEventClaimCoverage, {
+      limit: settings.scanLimit,
+      includeExisting: false,
+    });
+
+    const candidateScan = await ctx.runQuery(
       internal.claimDivergence.getStaleEventsForClaimAnalysis,
       {
         limit: settings.batchSize,
@@ -792,6 +813,14 @@ export const processStaleEventClaims = internalAction({
         staleAfterMs: settings.staleAfterMs,
       },
     );
+    const candidates = candidateScan.candidates;
+
+    console.log("[claimDivergence] Run start", {
+      batchSize: settings.batchSize,
+      scanLimit: settings.scanLimit,
+      scanned: candidateScan.scanned,
+      candidatesFound: candidates.length,
+    });
 
     let processed = 0;
     let succeeded = 0;

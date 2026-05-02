@@ -79,6 +79,19 @@ export const eventAiFunnel = internalQuery({
         latestSummaryJobReason?: string;
         latestSummaryJobError?: string;
       }>,
+      eligibleNoClaimAnalysis: [] as Array<{
+        eventId: Id<"events">;
+        title: string;
+        factualArticleCount: number;
+        factualSourceCount: number;
+      }>,
+      claimAnalyzedNoClaimRows: [] as Array<{
+        eventId: Id<"events">;
+        title: string;
+        lastClaimAnalysisAt?: number;
+        factualArticleCount: number;
+        factualSourceCount: number;
+      }>,
       summarizedNoClaims: [] as Array<{
         eventId: Id<"events">;
         title: string;
@@ -101,6 +114,11 @@ export const eventAiFunnel = internalQuery({
       const factualSourceCount = new Set(
         factualArticles.map((article) => article.sourceId),
       ).size;
+      const claimEligible =
+        articles.length >= 3 &&
+        sourceCount >= 2 &&
+        factualArticles.length >= 3 &&
+        factualSourceCount >= 2;
 
       if (articles.length >= 3) stageEventIds.article3.add(event._id);
       if (articles.length >= 3 && sourceCount >= 2) {
@@ -117,12 +135,7 @@ export const eventAiFunnel = internalQuery({
       if (articles.length >= 3 && sourceCount >= 2 && factualArticles.length >= 3) {
         stageEventIds.factualArticle3.add(event._id);
       }
-      if (
-        articles.length >= 3 &&
-        sourceCount >= 2 &&
-        factualArticles.length >= 3 &&
-        factualSourceCount >= 2
-      ) {
+      if (claimEligible) {
         stageEventIds.factualSource2.add(event._id);
       } else if (
         articles.length >= 3 &&
@@ -142,7 +155,7 @@ export const eventAiFunnel = internalQuery({
       if (hasPerspectiveSummary(event)) {
         stageEventIds.summarized.add(event._id);
       }
-      if (event.lastClaimAnalysisAt) {
+      if (claimEligible && event.lastClaimAnalysisAt) {
         stageEventIds.claimAnalyzed.add(event._id);
       }
 
@@ -152,14 +165,9 @@ export const eventAiFunnel = internalQuery({
           .withIndex("by_event", (q) => q.eq("eventId", event._id))
           .first(),
       );
-      if (hasClaimRows) stageEventIds.hasClaims.add(event._id);
+      if (claimEligible && hasClaimRows) stageEventIds.hasClaims.add(event._id);
 
-      if (
-        factualArticles.length >= 3 &&
-        factualSourceCount >= 2 &&
-        !hasPerspectiveSummary(event) &&
-        samples.qualifiedNoSummary.length < 10
-      ) {
+      if (claimEligible && !hasPerspectiveSummary(event) && samples.qualifiedNoSummary.length < 10) {
         const latestJob = await ctx.db
           .query("eventSummaryJobs")
           .withIndex("by_event_updatedAt", (q) => q.eq("eventId", event._id))
@@ -177,7 +185,36 @@ export const eventAiFunnel = internalQuery({
       }
 
       if (
+        claimEligible &&
+        !event.lastClaimAnalysisAt &&
+        samples.eligibleNoClaimAnalysis.length < 10
+      ) {
+        samples.eligibleNoClaimAnalysis.push({
+          eventId: event._id,
+          title: event.title,
+          factualArticleCount: factualArticles.length,
+          factualSourceCount,
+        });
+      }
+
+      if (
+        claimEligible &&
+        event.lastClaimAnalysisAt &&
+        !hasClaimRows &&
+        samples.claimAnalyzedNoClaimRows.length < 10
+      ) {
+        samples.claimAnalyzedNoClaimRows.push({
+          eventId: event._id,
+          title: event.title,
+          lastClaimAnalysisAt: event.lastClaimAnalysisAt,
+          factualArticleCount: factualArticles.length,
+          factualSourceCount,
+        });
+      }
+
+      if (
         hasPerspectiveSummary(event) &&
+        claimEligible &&
         !hasClaimRows &&
         samples.summarizedNoClaims.length < 10
       ) {
@@ -228,12 +265,12 @@ export const eventAiFunnel = internalQuery({
           stages.factualSourceCountAtLeast2,
           stages.summarized,
         ),
-        summarizedToClaimAnalyzed: summarizeDrop(
-          stages.summarized,
+        factualSource2ToClaimAnalyzed: summarizeDrop(
+          stages.factualSourceCountAtLeast2,
           stages.claimAnalyzed,
         ),
-        summarizedToClaimRows: summarizeDrop(
-          stages.summarized,
+        claimAnalyzedToClaimRows: summarizeDrop(
+          stages.claimAnalyzed,
           stages.hasClaimRows,
         ),
       },

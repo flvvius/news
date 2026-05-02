@@ -5,7 +5,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdminUser, requireBetaAccess } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
@@ -77,12 +77,21 @@ function eventNeedsAnalysis(
   return lastAnalysisAt < changedAt || now - lastAnalysisAt >= staleAfterMs;
 }
 
+function eventClaimCoverageLooksStale(event: Doc<"events">): boolean {
+  const changedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  return (
+    event.factualArticleCount === undefined ||
+    event.factualSourceCount === undefined ||
+    (event.lastFactualUpdateAt ?? 0) < changedAt
+  );
+}
+
 async function backfillClaimCoverage(
   ctx: MutationCtx,
   args: { limit?: number; includeExisting?: boolean },
 ) {
   const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
-  const scanLimit = Math.min(1000, limit * 3);
+  const scanLimit = Math.min(1000, Math.max(limit * 5, limit));
   const events = await ctx.db
     .query("events")
     .withIndex("by_status_recency", (q) => q.eq("status", "published"))
@@ -97,12 +106,7 @@ async function backfillClaimCoverage(
     if (refreshed >= limit) break;
     inspected++;
 
-    if (
-      !args.includeExisting &&
-      event.factualArticleCount !== undefined &&
-      event.factualSourceCount !== undefined &&
-      event.lastFactualUpdateAt !== undefined
-    ) {
+    if (!args.includeExisting && !eventClaimCoverageLooksStale(event)) {
       skipped++;
       continue;
     }
@@ -124,41 +128,70 @@ export const getStaleEventsForClaimAnalysis = internalQuery({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const limit = Math.max(1, Math.floor(args.limit));
     const minArticles = Math.max(1, Math.floor(args.minArticles));
     const minSources = Math.max(1, Math.floor(args.minSources));
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_factual_coverage", (q) =>
-        q.eq("status", "published").gte("factualSourceCount", minSources),
-      )
-      .take(Math.max(1, Math.min(250, Math.floor(args.scanLimit))));
+    const maxScan = Math.max(
+      limit,
+      Math.min(1000, Math.max(1, Math.floor(args.scanLimit))),
+    );
+    const pageSize = Math.min(100, maxScan);
+    let cursor: string | null = null;
+    let scanned = 0;
 
     const candidates = [];
-    for (const event of events) {
-      if (
-        !eventNeedsAnalysis(event, now, Math.max(5 * 60 * 1000, args.staleAfterMs))
-      ) {
-        continue;
-      }
-
-      if (
-        (event.factualArticleCount ?? 0) >= minArticles &&
-        (event.factualSourceCount ?? 0) >= minSources
-      ) {
-        candidates.push({
-          _id: event._id,
-          title: event.title,
-          articleCount: event.factualArticleCount ?? 0,
-          sourceCount: event.factualSourceCount ?? 0,
-          lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
-          lastClaimAnalysisAt: event.lastClaimAnalysisAt,
+    while (scanned < maxScan && candidates.length < limit) {
+      const page = await ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .order("desc")
+        .paginate({
+          cursor,
+          numItems: Math.min(pageSize, maxScan - scanned),
         });
+
+      for (const event of page.page) {
+        scanned++;
+        if (
+          !eventNeedsAnalysis(
+            event,
+            now,
+            Math.max(5 * 60 * 1000, args.staleAfterMs),
+          )
+        ) {
+          continue;
+        }
+
+        if (
+          (event.factualArticleCount ?? 0) >= minArticles &&
+          (event.factualSourceCount ?? 0) >= minSources
+        ) {
+          candidates.push({
+            _id: event._id,
+            title: event.title,
+            articleCount: event.factualArticleCount ?? 0,
+            sourceCount: event.factualSourceCount ?? 0,
+            lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
+            lastClaimAnalysisAt: event.lastClaimAnalysisAt,
+          });
+        }
+
+        if (candidates.length >= limit || scanned >= maxScan) {
+          break;
+        }
       }
 
-      if (candidates.length >= Math.max(1, Math.floor(args.limit))) break;
+      if (candidates.length >= limit || page.isDone) {
+        break;
+      }
+      cursor = page.continueCursor;
     }
 
-    return candidates;
+    return {
+      candidates,
+      scanned,
+      scanLimit: maxScan,
+    };
   },
 });
 
@@ -180,6 +213,50 @@ export const backfillEventClaimCoverageForAdmin = mutation({
   handler: async (ctx, args) => {
     await requireAdminUser(ctx);
     return await backfillClaimCoverage(ctx, args);
+  },
+});
+
+export const resetClaimAnalysisSignaturesForEmptyEvents = mutation({
+  args: {
+    cutoffTime: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+
+    const cutoffTime = Math.max(0, Math.floor(args.cutoffTime ?? 0));
+    const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
+    const scanLimit = Math.min(1000, limit * 5);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(scanLimit);
+
+    let inspected = 0;
+    let reset = 0;
+
+    for (const event of events) {
+      if (reset >= limit) break;
+      inspected++;
+
+      if (!event.lastClaimAnalysisAt || event.lastClaimAnalysisAt <= cutoffTime) {
+        continue;
+      }
+
+      const existingClaim = await ctx.db
+        .query("eventClaims")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .first();
+      if (existingClaim) continue;
+
+      await ctx.db.patch(event._id, {
+        lastClaimAnalysisSignature: undefined,
+      });
+      reset++;
+    }
+
+    return { inspected, reset };
   },
 });
 
