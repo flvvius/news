@@ -73,13 +73,33 @@ function isSuspiciousAuthRequest(request: Request) {
     normalizeOriginParts(new URL("http://127.0.0.1:3001")),
   ];
   const originHeader = request.headers.get("origin")?.trim();
-  if (originHeader) {
-    return !matchesAllowedOrigin(originHeader, allowedOrigins);
+  const referer = request.headers.get("referer")?.trim();
+  if (!originHeader && !referer) {
+    return true;
   }
 
-  const referer = request.headers.get("referer")?.trim();
-  if (referer) {
-    return !matchesAllowedOrigin(referer, allowedOrigins);
+  if (originHeader && !matchesAllowedOrigin(originHeader, allowedOrigins)) {
+    return true;
+  }
+
+  if (referer && !matchesAllowedOrigin(referer, allowedOrigins)) {
+    return true;
+  }
+
+  if (originHeader && referer) {
+    try {
+      const originParts = normalizeOriginParts(new URL(originHeader));
+      const refererParts = normalizeOriginParts(new URL(referer));
+      if (
+        originParts.protocol !== refererParts.protocol ||
+        originParts.hostname !== refererParts.hostname ||
+        originParts.port !== refererParts.port
+      ) {
+        return true;
+      }
+    } catch {
+      return true;
+    }
   }
 
   return false;

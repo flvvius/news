@@ -117,10 +117,32 @@ export const cleanupExpiredUnverifiedAccounts = internalAction({
       const users = (batch.page ?? []) as BetterAuthUser[];
       for (const authUser of users) {
         try {
+          const currentSnapshot: any = await ctx.runQuery(
+            components.betterAuth.adapter.findMany,
+            {
+              model: "user",
+              paginationOpts: {
+                cursor: null,
+                numItems: 1,
+              },
+              sortBy: { field: "createdAt", direction: "asc" },
+              where: [{ field: "_id", operator: "eq", value: authUser._id }],
+            },
+          );
+          const currentUser = (currentSnapshot.page ?? [])[0] as
+            | BetterAuthUser
+            | undefined;
+          if (!currentUser) {
+            continue;
+          }
+          if (currentUser.emailVerified || currentUser.createdAt > cutoff) {
+            continue;
+          }
+
           await ctx.runMutation(internal.authMaintenance.deleteAppUserData, {
-            authUserId: authUser._id,
+            authUserId: currentUser._id,
           });
-          await deleteBetterAuthData(ctx, authUser);
+          await deleteBetterAuthData(ctx, currentUser);
           deletedCount += 1;
         } catch (error) {
           failedCount += 1;

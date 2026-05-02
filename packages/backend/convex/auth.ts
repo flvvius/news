@@ -169,9 +169,12 @@ async function sendVerificationEmail(
   }
 
   if (!resend) {
-    throw new Error(
-      "Email verification is unavailable because RESEND_API_KEY is not configured.",
-    );
+    if (!shouldLogVerificationLinks) {
+      throw new Error(
+        "Email verification is unavailable because RESEND_API_KEY is not configured.",
+      );
+    }
+    return;
   }
 
   const firstName = user.name?.split(" ")[0] || "there";

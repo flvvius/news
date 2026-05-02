@@ -44,6 +44,7 @@ export default function SignInForm({
     from: "/",
   });
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [resendStatusMessage, setResendStatusMessage] = useState("");
   const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
 
   const form = useForm({
@@ -64,7 +65,10 @@ export default function SignInForm({
             toast.success("Signed in");
           },
           onError: (error) => {
-            const message = error.error.message || error.error.statusText;
+            const message =
+              error.error.message ||
+              error.error.statusText ||
+              "Authentication failed";
             if (message.toLowerCase().includes("verify")) {
               toast.error(
                 "Verify your email before signing in. You can resend it below.",
@@ -91,6 +95,7 @@ export default function SignInForm({
       return;
     }
 
+    setResendStatusMessage("");
     setIsResendingVerification(true);
 
     try {
@@ -109,12 +114,13 @@ export default function SignInForm({
                 ? "Verification email sent. If it doesn't arrive, use the verification link printed in the server logs."
                 : "Verification email sent.",
             );
+            setResendStatusMessage("Verification email sent.");
           },
           onError: (error) => {
-            toast.error(
-              error.error.message ||
-                "We couldn't resend the verification email.",
-            );
+            const message =
+              error.error.message || "We couldn't resend the verification email.";
+            toast.error(message);
+            setResendStatusMessage(message);
           },
         },
       );
@@ -236,6 +242,16 @@ export default function SignInForm({
               "Resend verification email"
             )}
           </Button>
+          <p
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {isResendingVerification
+              ? "Sending verification email..."
+              : resendStatusMessage}
+          </p>
         </div>
 
         {showGoogle && (

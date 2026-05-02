@@ -488,7 +488,15 @@ export const getEventBySlug = query({
 
     return {
       event: {
-        ...event,
+        _id: event._id,
+        slug: event.slug,
+        title: event.title,
+        imageUrl: event.imageUrl,
+        imageAlt: event.imageAlt,
+        perspectiveSummaries: event.perspectiveSummaries,
+        globalImpact: event.globalImpact,
+        firstPublishedAt: event.firstPublishedAt,
+        lastUpdatedAt: event.lastUpdatedAt,
         topicIds,
         shareImageUrl: shareImageUrl ?? undefined,
         shareImageWidth:
