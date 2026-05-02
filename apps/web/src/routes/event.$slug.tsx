@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useConvexAuth } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
+import { useConvexMutation } from "@convex-dev/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,11 @@ import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
+import {
+  buildInteractionContextFromSources,
+  getClientDeviceType,
+  getScrollDepthPercentage,
+} from "@/lib/interaction-tracking";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { SITE } from "@/lib/seo";
 import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
@@ -219,6 +225,7 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
                     Public Preview
                   </p>
                   <ShareEventButton
+                    eventId={event._id}
                     slug={event.slug}
                     title={event.title}
                     summary={
@@ -344,7 +351,47 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
 }
 
 function AuthorizedEventDetailPage({ slug }: { slug: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const eventData = useQuery(api.events.getEventBySlug, { slug });
+  const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
+
+  useEffect(() => {
+    if (!isAuthenticated || !eventData?.event?._id) return;
+
+    const startedAt = Date.now();
+    let maxScrollDepth = getScrollDepthPercentage();
+    const interactionContext = buildInteractionContextFromSources(
+      eventData.articles.map((article) => article.source),
+    );
+
+    const handleScroll = () => {
+      maxScrollDepth = Math.max(maxScrollDepth, getScrollDepthPercentage());
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      void logInteractionFn({
+        eventId: eventData.event._id,
+        type: "view",
+        context: interactionContext,
+        metadata: {
+          deviceType: getClientDeviceType(),
+          scrollDepthPercentage: Math.max(
+            maxScrollDepth,
+            getScrollDepthPercentage(),
+          ),
+          timeSpentSeconds: Math.max(
+            1,
+            Math.round((Date.now() - startedAt) / 1000),
+          ),
+        },
+      }).catch((error) => {
+        console.debug("Skipping event view interaction log:", error);
+      });
+    };
+  }, [eventData?.event?._id, isAuthenticated]);
 
   if (eventData === undefined) {
     return (
@@ -389,6 +436,9 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
     event.perspectiveSummaries?.right ? "right" : null,
   ].filter(Boolean).length;
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  const interactionContext = buildInteractionContextFromSources(
+    articles.map((article) => article.source),
+  );
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -427,9 +477,12 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                   <div className="flex items-center gap-2">
                   <BookmarkButton
                     eventId={event._id}
+                    interactionContext={interactionContext}
                     className="rounded-full border border-border/80 bg-background/80"
                   />
                   <ShareEventButton
+                    eventId={event._id}
+                    interactionContext={interactionContext}
                     slug={event.slug}
                     title={event.title}
                     summary={
@@ -598,7 +651,7 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
             </TabsContent>
           </Tabs>
 
-          <ArticlesList articles={articles} />
+          <ArticlesList eventId={event._id} articles={articles} />
         </div>
       </div>
     </div>

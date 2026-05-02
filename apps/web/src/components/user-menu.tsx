@@ -10,10 +10,11 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "./ui/button";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, Flame, LogOut, User } from "lucide-react";
 
 export default function UserMenu() {
   const user = useQuery(api.user.getCurrentUser);
+  const streak = user?.stats.currentStreak ?? 0;
 
   const handleSignOut = async () => {
     await authClient.signOut({
@@ -31,11 +32,7 @@ export default function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="gap-2 pr-3"
-          aria-label="User menu"
-        >
+        <Button variant="outline" className="gap-2 pr-3" aria-label="User menu">
           <div className="flex items-center justify-center size-6 rounded-md bg-primary/10 text-primary text-xs font-semibold">
             {userInitial}
           </div>
@@ -57,6 +54,10 @@ export default function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
+          <Flame className="size-4" />
+          {streak} day{streak === 1 ? "" : "s"} streak
+        </DropdownMenuItem>
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <User className="size-4" />
           Profile (Coming soon)

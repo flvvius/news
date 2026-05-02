@@ -1,11 +1,20 @@
+import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { api } from "@news-app/backend/convex/_generated/api";
+import { useConvexAuth } from "convex/react";
+import { useMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import type { MouseEvent } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import type { InteractionContextSnapshot } from "@/lib/interaction-tracking";
+import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { SITE } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
 type ShareEventButtonProps = {
+  eventId?: Id<"events">;
+  interactionContext?: InteractionContextSnapshot;
   slug: string;
   title: string;
   summary?: string;
@@ -14,17 +23,35 @@ type ShareEventButtonProps = {
 };
 
 export default function ShareEventButton({
+  eventId,
+  interactionContext,
   slug,
   title,
   summary,
   size = "default",
   className,
 }: ShareEventButtonProps) {
+  const { isAuthenticated } = useConvexAuth();
   const shareOrigin = SITE.url || window.location.origin;
   const shareUrl = `${shareOrigin}/event/${slug}`;
   const shareText = summary?.trim() ? `${title} — ${summary.trim()}` : title;
   const iconSize = size === "sm" ? "size-4" : "size-5";
   const buttonSize = size === "sm" ? "size-8" : "size-9";
+  const logInteraction = useMutation({
+    mutationFn: useConvexMutation(api.interactions.logInteraction),
+  });
+
+  const logShare = () => {
+    if (!isAuthenticated || !eventId) return;
+    logInteraction.mutate({
+      eventId,
+      type: "share",
+      context: interactionContext,
+      metadata: {
+        deviceType: getClientDeviceType(),
+      },
+    });
+  };
 
   const handleClick = async (e: MouseEvent) => {
     e.preventDefault();
@@ -37,6 +64,7 @@ export default function ShareEventButton({
           text: shareText,
           url: shareUrl,
         });
+        logShare();
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -47,6 +75,7 @@ export default function ShareEventButton({
 
     try {
       await navigator.clipboard.writeText(shareUrl);
+      logShare();
       toast.success("Event link copied");
     } catch (error) {
       console.error("Share failed:", error);

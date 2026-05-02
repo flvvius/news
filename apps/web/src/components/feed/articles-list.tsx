@@ -1,9 +1,12 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
+import { useMutation } from "@tanstack/react-query";
+import { useConvexMutation } from "@convex-dev/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BiasIndicator from "@/components/bias-indicator";
+import { getClientDeviceType } from "@/lib/interaction-tracking";
 
 type Article = {
   _id: Id<"articles">;
@@ -27,6 +30,7 @@ type Article = {
 };
 
 type ArticlesListProps = {
+  eventId: Id<"events">;
   articles: Article[];
 };
 
@@ -37,13 +41,33 @@ function isNumberArray(value: unknown): value is number[] {
   );
 }
 
-const ArticlesList = ({ articles }: ArticlesListProps) => {
+const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
+  const { isAuthenticated } = useConvexAuth();
+  const logInteraction = useMutation({
+    mutationFn: useConvexMutation(api.interactions.logInteraction),
+  });
   // Single subscription for the whole list — passed down to each BiasIndicator
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
   const thresholdsValue = thresholdsConfig?.value;
   const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
+
+  const logSourceClick = (article: Article) => {
+    if (!isAuthenticated) return;
+    logInteraction.mutate({
+      eventId,
+      articleId: article._id,
+      type: "click_source",
+      context: {
+        biasRating: article.source?.baseBias ?? 0,
+        sourceReliability: article.source?.reliabilityScore ?? 0,
+      },
+      metadata: {
+        deviceType: getClientDeviceType(),
+      },
+    });
+  };
 
   return (
     <Card className="overflow-hidden border-border/80 py-0">
@@ -86,6 +110,7 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                           params={{ sourceId: article.source._id }}
                           className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
                           aria-label={`View ${article.source.name} source profile`}
+                          onClick={() => logSourceClick(article)}
                         >
                           {article.source.logoUrl ? (
                             <img
@@ -104,6 +129,7 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                             to="/source/$sourceId"
                             params={{ sourceId: article.source._id }}
                             className="text-sm font-medium text-card-foreground hover:underline"
+                            onClick={() => logSourceClick(article)}
                           >
                             {article.source.name}
                           </Link>
@@ -139,6 +165,7 @@ const ArticlesList = ({ articles }: ArticlesListProps) => {
                       rel="noopener noreferrer"
                       aria-label="Read original (opens in a new tab)"
                       className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                      onClick={() => logSourceClick(article)}
                     >
                       Read original
                       <svg
