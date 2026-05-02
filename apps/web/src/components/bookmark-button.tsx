@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { InteractionContextSnapshot } from "@/lib/interaction-tracking";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRef, useCallback } from "react";
@@ -12,6 +13,7 @@ import { getClientDeviceType } from "@/lib/interaction-tracking";
 
 type BookmarkButtonProps = {
   eventId: Id<"events">;
+  interactionContext?: InteractionContextSnapshot;
   /** Render a smaller variant (for cards). */
   size?: "default" | "sm";
   className?: string;
@@ -19,6 +21,7 @@ type BookmarkButtonProps = {
 
 export default function BookmarkButton({
   eventId,
+  interactionContext,
   size = "default",
   className,
 }: BookmarkButtonProps) {
@@ -81,12 +84,13 @@ export default function BookmarkButton({
 
       toggle.mutate({
         eventId,
+        context: interactionContext,
         metadata: {
           deviceType: getClientDeviceType(),
         },
       });
     },
-    [isAuthenticated, toggle, eventId, debounceMs],
+    [isAuthenticated, toggle, eventId, interactionContext, debounceMs],
   );
 
   const bookmarked = isBookmarked === true;

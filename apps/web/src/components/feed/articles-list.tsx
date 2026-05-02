@@ -53,12 +53,16 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
   const thresholdsValue = thresholdsConfig?.value;
   const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
 
-  const logSourceClick = (articleId: Id<"articles">) => {
+  const logSourceClick = (article: Article) => {
     if (!isAuthenticated) return;
     logInteraction.mutate({
       eventId,
-      articleId,
+      articleId: article._id,
       type: "click_source",
+      context: {
+        biasRating: article.source?.baseBias ?? 0,
+        sourceReliability: article.source?.reliabilityScore ?? 0,
+      },
       metadata: {
         deviceType: getClientDeviceType(),
       },
@@ -106,7 +110,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                           params={{ sourceId: article.source._id }}
                           className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
                           aria-label={`View ${article.source.name} source profile`}
-                          onClick={() => logSourceClick(article._id)}
+                          onClick={() => logSourceClick(article)}
                         >
                           {article.source.logoUrl ? (
                             <img
@@ -125,7 +129,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                             to="/source/$sourceId"
                             params={{ sourceId: article.source._id }}
                             className="text-sm font-medium text-card-foreground hover:underline"
-                            onClick={() => logSourceClick(article._id)}
+                            onClick={() => logSourceClick(article)}
                           >
                             {article.source.name}
                           </Link>
@@ -161,7 +165,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                       rel="noopener noreferrer"
                       aria-label="Read original (opens in a new tab)"
                       className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                      onClick={() => logSourceClick(article._id)}
+                      onClick={() => logSourceClick(article)}
                     >
                       Read original
                       <svg

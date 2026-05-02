@@ -12,8 +12,6 @@ import { getConfig } from "./config";
 const INTERACTION_TYPE_VALIDATOR = v.union(
   v.literal("view"),
   v.literal("click_source"),
-  v.literal("bookmark"),
-  v.literal("unbookmark"),
   v.literal("dismiss"),
   v.literal("share"),
   v.literal("feedback_bias"),
@@ -131,35 +129,9 @@ async function resolveInteractionContext(
     }
   }
 
-  const eventArticles = await ctx.db
-    .query("articles")
-    .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
-    .collect();
-  if (eventArticles.length === 0) {
-    return { biasRating: 0, sourceReliability: 0 };
-  }
-
-  const uniqueSourceIds = Array.from(
-    new Set(eventArticles.map((article) => article.sourceId)),
-  );
-  const sources = (
-    await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
-  ).filter((source): source is Doc<"sources"> => source !== null);
-
-  if (sources.length === 0) {
-    return { biasRating: 0, sourceReliability: 0 };
-  }
-
-  const totalBias = sources.reduce((sum, source) => sum + source.baseBias, 0);
-  const totalReliability = sources.reduce(
-    (sum, source) => sum + source.reliabilityScore,
-    0,
-  );
-
-  return {
-    biasRating: Number((totalBias / sources.length).toFixed(2)),
-    sourceReliability: Number((totalReliability / sources.length).toFixed(2)),
-  };
+  // Event-level interactions should pass a cheap context snapshot from the
+  // caller. Falling back to zeros keeps writes fast for any legacy callers.
+  return { biasRating: 0, sourceReliability: 0 };
 }
 
 async function recordInteraction(
@@ -211,6 +183,7 @@ async function recordInteraction(
 export const toggleBookmark = mutation({
   args: {
     eventId: v.id("events"),
+    context: v.optional(INTERACTION_CONTEXT_VALIDATOR),
     metadata: v.optional(INTERACTION_METADATA_VALIDATOR),
   },
   handler: async (ctx, args) => {
@@ -251,6 +224,7 @@ export const toggleBookmark = mutation({
       // Within cooldown — patch the existing row instead of inserting.
       await ctx.db.patch(latest._id, {
         type: nextType,
+        context: args.context ?? latest.context,
         metadata: normalizeInteractionMetadata(args.metadata),
         timestamp: now,
       });
@@ -260,6 +234,7 @@ export const toggleBookmark = mutation({
         userId,
         eventId: args.eventId,
         type: nextType,
+        context: args.context,
         metadata: args.metadata,
         timestamp: now,
       });
@@ -402,12 +377,22 @@ export const logInteraction = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    const interactionType = args.type as Doc<"interactions">["type"];
+
+    if (
+      interactionType === "bookmark" ||
+      interactionType === "unbookmark"
+    ) {
+      throw new ConvexError(
+        "Bookmark interactions must go through toggleBookmark",
+      );
+    }
 
     await recordInteraction(ctx, {
       userId,
       eventId: args.eventId,
       articleId: args.articleId,
-      type: args.type,
+      type: interactionType,
       context: args.context,
       metadata: args.metadata,
     });

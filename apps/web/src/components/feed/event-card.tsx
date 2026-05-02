@@ -4,6 +4,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
+import { buildInteractionContextFromSources } from "@/lib/interaction-tracking";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -112,6 +113,9 @@ const EventCard = ({
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt);
   const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
+  const interactionContext = buildInteractionContextFromSources(
+    event.sources ?? [],
+  );
   const biasDistribution = (event.sources ?? []).reduce(
     (counts, source) => {
       counts[getBiasBucket(source)]++;
@@ -185,6 +189,7 @@ const EventCard = ({
               <div className="flex items-center gap-2 -mt-1">
                 <ShareEventButton
                   eventId={event._id}
+                  interactionContext={interactionContext}
                   slug={event.slug}
                   title={event.title}
                   summary={summaryPreview}
@@ -193,6 +198,7 @@ const EventCard = ({
                 />
                 <BookmarkButton
                   eventId={event._id}
+                  interactionContext={interactionContext}
                   size="sm"
                   className="rounded-full border border-border/80 bg-background/80"
                 />

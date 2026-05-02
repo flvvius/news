@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useQuery, useConvexAuth } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +12,7 @@ import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import {
+  buildInteractionContextFromSources,
   getClientDeviceType,
   getScrollDepthPercentage,
 } from "@/lib/interaction-tracking";
@@ -353,15 +353,16 @@ function PublicEventDetailPage({ slug }: { slug: string }) {
 function AuthorizedEventDetailPage({ slug }: { slug: string }) {
   const { isAuthenticated } = useConvexAuth();
   const eventData = useQuery(api.events.getEventBySlug, { slug });
-  const logInteraction = useMutation({
-    mutationFn: useConvexMutation(api.interactions.logInteraction),
-  });
+  const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
 
   useEffect(() => {
     if (!isAuthenticated || !eventData?.event?._id) return;
 
     const startedAt = Date.now();
     let maxScrollDepth = getScrollDepthPercentage();
+    const interactionContext = buildInteractionContextFromSources(
+      eventData.articles.map((article) => article.source),
+    );
 
     const handleScroll = () => {
       maxScrollDepth = Math.max(maxScrollDepth, getScrollDepthPercentage());
@@ -371,9 +372,10 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      logInteraction.mutate({
+      void logInteractionFn({
         eventId: eventData.event._id,
         type: "view",
+        context: interactionContext,
         metadata: {
           deviceType: getClientDeviceType(),
           scrollDepthPercentage: Math.max(
@@ -387,7 +389,7 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
         },
       });
     };
-  }, [eventData?.event?._id, isAuthenticated, logInteraction]);
+  }, [eventData?.event?._id, isAuthenticated]);
 
   if (eventData === undefined) {
     return (
@@ -432,6 +434,9 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
     event.perspectiveSummaries?.right ? "right" : null,
   ].filter(Boolean).length;
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
+  const interactionContext = buildInteractionContextFromSources(
+    articles.map((article) => article.source),
+  );
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -470,10 +475,12 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
                   <div className="flex items-center gap-2">
                   <BookmarkButton
                     eventId={event._id}
+                    interactionContext={interactionContext}
                     className="rounded-full border border-border/80 bg-background/80"
                   />
                   <ShareEventButton
                     eventId={event._id}
+                    interactionContext={interactionContext}
                     slug={event.slug}
                     title={event.title}
                     summary={

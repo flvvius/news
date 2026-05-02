@@ -7,12 +7,14 @@ import type { MouseEvent } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import type { InteractionContextSnapshot } from "@/lib/interaction-tracking";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { SITE } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
 type ShareEventButtonProps = {
   eventId?: Id<"events">;
+  interactionContext?: InteractionContextSnapshot;
   slug: string;
   title: string;
   summary?: string;
@@ -22,6 +24,7 @@ type ShareEventButtonProps = {
 
 export default function ShareEventButton({
   eventId,
+  interactionContext,
   slug,
   title,
   summary,
@@ -43,6 +46,7 @@ export default function ShareEventButton({
     logInteraction.mutate({
       eventId,
       type: "share",
+      context: interactionContext,
       metadata: {
         deviceType: getClientDeviceType(),
       },
