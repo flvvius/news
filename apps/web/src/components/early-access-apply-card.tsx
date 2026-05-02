@@ -37,7 +37,9 @@ export default function EarlyAccessApplyCard({
     mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
     onSuccess: (result) => {
       if (result.alreadyExists) {
-        setMessage(`You're already on the waitlist at position #${result.position}.`);
+        setMessage(
+          `You're already on the waitlist at position #${result.position}.`,
+        );
         return;
       }
 
@@ -55,7 +57,9 @@ export default function EarlyAccessApplyCard({
   return (
     <Card className="border-border/70 bg-card/90">
       <CardHeader className={compact ? "pb-3" : undefined}>
-        <CardTitle className={compact ? "text-lg" : "text-xl"}>{title}</CardTitle>
+        <CardTitle className={compact ? "text-lg" : "text-xl"}>
+          {title}
+        </CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
       <CardContent>
@@ -99,7 +103,9 @@ export default function EarlyAccessApplyCard({
         {message && (
           <p
             className={`mt-3 text-sm ${
-              addToWaitlist.isError ? "text-destructive" : "text-muted-foreground"
+              addToWaitlist.isError
+                ? "text-destructive"
+                : "text-muted-foreground"
             }`}
             role={addToWaitlist.isError ? "alert" : "status"}
           >

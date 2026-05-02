@@ -32,11 +32,7 @@ export default function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="gap-2 pr-3"
-          aria-label="User menu"
-        >
+        <Button variant="outline" className="gap-2 pr-3" aria-label="User menu">
           <div className="flex items-center justify-center size-6 rounded-md bg-primary/10 text-primary text-xs font-semibold">
             {userInitial}
           </div>
