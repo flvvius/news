@@ -422,7 +422,13 @@ export default defineSchema({
     metadata: v.object({
       timeSpentSeconds: v.optional(v.number()), // For "read" events
       scrollDepthPercentage: v.optional(v.number()), // 0.0 to 1.0
-      deviceType: v.optional(v.string()), // "mobile", "desktop"
+      deviceType: v.optional(
+        v.union(
+          v.literal("mobile"),
+          v.literal("tablet"),
+          v.literal("desktop"),
+        ),
+      ),
 
       extras: v.optional(
         v.object({

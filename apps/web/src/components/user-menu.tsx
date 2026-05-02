@@ -14,6 +14,7 @@ import { ChevronDown, Flame, LogOut, User } from "lucide-react";
 
 export default function UserMenu() {
   const user = useQuery(api.user.getCurrentUser);
+  const streak = user?.stats.currentStreak ?? 0;
 
   const handleSignOut = async () => {
     await authClient.signOut({
@@ -59,7 +60,7 @@ export default function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <Flame className="size-4" />
-          {user?.stats.currentStreak ?? 0} day streak
+          {streak} day{streak === 1 ? "" : "s"} streak
         </DropdownMenuItem>
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <User className="size-4" />

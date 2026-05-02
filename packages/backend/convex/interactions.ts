@@ -26,7 +26,13 @@ const INTERACTION_CONTEXT_VALIDATOR = v.object({
 const INTERACTION_METADATA_VALIDATOR = v.object({
   timeSpentSeconds: v.optional(v.number()),
   scrollDepthPercentage: v.optional(v.number()),
-  deviceType: v.optional(v.string()),
+  deviceType: v.optional(
+    v.union(
+      v.literal("mobile"),
+      v.literal("tablet"),
+      v.literal("desktop"),
+    ),
+  ),
   extras: v.optional(
     v.object({
       feedbackText: v.optional(v.string()),
@@ -115,7 +121,7 @@ function normalizeInteractionMetadata(
   metadata?: {
     timeSpentSeconds?: number;
     scrollDepthPercentage?: number;
-    deviceType?: string;
+    deviceType?: "mobile" | "tablet" | "desktop";
     extras?: {
       feedbackText?: string;
       errorMessage?: string;
@@ -130,11 +136,7 @@ function normalizeInteractionMetadata(
       0,
       1,
     ),
-    deviceType:
-      typeof metadata?.deviceType === "string" &&
-      metadata.deviceType.trim().length > 0
-        ? metadata.deviceType.trim().slice(0, 32)
-        : undefined,
+    deviceType: metadata?.deviceType,
     extras: metadata?.extras,
   };
 
@@ -163,12 +165,22 @@ async function updateUserStatsForView(
   timestamp: number,
   context: InteractionContext,
 ) {
-  const stats = await ctx.db
+  let stats = await ctx.db
     .query("userStats")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
   if (!stats) {
-    return;
+    const statsId = await ctx.db.insert("userStats", {
+      userId,
+      currentStreak: 0,
+      longestStreak: 0,
+      articlesRead: 0,
+      biasBalance: 0,
+    });
+    stats = await ctx.db.get(statsId);
+    if (!stats) {
+      return;
+    }
   }
 
   const previousActiveAt = stats.lastActiveAt;
@@ -474,6 +486,45 @@ export const getBookmarkedEvents = query({
     );
 
     return events.filter((e) => e !== null);
+  },
+});
+
+export const getBookmarkedCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) return 0;
+
+    const user = await getUserProfileByAuthUserId(ctx, authUser._id);
+    if (!user) return 0;
+
+    const allBookmarkInteractions = await ctx.db
+      .query("interactions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
+
+    const latestByEvent = new Map<
+      string,
+      (typeof allBookmarkInteractions)[0]
+    >();
+    for (const interaction of allBookmarkInteractions) {
+      if (interaction.type !== "bookmark" && interaction.type !== "unbookmark")
+        continue;
+      const key = interaction.eventId;
+      if (!latestByEvent.has(key)) {
+        latestByEvent.set(key, interaction);
+      }
+    }
+
+    let count = 0;
+    for (const interaction of latestByEvent.values()) {
+      if (interaction.type === "bookmark") {
+        count += 1;
+      }
+    }
+
+    return count;
   },
 });
 

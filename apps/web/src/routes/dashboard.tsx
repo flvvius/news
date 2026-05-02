@@ -309,7 +309,7 @@ function AuthenticatedDashboard() {
 
 function AuthorizedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
-  const bookmarkedEvents = useQuery(api.interactions.getBookmarkedEvents);
+  const bookmarkCount = useQuery(api.interactions.getBookmarkedCount);
   const privateData = useQuery(api.privateData.get);
   const isAdmin = useQuery(api.user.isCurrentUserAdmin);
   const waitlistOverview = useQuery(
@@ -452,7 +452,6 @@ function AuthorizedDashboard() {
   const longestStreak = currentUser?.stats.longestStreak ?? 0;
   const articlesRead = currentUser?.stats.articlesRead ?? 0;
   const biasBalance = currentUser?.stats.biasBalance ?? 0;
-  const bookmarkCount = bookmarkedEvents?.length ?? 0;
 
   const handleInviteNextPendingUsers = (count: number) => {
     inviteNextPendingUsers.reset();
@@ -565,7 +564,7 @@ function AuthorizedDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-5">
-                <div className="text-3xl font-bold">{bookmarkCount}</div>
+                <div className="text-3xl font-bold">{bookmarkCount ?? 0}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Saved for later
                 </p>
