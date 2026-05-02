@@ -184,6 +184,7 @@ const EventCard = ({
               </p>
               <div className="flex items-center gap-2 -mt-1">
                 <ShareEventButton
+                  eventId={event._id}
                   slug={event.slug}
                   title={event.title}
                   summary={summaryPreview}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRef, useCallback } from "react";
+import { getClientDeviceType } from "@/lib/interaction-tracking";
 
 type BookmarkButtonProps = {
   eventId: Id<"events">;
@@ -78,7 +79,12 @@ export default function BookmarkButton({
       if (now - lastClickRef.current < debounceMs) return;
       lastClickRef.current = now;
 
-      toggle.mutate({ eventId });
+      toggle.mutate({
+        eventId,
+        metadata: {
+          deviceType: getClientDeviceType(),
+        },
+      });
     },
     [isAuthenticated, toggle, eventId, debounceMs],
   );

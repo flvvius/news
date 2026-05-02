@@ -1,7 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
 
@@ -9,8 +9,36 @@ import { getConfig } from "./config";
 // Helpers
 // ---------------------------------------------------------------------------
 
+const INTERACTION_TYPE_VALIDATOR = v.union(
+  v.literal("view"),
+  v.literal("click_source"),
+  v.literal("bookmark"),
+  v.literal("unbookmark"),
+  v.literal("dismiss"),
+  v.literal("share"),
+  v.literal("feedback_bias"),
+);
+
+const INTERACTION_CONTEXT_VALIDATOR = v.object({
+  biasRating: v.number(),
+  sourceReliability: v.number(),
+});
+
+const INTERACTION_METADATA_VALIDATOR = v.object({
+  timeSpentSeconds: v.optional(v.number()),
+  scrollDepthPercentage: v.optional(v.number()),
+  deviceType: v.optional(v.string()),
+  extras: v.optional(
+    v.object({
+      feedbackText: v.optional(v.string()),
+      errorMessage: v.optional(v.string()),
+      experimentVariant: v.optional(v.string()),
+    }),
+  ),
+});
+
 /** Resolve the internal users._id for the currently-authenticated user. */
-async function requireUserId(ctx: QueryCtx) {
+async function requireUserId(ctx: QueryCtx | MutationCtx) {
   const authUser = await authComponent.safeGetAuthUser(ctx);
   if (!authUser) throw new ConvexError("Not authenticated");
 
@@ -21,6 +49,146 @@ async function requireUserId(ctx: QueryCtx) {
   if (!user) throw new ConvexError("User profile not found");
 
   return user._id;
+}
+
+function clampNumber(
+  value: number | undefined,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function normalizeInteractionMetadata(
+  metadata?: {
+    timeSpentSeconds?: number;
+    scrollDepthPercentage?: number;
+    deviceType?: string;
+    extras?: {
+      feedbackText?: string;
+      errorMessage?: string;
+      experimentVariant?: string;
+    };
+  },
+) {
+  const normalized = {
+    timeSpentSeconds: clampNumber(metadata?.timeSpentSeconds, 0, 86_400),
+    scrollDepthPercentage: clampNumber(
+      metadata?.scrollDepthPercentage,
+      0,
+      1,
+    ),
+    deviceType:
+      typeof metadata?.deviceType === "string" &&
+      metadata.deviceType.trim().length > 0
+        ? metadata.deviceType.trim().slice(0, 32)
+        : undefined,
+    extras: metadata?.extras,
+  };
+
+  if (
+    normalized.timeSpentSeconds === undefined &&
+    normalized.scrollDepthPercentage === undefined &&
+    normalized.deviceType === undefined &&
+    normalized.extras === undefined
+  ) {
+    return {};
+  }
+
+  return normalized;
+}
+
+type InteractionContext = Doc<"interactions">["context"];
+type InteractionMetadata = Doc<"interactions">["metadata"];
+
+async function resolveInteractionContext(
+  ctx: MutationCtx,
+  args: {
+    eventId: Id<"events">;
+    articleId?: Id<"articles">;
+    context?: InteractionContext;
+  },
+): Promise<InteractionContext> {
+  if (args.context) {
+    return args.context;
+  }
+
+  if (args.articleId) {
+    const article = await ctx.db.get(args.articleId);
+    if (article) {
+      if (article.eventId && article.eventId !== args.eventId) {
+        throw new ConvexError("Article does not belong to this event");
+      }
+
+      const source = await ctx.db.get(article.sourceId);
+      if (source) {
+        return {
+          biasRating: source.baseBias,
+          sourceReliability: source.reliabilityScore,
+        };
+      }
+    }
+  }
+
+  const eventArticles = await ctx.db
+    .query("articles")
+    .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+    .collect();
+  if (eventArticles.length === 0) {
+    return { biasRating: 0, sourceReliability: 0 };
+  }
+
+  const uniqueSourceIds = Array.from(
+    new Set(eventArticles.map((article) => article.sourceId)),
+  );
+  const sources = (
+    await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
+  ).filter((source): source is Doc<"sources"> => source !== null);
+
+  if (sources.length === 0) {
+    return { biasRating: 0, sourceReliability: 0 };
+  }
+
+  const totalBias = sources.reduce((sum, source) => sum + source.baseBias, 0);
+  const totalReliability = sources.reduce(
+    (sum, source) => sum + source.reliabilityScore,
+    0,
+  );
+
+  return {
+    biasRating: Number((totalBias / sources.length).toFixed(2)),
+    sourceReliability: Number((totalReliability / sources.length).toFixed(2)),
+  };
+}
+
+async function recordInteraction(
+  ctx: MutationCtx,
+  args: {
+    userId: Id<"users">;
+    eventId: Id<"events">;
+    articleId?: Id<"articles">;
+    type: Doc<"interactions">["type"];
+    context?: InteractionContext;
+    metadata?: InteractionMetadata;
+    timestamp?: number;
+  },
+) {
+  const context = await resolveInteractionContext(ctx, {
+    eventId: args.eventId,
+    articleId: args.articleId,
+    context: args.context,
+  });
+
+  await ctx.db.insert("interactions", {
+    userId: args.userId,
+    eventId: args.eventId,
+    articleId: args.articleId,
+    type: args.type,
+    context,
+    metadata: normalizeInteractionMetadata(args.metadata),
+    timestamp: args.timestamp ?? Date.now(),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +209,10 @@ async function requireUserId(ctx: QueryCtx) {
  * Returns `{ bookmarked: boolean }`.
  */
 export const toggleBookmark = mutation({
-  args: { eventId: v.id("events") },
+  args: {
+    eventId: v.id("events"),
+    metadata: v.optional(INTERACTION_METADATA_VALIDATOR),
+  },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const now = Date.now();
@@ -80,16 +251,16 @@ export const toggleBookmark = mutation({
       // Within cooldown — patch the existing row instead of inserting.
       await ctx.db.patch(latest._id, {
         type: nextType,
+        metadata: normalizeInteractionMetadata(args.metadata),
         timestamp: now,
       });
     } else {
       // Outside cooldown — meaningful state change, insert a new row.
-      await ctx.db.insert("interactions", {
+      await recordInteraction(ctx, {
         userId,
         eventId: args.eventId,
         type: nextType,
-        context: { biasRating: 0, sourceReliability: 0 },
-        metadata: {},
+        metadata: args.metadata,
         timestamp: now,
       });
     }
@@ -225,45 +396,20 @@ export const logInteraction = mutation({
   args: {
     eventId: v.id("events"),
     articleId: v.optional(v.id("articles")),
-    type: v.union(
-      v.literal("view"),
-      v.literal("click_source"),
-      v.literal("dismiss"),
-      v.literal("share"),
-      v.literal("feedback_bias"),
-    ),
-    context: v.optional(
-      v.object({
-        biasRating: v.number(),
-        sourceReliability: v.number(),
-      }),
-    ),
-    metadata: v.optional(
-      v.object({
-        timeSpentSeconds: v.optional(v.number()),
-        scrollDepthPercentage: v.optional(v.number()),
-        deviceType: v.optional(v.string()),
-        extras: v.optional(
-          v.object({
-            feedbackText: v.optional(v.string()),
-            errorMessage: v.optional(v.string()),
-            experimentVariant: v.optional(v.string()),
-          }),
-        ),
-      }),
-    ),
+    type: INTERACTION_TYPE_VALIDATOR,
+    context: v.optional(INTERACTION_CONTEXT_VALIDATOR),
+    metadata: v.optional(INTERACTION_METADATA_VALIDATOR),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
 
-    await ctx.db.insert("interactions", {
+    await recordInteraction(ctx, {
       userId,
       eventId: args.eventId,
       articleId: args.articleId,
       type: args.type,
-      context: args.context ?? { biasRating: 0, sourceReliability: 0 },
-      metadata: args.metadata ?? {},
-      timestamp: Date.now(),
+      context: args.context,
+      metadata: args.metadata,
     });
   },
 });
