@@ -328,7 +328,8 @@ function EventDetailPage() {
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
                     <span className="font-medium text-card-foreground">
-                      {articles.length} {articles.length === 1 ? "article" : "articles"}
+                      {articles.length}{" "}
+                      {articles.length === 1 ? "article" : "articles"}
                     </span>
                     <span>•</span>
                     <span>{sourceCount} sources</span>
@@ -354,7 +355,10 @@ function EventDetailPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="perspectives" className="space-y-5 sm:space-y-8">
+            <TabsContent
+              value="perspectives"
+              className="space-y-5 sm:space-y-8"
+            >
               {hasPerspectives ? (
                 <Card className="overflow-hidden border-border/80 py-0">
                   <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
@@ -386,7 +390,8 @@ function EventDetailPage() {
 
                       <TabsContent value="center">
                         <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                          {event.perspectiveSummaries?.center ?? "Summary pending…"}
+                          {event.perspectiveSummaries?.center ??
+                            "Summary pending…"}
                         </p>
                       </TabsContent>
 

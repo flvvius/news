@@ -143,7 +143,7 @@ What it does not currently do:
 Important entry points:
 
 - [`app/_layout.tsx`](./apps/native/app/_layout.tsx)
-- [`app/(drawer)/index.tsx`](./apps/native/app/(drawer)/index.tsx)
+- [`app/(drawer)/index.tsx`](<./apps/native/app/(drawer)/index.tsx>)
 - [`components/sign-in.tsx`](./apps/native/components/sign-in.tsx)
 - [`components/sign-up.tsx`](./apps/native/components/sign-up.tsx)
 

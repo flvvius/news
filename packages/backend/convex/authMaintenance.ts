@@ -60,10 +60,7 @@ export const deleteAppUserData = internalMutation({
   },
 });
 
-async function deleteBetterAuthData(
-  ctx: any,
-  authUser: BetterAuthUser,
-) {
+async function deleteBetterAuthData(ctx: any, authUser: BetterAuthUser) {
   const userId = authUser._id;
 
   await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
@@ -101,18 +98,21 @@ export const cleanupExpiredUnverifiedAccounts = internalAction({
     let failedCount = 0;
 
     while (true) {
-      const batch: any = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-        model: "user",
-        paginationOpts: {
-          cursor,
-          numItems: CLEANUP_BATCH_SIZE,
+      const batch: any = await ctx.runQuery(
+        components.betterAuth.adapter.findMany,
+        {
+          model: "user",
+          paginationOpts: {
+            cursor,
+            numItems: CLEANUP_BATCH_SIZE,
+          },
+          sortBy: { field: "createdAt", direction: "asc" },
+          where: [
+            { field: "emailVerified", operator: "eq", value: false },
+            { field: "createdAt", operator: "lte", value: cutoff },
+          ],
         },
-        sortBy: { field: "createdAt", direction: "asc" },
-        where: [
-          { field: "emailVerified", operator: "eq", value: false },
-          { field: "createdAt", operator: "lte", value: cutoff },
-        ],
-      });
+      );
 
       const users = (batch.page ?? []) as BetterAuthUser[];
       for (const authUser of users) {

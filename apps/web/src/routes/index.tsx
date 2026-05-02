@@ -8,11 +8,7 @@ import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Globe, Newspaper, Shield, Sparkles } from "lucide-react";
 
-function LandingActions({
-  className,
-}: {
-  className?: string;
-}) {
+function LandingActions({ className }: { className?: string }) {
   return (
     <div className={className}>
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -29,7 +25,8 @@ function LandingActions({
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Reading stays open to everyone. Accounts unlock bookmarks, personalized ranking, and notifications.
+        Reading stays open to everyone. Accounts unlock bookmarks, personalized
+        ranking, and notifications.
       </p>
     </div>
   );
@@ -275,13 +272,14 @@ function LandingPage() {
             {/* Scroll hint */}
             {displayEvents && displayEvents.length > 0 && (
               <div className="mt-8 text-center">
-                <a
-                  href="#join"
+                <Link
+                  to="/dashboard"
+                  search={{ mode: "signup", redirect: "/feed" }}
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <span>Create a free account</span>
                   <ArrowRight className="size-3.5" />
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -342,7 +340,8 @@ function LandingPage() {
             </h2>
 
             <p className="text-sm text-muted-foreground max-w-[45ch] leading-relaxed">
-              Read the full feed right now, then create a free account when you want bookmarks, personalized ranking, and alerts.
+              Read the full feed right now, then create a free account when you
+              want bookmarks, personalized ranking, and alerts.
             </p>
 
             <LandingActions className="w-full max-w-sm" />

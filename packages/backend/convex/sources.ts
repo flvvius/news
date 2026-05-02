@@ -22,10 +22,7 @@ function sourceBiasLabel(source: Doc<"sources">): string {
   return "center";
 }
 
-async function getEventTopics(
-  ctx: QueryCtx,
-  eventId: Id<"events">,
-) {
+async function getEventTopics(ctx: QueryCtx, eventId: Id<"events">) {
   const rows = await ctx.db
     .query("eventTopics")
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -79,10 +76,10 @@ export const getSourceProfile = query({
       article.eventId ? eventsById.has(article.eventId) : true,
     );
     const topicRows = await Promise.all(
-      Array.from(eventsById.keys()).map(async (eventId) => [
-        eventId,
-        await getEventTopics(ctx, eventId),
-      ] as const),
+      Array.from(eventsById.keys()).map(
+        async (eventId) =>
+          [eventId, await getEventTopics(ctx, eventId)] as const,
+      ),
     );
     const topicsByEventId = new Map(topicRows);
 
@@ -122,7 +119,7 @@ export const getSourceProfile = query({
       },
       articles: recentArticles.map((article) => {
         const event = article.eventId
-          ? eventsById.get(article.eventId) ?? null
+          ? (eventsById.get(article.eventId) ?? null)
           : null;
         return {
           _id: article._id,
@@ -158,7 +155,10 @@ export const getSitemapSources = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5000), 1), 10000);
+    const safeLimit = Math.min(
+      Math.max(Math.floor(args.limit ?? 5000), 1),
+      10000,
+    );
     const sources = await ctx.db.query("sources").take(safeLimit);
 
     return sources.map((source) => ({

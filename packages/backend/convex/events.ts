@@ -423,7 +423,10 @@ export const getSitemapPublishedEvents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5000), 1), 10000);
+    const safeLimit = Math.min(
+      Math.max(Math.floor(args.limit ?? 5000), 1),
+      10000,
+    );
     const events = await ctx.db
       .query("events")
       .withIndex("by_status_recency", (q) => q.eq("status", "published"))

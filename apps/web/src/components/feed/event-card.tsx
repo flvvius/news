@@ -79,7 +79,9 @@ function highlightTitle(title: string, query?: string): ReactNode {
 
 type BiasBucket = "left" | "center" | "right";
 
-function getBiasBucket(source: NonNullable<EventCardProps["event"]["sources"]>[number]): BiasBucket {
+function getBiasBucket(
+  source: NonNullable<EventCardProps["event"]["sources"]>[number],
+): BiasBucket {
   const category = source.mbfcCategory?.toLowerCase();
   if (category === "left" || category === "left-center") return "left";
   if (category === "right" || category === "right-center") return "right";

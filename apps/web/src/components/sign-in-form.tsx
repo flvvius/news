@@ -77,7 +77,7 @@ export default function SignInForm({
             }
             toast.error(message);
           },
-        }
+        },
       );
     },
     validators: {
@@ -118,7 +118,8 @@ export default function SignInForm({
           },
           onError: (error) => {
             const message =
-              error.error.message || "We couldn't resend the verification email.";
+              error.error.message ||
+              "We couldn't resend the verification email.";
             toast.error(message);
             setResendStatusMessage(message);
           },
@@ -136,9 +137,7 @@ export default function SignInForm({
           <Mail className="size-6" />
         </div>
         <CardTitle className="text-2xl font-bold">{title}</CardTitle>
-        <p className="text-muted-foreground text-sm mt-1">
-          {subtitle}
-        </p>
+        <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>
       </CardHeader>
 
       <CardContent className="pt-6">
@@ -222,7 +221,9 @@ export default function SignInForm({
         </form>
 
         <div className="mt-4 rounded-lg border border-border/70 bg-muted/35 px-4 py-3 text-sm">
-          <p className="text-foreground">Didn&apos;t get the verification email?</p>
+          <p className="text-foreground">
+            Didn&apos;t get the verification email?
+          </p>
           <p className="mt-1 text-muted-foreground">
             Enter the same email address above and we&apos;ll send it again.
           </p>

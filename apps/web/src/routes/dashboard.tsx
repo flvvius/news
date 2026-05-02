@@ -121,7 +121,9 @@ function RouteComponent() {
                     {showSignIn ? "Welcome back" : "Create your free account"}
                   </h1>
                   <p className="max-w-[55ch] text-muted-foreground leading-relaxed">
-                    Read every event, source profile, and search result without an account. Sign in when you want synced bookmarks, personalized ranking, and notifications.
+                    Read every event, source profile, and search result without
+                    an account. Sign in when you want synced bookmarks,
+                    personalized ranking, and notifications.
                   </p>
                 </div>
 
@@ -161,9 +163,12 @@ function RouteComponent() {
 
               <div className="space-y-6">
                 <div className="rounded-xl border border-border bg-card p-6">
-                  <h3 className="text-lg font-semibold">What accounts unlock</h3>
+                  <h3 className="text-lg font-semibold">
+                    What accounts unlock
+                  </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    The content stays open. Accounts are only for personal, persistent features.
+                    The content stays open. Accounts are only for personal,
+                    persistent features.
                   </p>
                   <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
                     <li className="flex gap-3">
@@ -176,7 +181,8 @@ function RouteComponent() {
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                         2
                       </span>
-                      Personalize ranking using your reading habits and interests.
+                      Personalize ranking using your reading habits and
+                      interests.
                     </li>
                     <li className="flex gap-3">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
@@ -188,9 +194,14 @@ function RouteComponent() {
                 </div>
 
                 <div className="rounded-xl border border-border bg-card p-6">
-                  <h3 className="text-lg font-semibold">Verification matters</h3>
+                  <h3 className="text-lg font-semibold">
+                    Verification matters
+                  </h3>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    New email/password signups require email verification before first sign-in. Google sign-in continues to work as a one-step path when the provider has already verified the address.
+                    New email/password signups require email verification before
+                    first sign-in. Google sign-in continues to work as a
+                    one-step path when the provider has already verified the
+                    address.
                   </p>
                 </div>
               </div>

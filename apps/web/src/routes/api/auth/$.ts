@@ -58,12 +58,15 @@ function isSuspiciousAuthRequest(request: Request) {
     return false;
   }
 
-  const userAgent = request.headers.get("user-agent")?.trim().toLowerCase() ?? "";
+  const userAgent =
+    request.headers.get("user-agent")?.trim().toLowerCase() ?? "";
   if (!userAgent) {
     return true;
   }
 
-  if (KNOWN_SCRAPER_UA_PATTERNS.some((pattern) => userAgent.includes(pattern))) {
+  if (
+    KNOWN_SCRAPER_UA_PATTERNS.some((pattern) => userAgent.includes(pattern))
+  ) {
     return true;
   }
 
@@ -106,13 +109,10 @@ function isSuspiciousAuthRequest(request: Request) {
 }
 
 function forbiddenBotResponse() {
-  return new Response(
-    JSON.stringify({ error: "Request blocked." }),
-    {
-      status: 403,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    },
-  );
+  return new Response(JSON.stringify({ error: "Request blocked." }), {
+    status: 403,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
 }
 
 export const Route = createFileRoute("/api/auth/$")({
