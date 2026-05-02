@@ -82,18 +82,8 @@ function RouteComponent() {
     search.redirect && isAuthRedirectPath(search.redirect)
       ? search.redirect
       : "/feed";
-  const [showSignIn, setShowSignIn] = useState(
-    search.mode !== "signup" || search.verified === "1",
-  );
-  const userToggledAuthModeRef = useRef(false);
   const hasShownVerifiedToastRef = useRef(false);
-
-  useEffect(() => {
-    if (userToggledAuthModeRef.current) {
-      return;
-    }
-    setShowSignIn(search.mode !== "signup" || search.verified === "1");
-  }, [search.mode, search.verified]);
+  const showSignIn = search.mode !== "signup" || search.verified === "1";
 
   useEffect(() => {
     if (search.verified !== "1" || hasShownVerifiedToastRef.current) {
@@ -101,8 +91,7 @@ function RouteComponent() {
     }
 
     hasShownVerifiedToastRef.current = true;
-    setShowSignIn(true);
-    toast.success("You can now log in with your verified account.");
+    toast.message("If you recently verified, you can now log in.");
     void navigate({
       search: (current) => ({
         ...current,
@@ -142,8 +131,12 @@ function RouteComponent() {
                       title="Sign in to your account"
                       subtitle="Access your bookmarks, personalized ranking, and saved preferences."
                       onSwitchToSignUp={() => {
-                        userToggledAuthModeRef.current = true;
-                        setShowSignIn(false);
+                        void navigate({
+                          search: (current) => ({
+                            ...current,
+                            mode: "signup",
+                          }),
+                        });
                       }}
                     />
                   ) : (
@@ -153,8 +146,12 @@ function RouteComponent() {
                       subtitle="Free accounts unlock bookmarks, personalized feeds, and future notifications. We’ll verify your email before activation."
                       submitLabel="Create account"
                       onSwitchToSignIn={() => {
-                        userToggledAuthModeRef.current = true;
-                        setShowSignIn(true);
+                        void navigate({
+                          search: (current) => ({
+                            ...current,
+                            mode: "signin",
+                          }),
+                        });
                       }}
                     />
                   )}

@@ -25,6 +25,54 @@ const shouldLogVerificationLinks =
   siteUrl.includes("localhost") || siteUrl.includes("127.0.0.1");
 const RESEND_TEST_MODE_ERROR =
   "You can only send testing emails to your own email address";
+const verificationAllowedOrigins = new Set(
+  [
+    siteUrl,
+    ...(process.env.ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ]
+    .map((value) => {
+      try {
+        return new URL(value).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is string => Boolean(value)),
+);
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function normalizeVerificationUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (!verificationAllowedOrigins.has(parsed.origin)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function maskEmail(value: string) {
+  const [localPart, domain] = value.split("@");
+  if (!domain) return "***";
+  const firstChar = localPart?.[0] ?? "";
+  return `${firstChar}***@${domain}`;
+}
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -110,8 +158,14 @@ async function sendVerificationEmail(
   user: { email: string; name?: string | null },
   url: string,
 ) {
+  const maskedEmail = maskEmail(user.email);
+  const safeUrl = normalizeVerificationUrl(url);
+  if (!safeUrl) {
+    throw new Error("Invalid verification URL.");
+  }
+
   if (shouldLogVerificationLinks) {
-    console.info(`[auth] Verification link for ${user.email}: ${url}`);
+    console.info(`[auth] Verification link for ${maskedEmail}: ${safeUrl}`);
   }
 
   if (!resend) {
@@ -121,6 +175,7 @@ async function sendVerificationEmail(
   }
 
   const firstName = user.name?.split(" ")[0] || "there";
+  const safeFirstName = escapeHtml(firstName);
   const subject = "Verify your Biviant email";
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -137,10 +192,10 @@ async function sendVerificationEmail(
             </tr>
             <tr>
               <td style="padding:0 32px 24px 32px;font-size:16px;line-height:1.7;color:#334155;">
-                <p style="margin:0 0 16px 0;">Hi ${firstName},</p>
+                <p style="margin:0 0 16px 0;">Hi ${safeFirstName},</p>
                 <p style="margin:0 0 24px 0;">Confirm your email address to finish creating your Biviant account and unlock bookmarks, personalized ranking, and alerts.</p>
                 <p style="margin:0 0 24px 0;">
-                  <a href="${url}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600;">Verify email</a>
+                  <a href="${safeUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600;">Verify email</a>
                 </p>
                 <p style="margin:0;color:#64748b;">If you didn&apos;t create this account, you can safely ignore this email.</p>
               </td>
@@ -154,7 +209,7 @@ async function sendVerificationEmail(
   const text = `Hi ${firstName},
 
 Verify your email to finish creating your Biviant account:
-${url}
+${safeUrl}
 
 If you didn't create this account, you can safely ignore this email.`;
 
@@ -176,20 +231,20 @@ If you didn't create this account, you can safely ignore this email.`;
         resendMessage.includes(RESEND_TEST_MODE_ERROR)
       ) {
         console.warn(
-          `[auth] Resend test-mode restriction hit for ${user.email}; using logged verification link instead.`,
+          `[auth] Resend test-mode restriction hit for ${maskedEmail}; using logged verification link instead.`,
         );
         return;
       }
 
       console.error(
-        `[auth] Resend rejected verification email to ${user.email}:`,
+        `[auth] Resend rejected verification email to ${maskedEmail}:`,
         error,
       );
       throw new Error(error.message || "Email delivery failed.");
     }
   } catch (error) {
     console.error(
-      `[auth] Failed to send verification email to ${user.email}:`,
+      `[auth] Failed to send verification email to ${maskedEmail}:`,
       error,
     );
     throw new Error(

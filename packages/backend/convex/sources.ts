@@ -49,7 +49,7 @@ export const getSourceProfile = query({
     if (!source) return null;
 
     const safeLimit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)));
-    const recentArticles = await ctx.db
+    const recentArticlesRaw = await ctx.db
       .query("articles")
       .withIndex("by_source_publishedAt", (q) =>
         q.eq("sourceId", args.sourceId),
@@ -59,12 +59,14 @@ export const getSourceProfile = query({
 
     const eventIds = Array.from(
       new Set(
-        recentArticles
+        recentArticlesRaw
           .map((article) => article.eventId)
           .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
       ),
     );
-    const eventRows = await Promise.all(eventIds.map((eventId) => ctx.db.get(eventId)));
+    const eventRows = await Promise.all(
+      eventIds.map((eventId) => ctx.db.get(eventId)),
+    );
     const eventsById = new Map(
       eventRows
         .filter(
@@ -72,6 +74,9 @@ export const getSourceProfile = query({
             event !== null && event.status === "published",
         )
         .map((event) => [event._id, event]),
+    );
+    const recentArticles = recentArticlesRaw.filter((article) =>
+      article.eventId ? eventsById.has(article.eventId) : true,
     );
     const topicRows = await Promise.all(
       Array.from(eventsById.keys()).map(async (eventId) => [

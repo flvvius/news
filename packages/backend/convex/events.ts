@@ -470,15 +470,21 @@ export const getEventBySlug = query({
         ? await ctx.storage.getUrl(shareAsset.storageId)
         : null;
 
-    const articlesWithSources = await Promise.all(
-      articles.map(async (article) => {
-        const source = await ctx.db.get(article.sourceId);
-        return {
-          ...article,
-          source,
-        };
-      }),
+    const sourceIds = Array.from(
+      new Set(articles.map((article) => article.sourceId)),
     );
+    const sourceRows = await Promise.all(
+      sourceIds.map((sourceId) => ctx.db.get(sourceId)),
+    );
+    const sourcesById = new Map(
+      sourceRows
+        .filter((source): source is Doc<"sources"> => source !== null)
+        .map((source) => [source._id, source]),
+    );
+    const articlesWithSources = articles.map((article) => ({
+      ...article,
+      source: sourcesById.get(article.sourceId) ?? null,
+    }));
 
     return {
       event: {

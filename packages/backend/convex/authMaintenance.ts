@@ -1,5 +1,6 @@
-import { internalAction } from "./_generated/server";
-import { components } from "./_generated/api";
+import { v } from "convex/values";
+import { internalAction, internalMutation } from "./_generated/server";
+import { components, internal } from "./_generated/api";
 
 const UNVERIFIED_ACCOUNT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 100;
@@ -11,53 +12,53 @@ type BetterAuthUser = {
   createdAt: number;
 };
 
-async function deleteAppUserData(
-  ctx: any,
-  authUserId: string,
-) {
-  const localUser = await ctx.db
-    .query("users")
-    .withIndex("by_auth_user_id", (q: any) => q.eq("authUserId", authUserId))
-    .unique();
+export const deleteAppUserData = internalMutation({
+  args: { authUserId: v.string() },
+  handler: async (ctx, args) => {
+    const localUser = await ctx.db
+      .query("users")
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", args.authUserId))
+      .unique();
 
-  if (!localUser) {
-    return;
-  }
+    if (!localUser) {
+      return;
+    }
 
-  const userStats = await ctx.db
-    .query("userStats")
-    .withIndex("by_user", (q: any) => q.eq("userId", localUser._id))
-    .unique();
-  if (userStats) {
-    await ctx.db.delete(userStats._id);
-  }
+    const userStats = await ctx.db
+      .query("userStats")
+      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
+      .unique();
+    if (userStats) {
+      await ctx.db.delete(userStats._id);
+    }
 
-  const privateContext = await ctx.db
-    .query("userPrivateContext")
-    .withIndex("by_user", (q: any) => q.eq("userId", localUser._id))
-    .unique();
-  if (privateContext) {
-    await ctx.db.delete(privateContext._id);
-  }
+    const privateContext = await ctx.db
+      .query("userPrivateContext")
+      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
+      .unique();
+    if (privateContext) {
+      await ctx.db.delete(privateContext._id);
+    }
 
-  const userInsights = await ctx.db
-    .query("userInsights")
-    .withIndex("by_user", (q: any) => q.eq("userId", localUser._id))
-    .collect();
-  for (const insight of userInsights) {
-    await ctx.db.delete(insight._id);
-  }
+    const userInsights = await ctx.db
+      .query("userInsights")
+      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
+      .collect();
+    for (const insight of userInsights) {
+      await ctx.db.delete(insight._id);
+    }
 
-  const interactions = await ctx.db
-    .query("interactions")
-    .withIndex("by_user", (q: any) => q.eq("userId", localUser._id))
-    .collect();
-  for (const interaction of interactions) {
-    await ctx.db.delete(interaction._id);
-  }
+    const interactions = await ctx.db
+      .query("interactions")
+      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
+      .collect();
+    for (const interaction of interactions) {
+      await ctx.db.delete(interaction._id);
+    }
 
-  await ctx.db.delete(localUser._id);
-}
+    await ctx.db.delete(localUser._id);
+  },
+});
 
 async function deleteBetterAuthData(
   ctx: any,
@@ -97,6 +98,7 @@ export const cleanupExpiredUnverifiedAccounts = internalAction({
     const cutoff = Date.now() - UNVERIFIED_ACCOUNT_TTL_MS;
     let cursor: string | null = null;
     let deletedCount = 0;
+    let failedCount = 0;
 
     while (true) {
       const batch: any = await ctx.runQuery(components.betterAuth.adapter.findMany, {
@@ -114,9 +116,19 @@ export const cleanupExpiredUnverifiedAccounts = internalAction({
 
       const users = (batch.page ?? []) as BetterAuthUser[];
       for (const authUser of users) {
-        await deleteAppUserData(ctx, authUser._id);
-        await deleteBetterAuthData(ctx, authUser);
-        deletedCount += 1;
+        try {
+          await ctx.runMutation(internal.authMaintenance.deleteAppUserData, {
+            authUserId: authUser._id,
+          });
+          await deleteBetterAuthData(ctx, authUser);
+          deletedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          console.error(
+            `[authMaintenance] Failed to delete user ${authUser._id}:`,
+            error,
+          );
+        }
       }
 
       if (batch.isDone) {
@@ -129,6 +141,6 @@ export const cleanupExpiredUnverifiedAccounts = internalAction({
       }
     }
 
-    return { deletedCount, cutoff };
+    return { deletedCount, failedCount, cutoff };
   },
 });

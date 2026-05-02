@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SITE } from "@/lib/seo";
 
 const ROBOTS_TXT = `User-agent: *
 Allow: /
@@ -7,7 +8,7 @@ Disallow: /dashboard
 Disallow: /api/
 Disallow: /unsubscribe
 
-Sitemap: https://biviant.com/sitemap.xml
+Sitemap: ${SITE.url}/sitemap.xml
 `;
 
 function buildRobotsHeaders() {

@@ -551,6 +551,7 @@ Required or commonly expected by the current code:
 - `CONVEX_URL`
 - `CONVEX_SITE_URL`
 - `SITE_URL`
+- `ALLOWED_ORIGINS` (optional, comma-separated origins allowed for verification links)
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`

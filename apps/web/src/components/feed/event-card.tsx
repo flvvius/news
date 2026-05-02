@@ -131,11 +131,7 @@ const EventCard = ({
     <Link
       to="/event/$slug"
       params={{ slug: event.slug }}
-      state={
-        returnToFeed
-          ? (prev) => ({ ...prev, returnToFeed: true })
-          : undefined
-      }
+      search={returnToFeed ? { returnToFeed: "1" } : undefined}
       className="group block"
     >
       <Card

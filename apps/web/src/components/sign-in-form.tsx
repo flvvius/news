@@ -56,7 +56,7 @@ export default function SignInForm({
         {
           email: value.email,
           password: value.password,
-          callbackURL: redirectTo,
+          callbackURL: verificationCallbackURL,
         },
         {
           onSuccess: () => {

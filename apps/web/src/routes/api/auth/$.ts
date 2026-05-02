@@ -21,6 +21,33 @@ const KNOWN_SCRAPER_UA_PATTERNS = [
   "node-fetch",
 ];
 
+type OriginParts = {
+  protocol: string;
+  hostname: string;
+  port: string;
+};
+
+function normalizeOriginParts(url: URL): OriginParts {
+  const port =
+    url.port ||
+    (url.protocol === "https:" ? "443" : url.protocol === "http:" ? "80" : "");
+  return { protocol: url.protocol, hostname: url.hostname, port };
+}
+
+function matchesAllowedOrigin(value: string, allowed: OriginParts[]) {
+  try {
+    const parsed = normalizeOriginParts(new URL(value));
+    return allowed.some(
+      (allowedOrigin) =>
+        allowedOrigin.protocol === parsed.protocol &&
+        allowedOrigin.hostname === parsed.hostname &&
+        allowedOrigin.port === parsed.port,
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isSuspiciousAuthRequest(request: Request) {
   if (request.method !== "POST") {
     return false;
@@ -40,16 +67,22 @@ function isSuspiciousAuthRequest(request: Request) {
     return true;
   }
 
-  const referer = request.headers.get("referer")?.trim();
-  if (!referer) {
-    return false;
+  const allowedOrigins = [
+    normalizeOriginParts(new URL(origin)),
+    normalizeOriginParts(new URL("http://localhost:3001")),
+    normalizeOriginParts(new URL("http://127.0.0.1:3001")),
+  ];
+  const originHeader = request.headers.get("origin")?.trim();
+  if (originHeader) {
+    return !matchesAllowedOrigin(originHeader, allowedOrigins);
   }
 
-  return !(
-    referer.startsWith(origin) ||
-    referer.startsWith("http://localhost:3001") ||
-    referer.startsWith("http://127.0.0.1:3001")
-  );
+  const referer = request.headers.get("referer")?.trim();
+  if (referer) {
+    return !matchesAllowedOrigin(referer, allowedOrigins);
+  }
+
+  return false;
 }
 
 function forbiddenBotResponse() {

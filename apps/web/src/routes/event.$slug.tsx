@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexMutation } from "@convex-dev/react-query";
+import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,12 @@ import {
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { SITE } from "@/lib/seo";
 
+const searchSchema = z.object({
+  returnToFeed: z.string().optional(),
+});
+
 export const Route = createFileRoute("/event/$slug")({
+  validateSearch: searchSchema,
   loader: async ({ context, params }) => {
     const httpClient = context.convexQueryClient.serverHttpClient;
     try {
@@ -117,13 +123,15 @@ export const Route = createFileRoute("/event/$slug")({
 function EventDetailPage() {
   const { slug } = Route.useParams();
   const loaderData = Route.useLoaderData();
+  const search = Route.useSearch();
   const eventData = useQuery(api.events.getEventBySlug, { slug }) ?? loaderData;
   const { isAuthenticated } = useConvexAuth();
   const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
   const navigate = useNavigate();
+  const returnToFeed = search.returnToFeed === "1";
 
   const handleBackToFeed = () => {
-    if (window.history.state?.returnToFeed) {
+    if (returnToFeed && window.history.length > 1) {
       window.history.back();
       return;
     }
