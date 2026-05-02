@@ -403,6 +403,87 @@ async function resolveBookmarkStatus(
   return latest?.type === "bookmark";
 }
 
+type BookmarkInteraction = Doc<"interactions">;
+type ViewInteraction = Doc<"interactions">;
+
+type DashboardEventPreview = {
+  _id: Id<"events">;
+  slug: string;
+  title: string;
+  imageUrl?: string;
+  summary: string;
+  firstPublishedAt: number;
+  lastUpdatedAt: number;
+  articleCount: number;
+  sources: Array<{
+    _id: Id<"sources">;
+    name: string;
+    logoUrl?: string;
+    baseBias: number;
+    reliabilityScore: number;
+    mbfcCategory?: string;
+  }>;
+};
+
+function getLatestBookmarkInteractionsByEvent(
+  interactions: Doc<"interactions">[],
+): Map<string, BookmarkInteraction> {
+  const latestByEvent = new Map<string, BookmarkInteraction>();
+
+  for (const interaction of interactions) {
+    if (interaction.type !== "bookmark" && interaction.type !== "unbookmark") {
+      continue;
+    }
+
+    if (!latestByEvent.has(interaction.eventId)) {
+      latestByEvent.set(interaction.eventId, interaction);
+    }
+  }
+
+  return latestByEvent;
+}
+
+async function buildDashboardEventPreview(
+  ctx: QueryCtx,
+  eventId: Id<"events">,
+): Promise<DashboardEventPreview | null> {
+  const event = await ctx.db.get(eventId);
+  if (!event || event.status !== "published") {
+    return null;
+  }
+
+  const articles = await ctx.db
+    .query("articles")
+    .withIndex("by_event", (q) => q.eq("eventId", event._id))
+    .collect();
+  const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
+  const sourceRows = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
+
+  return {
+    _id: event._id,
+    slug: event.slug,
+    title: event.title,
+    imageUrl: event.imageUrl,
+    summary:
+      event.perspectiveSummaries?.center ??
+      event.globalImpact ??
+      "Open the event to compare coverage from multiple sources.",
+    firstPublishedAt: event.firstPublishedAt,
+    lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
+    articleCount: articles.length,
+    sources: sourceRows
+      .filter((source) => source !== null)
+      .map((source) => ({
+        _id: source._id,
+        name: source.name,
+        logoUrl: source.logoUrl,
+        baseBias: source.baseBias,
+        reliabilityScore: source.reliabilityScore,
+        mbfcCategory: source.mbfcCategory,
+      })),
+  };
+}
+
 /**
  * Check whether the current user has bookmarked a given event.
  * Returns `false` for unauthenticated users (no error).
@@ -504,18 +585,9 @@ export const getBookmarkedCount = query({
       .order("desc")
       .collect();
 
-    const latestByEvent = new Map<
-      string,
-      (typeof allBookmarkInteractions)[0]
-    >();
-    for (const interaction of allBookmarkInteractions) {
-      if (interaction.type !== "bookmark" && interaction.type !== "unbookmark")
-        continue;
-      const key = interaction.eventId;
-      if (!latestByEvent.has(key)) {
-        latestByEvent.set(key, interaction);
-      }
-    }
+    const latestByEvent = getLatestBookmarkInteractionsByEvent(
+      allBookmarkInteractions,
+    );
 
     let count = 0;
     for (const interaction of latestByEvent.values()) {
@@ -525,6 +597,164 @@ export const getBookmarkedCount = query({
     }
 
     return count;
+  },
+});
+
+export const getDashboardOverview = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      return null;
+    }
+
+    const user = await getUserProfileByAuthUserId(ctx, authUser._id);
+    if (!user) {
+      return null;
+    }
+
+    const stats = await ctx.db
+      .query("userStats")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
+    const [viewInteractions, allBookmarkInteractions] = await Promise.all([
+      ctx.db
+        .query("interactions")
+        .withIndex("by_user_type", (q) =>
+          q.eq("userId", user._id).eq("type", "view"),
+        )
+        .order("desc")
+        .collect() as Promise<ViewInteraction[]>,
+      ctx.db
+        .query("interactions")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .order("desc")
+        .collect(),
+    ]);
+
+    const latestViewByEvent = new Map<string, ViewInteraction>();
+    const visitCountByEvent = new Map<string, number>();
+    const uniqueEventIdsByDay = new Map<number, Set<string>>();
+    const recentBiasCutoff = Date.now() - 7 * DAY_MS;
+    let recentBiasTotal = 0;
+    let recentBiasReads = 0;
+
+    for (const interaction of viewInteractions) {
+      visitCountByEvent.set(
+        interaction.eventId,
+        (visitCountByEvent.get(interaction.eventId) ?? 0) + 1,
+      );
+
+      if (!latestViewByEvent.has(interaction.eventId)) {
+        latestViewByEvent.set(interaction.eventId, interaction);
+      }
+
+      const dayTimestamp = startOfUtcDay(interaction.timestamp);
+      const dayEvents = uniqueEventIdsByDay.get(dayTimestamp) ?? new Set<string>();
+      dayEvents.add(interaction.eventId);
+      uniqueEventIdsByDay.set(dayTimestamp, dayEvents);
+
+      if (interaction.timestamp >= recentBiasCutoff) {
+        recentBiasTotal += interaction.context?.biasRating ?? 0;
+        recentBiasReads += 1;
+      }
+    }
+
+    const recentHistoryEntries = Array.from(latestViewByEvent.values()).slice(
+      0,
+      6,
+    );
+    const historyPreviews = await Promise.all(
+      recentHistoryEntries.map((interaction) =>
+        buildDashboardEventPreview(ctx, interaction.eventId),
+      ),
+    );
+
+    const recentHistory = recentHistoryEntries
+      .map((interaction, index) => {
+        const event = historyPreviews[index];
+        if (!event) return null;
+
+        return {
+          event,
+          lastViewedAt: interaction.timestamp,
+          visitCount: visitCountByEvent.get(interaction.eventId) ?? 1,
+          biasRating: interaction.context?.biasRating ?? 0,
+          sourceReliability: interaction.context?.sourceReliability ?? 0,
+          metadata: {
+            timeSpentSeconds: interaction.metadata?.timeSpentSeconds,
+            scrollDepthPercentage: interaction.metadata?.scrollDepthPercentage,
+            deviceType: interaction.metadata?.deviceType,
+          },
+        };
+      })
+      .filter((entry) => entry !== null);
+
+    const latestBookmarksByEvent = getLatestBookmarkInteractionsByEvent(
+      allBookmarkInteractions,
+    );
+    const activeBookmarks = Array.from(latestBookmarksByEvent.values()).filter(
+      (interaction) => interaction.type === "bookmark",
+    );
+    const bookmarkPreviews = await Promise.all(
+      activeBookmarks
+        .slice(0, 4)
+        .map((interaction) => buildDashboardEventPreview(ctx, interaction.eventId)),
+    );
+
+    const recentBookmarks = activeBookmarks
+      .slice(0, 4)
+      .map((interaction, index) => {
+        const event = bookmarkPreviews[index];
+        if (!event) return null;
+
+        return {
+          event,
+          bookmarkedAt: interaction.timestamp,
+        };
+      })
+      .filter((entry) => entry !== null);
+
+    const today = startOfUtcDay(Date.now());
+    const streakDays = Array.from({ length: 84 }, (_, index) => {
+      const timestamp = today - (83 - index) * DAY_MS;
+      const activeSet = uniqueEventIdsByDay.get(timestamp);
+
+      return {
+        timestamp,
+        readCount: activeSet?.size ?? 0,
+        isToday: timestamp === today,
+      };
+    });
+
+    return {
+      stats: {
+        currentStreak: stats?.currentStreak ?? 0,
+        longestStreak: stats?.longestStreak ?? 0,
+        articlesRead: stats?.articlesRead ?? 0,
+        biasBalance: stats?.biasBalance ?? 0,
+        bookmarkCount: activeBookmarks.length,
+        eventsExplored: latestViewByEvent.size,
+        lastActiveAt: stats?.lastActiveAt,
+      },
+      streakCalendar: {
+        activeDays: streakDays.filter((day) => day.readCount > 0).length,
+        days: streakDays,
+      },
+      weeklyBiasSummary: {
+        reads: recentBiasReads,
+        balance:
+          recentBiasReads > 0
+            ? Math.max(
+                -100,
+                Math.min(100, Math.round((recentBiasTotal / recentBiasReads) * 20)),
+              )
+            : 0,
+      },
+      recentHistory,
+      recentBookmarks,
+    };
   },
 });
 
