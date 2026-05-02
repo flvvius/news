@@ -35,6 +35,8 @@ const INTERACTION_METADATA_VALIDATOR = v.object({
   ),
 });
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /** Resolve the internal users._id for the currently-authenticated user. */
 async function requireUserId(ctx: QueryCtx | MutationCtx) {
   const authUser = await authComponent.safeGetAuthUser(ctx);
@@ -100,6 +102,50 @@ function normalizeInteractionMetadata(
 type InteractionContext = Doc<"interactions">["context"];
 type InteractionMetadata = Doc<"interactions">["metadata"];
 
+function startOfUtcDay(timestamp: number): number {
+  return Math.floor(timestamp / DAY_MS) * DAY_MS;
+}
+
+async function updateUserStatsForView(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  timestamp: number,
+) {
+  const stats = await ctx.db
+    .query("userStats")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  if (!stats) {
+    return;
+  }
+
+  const previousActiveAt = stats.lastActiveAt;
+  const previousDay =
+    previousActiveAt !== undefined ? startOfUtcDay(previousActiveAt) : undefined;
+  const currentDay = startOfUtcDay(timestamp);
+
+  let currentStreak = stats.currentStreak;
+  if (previousDay === undefined) {
+    currentStreak = 1;
+  } else if (currentDay === previousDay) {
+    currentStreak = stats.currentStreak;
+  } else if (currentDay === previousDay + DAY_MS) {
+    currentStreak = stats.currentStreak + 1;
+  } else if (currentDay > previousDay) {
+    currentStreak = 1;
+  }
+
+  await ctx.db.patch(stats._id, {
+    currentStreak,
+    longestStreak: Math.max(stats.longestStreak, currentStreak),
+    articlesRead: stats.articlesRead + 1,
+    lastActiveAt:
+      previousActiveAt === undefined
+        ? timestamp
+        : Math.max(previousActiveAt, timestamp),
+  });
+}
+
 async function resolveInteractionContext(
   ctx: MutationCtx,
   args: {
@@ -151,6 +197,7 @@ async function recordInteraction(
     articleId: args.articleId,
     context: args.context,
   });
+  const interactionTimestamp = args.timestamp ?? Date.now();
 
   await ctx.db.insert("interactions", {
     userId: args.userId,
@@ -159,8 +206,12 @@ async function recordInteraction(
     type: args.type,
     context,
     metadata: normalizeInteractionMetadata(args.metadata),
-    timestamp: args.timestamp ?? Date.now(),
+    timestamp: interactionTimestamp,
   });
+
+  if (args.type === "view") {
+    await updateUserStatsForView(ctx, args.userId, interactionTimestamp);
+  }
 }
 
 // ---------------------------------------------------------------------------

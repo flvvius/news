@@ -10,7 +10,7 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "./ui/button";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, Flame, LogOut, User } from "lucide-react";
 
 export default function UserMenu() {
   const user = useQuery(api.user.getCurrentUser);
@@ -57,6 +57,10 @@ export default function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
+          <Flame className="size-4" />
+          {user?.stats.currentStreak ?? 0} day streak
+        </DropdownMenuItem>
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <User className="size-4" />
           Profile (Coming soon)

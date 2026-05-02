@@ -308,6 +308,7 @@ function AuthenticatedDashboard() {
 
 function AuthorizedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
+  const bookmarkedEvents = useQuery(api.interactions.getBookmarkedEvents);
   const privateData = useQuery(api.privateData.get);
   const isAdmin = useQuery(api.user.isCurrentUserAdmin);
   const waitlistOverview = useQuery(
@@ -446,6 +447,10 @@ function AuthorizedDashboard() {
   const userName = currentUser?.profile?.name || currentUser?.email || "User";
   const userEmail = currentUser?.email;
   const waitlistStats = waitlistOverview?.stats;
+  const readingStreak = currentUser?.stats.currentStreak ?? 0;
+  const longestStreak = currentUser?.stats.longestStreak ?? 0;
+  const articlesRead = currentUser?.stats.articlesRead ?? 0;
+  const bookmarkCount = bookmarkedEvents?.length ?? 0;
 
   const handleInviteNextPendingUsers = (count: number) => {
     inviteNextPendingUsers.reset();
@@ -523,9 +528,13 @@ function AuthorizedDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-5">
-                <div className="text-3xl font-bold">0 days</div>
+                <div className="text-3xl font-bold">
+                  {readingStreak} {readingStreak === 1 ? "day" : "days"}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Start reading to build your streak
+                  {readingStreak > 0
+                    ? `Longest streak: ${longestStreak} ${longestStreak === 1 ? "day" : "days"}`
+                    : "Read one event a day to keep it alive"}
                 </p>
               </CardContent>
             </Card>
@@ -540,7 +549,7 @@ function AuthorizedDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-5">
-                <div className="text-3xl font-bold">0</div>
+                <div className="text-3xl font-bold">{bookmarkCount}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Saved for later
                 </p>
@@ -557,8 +566,10 @@ function AuthorizedDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-5">
-                <div className="text-3xl font-bold">0</div>
-                <p className="text-xs text-muted-foreground mt-1">This week</p>
+                <div className="text-3xl font-bold">{articlesRead}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Total tracked reads
+                </p>
               </CardContent>
             </Card>
           </div>
