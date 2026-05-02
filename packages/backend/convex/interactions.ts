@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
+import { normalizeEmail } from "./lib/betaAccess";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,18 +38,68 @@ const INTERACTION_METADATA_VALIDATOR = v.object({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Resolve the internal users._id for the currently-authenticated user. */
-async function requireUserId(ctx: QueryCtx | MutationCtx) {
+async function getUserProfileByAuthUserId(
+  ctx: QueryCtx | MutationCtx,
+  authUserId: string,
+) {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUserId))
+    .unique();
+}
+
+/** Recreate missing app-level user rows for legacy auth accounts on writes. */
+async function ensureUserProfileForAuthUser(
+  ctx: MutationCtx,
+  authUser: {
+    _id: string;
+    email: string;
+    name?: string | null;
+    image?: string | null;
+  },
+) {
+  const existingUser = await getUserProfileByAuthUserId(ctx, authUser._id);
+  if (existingUser) {
+    return existingUser;
+  }
+
+  const userId = await ctx.db.insert("users", {
+    authUserId: authUser._id,
+    email: normalizeEmail(authUser.email),
+    profile: {
+      name: authUser.name ?? undefined,
+      avatar: authUser.image ?? undefined,
+    },
+  });
+
+  await ctx.db.insert("userStats", {
+    userId,
+    currentStreak: 0,
+    longestStreak: 0,
+    articlesRead: 0,
+    biasBalance: 0,
+  });
+
+  return await ctx.db.get(userId);
+}
+
+async function requireUserId(ctx: MutationCtx) {
   const authUser = await authComponent.safeGetAuthUser(ctx);
   if (!authUser) throw new ConvexError("Not authenticated");
 
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
-    .unique();
+  const user = await ensureUserProfileForAuthUser(ctx, authUser);
   if (!user) throw new ConvexError("User profile not found");
 
   return user._id;
+}
+
+/** Best-effort variant for analytics paths that should not hard-fail UX. */
+async function getOptionalUserId(ctx: MutationCtx) {
+  const authUser = await authComponent.safeGetAuthUser(ctx);
+  if (!authUser) return null;
+
+  const user = await ensureUserProfileForAuthUser(ctx, authUser);
+  return user?._id ?? null;
 }
 
 function clampNumber(
@@ -350,10 +401,7 @@ export const isEventBookmarked = query({
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) return false;
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
-      .unique();
+    const user = await getUserProfileByAuthUserId(ctx, authUser._id);
     if (!user) return false;
 
     return resolveBookmarkStatus(ctx, user._id, args.eventId);
@@ -370,10 +418,7 @@ export const getBookmarkedEvents = query({
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) return [];
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
-      .unique();
+    const user = await getUserProfileByAuthUserId(ctx, authUser._id);
     if (!user) return [];
 
     // Collect all bookmark + unbookmark interactions, then resolve per-event.
@@ -445,7 +490,10 @@ export const logInteraction = mutation({
     metadata: v.optional(INTERACTION_METADATA_VALIDATOR),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = await getOptionalUserId(ctx);
+    if (!userId) {
+      return { logged: false as const, reason: "not_authenticated" };
+    }
     const interactionType = args.type as Doc<"interactions">["type"];
 
     if (
@@ -465,5 +513,7 @@ export const logInteraction = mutation({
       context: args.context,
       metadata: args.metadata,
     });
+
+    return { logged: true as const };
   },
 });

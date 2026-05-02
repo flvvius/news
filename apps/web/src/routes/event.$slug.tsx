@@ -387,6 +387,8 @@ function AuthorizedEventDetailPage({ slug }: { slug: string }) {
             Math.round((Date.now() - startedAt) / 1000),
           ),
         },
+      }).catch((error) => {
+        console.debug("Skipping event view interaction log:", error);
       });
     };
   }, [eventData?.event?._id, isAuthenticated]);
