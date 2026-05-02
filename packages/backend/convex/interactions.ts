@@ -99,7 +99,7 @@ function normalizeInteractionMetadata(
   return normalized;
 }
 
-type InteractionContext = Doc<"interactions">["context"];
+type InteractionContext = NonNullable<Doc<"interactions">["context"]>;
 type InteractionMetadata = Doc<"interactions">["metadata"];
 
 function startOfUtcDay(timestamp: number): number {
@@ -110,6 +110,7 @@ async function updateUserStatsForView(
   ctx: MutationCtx,
   userId: Id<"users">,
   timestamp: number,
+  context: InteractionContext,
 ) {
   const stats = await ctx.db
     .query("userStats")
@@ -135,10 +136,22 @@ async function updateUserStatsForView(
     currentStreak = 1;
   }
 
+  const clampedBias = Math.max(-5, Math.min(5, context.biasRating));
+  const previousReads = stats.articlesRead;
+  const previousAverageBias = previousReads > 0 ? stats.biasBalance / 20 : 0;
+  const nextReads = previousReads + 1;
+  const nextAverageBias =
+    (previousAverageBias * previousReads + clampedBias) / nextReads;
+  const nextBiasBalance = Math.max(
+    -100,
+    Math.min(100, Math.round(nextAverageBias * 20)),
+  );
+
   await ctx.db.patch(stats._id, {
     currentStreak,
     longestStreak: Math.max(stats.longestStreak, currentStreak),
-    articlesRead: stats.articlesRead + 1,
+    articlesRead: nextReads,
+    biasBalance: nextBiasBalance,
     lastActiveAt:
       previousActiveAt === undefined
         ? timestamp
@@ -210,7 +223,12 @@ async function recordInteraction(
   });
 
   if (args.type === "view") {
-    await updateUserStatsForView(ctx, args.userId, interactionTimestamp);
+    await updateUserStatsForView(
+      ctx,
+      args.userId,
+      interactionTimestamp,
+      context,
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import UserMenu from "@/components/user-menu";
+import BiasBalanceMeter from "@/components/bias-balance-meter";
 import EarlyAccessApplyCard from "@/components/early-access-apply-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -450,6 +451,7 @@ function AuthorizedDashboard() {
   const readingStreak = currentUser?.stats.currentStreak ?? 0;
   const longestStreak = currentUser?.stats.longestStreak ?? 0;
   const articlesRead = currentUser?.stats.articlesRead ?? 0;
+  const biasBalance = currentUser?.stats.biasBalance ?? 0;
   const bookmarkCount = bookmarkedEvents?.length ?? 0;
 
   const handleInviteNextPendingUsers = (count: number) => {
@@ -517,7 +519,7 @@ function AuthorizedDashboard() {
           </header>
 
           {/* Stats Grid */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Card className="overflow-hidden rounded-[1.2rem] border-border/70 bg-card/80 py-0">
               <CardHeader className="border-b border-border/70 bg-muted/30 py-4 px-5">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -536,6 +538,20 @@ function AuthorizedDashboard() {
                     ? `Longest streak: ${longestStreak} ${longestStreak === 1 ? "day" : "days"}`
                     : "Read one event a day to keep it alive"}
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden rounded-[1.2rem] border-border/70 bg-card/80 py-0 sm:col-span-2 xl:col-span-1">
+              <CardHeader className="border-b border-border/70 bg-muted/30 py-4 px-5">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5M12 3.75v16.5" />
+                  </svg>
+                  Bias Balance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 py-5">
+                <BiasBalanceMeter value={biasBalance} />
               </CardContent>
             </Card>
 
