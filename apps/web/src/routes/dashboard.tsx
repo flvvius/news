@@ -31,7 +31,7 @@ import {
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional(),
   redirect: z.string().optional(),
-  verified: z.string().optional(),
+  verified: z.union([z.string(), z.number()]).optional(),
 });
 
 function formatReadDuration(seconds?: number) {
@@ -83,10 +83,11 @@ function RouteComponent() {
       ? search.redirect
       : "/feed";
   const hasShownVerifiedToastRef = useRef(false);
-  const showSignIn = search.mode !== "signup" || search.verified === "1";
+  const isVerified = String(search.verified) === "1";
+  const showSignIn = search.mode !== "signup" || isVerified;
 
   useEffect(() => {
-    if (search.verified !== "1" || hasShownVerifiedToastRef.current) {
+    if (!isVerified || hasShownVerifiedToastRef.current) {
       return;
     }
 
@@ -100,7 +101,7 @@ function RouteComponent() {
       }),
       replace: true,
     });
-  }, [navigate, search.verified]);
+  }, [isVerified, navigate]);
 
   return (
     <>
@@ -318,7 +319,6 @@ function AuthorizedDashboard() {
   };
 
   const userName = currentUser?.profile?.name || currentUser?.email || "User";
-  const userEmail = currentUser?.email;
   const readingStreak =
     dashboardOverview?.stats.currentStreak ??
     currentUser?.stats.currentStreak ??
