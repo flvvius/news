@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import type { InteractionContextSnapshot } from "@/lib/interaction-tracking";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ type BookmarkButtonProps = {
   /** Render a smaller variant (for cards). */
   size?: "default" | "sm";
   className?: string;
+  redirectTo?: AuthRedirectPath;
 };
 
 export default function BookmarkButton({
@@ -24,6 +26,7 @@ export default function BookmarkButton({
   interactionContext,
   size = "default",
   className,
+  redirectTo = "/feed",
 }: BookmarkButtonProps) {
   const { isAuthenticated } = useConvexAuth();
 
@@ -40,9 +43,10 @@ export default function BookmarkButton({
   const lastClickRef = useRef(0);
 
   // Reactive bookmark status — returns false for unauthenticated users
-  const isBookmarked = useQuery(api.interactions.isEventBookmarked, {
-    eventId,
-  });
+  const isBookmarked = useQuery(
+    api.interactions.isEventBookmarked,
+    isAuthenticated ? { eventId } : "skip",
+  );
 
   const toggle = useMutation({
     mutationFn: useConvexMutation(api.interactions.toggleBookmark),
@@ -70,7 +74,7 @@ export default function BookmarkButton({
           action: {
             label: "Sign in",
             onClick: () => {
-              window.location.href = "/dashboard";
+              window.location.href = `/dashboard?mode=signin&redirect=${encodeURIComponent(redirectTo)}`;
             },
           },
         });

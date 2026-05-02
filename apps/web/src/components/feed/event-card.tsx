@@ -38,6 +38,7 @@ type EventCardProps = {
   maxSources?: number;
   variant?: "default" | "feature";
   searchQuery?: string;
+  returnToFeed?: boolean;
 };
 
 function escapeRegExp(value: string) {
@@ -78,7 +79,9 @@ function highlightTitle(title: string, query?: string): ReactNode {
 
 type BiasBucket = "left" | "center" | "right";
 
-function getBiasBucket(source: NonNullable<EventCardProps["event"]["sources"]>[number]): BiasBucket {
+function getBiasBucket(
+  source: NonNullable<EventCardProps["event"]["sources"]>[number],
+): BiasBucket {
   const category = source.mbfcCategory?.toLowerCase();
   if (category === "left" || category === "left-center") return "left";
   if (category === "right" || category === "right-center") return "right";
@@ -100,6 +103,7 @@ const EventCard = ({
   maxSources = 5,
   variant = "default",
   searchQuery,
+  returnToFeed = false,
 }: EventCardProps) => {
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
@@ -129,6 +133,7 @@ const EventCard = ({
     <Link
       to="/event/$slug"
       params={{ slug: event.slug }}
+      search={returnToFeed ? { returnToFeed: "1" } : undefined}
       className="group block"
     >
       <Card
@@ -200,6 +205,7 @@ const EventCard = ({
                   eventId={event._id}
                   interactionContext={interactionContext}
                   size="sm"
+                  redirectTo={`/event/${event.slug}`}
                   className="rounded-full border border-border/80 bg-background/80"
                 />
               </div>

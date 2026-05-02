@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { requireBetaAccess } from "./lib/betaAccess";
 import type { Doc, Id } from "./_generated/dataModel";
 
 function sourceBiasLabel(source: Doc<"sources">): string {
@@ -23,10 +22,7 @@ function sourceBiasLabel(source: Doc<"sources">): string {
   return "center";
 }
 
-async function getEventTopics(
-  ctx: QueryCtx,
-  eventId: Id<"events">,
-) {
+async function getEventTopics(ctx: QueryCtx, eventId: Id<"events">) {
   const rows = await ctx.db
     .query("eventTopics")
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -46,13 +42,11 @@ export const getSourceProfile = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
     const source = await ctx.db.get(args.sourceId);
     if (!source) return null;
 
     const safeLimit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)));
-    const recentArticles = await ctx.db
+    const recentArticlesRaw = await ctx.db
       .query("articles")
       .withIndex("by_source_publishedAt", (q) =>
         q.eq("sourceId", args.sourceId),
@@ -62,12 +56,14 @@ export const getSourceProfile = query({
 
     const eventIds = Array.from(
       new Set(
-        recentArticles
+        recentArticlesRaw
           .map((article) => article.eventId)
           .filter((eventId): eventId is Id<"events"> => eventId !== undefined),
       ),
     );
-    const eventRows = await Promise.all(eventIds.map((eventId) => ctx.db.get(eventId)));
+    const eventRows = await Promise.all(
+      eventIds.map((eventId) => ctx.db.get(eventId)),
+    );
     const eventsById = new Map(
       eventRows
         .filter(
@@ -76,11 +72,14 @@ export const getSourceProfile = query({
         )
         .map((event) => [event._id, event]),
     );
+    const recentArticles = recentArticlesRaw.filter((article) =>
+      article.eventId ? eventsById.has(article.eventId) : true,
+    );
     const topicRows = await Promise.all(
-      Array.from(eventsById.keys()).map(async (eventId) => [
-        eventId,
-        await getEventTopics(ctx, eventId),
-      ] as const),
+      Array.from(eventsById.keys()).map(
+        async (eventId) =>
+          [eventId, await getEventTopics(ctx, eventId)] as const,
+      ),
     );
     const topicsByEventId = new Map(topicRows);
 
@@ -120,7 +119,7 @@ export const getSourceProfile = query({
       },
       articles: recentArticles.map((article) => {
         const event = article.eventId
-          ? eventsById.get(article.eventId) ?? null
+          ? (eventsById.get(article.eventId) ?? null)
           : null;
         return {
           _id: article._id,
@@ -148,5 +147,26 @@ export const getSourceProfile = query({
         };
       }),
     };
+  },
+});
+
+export const getSitemapSources = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(
+      Math.max(Math.floor(args.limit ?? 5000), 1),
+      10000,
+    );
+    const sources = await ctx.db.query("sources").take(safeLimit);
+
+    return sources.map((source) => ({
+      sourceId: source._id,
+      lastModifiedAt:
+        source.rollingBiasUpdatedAt ??
+        source.mbfcLastChecked ??
+        source._creationTime,
+    }));
   },
 });

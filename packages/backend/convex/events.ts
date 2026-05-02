@@ -3,7 +3,6 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireBetaAccess } from "./lib/betaAccess";
 
 const RANKED_CURSOR_PREFIX = "ranked:";
 const TRENDING_SCAN_LIMIT = 250;
@@ -280,7 +279,6 @@ export const getPublishedEvents = query({
     sort: v.optional(FEED_SORT_VALIDATOR),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
     const sort = args.sort ?? "recent";
 
     let events;
@@ -333,8 +331,6 @@ export const searchPublishedEvents = query({
     topicId: v.optional(v.id("topics")),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
     const normalizedQuery = args.query.trim();
     if (normalizedQuery.length < 2) {
       return [];
@@ -363,8 +359,6 @@ export const getPublishedEventsByTopicIds = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
     const uniqueTopicIds = Array.from(new Set(args.topicIds));
     if (uniqueTopicIds.length === 0) {
       return [];
@@ -424,7 +418,29 @@ export const getPublicPublishedEventsPreview = query({
   },
 });
 
-export const getEventBySlugPreview = query({
+export const getSitemapPublishedEvents = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(
+      Math.max(Math.floor(args.limit ?? 5000), 1),
+      10000,
+    );
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(safeLimit);
+
+    return events.map((event) => ({
+      slug: event.slug,
+      lastModifiedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
+    }));
+  },
+});
+
+export const getEventBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
     const event = await ctx.db
@@ -433,79 +449,6 @@ export const getEventBySlugPreview = query({
       .unique();
 
     if (!event || event.status !== "published") {
-      return null;
-    }
-
-    const eventTopicRows = await ctx.db
-      .query("eventTopics")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .collect();
-    const topicIds = eventTopicRows.map((r) => r.topicId);
-    const topics = (
-      await Promise.all(topicIds.map((topicId) => ctx.db.get(topicId)))
-    ).filter((topic) => topic !== null);
-
-    const articles = await ctx.db
-      .query("articles")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .collect();
-
-    const uniqueSourceIds = Array.from(
-      new Set(articles.map((article) => article.sourceId)),
-    );
-    const sources = (
-      await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
-    ).filter((source) => source !== null);
-    const shareAsset = await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .order("desc")
-      .first();
-    const shareImageUrl =
-      shareAsset?.status === "ready" && shareAsset.storageId
-        ? await ctx.storage.getUrl(shareAsset.storageId)
-        : null;
-
-    return {
-      event: {
-        _id: event._id,
-        slug: event.slug,
-        title: event.title,
-        shareImageUrl: shareImageUrl ?? undefined,
-        shareImageWidth:
-          shareAsset?.status === "ready" ? shareAsset.width : undefined,
-        shareImageHeight:
-          shareAsset?.status === "ready" ? shareAsset.height : undefined,
-        imageUrl: event.imageUrl,
-        imageAlt: event.imageAlt,
-        firstPublishedAt: event.firstPublishedAt,
-        lastUpdatedAt: event.lastUpdatedAt,
-        topics: topics.map((topic) => ({
-          _id: topic._id,
-          displayName: topic.displayName,
-        })),
-        articleCount: articles.length,
-        sources,
-        globalImpact: event.globalImpact,
-        perspectiveSummaries: {
-          center: event.perspectiveSummaries?.center,
-        },
-      },
-    };
-  },
-});
-
-export const getEventBySlug = query({
-  args: { slug: v.string() },
-  handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
-    const event = await ctx.db
-      .query("events")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .unique();
-
-    if (!event) {
       return null;
     }
 
@@ -520,19 +463,50 @@ export const getEventBySlug = query({
       .query("articles")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
       .collect();
+    const shareAsset = await ctx.db
+      .query("eventShareAssets")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .order("desc")
+      .first();
+    const shareImageUrl =
+      shareAsset?.status === "ready" && shareAsset.storageId
+        ? await ctx.storage.getUrl(shareAsset.storageId)
+        : null;
 
-    const articlesWithSources = await Promise.all(
-      articles.map(async (article) => {
-        const source = await ctx.db.get(article.sourceId);
-        return {
-          ...article,
-          source,
-        };
-      }),
+    const sourceIds = Array.from(
+      new Set(articles.map((article) => article.sourceId)),
     );
+    const sourceRows = await Promise.all(
+      sourceIds.map((sourceId) => ctx.db.get(sourceId)),
+    );
+    const sourcesById = new Map(
+      sourceRows
+        .filter((source): source is Doc<"sources"> => source !== null)
+        .map((source) => [source._id, source]),
+    );
+    const articlesWithSources = articles.map((article) => ({
+      ...article,
+      source: sourcesById.get(article.sourceId) ?? null,
+    }));
 
     return {
-      event: { ...event, topicIds },
+      event: {
+        _id: event._id,
+        slug: event.slug,
+        title: event.title,
+        imageUrl: event.imageUrl,
+        imageAlt: event.imageAlt,
+        perspectiveSummaries: event.perspectiveSummaries,
+        globalImpact: event.globalImpact,
+        firstPublishedAt: event.firstPublishedAt,
+        lastUpdatedAt: event.lastUpdatedAt,
+        topicIds,
+        shareImageUrl: shareImageUrl ?? undefined,
+        shareImageWidth:
+          shareAsset?.status === "ready" ? shareAsset.width : undefined,
+        shareImageHeight:
+          shareAsset?.status === "ready" ? shareAsset.height : undefined,
+      },
       articles: articlesWithSources,
     };
   },

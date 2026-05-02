@@ -9,23 +9,61 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import BiasIndicator from "@/components/bias-indicator";
-import EarlyAccessRequired from "@/components/early-access-required";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
-  head: () => ({
-    meta: [
-      { title: `Source Profile — ${SITE.name}` },
-      {
-        name: "description",
-        content:
-          "Review source bias, reliability, credibility metadata, and recent articles on Biviant.",
-      },
-    ],
-  }),
+  loader: async ({ context, params }) => {
+    const trimmedSourceId = params.sourceId.trim();
+    if (!/^[a-z0-9]{16,64}$/i.test(trimmedSourceId)) {
+      return null;
+    }
+
+    const args = {
+      sourceId: trimmedSourceId as Id<"sources">,
+      limit: 60,
+    };
+    const httpClient = context.convexQueryClient.serverHttpClient;
+
+    try {
+      if (httpClient) {
+        return await httpClient.query(api.sources.getSourceProfile, args);
+      }
+
+      return await context.convexClient.query(api.sources.getSourceProfile, args);
+    } catch (error) {
+      console.error(
+        `[Route loader] Failed to load source profile (${params.sourceId}):`,
+        error,
+      );
+      return null;
+    }
+  },
+  head: ({ loaderData, params }) => {
+    const sourceName = loaderData?.source.name ?? "Source Profile";
+    const title = `${sourceName} — ${SITE.name}`;
+    const description = loaderData
+      ? `Review ${sourceName}'s bias, reliability, credibility metadata, and recent coverage on ${SITE.name}.`
+      : "Review source bias, reliability, credibility metadata, and recent articles on Biviant.";
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:site_name", content: SITE.name },
+        { property: "og:type", content: "website" },
+        { property: "og:description", content: description },
+        { property: "og:url", content: `${SITE.url}/source/${params.sourceId}` },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+      ],
+      links: [{ rel: "canonical", href: `${SITE.url}/source/${params.sourceId}` }],
+    };
+  },
   component: SourceProfilePage,
 });
 
@@ -58,33 +96,8 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 function SourceProfilePage() {
-  const access = useQuery(api.user.getCurrentUserAccess);
   const { sourceId } = Route.useParams();
   const parsedSourceId = parseSourceId(sourceId);
-
-  if (access === undefined) {
-    return (
-      <div className="container mx-auto max-w-5xl px-4 py-8">
-        <div
-          role="status"
-          aria-live="polite"
-          className="text-sm text-muted-foreground"
-        >
-          Loading...
-        </div>
-      </div>
-    );
-  }
-
-  if (!access.hasBetaAccess) {
-    return (
-      <EarlyAccessRequired
-        access={access}
-        redirectTo={`/source/${sourceId}`}
-        surfaceName="Source profiles"
-      />
-    );
-  }
 
   if (!parsedSourceId) {
     return <InvalidSourceId />;
@@ -94,10 +107,12 @@ function SourceProfilePage() {
 }
 
 function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
-  const data = useQuery(api.sources.getSourceProfile, {
+  const loaderData = Route.useLoaderData();
+  const queryData = useQuery(api.sources.getSourceProfile, {
     sourceId,
     limit: 60,
   });
+  const data = queryData ?? loaderData;
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });

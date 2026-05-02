@@ -130,4 +130,16 @@ crons.interval(
   {},
 );
 
+// ---------------------------------------------------------------------------
+// Unverified Auth Account Cleanup — Daily
+// ---------------------------------------------------------------------------
+// Deletes auth/app user rows for email/password accounts that never verified
+// within 7 days, keeping the user tables from filling with junk.
+crons.daily(
+  "cleanup-expired-unverified-accounts",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.authMaintenance.cleanupExpiredUnverifiedAccounts,
+  {},
+);
+
 export default crons;

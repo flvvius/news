@@ -8,8 +8,8 @@ This README is intentionally written for both humans and AI agents. It describes
 
 Biviant is a bias-aware news product with:
 
-- A web app for a landing page, feed, event detail pages, auth, bookmarks, and waitlist capture
-- A Convex backend for auth, data, ingestion, enrichment, config, waitlist, email, and interaction logging
+- A web app for a landing page, feed, event detail pages, auth, and bookmarks
+- A Convex backend for auth, data, ingestion, enrichment, config, email, and interaction logging
 - An Expo native app that currently acts as a lightweight auth/connectivity shell rather than a full mobile product
 
 The product direction is:
@@ -35,14 +35,12 @@ The current repo is in a transitional state:
 - Monorepo with `pnpm` workspaces and Turbo
 - Web app with:
   - Landing page
-  - Waitlist signup
   - Feed page
   - Event detail page
   - Auth page
   - Bookmarks page
-  - Unsubscribe page
 - Better Auth + Convex auth integration
-- Convex schema for topics, sources, events, articles, users, interactions, waitlist, config, AI usage, and pipeline metadata
+- Convex schema for topics, sources, events, articles, users, interactions, config, AI usage, and pipeline metadata
 - RSS ingestion pipeline with:
   - feed fetching
   - lightweight RSS/Atom parsing
@@ -54,7 +52,7 @@ The current repo is in a transitional state:
 - Article embedding pipeline using OpenAI `text-embedding-3-small`
 - AI usage logging and budget enforcement
 - Bookmarking via interaction records
-- Waitlist email support via Resend
+- Verification email support via Resend
 - Seed data for demo/dev flows
 
 ### Partially implemented
@@ -109,12 +107,11 @@ Primary product surface today.
 
 Important routes:
 
-- [`/`](./apps/web/src/routes/index.tsx): marketing landing page + waitlist CTA + preview events
+- [`/`](./apps/web/src/routes/index.tsx): marketing landing page + auth CTA + preview events
 - [`/feed`](./apps/web/src/routes/feed.tsx): paginated published events feed with topic filters
 - [`/event/$slug`](./apps/web/src/routes/event.$slug.tsx): event detail view with summaries and source articles
 - [`/dashboard`](./apps/web/src/routes/dashboard.tsx): auth entry and lightweight authenticated dashboard
 - [`/bookmarks`](./apps/web/src/routes/bookmarks.tsx): authenticated bookmarked events
-- [`/unsubscribe`](./apps/web/src/routes/unsubscribe.tsx): email unsubscribe landing flow
 - [`/api/auth/$`](./apps/web/src/routes/api/auth/$.ts): Better Auth HTTP route passthrough
 
 Important UI components:
@@ -140,13 +137,13 @@ What it does not currently do:
 
 - Render the news feed
 - Render event detail pages
-- Support bookmarks or waitlist flows
+- Support bookmarks or other account-only web flows
 - Match the web feature set
 
 Important entry points:
 
 - [`app/_layout.tsx`](./apps/native/app/_layout.tsx)
-- [`app/(drawer)/index.tsx`](./apps/native/app/(drawer)/index.tsx)
+- [`app/(drawer)/index.tsx`](<./apps/native/app/(drawer)/index.tsx>)
 - [`components/sign-in.tsx`](./apps/native/components/sign-in.tsx)
 - [`components/sign-up.tsx`](./apps/native/components/sign-up.tsx)
 
@@ -182,8 +179,7 @@ This is the Convex backend package and the most important backend logic in the r
 ### Product support
 
 - [`interactions.ts`](./packages/backend/convex/interactions.ts): bookmark toggle, bookmark queries, generic interaction logging
-- [`waitlist.ts`](./packages/backend/convex/waitlist.ts): waitlist signup, unsubscribe, admin stats
-- [`emails.ts`](./packages/backend/convex/emails.ts): welcome/invite email sending via Resend
+- [`emails.ts`](./packages/backend/convex/emails.ts): transactional email sending via Resend
 - [`config.ts`](./packages/backend/convex/config.ts): runtime config store and pipeline pause toggle
 - [`aiBudget.ts`](./packages/backend/convex/aiBudget.ts): AI spend checks and usage logging
 - [`healthCheck.ts`](./packages/backend/convex/healthCheck.ts): simple liveness query
@@ -204,11 +200,11 @@ The landing page is both a marketing page and a thin product preview.
 It currently includes:
 
 - product positioning copy
-- waitlist signup form
+- auth call-to-action (sign in / sign up)
 - a preview of published events from Convex
 - SEO metadata and structured data
 
-The waitlist form writes to `waitlist` and optionally schedules a welcome email if `RESEND_API_KEY` is configured.
+The auth call-to-action routes to `/dashboard` for sign-in/sign-up; there is no waitlist gating.
 
 #### Feed page
 
@@ -256,14 +252,6 @@ The bookmark system currently supports:
 - dedup/cooldown behavior to avoid excessive writes
 - bookmarked event listing for the current user
 
-#### Unsubscribe
-
-The unsubscribe route:
-
-- reads `email` from the URL
-- calls the Convex mutation
-- marks the waitlist record as `unsubscribed`
-
 ## Backend Data Model
 
 The data model is centered around `events`, but the ingestion system currently produces `articles` first.
@@ -282,7 +270,6 @@ Main tables:
 - `userPrivateContext`
 - `userInsights`
 - `interactions`
-- `waitlist`
 - `ingestionMeta`
 - `config`
 - `aiUsage`
@@ -454,30 +441,14 @@ Important files:
 - [`apps/web/src/lib/auth-client.ts`](./apps/web/src/lib/auth-client.ts)
 - [`apps/native/lib/auth-client.ts`](./apps/native/lib/auth-client.ts)
 
-## Waitlist + Email System
+## Email System
 
-The waitlist system is real and usable today.
-
-Current behavior:
-
-- stores email, optional name, queue position, and status
-- prevents duplicate signup rows
-- supports resubscribe from `unsubscribed`
-- optionally sends welcome email on signup
-- supports unsubscribe links
-- includes an admin-only waitlist stats query
-
-Email sending:
-
-- uses Resend
-- includes unsubscribe headers and unsubscribe URL
-- uses runtime config overrides for sender/reply-to/address/unsubscribe base URL
+Email delivery uses Resend and currently supports verification and other transactional messages.
 
 Important files:
 
-- [`packages/backend/convex/waitlist.ts`](./packages/backend/convex/waitlist.ts)
+- [`packages/backend/convex/auth.ts`](./packages/backend/convex/auth.ts)
 - [`packages/backend/convex/emails.ts`](./packages/backend/convex/emails.ts)
-- [`apps/web/src/routes/unsubscribe.tsx`](./apps/web/src/routes/unsubscribe.tsx)
 
 ## Runtime Config System
 
@@ -495,7 +466,6 @@ Examples of config-driven behavior:
 - feed page size
 - landing preview count
 - event card source count
-- waitlist toast timeout
 - bookmark cooldown
 - pipeline pause flag
 
@@ -551,6 +521,7 @@ Required or commonly expected by the current code:
 - `CONVEX_URL`
 - `CONVEX_SITE_URL`
 - `SITE_URL`
+- `ALLOWED_ORIGINS` (optional, comma-separated origins allowed for verification links)
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
@@ -641,6 +612,7 @@ Do not expect ingested articles to automatically become live feed events yet.
 - There is no substantial automated test suite in this repo right now.
 - The native app is not feature-complete.
 - Some backend tables are designed for later phases and are not fully exercised by current runtime flows.
+- Legacy waitlist/unsubscribe code remains in the repo but is not part of the current product flow.
 - `packages/backend/convex/README.md` is still the default Convex starter doc and is not authoritative for this project.
 
 ## For AI Agents
