@@ -5,6 +5,7 @@ export type AuthRedirectPath =
   | "/feed"
   | "/unsubscribe"
   | "/api/auth/$"
+  | `/source/${string}`
   | `/event/${string}`;
 
 export function isAuthRedirectPath(value: string): value is AuthRedirectPath {
@@ -19,6 +20,7 @@ export function isAuthRedirectPath(value: string): value is AuthRedirectPath {
     value === "/feed" ||
     value === "/unsubscribe" ||
     value === "/api/auth/$" ||
+    value.startsWith("/source/") ||
     value.startsWith("/event/")
   );
 }

@@ -3,254 +3,35 @@ import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { SITE } from "@/lib/seo";
 import { useQuery } from "convex/react";
-import { useMutation } from "@tanstack/react-query";
-import { useConvexMutation } from "@convex-dev/react-query";
+import { Link } from "@tanstack/react-router";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ArrowRight, Globe, Newspaper, Shield, Sparkles } from "lucide-react";
 
-// Unified waitlist form - single component with size variants
-function WaitlistForm({
+function LandingActions({
   className,
-  size = "default",
 }: {
   className?: string;
-  size?: "compact" | "default" | "large";
 }) {
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [message, setMessage] = useState("");
-  const [showName, setShowName] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const toastDismissConfig = useQuery(api.config.get, {
-    key: "waitlist_toast_dismiss_ms",
-  });
-  const rawDismiss = Number(toastDismissConfig?.value);
-  const toastDismissMs = Number.isFinite(rawDismiss)
-    ? Math.max(1, Math.floor(rawDismiss))
-    : 10_000;
-
-  const addToWaitlist = useMutation({
-    mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
-    onSuccess: (result) => {
-      if (result.alreadyExists) {
-        setMessage(
-          `You're already on the waitlist at position #${result.position}!`,
-        );
-      } else {
-        setMessage(
-          `You're in! You're #${result.position} on the waitlist. Check your email for details.`,
-        );
-        setEmail("");
-        setName("");
-        setShowName(false);
-      }
-      scheduleReset();
-    },
-    onError: (error) => {
-      console.error("Waitlist submission failed:", error);
-      setMessage("Something went wrong. Please try again.");
-      scheduleReset();
-    },
-  });
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const scheduleReset = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      addToWaitlist.reset();
-      setMessage("");
-    }, toastDismissMs);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    const normalizedEmail = email.trim().toLowerCase();
-    addToWaitlist.mutate({
-      email: normalizedEmail,
-      name: name.trim() || undefined,
-    });
-  };
-
-  const isPending = addToWaitlist.isPending;
-  const status = addToWaitlist.isError
-    ? "error"
-    : addToWaitlist.isSuccess
-      ? "success"
-      : "idle";
-
-  // Compact: header form - inline, minimal
-  if (size === "compact") {
-    return (
-      <form onSubmit={handleSubmit} className={className}>
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              placeholder="your@email.com"
-              aria-label="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onFocus={() => setShowName(true)}
-              onBlur={(e) => {
-                // Only collapse if both email and name are empty
-                if (!e.target.value && !name) {
-                  setTimeout(() => setShowName(false), 150);
-                }
-              }}
-              required
-              className="flex-1 h-10 px-3 text-sm bg-card/80 backdrop-blur-sm border-border"
-              disabled={isPending}
-            />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isPending}
-              className="h-10 px-4 text-sm font-semibold gap-1.5 group shrink-0"
-            >
-              {isPending ? (
-                "Joining..."
-              ) : (
-                <>
-                  Join
-                  <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-                </>
-              )}
-            </Button>
-          </div>
-          {showName && !message && (
-            <Input
-              type="text"
-              placeholder="Name (optional)"
-              aria-label="Your name (optional)"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-9 px-3 text-sm bg-card/80 backdrop-blur-sm border-border"
-              disabled={isPending}
-            />
-          )}
-        </div>
-        {message && (
-          <p
-            role={status === "error" ? "alert" : "status"}
-            aria-live={status === "error" ? "assertive" : "polite"}
-            aria-atomic="true"
-            className={`text-xs mt-2 ${status === "error" ? "text-destructive" : "text-primary"}`}
-          >
-            {message}
-          </p>
-        )}
-      </form>
-    );
-  }
-
-  // Large: main CTA form - stacked, prominent
-  if (size === "large") {
-    return (
-      <form onSubmit={handleSubmit} className={className}>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Input
-              type="email"
-              placeholder="Enter your email"
-              aria-label="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="flex-1 h-12 px-4 text-base bg-card border-border"
-              disabled={isPending}
-            />
-            <Button
-              type="submit"
-              size="lg"
-              disabled={isPending}
-              className="h-12 px-6 text-base font-semibold gap-2 group"
-            >
-              {isPending ? (
-                "Joining..."
-              ) : (
-                <>
-                  Get Early Access
-                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-                </>
-              )}
-            </Button>
-          </div>
-          <Input
-            type="text"
-            placeholder="Your name (optional)"
-            aria-label="Your name (optional)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-11 px-4 text-base bg-card border-border"
-            disabled={isPending}
-          />
-        </div>
-        {message && (
-          <p
-            role={status === "error" ? "alert" : "status"}
-            aria-live={status === "error" ? "assertive" : "polite"}
-            aria-atomic="true"
-            className={`text-sm mt-3 ${status === "error" ? "text-destructive" : "text-primary"}`}
-          >
-            {message}
-          </p>
-        )}
-      </form>
-    );
-  }
-
-  // Default: standard form
   return (
-    <form onSubmit={handleSubmit} className={className}>
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-2">
-          <Input
-            type="email"
-            placeholder="Enter your email"
-            aria-label="Email address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="flex-1"
-            disabled={isPending}
-          />
-          <Button type="submit" size="lg" disabled={isPending}>
-            {isPending ? "Joining..." : "Get Early Access"}
-          </Button>
-        </div>
-        <Input
-          type="text"
-          placeholder="Your name (optional)"
-          aria-label="Your name (optional)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1"
-          disabled={isPending}
-        />
+    <div className={className}>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button asChild size="lg" className="gap-2">
+          <Link to="/feed">
+            Browse the feed
+            <ArrowRight className="size-4" />
+          </Link>
+        </Button>
+        <Button asChild size="lg" variant="outline">
+          <Link to="/dashboard" search={{ mode: "signup", redirect: "/feed" }}>
+            Create free account
+          </Link>
+        </Button>
       </div>
-      {message && (
-        <p
-          role={status === "error" ? "alert" : "status"}
-          aria-live={status === "error" ? "assertive" : "polite"}
-          aria-atomic="true"
-          className={`text-sm mt-2 ${status === "error" ? "text-destructive" : "text-primary"}`}
-        >
-          {message}
-        </p>
-      )}
-    </form>
+      <p className="text-sm text-muted-foreground">
+        Reading stays open to everyone. Accounts unlock bookmarks, personalized ranking, and notifications.
+      </p>
+    </div>
   );
 }
 
@@ -408,41 +189,8 @@ function LandingPage() {
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/5 rounded-full blur-3xl" />
         </div>
 
-        {/* Floating header */}
-        <header className="sticky top-0 z-50 pt-3 pb-2 px-4">
-          <div className="mx-auto max-w-4xl">
-            <div className="flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl bg-card/80 backdrop-blur-xl border border-border/50 shadow-lg">
-              {/* Brand */}
-              <div className="flex items-center gap-2.5">
-                <div className="relative flex size-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                  <span className="relative inline-flex rounded-full size-2 bg-primary" />
-                </div>
-                <span className="font-bold text-sm tracking-tight">
-                  {SITE.name}
-                </span>
-              </div>
-
-              {/* Desktop waitlist */}
-              <WaitlistForm
-                className="hidden md:block w-64 shrink-0"
-                size="compact"
-              />
-
-              {/* Mobile CTA */}
-              <Button
-                size="sm"
-                className="md:hidden shrink-0 h-9 px-3 text-xs"
-                asChild
-              >
-                <a href="#join">Get Early Access</a>
-              </Button>
-            </div>
-          </div>
-        </header>
-
         {/* Main content */}
-        <div className="relative px-4 pt-4 pb-12">
+        <div className="relative px-4 pt-8 pb-12">
           <div className="mx-auto max-w-4xl">
             {/* Headline - the sharp value prop */}
             <div className="text-center mb-8">
@@ -531,7 +279,7 @@ function LandingPage() {
                   href="#join"
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <span>Get notified when we launch</span>
+                  <span>Create a free account</span>
                   <ArrowRight className="size-3.5" />
                 </a>
               </div>
@@ -594,11 +342,10 @@ function LandingPage() {
             </h2>
 
             <p className="text-sm text-muted-foreground max-w-[45ch] leading-relaxed">
-              Be first to access the full platform when we launch. Free during
-              beta.
+              Read the full feed right now, then create a free account when you want bookmarks, personalized ranking, and alerts.
             </p>
 
-            <WaitlistForm className="w-full max-w-sm" size="large" />
+            <LandingActions className="w-full max-w-sm" />
           </div>
         </div>
       </section>

@@ -1,8 +1,6 @@
 import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
-import { markBetaWelcomePending } from "@/lib/beta-welcome";
 import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 import { Button } from "./ui/button";
@@ -11,6 +9,15 @@ import { Label } from "./ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Loader2, UserPlus } from "lucide-react";
 import { AuthDivider, GoogleSignInButton } from "./auth-social";
+
+function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
+  const params = new URLSearchParams({
+    mode: "signin",
+    verified: "1",
+    redirect: redirectTo,
+  });
+  return `/dashboard?${params.toString()}`;
+}
 
 export default function SignUpForm({
   onSwitchToSignIn,
@@ -31,9 +38,7 @@ export default function SignUpForm({
   submitLabel?: string;
   showGoogle?: boolean;
 }) {
-  const navigate = useNavigate({
-    from: "/",
-  });
+  const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
 
   const form = useForm({
     defaultValues: {
@@ -47,15 +52,23 @@ export default function SignUpForm({
           email: value.email,
           password: value.password,
           name: value.name,
+          callbackURL: verificationCallbackURL,
         },
         {
           onSuccess: () => {
-            markBetaWelcomePending();
-            navigate({ to: redirectTo as never });
+            const isLocalDev =
+              typeof window !== "undefined" &&
+              ["localhost", "127.0.0.1"].includes(window.location.hostname);
+            toast.success(
+              isLocalDev
+                ? "Check your email to verify your account. If nothing arrives, use the verification link printed in the server logs."
+                : "Check your email to verify your account.",
+            );
+            form.reset();
           },
           onError: (error) => {
             console.error(error);
-            toast.error("An unexpected error occurred. Please try again.");
+            toast.error(error.error.message || "An unexpected error occurred. Please try again.");
           },
         }
       );
@@ -190,7 +203,6 @@ export default function SignUpForm({
             <AuthDivider />
             <GoogleSignInButton
               callbackURL={redirectTo}
-              onBeforeSignIn={markBetaWelcomePending}
             />
           </>
         )}

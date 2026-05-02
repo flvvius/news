@@ -3,14 +3,10 @@ import SignUpForm from "@/components/sign-up-form";
 import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
 import StreakActivityCalendar from "@/components/streak-activity-calendar";
-import EarlyAccessApplyCard from "@/components/early-access-apply-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@news-app/backend/convex/_generated/api";
-import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation as useTanStackMutation } from "@tanstack/react-query";
-import { useConvexMutation } from "@convex-dev/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Authenticated,
   AuthLoading,
@@ -20,10 +16,9 @@ import {
 } from "convex/react";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { authClient } from "@/lib/auth-client";
 import { isAuthRedirectPath, type AuthRedirectPath } from "@/lib/auth-redirect";
-import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 import { formatRelativeTimestamp } from "@/lib/dates";
+import { toast } from "sonner";
 import { z } from "zod";
 import {
   Bookmark,
@@ -34,9 +29,9 @@ import {
 } from "lucide-react";
 
 const searchSchema = z.object({
-  code: z.string().optional(),
   mode: z.enum(["signin", "signup"]).optional(),
   redirect: z.string().optional(),
+  verified: z.string().optional(),
 });
 
 function formatReadDuration(seconds?: number) {
@@ -82,177 +77,124 @@ export const Route = createFileRoute("/dashboard")({
 
 function RouteComponent() {
   const search = Route.useSearch();
+  const navigate = useNavigate({ from: "/dashboard" });
   const redirectTo: AuthRedirectPath =
     search.redirect && isAuthRedirectPath(search.redirect)
       ? search.redirect
       : "/feed";
-  const invitePreview = useQuery(
-    api.waitlist.getInvitePreview,
-    search.code ? { inviteCode: search.code } : "skip",
+  const [showSignIn, setShowSignIn] = useState(
+    search.mode !== "signup" || search.verified === "1",
   );
-  const [showSignIn, setShowSignIn] = useState(search.mode === "signin");
   const userToggledAuthModeRef = useRef(false);
+  const hasShownVerifiedToastRef = useRef(false);
 
   useEffect(() => {
     if (userToggledAuthModeRef.current) {
       return;
     }
+    setShowSignIn(search.mode !== "signup" || search.verified === "1");
+  }, [search.mode, search.verified]);
 
-    if (search.mode === "signin") {
-      setShowSignIn(true);
+  useEffect(() => {
+    if (search.verified !== "1" || hasShownVerifiedToastRef.current) {
       return;
     }
 
-    if (invitePreview?.isValid && invitePreview.status === "invited") {
-      setShowSignIn(false);
-      return;
-    }
-
+    hasShownVerifiedToastRef.current = true;
     setShowSignIn(true);
-  }, [invitePreview, search.mode]);
-
-  const inviteIsLoading = search.code && invitePreview === undefined;
-  const validInvite = invitePreview?.isValid ? invitePreview : null;
-  const showInviteSignup = validInvite?.status === "invited" && !showSignIn;
-  const showInvitedEmail = Boolean(validInvite?.email);
+    toast.success("You can now log in with your verified account.");
+    void navigate({
+      search: (current) => ({
+        ...current,
+        mode: "signin",
+        verified: undefined,
+      }),
+      replace: true,
+    });
+  }, [navigate, search.verified]);
 
   return (
     <>
       <Authenticated>
-        <AuthenticatedDashboard />
+        <AuthorizedDashboard />
       </Authenticated>
       <Unauthenticated>
         <div className="min-h-[calc(100vh-4rem)] bg-background">
           <div className="container mx-auto max-w-5xl px-4 py-10 sm:py-16">
             <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
-              {/* Left - Auth Form */}
               <div className="space-y-6">
                 <div className="space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                    Biviant Beta
+                    Biviant Account
                   </p>
                   <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                    {validInvite?.status === "invited"
-                      ? "Your beta access is ready"
-                      : "Access your beta account"}
+                    {showSignIn ? "Welcome back" : "Create your free account"}
                   </h1>
                   <p className="max-w-[55ch] text-muted-foreground leading-relaxed">
-                    {validInvite?.status === "invited"
-                      ? showInvitedEmail
-                        ? `This invite is reserved for ${validInvite.email}. Create your account with that email to unlock the beta.`
-                        : "This invite is active. Create your account with the same email address from your invite email to unlock the beta."
-                      : validInvite?.status === "converted"
-                        ? showInvitedEmail
-                          ? `This email already has access. Sign in with ${validInvite.email} to continue.`
-                          : "This invite has already been used. Sign in with the same email address from your invite email to continue."
-                        : "Biviant is currently running as a private beta. If you've already been invited, sign in. If not, apply for early access below."}
+                    Read every event, source profile, and search result without an account. Sign in when you want synced bookmarks, personalized ranking, and notifications.
                   </p>
                 </div>
 
-                {inviteIsLoading ? (
-                  <div className="rounded-xl border border-border bg-card px-6 py-8 text-sm text-muted-foreground">
-                    Checking your invite...
-                  </div>
-                ) : (
-                  <div className="w-full max-w-md">
-                    {showInviteSignup ? (
-                      <SignUpForm
-                        key={`invite-signup-${validInvite?.email ?? "default"}`}
-                        initialEmail={validInvite?.email ?? ""}
-                        emailLocked={showInvitedEmail}
-                        redirectTo={redirectTo}
-                        title="Create your beta account"
-                        subtitle={
-                          showInvitedEmail
-                            ? `Your access is reserved for ${validInvite?.email}. You can sign up with Google or email and password as long as you use that same email address.`
-                            : "Use the same email address from your invite email to create your beta account, whether you choose Google or email and password."
-                        }
-                        submitLabel="Create beta account"
-                        showGoogle
-                        onSwitchToSignIn={() => {
-                          userToggledAuthModeRef.current = true;
-                          setShowSignIn(true);
-                        }}
-                      />
-                    ) : (
-                      <SignInForm
-                        key={`signin-${validInvite?.email ?? "default"}`}
-                        initialEmail={validInvite?.email ?? ""}
-                        redirectTo={redirectTo}
-                        title={
-                          validInvite?.status === "converted"
-                            ? "Sign in to continue"
-                            : "Welcome back"
-                        }
-                        subtitle={
-                          validInvite?.status === "converted"
-                            ? showInvitedEmail
-                              ? `Use ${validInvite.email} to access your beta account.`
-                              : "Use the same email address from your invite email to access your beta account."
-                            : "Sign in if your email already has beta access."
-                        }
-                        onSwitchToSignUp={
-                          validInvite?.status === "invited"
-                            ? () => {
-                                userToggledAuthModeRef.current = true;
-                                setShowSignIn(false);
-                              }
-                            : undefined
-                        }
-                      />
-                    )}
-                  </div>
-                )}
+                <div className="w-full max-w-md">
+                  {showSignIn ? (
+                    <SignInForm
+                      redirectTo={redirectTo}
+                      title="Sign in to your account"
+                      subtitle="Access your bookmarks, personalized ranking, and saved preferences."
+                      onSwitchToSignUp={() => {
+                        userToggledAuthModeRef.current = true;
+                        setShowSignIn(false);
+                      }}
+                    />
+                  ) : (
+                    <SignUpForm
+                      redirectTo={redirectTo}
+                      title="Create your account"
+                      subtitle="Free accounts unlock bookmarks, personalized feeds, and future notifications. We’ll verify your email before activation."
+                      submitLabel="Create account"
+                      onSwitchToSignIn={() => {
+                        userToggledAuthModeRef.current = true;
+                        setShowSignIn(true);
+                      }}
+                    />
+                  )}
+                </div>
               </div>
 
-              {/* Right - Info Cards */}
               <div className="space-y-6">
-                {!validInvite ? (
-                  <EarlyAccessApplyCard />
-                ) : (
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <h3 className="text-lg font-semibold">
-                      How beta access works
-                    </h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Access is tied to the email address we invited from the
-                      waitlist.
-                    </p>
-                    <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
-                      <li className="flex gap-3">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          1
-                        </span>
-                        Open your invite email.
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          2
-                        </span>
-                        Create or sign in with the invited email address.
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          3
-                        </span>
-                        Head straight into the feed once you&apos;re in.
-                      </li>
-                    </ol>
-                  </div>
-                )}
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <h3 className="text-lg font-semibold">What accounts unlock</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    The content stays open. Accounts are only for personal, persistent features.
+                  </p>
+                  <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
+                    <li className="flex gap-3">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                        1
+                      </span>
+                      Save bookmarks and keep them synced across devices.
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                        2
+                      </span>
+                      Personalize ranking using your reading habits and interests.
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                        3
+                      </span>
+                      Get notifications, digests, and future account-only tools.
+                    </li>
+                  </ol>
+                </div>
 
-                {search.code && !inviteIsLoading && !validInvite && (
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <h3 className="text-lg font-semibold">
-                      This invite link isn&apos;t active
-                    </h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      If you already have access, sign in with your invited
-                      email. Otherwise, apply for early access and we&apos;ll
-                      email you when your slot is ready.
-                    </p>
-                  </div>
-                )}
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <h3 className="text-lg font-semibold">Verification matters</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    New email/password signups require email verification before first sign-in. Google sign-in continues to work as a one-step path when the provider has already verified the address.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -267,136 +209,20 @@ function RouteComponent() {
   );
 }
 
-function AuthenticatedDashboard() {
-  const access = useQuery(api.user.getCurrentUserAccess);
-
-  useEffect(() => {
-    if (access?.hasBetaAccess) {
-      consumeBetaWelcomeToast();
-    }
-  }, [access?.hasBetaAccess]);
-
-  if (access === undefined) {
-    return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
-        <div className="text-sm text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!access.hasBetaAccess) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] bg-background">
-        <div className="container mx-auto max-w-4xl px-4 py-10 sm:py-16">
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                  Beta Access
-                </p>
-                <h1 className="text-3xl font-bold tracking-tight">
-                  {access.waitlistStatus === "pending"
-                    ? "You're on the waitlist"
-                    : "This email isn't enabled yet"}
-                </h1>
-                <p className="text-muted-foreground leading-relaxed">
-                  {access.waitlistStatus === "pending"
-                    ? `You're signed in as ${access.email}. We'll email this address as soon as your beta access is ready${access.waitlistPosition ? ` (#${access.waitlistPosition} on the waitlist)` : ""}.`
-                    : `You're signed in as ${access.email}, but beta access is still limited to invited emails. If you joined the waitlist with another email, sign out and use that one instead.`}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    await authClient.signOut({
-                      fetchOptions: {
-                        onSuccess: () => {
-                          location.href = "/dashboard";
-                        },
-                      },
-                    });
-                  }}
-                >
-                  Sign out
-                </Button>
-                <Button asChild variant="ghost">
-                  <Link to="/">Back to homepage</Link>
-                </Button>
-              </div>
-            </div>
-
-            {access.waitlistStatus === "pending" ? (
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h3 className="text-lg font-semibold">What happens next</h3>
-                <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
-                  <li className="flex gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      1
-                    </span>
-                    We&apos;ll keep moving through the waitlist in order.
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      2
-                    </span>
-                    You&apos;ll receive a beta invite email when your slot
-                    opens.
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      3
-                    </span>
-                    Use that same email to sign back in and access the feed.
-                  </li>
-                </ol>
-              </div>
-            ) : (
-              <EarlyAccessApplyCard compact />
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return <AuthorizedDashboard />;
-}
-
 function AuthorizedDashboard() {
   const currentUser = useQuery(api.user.getCurrentUser);
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
   const isAdmin = useQuery(api.user.isCurrentUserAdmin);
-  const waitlistOverview = useQuery(
-    api.waitlist.getWaitlistAdminOverview,
-    isAdmin ? { limit: 10 } : "skip",
-  );
   const topicDiagnostics = useQuery(
     api.clustering.getRecentTopicInferenceDiagnosticsForAdmin,
     isAdmin ? { limit: 10 } : "skip",
   );
   const setConfig = useConvexMutationHook(api.config.set);
-  const convexInviteWaitlistUser = useConvexMutation(
-    api.waitlist.inviteWaitlistUser,
-  );
-  const convexInviteNextPendingUsers = useConvexMutation(
-    api.waitlist.inviteNextPendingUsers,
-  );
-  const inviteWaitlistUser = useTanStackMutation({
-    mutationFn: convexInviteWaitlistUser,
-  });
-  const inviteNextPendingUsers = useTanStackMutation({
-    mutationFn: convexInviteNextPendingUsers,
-  });
   const [minScoreInput, setMinScoreInput] = useState("");
   const [confidenceRatioInput, setConfidenceRatioInput] = useState("");
   const [maxTopicsInput, setMaxTopicsInput] = useState("");
   const [configMessage, setConfigMessage] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [waitlistMessage, setWaitlistMessage] = useState("");
-  const [invitingWaitlistId, setInvitingWaitlistId] = useState<string | null>(
-    null,
-  );
   const currentSettings = topicDiagnostics?.[0]?.settings;
 
   useEffect(() => {
@@ -496,7 +322,6 @@ function AuthorizedDashboard() {
 
   const userName = currentUser?.profile?.name || currentUser?.email || "User";
   const userEmail = currentUser?.email;
-  const waitlistStats = waitlistOverview?.stats;
   const readingStreak =
     dashboardOverview?.stats.currentStreak ??
     currentUser?.stats.currentStreak ??
@@ -520,43 +345,6 @@ function AuthorizedDashboard() {
   const weeklyBiasReads = dashboardOverview?.weeklyBiasSummary.reads ?? 0;
   const weeklyBiasBalance = dashboardOverview?.weeklyBiasSummary.balance ?? 0;
   const nextStreakMilestone = getNextStreakMilestone(readingStreak);
-
-  const handleInviteNextPendingUsers = (count: number) => {
-    inviteNextPendingUsers.reset();
-    inviteWaitlistUser.reset();
-    setInvitingWaitlistId(null);
-    setWaitlistMessage("");
-    inviteNextPendingUsers.mutate(
-      { count },
-      {
-        onSuccess: (result) => {
-          setWaitlistMessage(
-            result.invitedCount > 0
-              ? `Invited ${result.invitedCount} waitlist ${result.invitedCount === 1 ? "user" : "users"}.`
-              : "No pending waitlist users left to invite.",
-          );
-        },
-      },
-    );
-  };
-
-  const handleInviteSingleUser = (waitlistId: Id<"waitlist">) => {
-    inviteWaitlistUser.reset();
-    inviteNextPendingUsers.reset();
-    setWaitlistMessage("");
-    setInvitingWaitlistId(waitlistId);
-    inviteWaitlistUser.mutate(
-      { waitlistId },
-      {
-        onSuccess: (result) => {
-          setWaitlistMessage(`Invite sent to ${result.email}.`);
-        },
-        onSettled: () => {
-          setInvitingWaitlistId(null);
-        },
-      },
-    );
-  };
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background">
@@ -891,117 +679,6 @@ function AuthorizedDashboard() {
               </div>
             </Link>
           </div>
-
-          {/* Admin: Waitlist */}
-          {isAdmin && (
-            <section className="space-y-4 rounded-xl border border-border bg-card p-6">
-              <div>
-                <h2 className="text-lg font-semibold">Waitlist Invites</h2>
-                <p className="text-sm text-muted-foreground">
-                  Move people from the waitlist into the beta
-                </p>
-              </div>
-
-              {waitlistOverview === undefined ? (
-                <div className="text-sm text-muted-foreground">
-                  Loading waitlist...
-                </div>
-              ) : (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <MetricCard
-                      label="Pending"
-                      value={String(waitlistStats?.pending ?? 0)}
-                    />
-                    <MetricCard
-                      label="Invited"
-                      value={String(waitlistStats?.invited ?? 0)}
-                    />
-                    <MetricCard
-                      label="Converted"
-                      value={String(waitlistStats?.converted ?? 0)}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleInviteNextPendingUsers(10)}
-                      disabled={
-                        inviteNextPendingUsers.isPending ||
-                        inviteWaitlistUser.isPending
-                      }
-                    >
-                      {inviteNextPendingUsers.isPending
-                        ? "Sending..."
-                        : "Invite next 10"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleInviteNextPendingUsers(25)}
-                      disabled={
-                        inviteNextPendingUsers.isPending ||
-                        inviteWaitlistUser.isPending
-                      }
-                    >
-                      Invite next 25
-                    </Button>
-                    {waitlistMessage &&
-                      !inviteNextPendingUsers.isError &&
-                      !inviteWaitlistUser.isError && (
-                        <p className="text-sm text-muted-foreground">
-                          {waitlistMessage}
-                        </p>
-                      )}
-                    {inviteNextPendingUsers.isError && (
-                      <p className="text-sm text-destructive">
-                        {inviteNextPendingUsers.error instanceof Error
-                          ? inviteNextPendingUsers.error.message
-                          : "Could not send invites right now."}
-                      </p>
-                    )}
-                  </div>
-
-                  {waitlistOverview.nextPending.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      <p className="text-sm font-medium">Next in line</p>
-                      {waitlistOverview.nextPending.map((entry) => (
-                        <div
-                          key={entry._id}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3"
-                        >
-                          <div>
-                            <p className="text-sm font-medium">
-                              #{entry.position} {entry.name ?? entry.email}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {entry.name ? entry.email : "No name"}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleInviteSingleUser(entry._id)}
-                            disabled={
-                              inviteNextPendingUsers.isPending ||
-                              (inviteWaitlistUser.isPending &&
-                                invitingWaitlistId === entry._id)
-                            }
-                          >
-                            {invitingWaitlistId === entry._id &&
-                            inviteWaitlistUser.isPending
-                              ? "Sending..."
-                              : "Invite"}
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-          )}
 
           {/* Admin: Topic Diagnostics */}
           {isAdmin && topicDiagnostics && topicDiagnostics.length > 0 && (

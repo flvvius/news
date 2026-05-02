@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { requireBetaAccess } from "./lib/betaAccess";
 import type { Doc, Id } from "./_generated/dataModel";
 
 function sourceBiasLabel(source: Doc<"sources">): string {
@@ -46,8 +45,6 @@ export const getSourceProfile = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
     const source = await ctx.db.get(args.sourceId);
     if (!source) return null;
 

@@ -7,7 +7,7 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { requireAdminUser, requireBetaAccess } from "./lib/betaAccess";
+import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 
 const CLAIM_STATUS_VALIDATOR = v.union(
@@ -412,8 +412,6 @@ export const getEventClaims = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireBetaAccess(ctx);
-
     const event = await ctx.db.get(args.eventId);
     if (!event || event.status !== "published") {
       throw new ConvexError("Event is not readable");

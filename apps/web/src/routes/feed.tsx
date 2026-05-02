@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -11,7 +11,7 @@ import {
   TrendingUpIcon,
   XIcon,
 } from "lucide-react";
-import EarlyAccessRequired from "@/components/early-access-required";
+import AuthPromptBanner from "@/components/auth-prompt-banner";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +40,6 @@ import {
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
-import { consumeBetaWelcomeToast } from "@/lib/beta-welcome";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -228,46 +227,16 @@ function TopicFilter({
 }
 
 function FeedComponent() {
-  const access = useQuery(api.user.getCurrentUserAccess);
-
-  useEffect(() => {
-    if (access?.hasBetaAccess) {
-      consumeBetaWelcomeToast();
-    }
-  }, [access?.hasBetaAccess]);
-
-  if (access === undefined) {
-    return (
-        <div className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
-          <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-          <div
-            role="status"
-            aria-live="polite"
-            className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
-          >
-            Loading…
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!access.hasBetaAccess) {
-    return (
-      <EarlyAccessRequired
-        access={access}
-        redirectTo="/feed"
-        surfaceName="The feed"
-      />
-    );
-  }
-
   return <FeedContent />;
 }
 
 function FeedContent() {
+  const { isAuthenticated } = useConvexAuth();
   const topics = useQuery(api.topics.getTopics);
-  const currentUser = useQuery(api.user.getCurrentUser);
+  const currentUser = useQuery(
+    api.user.getCurrentUser,
+    isAuthenticated ? {} : "skip",
+  );
   const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
   const rawPageSize = Number(pageSizeConfig?.value);
   const MAX_FEED_PAGE_SIZE = 50;
@@ -562,6 +531,15 @@ function FeedContent() {
             </div>
           </header>
 
+          {!isAuthenticated && (
+            <AuthPromptBanner
+              redirectTo="/feed"
+              compact
+              title="Free accounts unlock bookmarks and a personalized feed"
+              description="You can read everything anonymously. Sign in only when you want synced bookmarks, ranking tuned to your interests, and future alerts."
+            />
+          )}
+
           <div className="grid gap-6">
             {isSearching && searchResults === undefined && (
               <div
@@ -597,6 +575,7 @@ function FeedContent() {
                   topicNamesById={topicNamesById}
                   maxSources={maxSources}
                   variant="feature"
+                  returnToFeed
                 />
               </section>
             ) : null}
@@ -617,6 +596,7 @@ function FeedContent() {
                   maxSources={maxSources}
                   variant="feature"
                   searchQuery={debouncedSearch}
+                  returnToFeed
                 />
               </section>
             ) : null}
@@ -644,6 +624,7 @@ function FeedContent() {
                       topicNamesById={topicNamesById}
                       maxSources={maxSources}
                       searchQuery={isSearching ? debouncedSearch : undefined}
+                      returnToFeed
                     />
                   ))}
                 </div>
@@ -673,6 +654,7 @@ function FeedContent() {
                           event={event}
                           topicNamesById={topicNamesById}
                           maxSources={maxSources}
+                          returnToFeed
                         />
                       ))}
                     </div>

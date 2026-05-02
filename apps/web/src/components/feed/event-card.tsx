@@ -38,6 +38,7 @@ type EventCardProps = {
   maxSources?: number;
   variant?: "default" | "feature";
   searchQuery?: string;
+  returnToFeed?: boolean;
 };
 
 function escapeRegExp(value: string) {
@@ -100,6 +101,7 @@ const EventCard = ({
   maxSources = 5,
   variant = "default",
   searchQuery,
+  returnToFeed = false,
 }: EventCardProps) => {
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
@@ -129,6 +131,11 @@ const EventCard = ({
     <Link
       to="/event/$slug"
       params={{ slug: event.slug }}
+      state={
+        returnToFeed
+          ? (prev) => ({ ...prev, returnToFeed: true })
+          : undefined
+      }
       className="group block"
     >
       <Card
@@ -200,6 +207,7 @@ const EventCard = ({
                   eventId={event._id}
                   interactionContext={interactionContext}
                   size="sm"
+                  redirectTo={`/event/${event.slug}`}
                   className="rounded-full border border-border/80 bg-background/80"
                 />
               </div>
