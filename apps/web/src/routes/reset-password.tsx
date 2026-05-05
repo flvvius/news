@@ -103,7 +103,11 @@ function ResetPasswordRoute() {
           <CardContent className="pt-6">
             {errorMessage || !token ? (
               <div className="space-y-4 text-sm">
-                <p className="rounded-lg border border-border/70 bg-muted/35 px-4 py-3 text-muted-foreground">
+                <p
+                  className="rounded-lg border border-border/70 bg-muted/35 px-4 py-3 text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                >
                   {errorMessage ||
                     "This password reset link is missing a token. Request a new one from the sign-in form."}
                 </p>
@@ -131,6 +135,7 @@ function ResetPasswordRoute() {
                           id={field.name}
                           name={field.name}
                           type="password"
+                          aria-label="New password"
                           placeholder="Create a new password"
                           value={field.state.value}
                           onBlur={field.handleBlur}
@@ -158,6 +163,7 @@ function ResetPasswordRoute() {
                           id={field.name}
                           name={field.name}
                           type="password"
+                          aria-label="Confirm new password"
                           placeholder="Repeat your new password"
                           value={field.state.value}
                           onBlur={field.handleBlur}

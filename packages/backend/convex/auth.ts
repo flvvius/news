@@ -41,16 +41,18 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           biasBalance: 0,
         });
 
-        const waitlistRecord = await getWaitlistRecordByEmail(
-          ctx,
-          normalizedEmail,
-        );
+        if (authUser.emailVerified) {
+          const waitlistRecord = await getWaitlistRecordByEmail(
+            ctx,
+            normalizedEmail,
+          );
 
-        if (waitlistRecord && waitlistRecord.status === "invited") {
-          await ctx.db.patch(waitlistRecord._id, {
-            status: "converted",
-            convertedAt: Date.now(),
-          });
+          if (waitlistRecord && waitlistRecord.status === "invited") {
+            await ctx.db.patch(waitlistRecord._id, {
+              status: "converted",
+              convertedAt: Date.now(),
+            });
+          }
         }
       },
 
@@ -70,16 +72,18 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
             });
           }
 
-          const waitlistRecord = await getWaitlistRecordByEmail(
-            ctx,
-            normalizedEmail,
-          );
+          if (newAuthUser.emailVerified) {
+            const waitlistRecord = await getWaitlistRecordByEmail(
+              ctx,
+              normalizedEmail,
+            );
 
-          if (waitlistRecord && waitlistRecord.status === "invited") {
-            await ctx.db.patch(waitlistRecord._id, {
-              status: "converted",
-              convertedAt: Date.now(),
-            });
+            if (waitlistRecord && waitlistRecord.status === "invited") {
+              await ctx.db.patch(waitlistRecord._id, {
+                status: "converted",
+                convertedAt: Date.now(),
+              });
+            }
           }
         }
       },
