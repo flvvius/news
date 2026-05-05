@@ -2,32 +2,49 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { SITE } from "@/lib/seo";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { Link } from "@tanstack/react-router";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Globe, Newspaper, Shield, Sparkles } from "lucide-react";
 
-function LandingActions({ className }: { className?: string }) {
+function LandingActions({
+  className,
+  isAuthenticated,
+}: {
+  className?: string;
+  isAuthenticated: boolean;
+}) {
   return (
     <div className={className}>
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div
+        className={`flex flex-col gap-3 sm:flex-row ${
+          isAuthenticated ? "sm:justify-center" : ""
+        }`}
+      >
         <Button asChild size="lg" className="gap-2">
           <Link to="/feed">
             Browse the feed
             <ArrowRight className="size-4" />
           </Link>
         </Button>
-        <Button asChild size="lg" variant="outline">
-          <Link to="/dashboard" search={{ mode: "signup", redirect: "/feed" }}>
-            Create free account
-          </Link>
-        </Button>
+        {!isAuthenticated && (
+          <Button asChild size="lg" variant="outline">
+            <Link
+              to="/dashboard"
+              search={{ mode: "signup", redirect: "/feed" }}
+            >
+              Create free account
+            </Link>
+          </Button>
+        )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Reading stays open to everyone. Accounts unlock bookmarks, personalized
-        ranking, and notifications.
-      </p>
+      {!isAuthenticated && (
+        <p className="text-sm text-muted-foreground">
+          Reading stays open to everyone. Accounts unlock bookmarks,
+          personalized ranking, and notifications.
+        </p>
+      )}
     </div>
   );
 }
@@ -124,6 +141,7 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPage() {
+  const { isAuthenticated } = useConvexAuth();
   const [hasAnimated, setHasAnimated] = useState(false);
 
   useEffect(() => {
@@ -270,7 +288,7 @@ function LandingPage() {
             )}
 
             {/* Scroll hint */}
-            {displayEvents && displayEvents.length > 0 && (
+            {!isAuthenticated && displayEvents && displayEvents.length > 0 && (
               <div className="mt-8 text-center">
                 <Link
                   to="/dashboard"
@@ -340,11 +358,15 @@ function LandingPage() {
             </h2>
 
             <p className="text-sm text-muted-foreground max-w-[45ch] leading-relaxed">
-              Read the full feed right now, then create a free account when you
-              want bookmarks, personalized ranking, and alerts.
+              {isAuthenticated
+                ? "Read the full feed, save what matters, and keep your perspective sharp."
+                : "Read the full feed right now, then create a free account when you want bookmarks, personalized ranking, and alerts."}
             </p>
 
-            <LandingActions className="w-full max-w-sm" />
+            <LandingActions
+              className="w-full max-w-sm"
+              isAuthenticated={Boolean(isAuthenticated)}
+            />
           </div>
         </div>
       </section>
