@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as BookmarksRouteImport } from './routes/bookmarks'
@@ -33,6 +34,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/bookmarks': typeof BookmarksRoute
   '/dashboard': typeof DashboardRoute
   '/feed': typeof FeedRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/bookmarks': typeof BookmarksRoute
   '/dashboard': typeof DashboardRoute
   '/feed': typeof FeedRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/bookmarks': typeof BookmarksRoute
   '/dashboard': typeof DashboardRoute
   '/feed': typeof FeedRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/bookmarks'
     | '/dashboard'
     | '/feed'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/unsubscribe'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/bookmarks'
     | '/dashboard'
     | '/feed'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/unsubscribe'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/bookmarks'
     | '/dashboard'
     | '/feed'
+    | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/unsubscribe'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   BookmarksRoute: typeof BookmarksRoute
   DashboardRoute: typeof DashboardRoute
   FeedRoute: typeof FeedRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -181,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/robots.txt'
       fullPath: '/robots.txt'
       preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   BookmarksRoute: BookmarksRoute,
   DashboardRoute: DashboardRoute,
   FeedRoute: FeedRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   UnsubscribeRoute: UnsubscribeRoute,

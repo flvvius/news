@@ -10,69 +10,10 @@ import type { DataModel } from "./_generated/dataModel";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import { crossDomain } from "@convex-dev/better-auth/plugins";
-import { normalizeEmail } from "./lib/betaAccess";
-import { Resend } from "resend";
+import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
 
 const siteUrl = process.env.SITE_URL!;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
-const defaultFromAddress =
-  process.env.EMAIL_FROM_ADDRESS || "Biviant <onboarding@resend.dev>";
-const defaultReplyTo = process.env.EMAIL_REPLY_TO || "hello@biviant.com";
-const shouldLogVerificationLinks =
-  siteUrl.includes("localhost") || siteUrl.includes("127.0.0.1");
-const RESEND_TEST_MODE_ERROR =
-  "You can only send testing emails to your own email address";
-const verificationAllowedOrigins = new Set(
-  [
-    siteUrl,
-    ...(process.env.ALLOWED_ORIGINS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  ]
-    .map((value) => {
-      try {
-        return new URL(value).origin;
-      } catch {
-        return null;
-      }
-    })
-    .filter((value): value is string => Boolean(value)),
-);
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function normalizeVerificationUrl(value: string) {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    if (!verificationAllowedOrigins.has(parsed.origin)) {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-function maskEmail(value: string) {
-  const [localPart, domain] = value.split("@");
-  if (!domain) return "***";
-  const firstChar = localPart?.[0] ?? "";
-  return `${firstChar}***@${domain}`;
-}
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -99,6 +40,18 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           articlesRead: 0,
           biasBalance: 0,
         });
+
+        const waitlistRecord = await getWaitlistRecordByEmail(
+          ctx,
+          normalizedEmail,
+        );
+
+        if (waitlistRecord && waitlistRecord.status === "invited") {
+          await ctx.db.patch(waitlistRecord._id, {
+            status: "converted",
+            convertedAt: Date.now(),
+          });
+        }
       },
 
       onUpdate: async (ctx, newAuthUser, oldAuthUser) => {
@@ -114,6 +67,18 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           if (appUser) {
             await ctx.db.patch(appUser._id, {
               email: normalizedEmail,
+            });
+          }
+
+          const waitlistRecord = await getWaitlistRecordByEmail(
+            ctx,
+            normalizedEmail,
+          );
+
+          if (waitlistRecord && waitlistRecord.status === "invited") {
+            await ctx.db.patch(waitlistRecord._id, {
+              status: "converted",
+              convertedAt: Date.now(),
             });
           }
         }
@@ -154,108 +119,6 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
 
 export const { onCreate, onUpdate, onDelete } = authComponent.triggersApi();
 
-async function sendVerificationEmail(
-  user: { email: string; name?: string | null },
-  url: string,
-) {
-  const maskedEmail = maskEmail(user.email);
-  const safeUrl = normalizeVerificationUrl(url);
-  if (!safeUrl) {
-    throw new Error("Invalid verification URL.");
-  }
-
-  if (shouldLogVerificationLinks) {
-    console.info(`[auth] Verification link for ${maskedEmail}: ${safeUrl}`);
-  }
-
-  if (!resend) {
-    if (!shouldLogVerificationLinks) {
-      throw new Error(
-        "Email verification is unavailable because RESEND_API_KEY is not configured.",
-      );
-    }
-    return;
-  }
-
-  const firstName = user.name?.split(" ")[0] || "there";
-  const safeFirstName = escapeHtml(firstName);
-  const subject = "Verify your Biviant email";
-  const html = `<!DOCTYPE html>
-<html lang="en">
-  <body style="margin:0;padding:24px;background:#f5f5f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1c1917;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e7e5e4;border-radius:16px;">
-            <tr>
-              <td style="padding:32px 32px 16px 32px;">
-                <p style="margin:0 0 8px 0;font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#2563eb;">Biviant</p>
-                <h1 style="margin:0;font-size:28px;line-height:1.2;color:#0f172a;">Verify your email</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 32px 24px 32px;font-size:16px;line-height:1.7;color:#334155;">
-                <p style="margin:0 0 16px 0;">Hi ${safeFirstName},</p>
-                <p style="margin:0 0 24px 0;">Confirm your email address to finish creating your Biviant account and unlock bookmarks, personalized ranking, and alerts.</p>
-                <p style="margin:0 0 24px 0;">
-                  <a href="${safeUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600;">Verify email</a>
-                </p>
-                <p style="margin:0;color:#64748b;">If you didn&apos;t create this account, you can safely ignore this email.</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-  const text = `Hi ${firstName},
-
-Verify your email to finish creating your Biviant account:
-${safeUrl}
-
-If you didn't create this account, you can safely ignore this email.`;
-
-  try {
-    const { error } = await resend.emails.send({
-      from: defaultFromAddress,
-      replyTo: defaultReplyTo,
-      to: [user.email],
-      subject,
-      html,
-      text,
-    });
-
-    if (error) {
-      const resendMessage =
-        typeof error.message === "string" ? error.message : "";
-      if (
-        shouldLogVerificationLinks &&
-        resendMessage.includes(RESEND_TEST_MODE_ERROR)
-      ) {
-        console.warn(
-          `[auth] Resend test-mode restriction hit for ${maskedEmail}; using logged verification link instead.`,
-        );
-        return;
-      }
-
-      console.error(
-        `[auth] Resend rejected verification email to ${maskedEmail}:`,
-        error,
-      );
-      throw new Error(error.message || "Email delivery failed.");
-    }
-  } catch (error) {
-    console.error(
-      `[auth] Failed to send verification email to ${maskedEmail}:`,
-      error,
-    );
-    throw new Error(
-      "We couldn't send your verification email. Please try again in a moment.",
-    );
-  }
-}
-
 function createAuth(ctx: GenericCtx<DataModel>) {
   return betterAuth({
     baseURL: siteUrl,
@@ -266,20 +129,12 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       updateAge: 60 * 60 * 24, // refresh session token once per day
       cookieCache: {
         enabled: true,
-        maxAge: 10 * 60, // cache session in signed cookie for 10 min — skips DB on repeated get-session calls
+        maxAge: 7 * 60, // cache session in signed cookie for 7 min — skips DB on repeated get-session calls
       },
     },
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
-    },
-    emailVerification: {
-      sendOnSignIn: true,
-      sendOnSignUp: true,
-      autoSignInAfterVerification: false,
-      sendVerificationEmail: async ({ user, url }) => {
-        await sendVerificationEmail(user, url);
-      },
+      requireEmailVerification: false,
     },
     socialProviders: {
       google: {
