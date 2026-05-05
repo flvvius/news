@@ -5,6 +5,7 @@ import BiasBalanceMeter from "@/components/bias-balance-meter";
 import StreakActivityCalendar from "@/components/streak-activity-calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -210,9 +211,11 @@ function RouteComponent() {
         </div>
       </Unauthenticated>
       <AuthLoading>
-        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
-          <div className="text-sm text-muted-foreground">Loading...</div>
-        </div>
+        <PageLoadingState
+          title="Checking your session"
+          description="We’re confirming your account and preparing your dashboard."
+          cardCount={2}
+        />
       </AuthLoading>
     </>
   );
@@ -251,9 +254,11 @@ function AuthorizedDashboard() {
     isAdmin === undefined
   ) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
-        <div className="text-sm text-muted-foreground">Loading...</div>
-      </div>
+      <PageLoadingState
+        title="Loading your dashboard"
+        description="Bookmarks, streaks, and reading insights are on the way."
+        cardCount={3}
+      />
     );
   }
 

@@ -9,6 +9,7 @@ import {
 } from "convex/react";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
+import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { SITE } from "@/lib/seo";
 
 /** Validate and clamp a config value to a non-negative integer. */
@@ -64,15 +65,11 @@ function BookmarksPage() {
         </div>
       </Unauthenticated>
       <AuthLoading>
-        <div className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
-          <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-            <div className="flex flex-col items-center justify-center py-20 gap-4">
-              <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-6 py-8 text-sm text-muted-foreground">
-                Loading...
-              </div>
-            </div>
-          </div>
-        </div>
+        <PageLoadingState
+          title="Checking your bookmarks"
+          description="We’re verifying your session before loading your saved stories."
+          cardCount={2}
+        />
       </AuthLoading>
     </>
   );
@@ -96,15 +93,11 @@ function BookmarksContent() {
 
   if (bookmarks === undefined) {
     return (
-      <div className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
-        <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-6 py-8 text-sm text-muted-foreground">
-              Loading bookmarks...
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageLoadingState
+        title="Loading your bookmarks"
+        description="Your saved events and source context are being gathered now."
+        cardCount={3}
+      />
     );
   }
 
