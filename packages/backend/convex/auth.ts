@@ -13,11 +13,31 @@ import authConfig from "./auth.config";
 import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
 import { Resend } from "resend";
 
-const siteUrl = process.env.SITE_URL!;
+function requireEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`[auth] Missing required env var: ${name}`);
+  }
+  return value;
+}
+
+function isProductionDeployment() {
+  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+  if (nodeEnv === "production") {
+    return true;
+  }
+
+  const convexDeployment = process.env.CONVEX_DEPLOYMENT?.trim().toLowerCase();
+  return convexDeployment?.startsWith("prod:") ?? false;
+}
+
+const siteUrl = requireEnv("SITE_URL");
+const googleClientId = requireEnv("GOOGLE_CLIENT_ID");
+const googleClientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+const isProduction = isProductionDeployment();
 const emailFromAddress =
   process.env.EMAIL_FROM_ADDRESS?.trim() || "Biviant <hello@biviant.com>";
 const emailReplyTo =
@@ -66,6 +86,12 @@ async function sendAuthEmail({
   actionUrl: string;
 }) {
   if (!resend) {
+    if (isProduction) {
+      throw new Error(
+        `[auth] ${debugLabel} email failed: RESEND_API_KEY missing in production.`,
+      );
+    }
+
     console.warn(
       `[auth] ${debugLabel} email not sent because RESEND_API_KEY is missing.`,
       { to, actionUrl },
@@ -207,6 +233,114 @@ See every side of the story.
 ${siteUrl}`;
 }
 
+function getVerificationEmailHTML(verificationUrl: string) {
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="https://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your Biviant email</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <div style="display:none; max-height:0; overflow:hidden;">
+    Verify your Biviant email to activate your account and unlock synced features.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; border:1px solid #e5e7eb; max-width:600px;">
+          <tr>
+            <td align="center" style="padding:40px 40px 20px 40px;">
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <br><br>
+              <span style="font-size:22px; font-weight:bold; color:#111827;">Verify Your Email</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
+              <p style="margin:0 0 16px 0;">Thanks for creating your Biviant account.</p>
+              <p style="margin:0 0 24px 0;">Confirm your email address to activate your account and unlock bookmarks, personalized ranking, and future notifications.</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="padding:0 40px 28px 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="background-color:#2563eb; border-radius:6px;">
+                    <a href="${verificationUrl}" target="_blank" style="display:inline-block; padding:14px 28px; font-size:16px; font-weight:600; color:#ffffff; text-decoration:none;">Confirm Email Address</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 40px 16px 40px;">
+              <span style="font-size:18px; font-weight:bold; color:#111827;">Didn’t request this?</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 40px 32px 40px; font-size:16px; line-height:1.6; color:#374151;">
+              <p style="margin:0 0 16px 0;">If you didn’t create a Biviant account, you can safely ignore this email.</p>
+              <p style="margin:0;">If the button doesn’t work, paste this link into your browser:</p>
+              <p style="margin:12px 0 0 0; word-break:break-all;">
+                <a href="${verificationUrl}" target="_blank" style="color:#2563eb; text-decoration:underline;">${verificationUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 40px; border-top:1px solid #e5e7eb;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
+                    <p style="margin:0 0 8px 0;">See every side of the story.</p>
+                    <p style="margin:0;">
+                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function getVerificationEmailText(verificationUrl: string) {
+  return `Verify your Biviant email
+
+Thanks for creating your Biviant account.
+
+Confirm your email address here:
+${verificationUrl}
+
+Once verified, you can sign in and unlock bookmarks, personalized ranking, and future notifications.
+
+If you didn't create a Biviant account, you can ignore this email.
+
+See every side of the story.
+${siteUrl}`;
+}
+
 export const authComponent = createClient<DataModel>(components.betterAuth, {
   authFunctions,
   triggers: {
@@ -335,16 +469,16 @@ function createAuth(ctx: GenericCtx<DataModel>) {
           to: user.email,
           subject: "Verify your Biviant email",
           actionUrl: normalizedUrl,
-          html: `<p>Verify your Biviant email address.</p><p><a href="${normalizedUrl}">Confirm your email</a></p>`,
-          text: `Verify your Biviant email: ${normalizedUrl}`,
+          html: getVerificationEmailHTML(normalizedUrl),
+          text: getVerificationEmailText(normalizedUrl),
           debugLabel: "verification",
         });
       },
     },
     socialProviders: {
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
       },
     },
     plugins: [
