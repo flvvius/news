@@ -10,7 +10,6 @@ import type { DataModel } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
-import { crossDomain } from "@convex-dev/better-auth/plugins";
 import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
 import { Resend } from "resend";
 
@@ -354,7 +353,6 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         authConfig,
         jwksRotateOnTokenGenerationError: true,
       }),
-      crossDomain({ siteUrl }),
     ],
   });
 }

@@ -20,7 +20,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@better-auth/expo": "1.4.9",
+    "@better-auth/expo": "catalog:",
     "@convex-dev/better-auth": "catalog:",
     "@posthog/ai": "^7.9.3",
     "@resvg/resvg-js": "^2.6.2",
