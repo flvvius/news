@@ -150,11 +150,13 @@ export const seedDB = internalMutation({
       eventId: eventFedRates,
       embedding: dummyEmbedding,
       version: 1,
+      status: "published",
     });
     await ctx.db.insert("eventEmbeddings", {
       eventId: eventAIRegulations,
       embedding: dummyEmbedding,
       version: 1,
+      status: "published",
     });
 
     console.log("✅ Created 2 eventEmbeddings");

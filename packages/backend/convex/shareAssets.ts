@@ -22,6 +22,13 @@ export type EventShareRenderData = {
   }>;
 };
 
+function renderSignatureDateKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${month}-${day}`;
+}
+
 export function buildEventShareRenderSignature(
   data: EventShareRenderData,
 ): string {
@@ -30,8 +37,9 @@ export function buildEventShareRenderSignature(
     data.title,
     data.summary ?? "",
     data.imageUrl ?? "",
-    String(data.lastUpdatedAt),
+    renderSignatureDateKey(data.lastUpdatedAt),
     String(data.articleCount),
+    String(data.sourceCount),
     ...data.sources
       .slice(0, 3)
       .flatMap((source) => [source.name, source.logoUrl ?? ""]),
@@ -73,15 +81,30 @@ export const getEventShareRenderData = internalQuery({
     const event = await ctx.db.get(eventId);
     if (!event) return null;
 
-    const articles = await ctx.db
-      .query("articles")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .collect();
-    const uniqueSourceIds = Array.from(
-      new Set(articles.map((article) => article.sourceId)),
-    );
+    let articleCount = event.articleCount;
+    let sourceCount = event.sourceCount;
+    let sourceIds = event.sourceIds;
+
+    if (!sourceIds || articleCount === undefined || sourceCount === undefined) {
+      console.log(
+        `[shareAssets] Falling back to article scan for render data on event ${String(eventId)}`,
+      );
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", eventId))
+        .collect();
+      const uniqueSourceIds = Array.from(
+        new Set(articles.map((article) => article.sourceId)),
+      );
+      sourceIds = sourceIds ?? uniqueSourceIds;
+      articleCount = articleCount ?? articles.length;
+      sourceCount = sourceCount ?? uniqueSourceIds.length;
+    }
+
     const sources = (
-      await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
+      await Promise.all(
+        (sourceIds ?? []).slice(0, 3).map((sourceId) => ctx.db.get(sourceId)),
+      )
     ).filter((source) => source !== null);
 
     return {
@@ -90,8 +113,8 @@ export const getEventShareRenderData = internalQuery({
       imageUrl: event.imageUrl,
       imageAlt: event.imageAlt,
       lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
-      articleCount: articles.length,
-      sourceCount: sources.length,
+      articleCount: articleCount ?? 0,
+      sourceCount: sourceCount ?? sources.length,
       sources: sources.map((source) => ({
         name: source.name,
         logoUrl: source.logoUrl,

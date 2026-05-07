@@ -78,10 +78,8 @@ function BookmarksPage() {
 function BookmarksContent() {
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
-  const maxSourcesConfig = useQuery(api.config.get, {
-    key: "event_card_max_sources",
-  });
-  const maxSources = safePositiveInt(maxSourcesConfig?.value, 5);
+  const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
+  const maxSources = safePositiveInt(runtimeConfig?.eventCardMaxSources, 5);
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};

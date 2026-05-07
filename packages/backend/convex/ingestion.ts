@@ -716,6 +716,9 @@ async function recomputeEventEmbeddingForEvent(
   ctx: MutationCtx,
   eventId: Id<"events">,
 ): Promise<void> {
+  const event = await ctx.db.get(eventId);
+  if (!event) return;
+
   const articles = await ctx.db
     .query("articles")
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -784,12 +787,14 @@ async function recomputeEventEmbeddingForEvent(
     await ctx.db.patch(existingRow._id, {
       embedding: averagedEmbedding,
       version: latestVersion,
+      status: event.status,
     });
   } else {
     await ctx.db.insert("eventEmbeddings", {
       eventId,
       embedding: averagedEmbedding,
       version: latestVersion,
+      status: event.status,
     });
   }
 }

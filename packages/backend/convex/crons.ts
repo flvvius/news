@@ -55,7 +55,7 @@ crons.interval(
 // clustering runs.
 crons.interval(
   "merge-near-duplicate-events",
-  { minutes: 30 },
+  { hours: 1 },
   internal.clustering.mergeNearDuplicateEvents,
 );
 
@@ -66,7 +66,7 @@ crons.interval(
 // improving recall for stories that were under-clustered during the online pass.
 crons.interval(
   "recluster-recent-singletons",
-  { hours: 6 },
+  { hours: 12 },
   internal.clustering.reclusterRecentSingletonEvents,
 );
 
