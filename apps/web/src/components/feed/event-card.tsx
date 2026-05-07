@@ -136,10 +136,12 @@ const EventCard = ({
   const biasDistribution =
     event.sourceBiasCounts ?? fallbackBiasDistribution;
   const totalSources = Math.max(0, event.sourceCount ?? event.sources?.length ?? 0);
-  const distributionTotal = Math.max(
-    1,
-    biasDistribution.left + biasDistribution.center + biasDistribution.right,
-  );
+  const distributionTotal =
+    biasDistribution.left + biasDistribution.center + biasDistribution.right;
+  const showBiasDistribution =
+    totalSources > 0 &&
+    distributionTotal > 0 &&
+    (event.sourceBiasCounts !== undefined || (event.sources?.length ?? 0) > 0);
 
   return (
     <Link
@@ -279,7 +281,7 @@ const EventCard = ({
                 </div>
               </div>
 
-              {totalSources > 0 && (
+              {showBiasDistribution && (
                 <div className="space-y-1.5">
                   <div
                     className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"

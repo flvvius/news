@@ -5,7 +5,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
 import { normalizeEmail } from "./lib/betaAccess";
-import { getPublicPreviewByEventId } from "./lib/publicEventPreviews";
+import {
+  getPublicPreviewByEventId,
+  MAX_PREVIEW_SOURCES,
+} from "./lib/publicEventPreviews";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -489,7 +492,9 @@ async function buildDashboardEventPreview(
       Array.from(new Set(articles.map((article) => article.sourceId)));
   }
   const sourceRows = await Promise.all(
-    (sourceIds ?? []).map((sourceId) => ctx.db.get(sourceId)),
+    (sourceIds ?? [])
+      .slice(0, MAX_PREVIEW_SOURCES)
+      .map((sourceId) => ctx.db.get(sourceId)),
   );
 
   return {
@@ -619,7 +624,9 @@ export const getBookmarkedEvents = query({
         }
 
         const sources = await Promise.all(
-          (sourceIds ?? []).map((id) => ctx.db.get(id)),
+          (sourceIds ?? [])
+            .slice(0, MAX_PREVIEW_SOURCES)
+            .map((id) => ctx.db.get(id)),
         );
 
         return {

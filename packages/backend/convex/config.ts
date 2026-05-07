@@ -90,7 +90,7 @@ export const getPublicRuntimeConfig = query({
       getConfig(ctx, "landing_preview_count", 5),
       getConfig(ctx, "event_card_max_sources", 5),
       getConfig(ctx, "feed_page_size", 6),
-      getConfig(ctx, "bias_thresholds", [-2, 2]),
+      getConfig(ctx, "bias_thresholds", [-2, -0.5, 0.5, 2]),
       getConfig(ctx, "waitlist_toast_dismiss_ms", 6000),
     ]);
 

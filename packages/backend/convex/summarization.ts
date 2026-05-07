@@ -249,7 +249,7 @@ async function buildShareRenderData(
     imageAlt: event.imageAlt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
     articleCount: articleCount ?? 0,
-    sourceCount: sourceCount ?? sources.length,
+    sourceCount: sourceCount ?? (sourceIds ? sourceIds.length : 0),
     sources: sources.map((source) => ({
       name: source.name,
       logoUrl: source.logoUrl,

@@ -45,12 +45,25 @@ const emailReplyTo =
 
 const authFunctions: AuthFunctions = internal.auth;
 
+function summarizeEmailForLogs(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const atIndex = normalized.indexOf("@");
+  if (atIndex <= 0 || atIndex === normalized.length - 1) {
+    return "<redacted_email>";
+  }
+  return `***@${normalized.slice(atIndex + 1)}`;
+}
+
 function collectTrustedOrigins() {
-  const configuredOrigins = new Set<string>([
-    siteUrl,
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-  ]);
+  const configuredOrigins = new Set<string>([siteUrl]);
+  const allowLocalhostOrigins =
+    process.env.NODE_ENV !== "production" ||
+    process.env.CONVEX_ALLOW_LOCALHOST === "true";
+
+  if (allowLocalhostOrigins) {
+    configuredOrigins.add("http://localhost:3001");
+    configuredOrigins.add("http://127.0.0.1:3001");
+  }
 
   if (process.env.CONVEX_SITE_URL?.trim()) {
     configuredOrigins.add(process.env.CONVEX_SITE_URL.trim());
@@ -94,7 +107,10 @@ async function sendAuthEmail({
 
     console.warn(
       `[auth] ${debugLabel} email not sent because RESEND_API_KEY is missing.`,
-      { to, actionUrl },
+      {
+        recipient: summarizeEmailForLogs(to),
+        actionUrl: "<redacted_action_url>",
+      },
     );
     return;
   }

@@ -646,8 +646,8 @@ function AuthorizedDashboard() {
                             </span>
                             <span>·</span>
                             <span>
-                              {entry.event.sourceCount} source
-                              {entry.event.sourceCount === 1 ? "" : "s"}
+                              {(entry.event.sourceCount ?? 0)} source
+                              {(entry.event.sourceCount ?? 0) === 1 ? "" : "s"}
                             </span>
                           </div>
                         </div>

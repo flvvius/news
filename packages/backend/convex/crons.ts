@@ -49,7 +49,7 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Event Merge Pass — Every 30 minutes
+// Event Merge Pass — Every 1 hour
 // ---------------------------------------------------------------------------
 // Collapses near-duplicate recently published events created across separate
 // clustering runs.
@@ -60,7 +60,7 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Singleton Recluster Pass — Every 6 hours
+// Singleton Recluster Pass — Every 12 hours
 // ---------------------------------------------------------------------------
 // Re-examines recent singleton / tiny events after more articles have landed,
 // improving recall for stories that were under-clustered during the online pass.

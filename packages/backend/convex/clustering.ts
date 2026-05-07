@@ -1287,6 +1287,8 @@ async function refreshEventPresentation(
   }
 
   await ctx.db.patch(eventId, {
+    articleCount: resolvedArticleCount,
+    sourceCount: resolvedSourceCount,
     perspectiveSummaries: nextPerspectiveSummaries,
     perspectiveSource: nextPerspectiveSource,
     globalImpact: nextGlobalImpact,
@@ -3735,11 +3737,15 @@ export const mergeEvents = internalMutation({
       keepCandidacy?.topicSlugs,
       removeCandidacy?.topicSlugs ?? [],
     );
+    const mergedStatus =
+      keepEvent.status === "published" || removeEvent.status === "published"
+        ? "published"
+        : keepEvent.status;
 
     if (keepCandidacy) {
       await ctx.db.patch(keepCandidacy._id, {
         ...buildCandidacySnapshotFields({
-          status: keepEvent.status,
+          status: mergedStatus,
           firstPublishedAt: mergedFirstPublishedAt,
           lastArticleAt: mergedLastArticleAt,
           articleCount: mergedArticleCount,
@@ -3757,7 +3763,7 @@ export const mergeEvents = internalMutation({
       await ctx.db.insert("eventCandidacy", {
         eventId: keepEventId,
         ...buildCandidacySnapshotFields({
-          status: keepEvent.status,
+          status: mergedStatus,
           firstPublishedAt: mergedFirstPublishedAt,
           lastArticleAt: mergedLastArticleAt,
           articleCount: mergedArticleCount,
@@ -3785,14 +3791,14 @@ export const mergeEvents = internalMutation({
       await ctx.db.patch(keepEmbeddingRow._id, {
         embedding: mergedEmbedding,
         version,
-        status: keepEvent.status,
+        status: mergedStatus,
       });
     } else {
       await ctx.db.insert("eventEmbeddings", {
         eventId: keepEventId,
         embedding: mergedEmbedding,
         version,
-        status: keepEvent.status,
+        status: mergedStatus,
       });
     }
 
@@ -3843,6 +3849,7 @@ export const mergeEvents = internalMutation({
         : undefined;
 
     await ctx.db.patch(keepEventId, {
+      status: mergedStatus,
       title: mergedTitle,
       firstPublishedAt: mergedFirstPublishedAt,
       lastArticleAt: mergedLastArticleAt,

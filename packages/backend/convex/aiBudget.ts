@@ -174,12 +174,25 @@ async function adjustBudgetShard(
     )
     .unique();
 
-  const nextSpent = roundUsd(
-    Math.max(0, (existing?.spentUsd ?? 0) + deltaSpent),
-  );
-  const nextReserved = roundUsd(
-    Math.max(0, (existing?.reservedUsd ?? 0) + deltaReserved),
-  );
+  const existingSpentUsd = existing?.spentUsd ?? 0;
+  const existingReservedUsd = existing?.reservedUsd ?? 0;
+  const rawSpent = existingSpentUsd + deltaSpent;
+  const rawReserved = existingReservedUsd + deltaReserved;
+  const nextSpent = roundUsd(Math.max(0, rawSpent));
+  const nextReserved = roundUsd(Math.max(0, rawReserved));
+
+  if (rawSpent < 0 || rawReserved < 0) {
+    console.warn("[aiBudget.adjustBudgetShard] Clamped negative shard total", {
+      date: args.date,
+      shard: args.shard,
+      deltaSpentUsd: deltaSpent,
+      deltaReservedUsd: deltaReserved,
+      existingSpentUsd,
+      existingReservedUsd,
+      nextSpentUsd: nextSpent,
+      nextReservedUsd: nextReserved,
+    });
+  }
 
   if (existing) {
     await ctx.db.patch(existing._id, {
@@ -223,17 +236,6 @@ async function getConfigBoolean(
   } catch {
     return fallback;
   }
-}
-
-async function getActiveReservationTotal(
-  ctx: QueryCtx | MutationCtx,
-  now: number,
-): Promise<number> {
-  const reservations = await ctx.db
-    .query("aiBudgetReservations")
-    .withIndex("by_expiresAt", (q) => q.gt("expiresAt", now))
-    .collect();
-  return reservations.reduce((sum, row) => sum + row.costUsd, 0);
 }
 
 /**
@@ -601,12 +603,13 @@ export const getTodaysUsage = internalQuery({
       addUsage(byCallType, row.callType ?? row.operation, row);
     }
 
-    const totalCostUsd = spentUsd;
+    const totalCostUsd = usage.reduce((sum, row) => sum + row.costUsd, 0);
 
     return {
       date: today,
       totalCalls: usage.length,
       totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+      reportedSpentUsd: Math.round(spentUsd * 1_000_000) / 1_000_000,
       byModel,
       byCallType,
     };

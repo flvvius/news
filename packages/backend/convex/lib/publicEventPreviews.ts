@@ -1,7 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
-const MAX_PREVIEW_SOURCES = 5;
+export const MAX_PREVIEW_SOURCES = 5;
 
 type PublicPreviewCtx = MutationCtx | QueryCtx;
 
@@ -111,15 +111,29 @@ export async function syncPublicEventPreview(
   }
 
   const existing = await getPublicPreviewByEventId(ctx, eventId);
+  const perspectiveSummaries = event.perspectiveSummaries
+    ? {
+        ...(event.perspectiveSummaries.center !== undefined
+          ? { center: event.perspectiveSummaries.center }
+          : {}),
+        ...(event.perspectiveSummaries.left !== undefined
+          ? { left: event.perspectiveSummaries.left }
+          : {}),
+        ...(event.perspectiveSummaries.right !== undefined
+          ? { right: event.perspectiveSummaries.right }
+          : {}),
+      }
+    : undefined;
   const payload = {
     eventId,
     slug: event.slug,
     title: event.title,
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
-    perspectiveSummaries: event.perspectiveSummaries?.center
-      ? { center: event.perspectiveSummaries.center }
-      : undefined,
+    perspectiveSummaries:
+      perspectiveSummaries && Object.keys(perspectiveSummaries).length > 0
+        ? perspectiveSummaries
+        : undefined,
     globalImpact: event.globalImpact,
     firstPublishedAt: event.firstPublishedAt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

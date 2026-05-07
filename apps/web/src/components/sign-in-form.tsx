@@ -44,6 +44,7 @@ export default function SignInForm({
     from: "/",
   });
   const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetStatusMessage, setResetStatusMessage] = useState("");
 
   const form = useForm({
     defaultValues: {
@@ -141,12 +142,16 @@ export default function SignInForm({
                         const parsedEmail = z.email().safeParse(email);
 
                         if (!parsedEmail.success) {
+                          setResetStatusMessage(
+                            "Enter your email address first so we know where to send the reset link.",
+                          );
                           toast.error(
                             "Enter your email address first so we know where to send the reset link.",
                           );
                           return;
                         }
 
+                        setResetStatusMessage("");
                         setIsSendingReset(true);
                         try {
                           const response = await fetch(
@@ -173,11 +178,20 @@ export default function SignInForm({
                             );
                           }
 
+                          setResetStatusMessage(
+                            payload?.message ||
+                              "If that email exists, we sent a password reset link.",
+                          );
                           toast.success(
                             payload?.message ||
                               "If that email exists, we sent a password reset link.",
                           );
                         } catch (error) {
+                          setResetStatusMessage(
+                            error instanceof Error
+                              ? error.message
+                              : "We couldn't send a reset link. Please try again.",
+                          );
                           toast.error(
                             error instanceof Error
                               ? error.message
@@ -190,6 +204,11 @@ export default function SignInForm({
                     >
                       {isSendingReset ? "Sending..." : "Forgot password?"}
                     </button>
+                    <div aria-live="polite" role="status" className="sr-only">
+                      {isSendingReset
+                        ? "Sending password reset..."
+                        : resetStatusMessage}
+                    </div>
                   </div>
                   <Input
                     id={field.name}

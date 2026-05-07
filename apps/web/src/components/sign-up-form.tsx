@@ -40,9 +40,7 @@ export default function SignUpForm({
   showGoogle?: boolean;
 }) {
   const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
-  const [submittedEmail, setSubmittedEmail] = useState(
-    initialEmail.trim() || "",
-  );
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [isResendingVerification, setIsResendingVerification] = useState(false);
 
   const form = useForm({
@@ -214,7 +212,12 @@ export default function SignUpForm({
         )}
 
         {submittedEmail && (
-          <div className="mt-6 rounded-xl border border-border/70 bg-muted/35 px-4 py-3">
+          <div
+            className="mt-6 rounded-xl border border-border/70 bg-muted/35 px-4 py-3"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <p className="text-sm text-muted-foreground">
               Didn&apos;t receive the email? Check spam, then resend the
               verification link to <span className="font-medium text-foreground">{submittedEmail}</span>.

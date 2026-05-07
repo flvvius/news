@@ -154,6 +154,8 @@ export default defineSchema({
     perspectiveSummaries: v.optional(
       v.object({
         center: v.optional(v.string()),
+        left: v.optional(v.string()),
+        right: v.optional(v.string()),
       }),
     ),
     globalImpact: v.optional(v.string()),

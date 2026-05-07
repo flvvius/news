@@ -54,6 +54,7 @@ export default function BookmarkButton({
       toast.error("Something went wrong. Please try again.");
     },
   });
+  const { mutate } = toggle;
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -78,7 +79,7 @@ export default function BookmarkButton({
       if (now - lastClickRef.current < BOOKMARK_DEBOUNCE_MS) return;
       lastClickRef.current = now;
 
-      toggle.mutate({
+      mutate({
         eventId,
         context: interactionContext,
         metadata: {
@@ -86,7 +87,7 @@ export default function BookmarkButton({
         },
       });
     },
-    [isAuthenticated, toggle, eventId, interactionContext, redirectTo],
+    [isAuthenticated, mutate, eventId, interactionContext, redirectTo],
   );
 
   const bookmarked = isBookmarked === true;
