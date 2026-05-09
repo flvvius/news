@@ -1,5 +1,4 @@
-import SignInForm from "@/components/sign-in-form";
-import SignUpForm from "@/components/sign-up-form";
+import { SignInPrompt } from "@/components/SignInPrompt";
 import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
 import StreakActivityCalendar from "@/components/streak-activity-calendar";
@@ -7,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Authenticated,
   AuthLoading,
@@ -16,11 +15,8 @@ import {
   useQuery,
 } from "convex/react";
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
-import { isAuthRedirectPath, type AuthRedirectPath } from "@/lib/auth-redirect";
+import { useEffect, useState } from "react";
 import { formatRelativeTimestamp } from "@/lib/dates";
-import { toast } from "sonner";
-import { z } from "zod";
 import {
   Bookmark,
   ChevronRight,
@@ -28,12 +24,6 @@ import {
   Newspaper,
   Sparkles,
 } from "lucide-react";
-
-const searchSchema = z.object({
-  mode: z.enum(["signin", "signup"]).optional(),
-  redirect: z.string().optional(),
-  verified: z.union([z.string(), z.number()]).optional(),
-});
 
 function formatReadDuration(seconds?: number) {
   if (!seconds || seconds <= 0) return null;
@@ -66,7 +56,6 @@ function getNextStreakMilestone(streak: number) {
 }
 
 export const Route = createFileRoute("/activitate")({
-  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Activitate — Biviant" },
@@ -77,138 +66,17 @@ export const Route = createFileRoute("/activitate")({
 });
 
 function RouteComponent() {
-  const search = Route.useSearch();
-  const navigate = useNavigate({ from: "/activitate" });
-  const redirectTo: AuthRedirectPath =
-    search.redirect && isAuthRedirectPath(search.redirect)
-      ? search.redirect
-      : "/feed";
-  const hasShownVerifiedToastRef = useRef(false);
-  const isVerified = String(search.verified) === "1";
-  const showSignIn = search.mode !== "signup" || isVerified;
-
-  useEffect(() => {
-    if (!isVerified || hasShownVerifiedToastRef.current) {
-      return;
-    }
-
-    hasShownVerifiedToastRef.current = true;
-    toast.message("If you recently verified, you can now log in.");
-    void navigate({
-      search: (current) => ({
-        ...current,
-        mode: "signin",
-        verified: undefined,
-      }),
-      replace: true,
-    });
-  }, [isVerified, navigate]);
-
   return (
     <>
       <Authenticated>
         <AuthorizedDashboard />
       </Authenticated>
       <Unauthenticated>
-        <div className="min-h-[calc(100vh-4rem)] bg-background">
-          <div className="container mx-auto max-w-5xl px-4 py-10 sm:py-16">
-            <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                    Biviant Account
-                  </p>
-                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                    {showSignIn ? "Welcome back" : "Create your free account"}
-                  </h1>
-                  <p className="max-w-[55ch] text-muted-foreground leading-relaxed">
-                    Read every event, source profile, and search result without
-                    an account. Sign in when you want synced bookmarks,
-                    personalized ranking, and notifications.
-                  </p>
-                </div>
-
-                <div className="w-full max-w-md">
-                  {showSignIn ? (
-                    <SignInForm
-                      redirectTo={redirectTo}
-                      title="Sign in to your account"
-                      subtitle="Access your bookmarks, personalized ranking, and saved preferences."
-                      onSwitchToSignUp={() => {
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            mode: "signup",
-                          }),
-                        });
-                      }}
-                    />
-                  ) : (
-                    <SignUpForm
-                      redirectTo={redirectTo}
-                      title="Create your account"
-                      subtitle="Free accounts unlock bookmarks, personalized feeds, and future notifications. We’ll verify your email before activation."
-                      submitLabel="Create account"
-                      onSwitchToSignIn={() => {
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            mode: "signin",
-                          }),
-                        });
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h3 className="text-lg font-semibold">
-                    What accounts unlock
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    The content stays open. Accounts are only for personal,
-                    persistent features.
-                  </p>
-                  <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
-                    <li className="flex gap-3">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        1
-                      </span>
-                      Save bookmarks and keep them synced across devices.
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        2
-                      </span>
-                      Personalize ranking using your reading habits and
-                      interests.
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        3
-                      </span>
-                      Get notifications, digests, and future account-only tools.
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h3 className="text-lg font-semibold">
-                    Verification matters
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    New email/password signups require email verification before
-                    first sign-in. Google sign-in continues to work as a
-                    one-step path when the provider has already verified the
-                    address.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SignInPrompt
+          title="Urmărește-ți obiceiurile de citire"
+          description="Vezi balanța de bias, streak-urile de citire și statisticile tale într-un singur loc."
+          redirectTo="/activitate"
+        />
       </Unauthenticated>
       <AuthLoading>
         <PageLoadingState
@@ -592,18 +460,18 @@ function AuthorizedDashboard() {
               </div>
             </div>
 
-            {/* Bookmarks */}
+            {/* Salvate */}
             <div className="rounded-xl border border-border bg-card">
               <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
                 <div>
-                  <h2 className="font-semibold">Bookmarks</h2>
+                  <h2 className="font-semibold">Salvate</h2>
                   <p className="text-sm text-muted-foreground">
-                    Saved for later
+                    Păstrate pentru mai târziu
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/bookmarks" className="gap-1">
-                    All
+                  <Link to="/salvate" className="gap-1">
+                    Toate
                     <ChevronRight className="size-4" />
                   </Link>
                 </Button>
@@ -611,7 +479,7 @@ function AuthorizedDashboard() {
               <div className="p-5">
                 {recentBookmarks.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                    Bookmark events from the feed
+                    Salvează evenimente din feed ca să apară aici
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -669,25 +537,25 @@ function AuthorizedDashboard() {
                 <Newspaper className="size-6" />
               </div>
               <div>
-                <h3 className="font-semibold">Browse Feed</h3>
+                <h3 className="font-semibold">Explorează feed-ul</h3>
                 <p className="text-sm text-muted-foreground">
-                  See today&apos;s stories
+                  Vezi subiectele de astăzi
                 </p>
               </div>
             </Link>
 
             <Link
-              to="/bookmarks"
+              to="/salvate"
               className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-primary/5"
             >
               <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                 <Bookmark className="size-6" />
               </div>
               <div>
-                <h3 className="font-semibold">Bookmarks</h3>
+                <h3 className="font-semibold">Salvate</h3>
                 <p className="text-sm text-muted-foreground">
-                  {bookmarkCount} saved{" "}
-                  {bookmarkCount === 1 ? "story" : "stories"}
+                  {bookmarkCount}{" "}
+                  {bookmarkCount === 1 ? "articol salvat" : "articole salvate"}
                 </p>
               </div>
             </Link>

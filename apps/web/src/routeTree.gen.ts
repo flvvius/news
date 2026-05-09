@@ -13,6 +13,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as TermeniRouteImport } from './routes/termeni'
 import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SalvateRouteImport } from './routes/salvate'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ProfilRouteImport } from './routes/profil'
@@ -48,6 +49,11 @@ const SurseleNoastreRoute = SurseleNoastreRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SalvateRoute = SalvateRouteImport.update({
+  id: '/salvate',
+  path: '/salvate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
@@ -191,6 +199,7 @@ export interface FileRoutesById {
   '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/reset-password'
     | '/robots.txt'
+    | '/salvate'
     | '/sitemap.xml'
     | '/sursele-noastre'
     | '/termeni'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/reset-password'
     | '/robots.txt'
+    | '/salvate'
     | '/sitemap.xml'
     | '/sursele-noastre'
     | '/termeni'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/reset-password'
     | '/robots.txt'
+    | '/salvate'
     | '/sitemap.xml'
     | '/sursele-noastre'
     | '/termeni'
@@ -282,6 +294,7 @@ export interface RootRouteChildren {
   ProfilRoute: typeof ProfilRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SalvateRoute: typeof SalvateRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SurseleNoastreRoute: typeof SurseleNoastreRoute
   TermeniRoute: typeof TermeniRoute
@@ -319,6 +332,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/salvate': {
+      id: '/salvate'
+      path: '/salvate'
+      fullPath: '/salvate'
+      preLoaderRoute: typeof SalvateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -450,6 +470,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfilRoute: ProfilRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  SalvateRoute: SalvateRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SurseleNoastreRoute: SurseleNoastreRoute,
   TermeniRoute: TermeniRoute,

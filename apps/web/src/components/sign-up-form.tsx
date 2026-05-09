@@ -17,7 +17,7 @@ function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
     verified: "1",
     redirect: redirectTo,
   });
-  return `/activitate?${params.toString()}`;
+  return `/dashboard?${params.toString()}`;
 }
 
 export default function SignUpForm({

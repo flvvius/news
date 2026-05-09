@@ -11,8 +11,8 @@ type AuthPromptBannerProps = {
 
 export default function AuthPromptBanner({
   redirectTo,
-  title = "Create a free account to save and personalize your news",
-  description = "Reading stays open to everyone. Accounts unlock bookmarks, personalized ranking, and notifications.",
+  title = "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
+  description = "Poți citi fără cont. Autentificarea adaugă salvări, recomandări personale și funcții viitoare.",
   compact = false,
 }: AuthPromptBannerProps) {
   return (
@@ -26,13 +26,13 @@ export default function AuthPromptBanner({
         </div>
         <div className="flex flex-wrap gap-3">
           <Button asChild size={compact ? "sm" : "default"}>
-            <Link to="/activitate" search={{ mode: "signup", redirect: redirectTo }}>
-              Create account
+            <Link to="/dashboard" search={{ mode: "signup", redirect: redirectTo }}>
+              Creează cont
             </Link>
           </Button>
           <Button asChild variant="ghost" size={compact ? "sm" : "default"}>
-            <Link to="/activitate" search={{ mode: "signin", redirect: redirectTo }}>
-              Sign in
+            <Link to="/dashboard" search={{ mode: "signin", redirect: redirectTo }}>
+              Conectare
             </Link>
           </Button>
         </div>

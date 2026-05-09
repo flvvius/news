@@ -67,7 +67,7 @@ export default function BookmarkButton({
           action: {
             label: "Sign in",
             onClick: () => {
-              window.location.href = `/activitate?mode=signin&redirect=${encodeURIComponent(redirectTo)}`;
+              window.location.href = `/dashboard?mode=signin&redirect=${encodeURIComponent(redirectTo)}`;
             },
           },
         });

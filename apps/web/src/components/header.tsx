@@ -12,7 +12,7 @@ import {
 const links = [
   { to: "/", label: "Acasă", icon: Home },
   { to: "/feed", label: "Feed", icon: Newspaper },
-  { to: "/bookmarks", label: "Salvate", icon: Bookmark },
+  { to: "/salvate", label: "Salvate", icon: Bookmark },
   { to: "/activitate", label: "Activitate", icon: LayoutDashboard },
 ] as const;
 

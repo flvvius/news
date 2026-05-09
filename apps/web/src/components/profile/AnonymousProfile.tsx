@@ -45,12 +45,12 @@ export function AnonymousProfile() {
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="sm:min-w-56">
-                <Link to="/activitate" search={{ mode: "signup" }}>
+                <Link to="/dashboard" search={{ mode: "signup" }}>
                   Înregistrare gratuită
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="sm:min-w-44">
-                <Link to="/activitate" search={{ mode: "signin" }}>
+                <Link to="/dashboard" search={{ mode: "signin" }}>
                   Conectare
                 </Link>
               </Button>

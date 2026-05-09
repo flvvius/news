@@ -21,7 +21,7 @@ const tabs: TabItem[] = [
       pathname.startsWith("/event/"),
   },
   {
-    to: "/bookmarks",
+    to: "/salvate",
     label: "Salvate",
     icon: Bookmark,
   },

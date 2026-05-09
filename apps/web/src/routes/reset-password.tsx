@@ -72,7 +72,7 @@ function ResetPasswordRoute() {
           onSuccess: () => {
             toast.success("Your password has been reset. You can sign in now.");
             void navigate({
-              to: "/activitate",
+              to: "/dashboard",
               search: { mode: "signin" },
             });
           },
@@ -112,7 +112,7 @@ function ResetPasswordRoute() {
                     "This password reset link is missing a token. Request a new one from the sign-in form."}
                 </p>
                 <Button asChild className="w-full h-11">
-                  <Link to="/activitate" search={{ mode: "signin" }}>
+                  <Link to="/dashboard" search={{ mode: "signin" }}>
                     Back to sign in
                   </Link>
                 </Button>
@@ -198,7 +198,7 @@ function ResetPasswordRoute() {
 
                 <div className="text-center text-sm text-muted-foreground">
                   <Link
-                    to="/activitate"
+                    to="/dashboard"
                     search={{ mode: "signin" }}
                     className="text-primary hover:underline font-medium"
                   >
