@@ -47,7 +47,7 @@ export function MobileTabBar() {
   });
 
   const handleTabClick =
-    (to: string, isActive: boolean) => (event: MouseEvent<HTMLAnchorElement>) => {
+    (isActive: boolean) => (event: MouseEvent<HTMLAnchorElement>) => {
       if (!isActive) {
         return;
       }
@@ -75,7 +75,7 @@ export function MobileTabBar() {
             <Link
               key={to}
               to={to}
-              onClick={handleTabClick(to, isActive)}
+              onClick={handleTabClick(isActive)}
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs transition-colors",

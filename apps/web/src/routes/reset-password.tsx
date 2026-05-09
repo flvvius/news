@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -43,7 +43,6 @@ export const Route = createFileRoute("/reset-password")({
 
 function ResetPasswordRoute() {
   const search = Route.useSearch();
-  const navigate = useNavigate({ from: "/reset-password" });
   const token = search.token?.trim();
   const errorMessage = getResetErrorMessage(search.error);
 
@@ -71,10 +70,7 @@ function ResetPasswordRoute() {
         {
           onSuccess: () => {
             toast.success("Your password has been reset. You can sign in now.");
-            void navigate({
-              to: "/dashboard",
-              search: { mode: "signin" },
-            });
+            window.location.assign("/dashboard?mode=signin");
           },
           onError: (error) => {
             const message =

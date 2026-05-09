@@ -43,7 +43,12 @@ export default function BookmarkButton({
   const toggle = useMutation({
     mutationFn: useConvexMutation(api.interactions.toggleBookmark),
     onSuccess: (data) => {
-      if (data.bookmarked) {
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "bookmarked" in data &&
+        data.bookmarked === true
+      ) {
         toast.success("Bookmarked");
       } else {
         toast("Bookmark removed");
@@ -105,7 +110,7 @@ export default function BookmarkButton({
         bookmarked
           ? "text-primary bg-primary/10 hover:bg-primary/20"
           : "text-muted-foreground hover:text-primary hover:bg-primary/10",
-        className
+        className,
       )}
       disabled={toggle.isPending}
       onClick={handleClick}

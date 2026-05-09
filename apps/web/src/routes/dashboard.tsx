@@ -1,7 +1,7 @@
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useConvexAuth } from "convex/react";
 import { useEffect, useRef } from "react";
 import { isAuthRedirectPath, type AuthRedirectPath } from "@/lib/auth-redirect";
@@ -27,7 +27,6 @@ export const Route = createFileRoute("/dashboard")({
 
 function DashboardAuthPage() {
   const search = Route.useSearch();
-  const navigate = useNavigate({ from: "/dashboard" });
   const { isAuthenticated, isLoading } = useConvexAuth();
   const redirectTo: AuthRedirectPath =
     search.redirect && isAuthRedirectPath(search.redirect)
@@ -39,9 +38,27 @@ function DashboardAuthPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      void navigate({ to: "/activitate", replace: true });
+      window.location.replace("/activitate");
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated]);
+
+  const replaceDashboardSearch = (
+    mode: "signin" | "signup",
+    verified?: string | number,
+  ) => {
+    const params = new URLSearchParams();
+    params.set("mode", mode);
+
+    if (search.redirect) {
+      params.set("redirect", search.redirect);
+    }
+
+    if (verified !== undefined) {
+      params.set("verified", String(verified));
+    }
+
+    window.location.replace(`/dashboard?${params.toString()}`);
+  };
 
   useEffect(() => {
     if (!isVerified || hasShownVerifiedToastRef.current) {
@@ -50,15 +67,8 @@ function DashboardAuthPage() {
 
     hasShownVerifiedToastRef.current = true;
     toast.message("Dacă ți-ai verificat contul, te poți conecta acum.");
-    void navigate({
-      search: (current) => ({
-        ...current,
-        mode: "signin",
-        verified: undefined,
-      }),
-      replace: true,
-    });
-  }, [isVerified, navigate]);
+    replaceDashboardSearch("signin");
+  }, [isVerified, search.redirect]);
 
   if (isLoading || isAuthenticated) {
     return (
@@ -96,12 +106,7 @@ function DashboardAuthPage() {
                   title="Conectează-te în cont"
                   subtitle="Accesează salvările, preferințele și experiența ta personalizată."
                   onSwitchToSignUp={() => {
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        mode: "signup",
-                      }),
-                    });
+                    replaceDashboardSearch("signup", search.verified);
                   }}
                 />
               ) : (
@@ -111,12 +116,7 @@ function DashboardAuthPage() {
                   subtitle="Contul gratuit deblochează salvările, feed-ul personalizat și notificările viitoare."
                   submitLabel="Creează cont"
                   onSwitchToSignIn={() => {
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        mode: "signin",
-                      }),
-                    });
+                    replaceDashboardSearch("signin", search.verified);
                   }}
                 />
               )}
