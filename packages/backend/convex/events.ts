@@ -193,7 +193,7 @@ export const getPublishedEvents = query({
     sort: v.optional(FEED_SORT_VALIDATOR),
   },
   handler: async (ctx, args) => {
-    const sort = args.sort ?? "recent";
+    const sort = args.sort ?? "trending";
 
     let events;
 

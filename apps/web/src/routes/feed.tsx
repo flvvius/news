@@ -253,7 +253,7 @@ function FeedContent() {
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
-  const [feedSort, setFeedSort] = useState<"recent" | "trending">("recent");
+  const [feedSort, setFeedSort] = useState<"recent" | "trending">("trending");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);

@@ -54,8 +54,40 @@ function summarizeEmailForLogs(email: string) {
   return `***@${normalized.slice(atIndex + 1)}`;
 }
 
+function addTrustedOriginVariant(
+  configuredOrigins: Set<string>,
+  rawValue: string | undefined | null,
+) {
+  const value = rawValue?.trim();
+  if (!value) return;
+
+  try {
+    const url = new URL(value);
+    configuredOrigins.add(url.origin);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return;
+    }
+
+    const alternateHostname = hostname.startsWith("www.")
+      ? hostname.slice(4)
+      : `www.${hostname}`;
+    configuredOrigins.add(
+      `${url.protocol}//${alternateHostname}${url.port ? `:${url.port}` : ""}`,
+    );
+  } catch {
+    configuredOrigins.add(value);
+  }
+}
+
 function collectTrustedOrigins() {
-  const configuredOrigins = new Set<string>([siteUrl]);
+  const configuredOrigins = new Set<string>();
+  addTrustedOriginVariant(configuredOrigins, siteUrl);
   const allowLocalhostOrigins =
     process.env.NODE_ENV !== "production" ||
     process.env.CONVEX_ALLOW_LOCALHOST === "true";
@@ -66,14 +98,11 @@ function collectTrustedOrigins() {
   }
 
   if (process.env.CONVEX_SITE_URL?.trim()) {
-    configuredOrigins.add(process.env.CONVEX_SITE_URL.trim());
+    addTrustedOriginVariant(configuredOrigins, process.env.CONVEX_SITE_URL);
   }
 
   for (const value of (process.env.ALLOWED_ORIGINS || "").split(",")) {
-    const origin = value.trim();
-    if (origin) {
-      configuredOrigins.add(origin);
-    }
+    addTrustedOriginVariant(configuredOrigins, value);
   }
 
   return [...configuredOrigins, nativeAppUrl];
