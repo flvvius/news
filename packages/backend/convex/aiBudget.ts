@@ -211,12 +211,14 @@ async function adjustBudgetShard(
   const rawReserved = existingReservedUsd + deltaReserved;
   const nextSpent = roundUsd(Math.max(0, rawSpent));
   const nextReserved = roundUsd(Math.max(0, rawReserved));
+  const appliedSpent = roundUsd(nextSpent - existingSpentUsd);
+  const appliedReserved = roundUsd(nextReserved - existingReservedUsd);
   const total = await ensureDailyBudgetTotal(ctx, args.date);
   const nextTotalSpent = roundUsd(
-    Math.max(0, (total?.spentUsd ?? 0) + deltaSpent),
+    Math.max(0, (total?.spentUsd ?? 0) + appliedSpent),
   );
   const nextTotalReserved = roundUsd(
-    Math.max(0, (total?.reservedUsd ?? 0) + deltaReserved),
+    Math.max(0, (total?.reservedUsd ?? 0) + appliedReserved),
   );
 
   if (rawSpent < 0 || rawReserved < 0) {

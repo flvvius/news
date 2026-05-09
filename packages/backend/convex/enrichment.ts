@@ -639,11 +639,19 @@ export const markArticleEnriched = internalMutation({
       return { updated: false, eventId: undefined };
     }
 
-    const latestEmbeddingRow = await ctx.db
+    const embeddingRows = await ctx.db
       .query("articleEmbeddings")
       .withIndex("by_article_version", (q) => q.eq("articleId", articleId))
-      .order("desc")
-      .first();
+      .collect();
+    const latestEmbeddingRow = embeddingRows.reduce<
+      Doc<"articleEmbeddings"> | null
+    >((latest, row) => {
+      if (!latest) return row;
+      if (row.version !== latest.version) {
+        return row.version > latest.version ? row : latest;
+      }
+      return row._creationTime > latest._creationTime ? row : latest;
+    }, null);
 
     const shouldRecordFactAttempt =
       factExtractionStatus !== undefined &&
@@ -656,17 +664,25 @@ export const markArticleEnriched = internalMutation({
       biasDetectionStatus !== undefined && biasDetectionStatus !== "skipped";
 
     // Keep a single hot embedding row per article in steady state.
+    let keptEmbeddingId;
     if (latestEmbeddingRow) {
       await ctx.db.patch(latestEmbeddingRow._id, {
         embedding,
         version,
       });
+      keptEmbeddingId = latestEmbeddingRow._id;
     } else {
-      await ctx.db.insert("articleEmbeddings", {
+      keptEmbeddingId = await ctx.db.insert("articleEmbeddings", {
         articleId,
         embedding,
         version,
       });
+    }
+
+    for (const row of embeddingRows) {
+      if (row._id !== keptEmbeddingId) {
+        await ctx.db.delete(row._id);
+      }
     }
 
     // Update article status & bias score (no embedding on the article itself)
