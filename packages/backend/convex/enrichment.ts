@@ -30,6 +30,7 @@ const ARTICLE_BIAS_STATUS_VALIDATOR = v.union(
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
+const CLAIM_CANDIDATE_POOL_MULTIPLIER = 2;
 
 // ---------------------------------------------------------------------------
 // Internal Mutations
@@ -220,6 +221,10 @@ export const claimArticlesForReenrichment = internalMutation({
   handler: async (ctx, { limit, runId, leaseExpiresAt, targetVersion }) => {
     const batchSize = Math.max(0, Math.floor(limit));
     if (batchSize === 0) return [];
+    const targetCandidatePool = Math.max(
+      batchSize,
+      batchSize * CLAIM_CANDIDATE_POOL_MULTIPLIER,
+    );
 
     const candidateMap = new Map<string, Doc<"articles">>();
     const addCandidates = (rows: Doc<"articles">[]) => {
@@ -229,16 +234,26 @@ export const claimArticlesForReenrichment = internalMutation({
         }
       }
     };
+    const remainingCandidateSlots = () =>
+      Math.max(0, targetCandidatePool - candidateMap.size);
 
     for (const status of ["enriched", "clustered"] as const) {
-      addCandidates(
-        await ctx.db
-          .query("articles")
-          .withIndex("by_status_latest_embedding_version", (q) =>
-            q.eq("status", status).lt("latestEmbeddingVersion", targetVersion),
-          )
-          .take(batchSize * 2),
-      );
+      const remaining = remainingCandidateSlots();
+      if (remaining > 0) {
+        addCandidates(
+          await ctx.db
+            .query("articles")
+            .withIndex("by_status_latest_embedding_version", (q) =>
+              q.eq("status", status).lt("latestEmbeddingVersion", targetVersion),
+            )
+            .take(remaining),
+        );
+      }
+    }
+
+    for (const status of ["enriched", "clustered"] as const) {
+      const remaining = remainingCandidateSlots();
+      if (remaining <= 0) break;
       addCandidates(
         await ctx.db
           .query("articles")
@@ -246,16 +261,23 @@ export const claimArticlesForReenrichment = internalMutation({
             q.eq("needsReenrichment", true).eq("status", status),
           )
           .order("desc")
-          .take(batchSize * 2),
+          .take(remaining),
       );
-      // Compatibility path until all legacy rows have denormalized fields.
-      addCandidates(
-        await ctx.db
-          .query("articles")
-          .withIndex("by_status_published", (q) => q.eq("status", status))
-          .order("desc")
-          .take(batchSize),
-      );
+    }
+
+    // Legacy compatibility path for rows that have not been backfilled yet.
+    if (candidateMap.size < batchSize) {
+      for (const status of ["enriched", "clustered"] as const) {
+        const remaining = Math.max(0, batchSize - candidateMap.size);
+        if (remaining <= 0) break;
+        addCandidates(
+          await ctx.db
+            .query("articles")
+            .withIndex("by_status_published", (q) => q.eq("status", status))
+            .order("desc")
+            .take(remaining),
+        );
+      }
     }
 
     const claimed = [];
@@ -311,6 +333,10 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
   ) => {
     const batchSize = Math.max(0, Math.floor(limit));
     if (batchSize === 0) return [];
+    const targetCandidatePool = Math.max(
+      batchSize,
+      batchSize * CLAIM_CANDIDATE_POOL_MULTIPLIER,
+    );
 
     const now = Date.now();
     const candidateMap = new Map<string, Doc<"articles">>();
@@ -321,8 +347,12 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
         }
       }
     };
+    const remainingCandidateSlots = () =>
+      Math.max(0, targetCandidatePool - candidateMap.size);
 
     for (const status of ["unprocessed", "enriched", "clustered"] as const) {
+      const remaining = remainingCandidateSlots();
+      if (remaining <= 0) break;
       addCandidates(
         await ctx.db
           .query("articles")
@@ -333,7 +363,7 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
               : base;
           })
           .order("desc")
-          .take(batchSize),
+          .take(remaining),
       );
     }
 
@@ -351,6 +381,8 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
     }
 
     for (const factStatus of factStatuses) {
+      const remaining = remainingCandidateSlots();
+      if (remaining <= 0) break;
       addCandidates(
         await ctx.db
           .query("articles")
@@ -361,20 +393,22 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
               : base;
           })
           .order("desc")
-          .take(batchSize),
+          .take(remaining),
       );
     }
 
-    // Compatibility path for legacy rows without derived fields.
-    addCandidates(
-      await ctx.db
-        .query("articles")
-        .withIndex("by_published", (q) =>
-          beforePublishedAt ? q.lt("publishedAt", beforePublishedAt) : q,
-        )
-        .order("desc")
-        .take(batchSize),
-    );
+    // Legacy compatibility path for rows without derived fields.
+    if (candidateMap.size < batchSize) {
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_published", (q) =>
+            beforePublishedAt ? q.lt("publishedAt", beforePublishedAt) : q,
+          )
+          .order("desc")
+          .take(Math.max(0, batchSize - candidateMap.size)),
+      );
+    }
 
     const claimed = [];
     for (const article of candidateMap.values()) {
