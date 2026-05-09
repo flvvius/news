@@ -1,6 +1,7 @@
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvexAuth } from "convex/react";
 import { useEffect, useRef } from "react";
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardAuthPage() {
+  const t = useT();
   const search = Route.useSearch();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const redirectTo: AuthRedirectPath =
@@ -66,15 +68,15 @@ function DashboardAuthPage() {
     }
 
     hasShownVerifiedToastRef.current = true;
-    toast.message("Dacă ți-ai verificat contul, te poți conecta acum.");
+    toast.message(t("auth.verifiedToast"));
     replaceDashboardSearch("signin");
-  }, [isVerified, search.redirect]);
+  }, [isVerified, search.redirect, t]);
 
   if (isLoading || isAuthenticated) {
     return (
       <PageLoadingState
-        title="Verificăm sesiunea"
-        description="Pregătim accesul la contul tău."
+        title={t("activity.checking.title")}
+        description={t("auth.accountIntro")}
         cardCount={2}
       />
     );
@@ -87,15 +89,15 @@ function DashboardAuthPage() {
           <div className="space-y-6">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                Cont Biviant
+                {t("auth.account")}
               </p>
               <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                {showSignIn ? "Bine ai revenit" : "Creează un cont gratuit"}
+                {showSignIn
+                  ? t("auth.welcomeBack")
+                  : t("auth.createFreeAccount")}
               </h1>
               <p className="max-w-[55ch] leading-relaxed text-muted-foreground">
-                Poți citi feed-ul fără cont. Conectarea îți oferă salvări
-                sincronizate, preferințe personale și acces rapid la activitatea
-                ta.
+                {t("auth.accountIntro")}
               </p>
             </div>
 
@@ -103,8 +105,8 @@ function DashboardAuthPage() {
               {showSignIn ? (
                 <SignInForm
                   redirectTo={redirectTo}
-                  title="Conectează-te în cont"
-                  subtitle="Accesează salvările, preferințele și experiența ta personalizată."
+                  title={t("auth.signInTitle")}
+                  subtitle={t("auth.signInSubtitle")}
                   onSwitchToSignUp={() => {
                     replaceDashboardSearch("signup", search.verified);
                   }}
@@ -112,9 +114,9 @@ function DashboardAuthPage() {
               ) : (
                 <SignUpForm
                   redirectTo={redirectTo}
-                  title="Creează-ți contul"
-                  subtitle="Contul gratuit deblochează salvările, feed-ul personalizat și notificările viitoare."
-                  submitLabel="Creează cont"
+                  title={t("auth.signUpTitle")}
+                  subtitle={t("auth.signUpSubtitle")}
+                  submitLabel={t("auth.createAccount")}
                   onSwitchToSignIn={() => {
                     replaceDashboardSearch("signin", search.verified);
                   }}
@@ -125,39 +127,38 @@ function DashboardAuthPage() {
 
           <div className="space-y-6">
             <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="text-lg font-semibold">Ce deblochează contul</h2>
+              <h2 className="text-lg font-semibold">{t("auth.unlockTitle")}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Conținutul rămâne deschis. Contul adaugă doar funcții personale
-                și persistente.
+                {t("auth.unlockBody")}
               </p>
               <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
                 <li className="flex gap-3">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                     1
                   </span>
-                  Salvezi articole și evenimente pentru mai târziu.
+                  {t("auth.unlockOne")}
                 </li>
                 <li className="flex gap-3">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                     2
                   </span>
-                  Îți personalizezi experiența pe baza intereselor tale.
+                  {t("auth.unlockTwo")}
                 </li>
                 <li className="flex gap-3">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                     3
                   </span>
-                  Primești acces la notificări și funcții noi pe măsură ce apar.
+                  {t("auth.unlockThree")}
                 </li>
               </ol>
             </div>
 
             <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="text-lg font-semibold">Verificarea contează</h2>
+              <h2 className="text-lg font-semibold">
+                {t("auth.verificationTitle")}
+              </h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Conturile create cu email și parolă necesită verificarea adresei
-                înainte de prima conectare. Pentru autentificarea cu Google,
-                verificarea furnizorului rămâne suficientă.
+                {t("auth.verificationBody")}
               </p>
             </div>
           </div>

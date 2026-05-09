@@ -1,6 +1,7 @@
 import { AnonymousProfile } from "@/components/profile/AnonymousProfile";
 import { AuthenticatedProfile } from "@/components/profile/AuthenticatedProfile";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -15,12 +16,13 @@ export const Route = createFileRoute("/profil")({
 function ProfilPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const user = useQuery(api.user.getCurrentUser);
+  const t = useT();
 
   if (isLoading || (isAuthenticated && user === undefined)) {
     return (
       <PageLoadingState
-        title="Se pregătește profilul"
-        description="Încărcăm preferințele și detaliile contului tău."
+        title={t("profile.preparing.title")}
+        description={t("profile.preparing.body")}
         cardCount={2}
       />
     );

@@ -5,6 +5,7 @@ import StreakActivityCalendar from "@/components/streak-activity-calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -37,17 +38,20 @@ function formatScrollDepth(percentage?: number) {
   return `${Math.round(percentage * 100)}% depth`;
 }
 
-function getBiasSnapshotLabel(balance: number) {
+function getBiasSnapshotLabel(
+  balance: number,
+  t: ReturnType<typeof useT>,
+) {
   const absolute = Math.abs(balance);
-  if (absolute < 15) return "Balanced mix this week";
+  if (absolute < 15) return t("activity.biasSnapshot.balanced");
   if (balance < 0) {
     return absolute >= 60
-      ? "Strongly left-leaning this week"
-      : "Leaning left this week";
+      ? t("activity.biasSnapshot.leftStrong")
+      : t("activity.biasSnapshot.left");
   }
   return absolute >= 60
-    ? "Strongly right-leaning this week"
-    : "Leaning right this week";
+    ? t("activity.biasSnapshot.rightStrong")
+    : t("activity.biasSnapshot.right");
 }
 
 function getNextStreakMilestone(streak: number) {
@@ -66,6 +70,8 @@ export const Route = createFileRoute("/activitate")({
 });
 
 function RouteComponent() {
+  const t = useT();
+
   return (
     <>
       <Authenticated>
@@ -73,15 +79,15 @@ function RouteComponent() {
       </Authenticated>
       <Unauthenticated>
         <SignInPrompt
-          title="Urmărește-ți obiceiurile de citire"
-          description="Vezi balanța de bias, streak-urile de citire și statisticile tale într-un singur loc."
+          title={t("activity.empty.title")}
+          description={t("activity.empty.body")}
           redirectTo="/activitate"
         />
       </Unauthenticated>
       <AuthLoading>
         <PageLoadingState
-          title="Verificăm sesiunea"
-          description="Pregătim activitatea ta și verificăm starea contului."
+          title={t("activity.checking.title")}
+          description={t("activity.checking.body")}
           cardCount={2}
         />
       </AuthLoading>
@@ -90,6 +96,7 @@ function RouteComponent() {
 }
 
 function AuthorizedDashboard() {
+  const t = useT();
   const currentUser = useQuery(api.user.getCurrentUser);
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
   const isAdmin = useQuery(api.user.isCurrentUserAdmin);
@@ -123,8 +130,8 @@ function AuthorizedDashboard() {
   ) {
     return (
       <PageLoadingState
-        title="Se încarcă activitatea"
-        description="Pregătim salvările, streak-urile și statisticile tale."
+        title={t("activity.loading.title")}
+        description={t("activity.loading.body")}
         cardCount={3}
       />
     );
@@ -238,7 +245,9 @@ function AuthorizedDashboard() {
                 {userName.charAt(0).toUpperCase()}
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Welcome back</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("activity.welcomeBack")}
+                </p>
                 <h1 className="text-2xl font-bold tracking-tight">
                   {userName.split(" ")[0]}
                 </h1>
@@ -259,13 +268,19 @@ function AuthorizedDashboard() {
                   <p className="text-2xl font-bold tabular-nums">
                     {readingStreak}
                   </p>
-                  <p className="text-xs text-muted-foreground">day streak</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("activity.dayStreak")}
+                  </p>
                 </div>
               </div>
               {nextStreakMilestone && readingStreak > 0 && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {nextStreakMilestone - readingStreak} days to{" "}
-                  {nextStreakMilestone}
+                  {t("activity.daysToGoal")
+                    .replace(
+                      "{count}",
+                      String(nextStreakMilestone - readingStreak),
+                    )
+                    .replace("{milestone}", String(nextStreakMilestone))}
                 </p>
               )}
             </div>
@@ -280,7 +295,9 @@ function AuthorizedDashboard() {
                   <p className="text-2xl font-bold tabular-nums">
                     {articlesRead}
                   </p>
-                  <p className="text-xs text-muted-foreground">articles read</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("activity.articlesRead")}
+                  </p>
                 </div>
               </div>
             </div>
@@ -296,7 +313,7 @@ function AuthorizedDashboard() {
                     {eventsExplored}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    events explored
+                    {t("activity.eventsExplored")}
                   </p>
                 </div>
               </div>
@@ -312,7 +329,9 @@ function AuthorizedDashboard() {
                   <p className="text-2xl font-bold tabular-nums">
                     {bookmarkCount}
                   </p>
-                  <p className="text-xs text-muted-foreground">bookmarked</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("activity.bookmarked")}
+                  </p>
                 </div>
               </div>
             </div>
@@ -324,9 +343,9 @@ function AuthorizedDashboard() {
             <div className="rounded-xl border border-border bg-card p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="font-semibold">Activity</h2>
+                  <h2 className="font-semibold">{t("activity.section")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Last 12 weeks of reading
+                    {t("activity.last12Weeks")}
                   </p>
                 </div>
                 <div className="flex gap-6 text-center">
@@ -335,7 +354,7 @@ function AuthorizedDashboard() {
                       {readingStreak}
                     </p>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Current
+                      {t("activity.current")}
                     </p>
                   </div>
                   <div>
@@ -343,7 +362,7 @@ function AuthorizedDashboard() {
                       {longestStreak}
                     </p>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Best
+                      {t("activity.best")}
                     </p>
                   </div>
                   <div>
@@ -351,7 +370,7 @@ function AuthorizedDashboard() {
                       {activeDays}
                     </p>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Active
+                      {t("activity.active")}
                     </p>
                   </div>
                 </div>
@@ -363,17 +382,20 @@ function AuthorizedDashboard() {
 
             {/* Bias Balance */}
             <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="font-semibold">Bias Balance</h2>
+              <h2 className="font-semibold">{t("activity.biasBalance")}</h2>
               <p className="text-sm text-muted-foreground">
-                Your reading perspective mix
+                {t("activity.biasMix")}
               </p>
               <div className="mt-5">
                 <BiasBalanceMeter value={biasBalance} />
               </div>
               {weeklyBiasReads > 0 && (
                 <p className="mt-4 text-xs text-muted-foreground">
-                  {getBiasSnapshotLabel(weeklyBiasBalance)} across{" "}
-                  {weeklyBiasReads} reads
+                  {getBiasSnapshotLabel(weeklyBiasBalance, t)}{" "}
+                  {t("activity.biasReads").replace(
+                    "{count}",
+                    String(weeklyBiasReads),
+                  )}
                 </p>
               )}
             </div>
@@ -385,9 +407,9 @@ function AuthorizedDashboard() {
             <div className="rounded-xl border border-border bg-card">
               <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
                 <div>
-                  <h2 className="font-semibold">Recent Reading</h2>
+                  <h2 className="font-semibold">{t("activity.recentReading")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Events you spent time with
+                    {t("activity.recentReadingBody")}
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="sm">
@@ -400,7 +422,7 @@ function AuthorizedDashboard() {
               <div className="p-5">
                 {recentHistory.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                    Your reading history will appear here
+                    {t("activity.readingHistoryEmpty")}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -464,14 +486,14 @@ function AuthorizedDashboard() {
             <div className="rounded-xl border border-border bg-card">
               <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
                 <div>
-                  <h2 className="font-semibold">Salvate</h2>
+                  <h2 className="font-semibold">{t("activity.savedLabel")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Păstrate pentru mai târziu
+                    {t("activity.savedSub")}
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="sm">
                   <Link to="/salvate" className="gap-1">
-                    Toate
+                    {t("activity.savedAll")}
                     <ChevronRight className="size-4" />
                   </Link>
                 </Button>
@@ -479,7 +501,7 @@ function AuthorizedDashboard() {
               <div className="p-5">
                 {recentBookmarks.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                    Salvează evenimente din feed ca să apară aici
+                    {t("activity.savedEmpty")}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -514,8 +536,12 @@ function AuthorizedDashboard() {
                             </span>
                             <span>·</span>
                             <span>
-                              {(entry.event.sourceCount ?? 0)} source
-                              {(entry.event.sourceCount ?? 0) === 1 ? "" : "s"}
+                              {(entry.event.sourceCount ?? 0) === 1
+                                ? t("activity.sourcesOne")
+                                : t("activity.sourcesMany").replace(
+                                    "{count}",
+                                    String(entry.event.sourceCount ?? 0),
+                                  )}
                             </span>
                           </div>
                         </div>
@@ -537,9 +563,9 @@ function AuthorizedDashboard() {
                 <Newspaper className="size-6" />
               </div>
               <div>
-                <h3 className="font-semibold">Explorează feed-ul</h3>
+                <h3 className="font-semibold">{t("activity.feedCard")}</h3>
                 <p className="text-sm text-muted-foreground">
-                  Vezi subiectele de astăzi
+                  {t("activity.feedCardBody")}
                 </p>
               </div>
             </Link>
@@ -552,10 +578,14 @@ function AuthorizedDashboard() {
                 <Bookmark className="size-6" />
               </div>
               <div>
-                <h3 className="font-semibold">Salvate</h3>
+                <h3 className="font-semibold">{t("activity.savedCard")}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {bookmarkCount}{" "}
-                  {bookmarkCount === 1 ? "articol salvat" : "articole salvate"}
+                  {bookmarkCount === 1
+                    ? t("activity.savedOne")
+                    : t("activity.savedMany").replace(
+                        "{count}",
+                        String(bookmarkCount),
+                      )}
                 </p>
               </div>
             </Link>

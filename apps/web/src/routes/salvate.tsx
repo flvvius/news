@@ -11,6 +11,7 @@ import { SignInPrompt } from "@/components/SignInPrompt";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { SITE } from "@/lib/seo";
 
 function safePositiveInt(raw: unknown, fallback: number): number {
@@ -29,6 +30,8 @@ export const Route = createFileRoute("/salvate")({
 });
 
 function SalvatePage() {
+  const t = useT();
+
   return (
     <>
       <Authenticated>
@@ -36,8 +39,8 @@ function SalvatePage() {
       </Authenticated>
       <Unauthenticated>
         <SignInPrompt
-          title="Salvează articole pentru mai târziu"
-          description="Fă-ți o listă personală cu tot ce vrei să citești sau să recitești."
+          title={t("saved.empty.title")}
+          description={t("saved.empty.body")}
           redirectTo="/salvate"
           illustration={
             <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -60,8 +63,8 @@ function SalvatePage() {
       </Unauthenticated>
       <AuthLoading>
         <PageLoadingState
-          title="Verificăm salvările"
-          description="Confirmăm sesiunea înainte să încărcăm articolele tale salvate."
+          title={t("saved.checking.title")}
+          description={t("saved.checking.body")}
           cardCount={2}
         />
       </AuthLoading>
@@ -70,6 +73,7 @@ function SalvatePage() {
 }
 
 function SalvateContent() {
+  const t = useT();
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
   const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
@@ -86,8 +90,8 @@ function SalvateContent() {
   if (bookmarks === undefined) {
     return (
       <PageLoadingState
-        title="Se încarcă salvările"
-        description="Pregătim articolele salvate și contextul aferent."
+        title={t("saved.loading.title")}
+        description={t("saved.loading.body")}
         cardCount={3}
       />
     );
@@ -101,16 +105,21 @@ function SalvateContent() {
             <div className="bg-gradient-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
               <div className="flex flex-col gap-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Salvate
+                  {t("saved.section")}
                 </p>
                 <div className="flex max-w-[65ch] flex-col gap-3">
                   <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-                    Articolele tale salvate
+                    {t("saved.heading")}
                   </h1>
                   <p className="max-w-[55ch] text-sm text-muted-foreground sm:text-base">
                     {bookmarks.length === 0
-                      ? "Articolele și evenimentele salvate vor apărea aici."
-                      : `Ai ${bookmarks.length} ${bookmarks.length === 1 ? "articol salvat" : "articole salvate"} pentru mai târziu.`}
+                      ? t("saved.summary.empty")
+                      : bookmarks.length === 1
+                        ? t("saved.summary.one")
+                        : t("saved.summary.many").replace(
+                            "{count}",
+                            String(bookmarks.length),
+                          )}
                   </p>
                 </div>
               </div>
@@ -136,14 +145,13 @@ function SalvateContent() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="mb-2 text-lg font-semibold">Nu ai salvări încă</h2>
+                  <h2 className="mb-2 text-lg font-semibold">{t("saved.none")}</h2>
                   <p className="max-w-sm text-sm text-muted-foreground">
-                    Când găsești o poveste importantă, folosește iconița de
-                    salvare ca să o păstrezi aici.
+                    {t("saved.noneBody")}
                   </p>
                 </div>
                 <Button asChild variant="outline" className="rounded-full">
-                  <Link to="/feed">Explorează feed-ul</Link>
+                  <Link to="/feed">{t("saved.browseFeed")}</Link>
                 </Button>
               </div>
             </div>

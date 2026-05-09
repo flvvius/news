@@ -38,23 +38,24 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useIsMobile } from "@/components/ui/use-mobile";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
     meta: [
-      { title: `News Feed — ${SITE.name}` },
+      { title: `Feed — ${SITE.name}` },
       {
         name: "description",
         content:
-          "Browse today's top stories from multiple political perspectives. Filter by topic and track the same story across sources.",
+          "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
       },
-      { property: "og:title", content: `News Feed — ${SITE.name}` },
+      { property: "og:title", content: `Feed — ${SITE.name}` },
       {
         property: "og:description",
         content:
-          "Browse today's top stories from multiple political perspectives.",
+          "Browse the day’s important stories from multiple perspectives.",
       },
       { property: "og:url", content: `${SITE.url}/feed` },
     ],
@@ -72,18 +73,20 @@ function TopicFilterContent({
   selectedTopic: Id<"topics"> | "all";
   onSelect: (topic: Id<"topics"> | "all") => void;
 }) {
+  const t = useT();
+
   return (
     <Command className="w-full">
-      <CommandInput placeholder="Search topics..." />
+      <CommandInput placeholder={t("feed.topic.search")} />
       <CommandList className="max-h-[300px]">
-        <CommandEmpty>No topics found.</CommandEmpty>
+        <CommandEmpty>{t("feed.topic.empty")}</CommandEmpty>
         <CommandGroup>
           <CommandItem
             value="all-topics"
             onSelect={() => onSelect("all")}
             className="flex items-center justify-between gap-2"
           >
-            <span>All Topics</span>
+            <span>{t("feed.topic.all")}</span>
             {selectedTopic === "all" && (
               <CheckIcon className="size-4 text-primary" />
             )}
@@ -116,13 +119,17 @@ function TopicFilter({
   selectedTopic: Id<"topics"> | "all";
   onSelect: (topic: Id<"topics"> | "all") => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
 
   const selectedLabel = useMemo(() => {
-    if (selectedTopic === "all") return "All Topics";
-    return topics?.find((t) => t._id === selectedTopic)?.displayName ?? "Topic";
-  }, [selectedTopic, topics]);
+    if (selectedTopic === "all") return t("feed.topic.all");
+    return (
+      topics?.find((topic) => topic._id === selectedTopic)?.displayName ??
+      t("feed.topic.single")
+    );
+  }, [selectedTopic, t, topics]);
 
   const handleSelect = (topic: Id<"topics"> | "all") => {
     onSelect(topic);
@@ -137,7 +144,7 @@ function TopicFilter({
         "min-w-[140px] justify-between gap-2 rounded-full",
         selectedTopic !== "all" && "border-primary/50 bg-primary/5",
       )}
-      aria-label="Filter by topic"
+      aria-label={t("feed.topic.filter")}
     >
       <span className="flex items-center gap-2">
         <FilterIcon className="size-3.5" />
@@ -156,9 +163,9 @@ function TopicFilter({
             <DrawerHeader className="border-b border-border pb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <DrawerTitle>Filter by Topic</DrawerTitle>
+                  <DrawerTitle>{t("feed.topic.drawerTitle")}</DrawerTitle>
                   <DrawerDescription>
-                    Select a topic to filter stories
+                    {t("feed.topic.drawerBody")}
                   </DrawerDescription>
                 </div>
                 <DrawerClose asChild>
@@ -168,7 +175,7 @@ function TopicFilter({
                     className="size-8 rounded-full"
                   >
                     <XIcon className="size-4" />
-                    <span className="sr-only">Close</span>
+                    <span className="sr-only">{t("feed.close")}</span>
                   </Button>
                 </DrawerClose>
               </div>
@@ -189,7 +196,7 @@ function TopicFilter({
             size="icon"
             className="size-8 rounded-full"
             onClick={() => onSelect("all")}
-            aria-label="Clear filter"
+            aria-label={t("feed.filter.clear")}
           >
             <XIcon className="size-4" />
           </Button>
@@ -217,7 +224,7 @@ function TopicFilter({
           size="icon"
           className="size-8 rounded-full"
           onClick={() => onSelect("all")}
-          aria-label="Clear filter"
+          aria-label={t("feed.filter.clear")}
         >
           <XIcon className="size-4" />
         </Button>
@@ -231,6 +238,7 @@ function FeedComponent() {
 }
 
 function FeedContent() {
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const topics = useQuery(api.topics.getTopics);
   const currentUser = useQuery(
@@ -424,9 +432,9 @@ function FeedContent() {
                       onBlur={() => {
                         window.setTimeout(() => setIsSearchFocused(false), 100);
                       }}
-                      placeholder="Search events by title..."
+                      placeholder={t("feed.search.placeholder")}
                       className="h-11 rounded-full border-border/80 bg-background/75 pr-12"
-                      aria-label="Search events"
+                      aria-label={t("feed.search.label")}
                     />
                     {searchInput.length > 0 && (
                       <Button
@@ -438,7 +446,7 @@ function FeedContent() {
                           setSearchInput("");
                           setDebouncedSearch("");
                         }}
-                        aria-label="Clear search"
+                        aria-label={t("feed.search.clear")}
                       >
                         <XIcon className="size-4" />
                       </Button>
@@ -468,7 +476,7 @@ function FeedContent() {
                         aria-pressed={feedSort === "recent"}
                       >
                         <ClockIcon className="size-3.5" />
-                        Recent
+                        {t("feed.sort.recent")}
                       </Button>
                       <Button
                         type="button"
@@ -483,19 +491,19 @@ function FeedContent() {
                         aria-pressed={feedSort === "trending"}
                       >
                         <TrendingUpIcon className="size-3.5" />
-                        Trending
+                        {t("feed.sort.trending")}
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {feedSort === "recent"
-                        ? "Newest published events first."
-                        : "Ranked by source diversity, article volume, and recency."}
+                        ? t("feed.sort.recentHint")
+                        : t("feed.sort.trendingHint")}
                     </p>
                   </div>
                 )}
                 {shouldShowThresholdHint && (
                   <p className="text-xs text-muted-foreground">
-                    Type 2+ characters to search.
+                    {t("feed.search.threshold")}
                   </p>
                 )}
                 {shouldShowRecentSearches && (
