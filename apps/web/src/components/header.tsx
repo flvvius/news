@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Newspaper, Bookmark, LayoutDashboard, Home } from "lucide-react";
+import { Menu, Newspaper, Bookmark, LayoutDashboard, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/sheet";
 
 const links = [
-  { to: "/", label: "Acasă", icon: Home },
   { to: "/feed", label: "Feed", icon: Newspaper },
   { to: "/salvate", label: "Salvate", icon: Bookmark },
   { to: "/activitate", label: "Activitate", icon: LayoutDashboard },
+  { to: "/profil", label: "Profil", icon: User },
 ] as const;
 
 export default function Header() {
@@ -26,7 +26,7 @@ export default function Header() {
       <div className="container mx-auto max-w-6xl">
         <div className="flex items-center justify-between px-4 h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link to="/feed" className="flex items-center gap-2 group">
             <div className="relative flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground font-bold text-lg transition-transform group-hover:scale-105">
               B
               <div className="absolute inset-0 rounded-lg bg-primary/20 blur-md -z-10" />
