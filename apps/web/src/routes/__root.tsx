@@ -1,5 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { SITE } from "@/lib/seo";
+import { Footer } from "@/components/layout/Footer";
+import { MobileTabBar } from "@/components/layout/MobileTabBar";
 
 import {
   HeadContent,
@@ -122,10 +124,14 @@ function RootDocument() {
           <HeadContent />
         </head>
         <body className="min-h-svh flex flex-col antialiased">
-          <Header />
-          <main className="flex-1">
+          <div className="hidden md:block">
+            <Header />
+          </div>
+          <main className="flex-1 pb-20 md:pb-0">
             <Outlet />
           </main>
+          <Footer />
+          <MobileTabBar />
           <Toaster richColors />
           {import.meta.env.DEV && (
             <TanStackRouterDevtools position="bottom-left" />

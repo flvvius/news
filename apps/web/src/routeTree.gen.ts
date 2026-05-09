@@ -15,6 +15,7 @@ import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
 import { Route as FeedRouteImport } from './routes/feed'
@@ -57,6 +58,11 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfilRoute = ProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PoliticaConfidentialitateRoute =
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/feed': typeof FeedRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
+  '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -158,6 +165,7 @@ export interface FileRoutesByTo {
   '/feed': typeof FeedRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
+  '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/feed': typeof FeedRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
+  '/profil': typeof ProfilRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -203,6 +212,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/parteneri'
     | '/politica-confidentialitate'
+    | '/profil'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/parteneri'
     | '/politica-confidentialitate'
+    | '/profil'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -245,6 +256,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/parteneri'
     | '/politica-confidentialitate'
+    | '/profil'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -267,6 +279,7 @@ export interface RootRouteChildren {
   FeedRoute: typeof FeedRoute
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
+  ProfilRoute: typeof ProfilRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -320,6 +333,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profil': {
+      id: '/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof ProfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/politica-confidentialitate': {
@@ -427,6 +447,7 @@ const rootRouteChildren: RootRouteChildren = {
   FeedRoute: FeedRoute,
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
+  ProfilRoute: ProfilRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
