@@ -1,6 +1,7 @@
 import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 import { Button } from "./ui/button";
@@ -39,6 +40,8 @@ export default function SignUpForm({
   showGoogle?: boolean;
 }) {
   const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
 
   const form = useForm({
     defaultValues: {
@@ -56,6 +59,7 @@ export default function SignUpForm({
         },
         {
           onSuccess: () => {
+            setSubmittedEmail(value.email.trim());
             const isLocalDev =
               typeof window !== "undefined" &&
               ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -205,6 +209,69 @@ export default function SignUpForm({
               callbackURL={redirectTo}
             />
           </>
+        )}
+
+        {submittedEmail && (
+          <div
+            className="mt-6 rounded-xl border border-border/70 bg-muted/35 px-4 py-3"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <p className="text-sm text-muted-foreground">
+              Didn&apos;t receive the email? Check spam, then resend the
+              verification link to <span className="font-medium text-foreground">{submittedEmail}</span>.
+            </p>
+            <button
+              type="button"
+              className="mt-3 text-sm font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isResendingVerification}
+              onClick={async () => {
+                setIsResendingVerification(true);
+                try {
+                  const response = await fetch(
+                    "/api/auth/send-verification-email",
+                    {
+                      method: "POST",
+                      headers: {
+                        "content-type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        email: submittedEmail,
+                        callbackURL: verificationCallbackURL,
+                      }),
+                    },
+                  );
+                  const payload = (await response
+                    .json()
+                    .catch(() => null)) as { message?: string } | null;
+
+                  if (!response.ok) {
+                    throw new Error(
+                      payload?.message ||
+                        "We couldn't resend the verification email. Please try again.",
+                    );
+                  }
+
+                  toast.success(
+                    "Verification email sent. Check your inbox for the new link.",
+                  );
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "We couldn't resend the verification email. Please try again.",
+                  );
+                } finally {
+                  setIsResendingVerification(false);
+                }
+              }}
+            >
+              {isResendingVerification
+                ? "Sending verification email..."
+                : "Resend verification email"}
+            </button>
+          </div>
         )}
 
         {onSwitchToSignIn && (

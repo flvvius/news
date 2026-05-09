@@ -149,20 +149,15 @@ function LandingPage() {
     setHasAnimated(true);
   }, []);
 
-  const previewCountConfig = useQuery(api.config.get, {
-    key: "landing_preview_count",
-  });
-  const rawPreview = Number(previewCountConfig?.value);
+  const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
+  const rawPreview = Number(runtimeConfig?.landingPreviewCount);
   const MAX_LANDING_PREVIEW_COUNT = 20;
   // Show 5 events by default for more impact
   const previewCount = Number.isFinite(rawPreview)
     ? Math.min(MAX_LANDING_PREVIEW_COUNT, Math.max(1, Math.floor(rawPreview)))
     : 5;
 
-  const maxSourcesConfig = useQuery(api.config.get, {
-    key: "event_card_max_sources",
-  });
-  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const rawMaxSources = Number(runtimeConfig?.eventCardMaxSources);
   const MAX_EVENT_CARD_SOURCES = 10;
   const maxSources = Number.isFinite(rawMaxSources)
     ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))

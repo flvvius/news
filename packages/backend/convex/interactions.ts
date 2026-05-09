@@ -5,6 +5,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
 import { normalizeEmail } from "./lib/betaAccess";
+import {
+  getPublicPreviewByEventId,
+  MAX_PREVIEW_SOURCES,
+} from "./lib/publicEventPreviews";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -415,6 +419,7 @@ type DashboardEventPreview = {
   firstPublishedAt: number;
   lastUpdatedAt: number;
   articleCount: number;
+  sourceCount: number;
   sources: Array<{
     _id: Id<"sources">;
     name: string;
@@ -447,17 +452,50 @@ async function buildDashboardEventPreview(
   ctx: QueryCtx,
   eventId: Id<"events">,
 ): Promise<DashboardEventPreview | null> {
+  const preview = await getPublicPreviewByEventId(ctx, eventId);
+  if (preview) {
+    return {
+      _id: preview.eventId,
+      slug: preview.slug,
+      title: preview.title,
+      imageUrl: preview.imageUrl,
+      summary:
+        preview.perspectiveSummaries?.center ??
+        preview.globalImpact ??
+        "Open the event to compare coverage from multiple sources.",
+      firstPublishedAt: preview.firstPublishedAt,
+      lastUpdatedAt: preview.lastUpdatedAt,
+      articleCount: preview.articleCount,
+      sourceCount: preview.sourceCount,
+      sources: preview.sources,
+    };
+  }
+
   const event = await ctx.db.get(eventId);
   if (!event || event.status !== "published") {
     return null;
   }
 
-  const articles = await ctx.db
-    .query("articles")
-    .withIndex("by_event", (q) => q.eq("eventId", event._id))
-    .collect();
-  const sourceIds = Array.from(new Set(articles.map((article) => article.sourceId)));
-  const sourceRows = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
+  let articleCount = event.articleCount;
+  let sourceIds = event.sourceIds;
+  if (articleCount === undefined || !sourceIds) {
+    console.log(
+      `[interactions] Falling back to article scan for dashboard preview on event ${String(eventId)}`,
+    );
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+    articleCount = articleCount ?? articles.length;
+    sourceIds =
+      sourceIds ??
+      Array.from(new Set(articles.map((article) => article.sourceId)));
+  }
+  const sourceRows = await Promise.all(
+    (sourceIds ?? [])
+      .slice(0, MAX_PREVIEW_SOURCES)
+      .map((sourceId) => ctx.db.get(sourceId)),
+  );
 
   return {
     _id: event._id,
@@ -470,7 +508,8 @@ async function buildDashboardEventPreview(
       "Open the event to compare coverage from multiple sources.",
     firstPublishedAt: event.firstPublishedAt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
-    articleCount: articles.length,
+    articleCount: articleCount ?? 0,
+    sourceCount: event.sourceCount ?? sourceIds?.length ?? 0,
     sources: sourceRows
       .filter((source) => source !== null)
       .map((source) => ({
@@ -544,22 +583,56 @@ export const getBookmarkedEvents = query({
 
     const events = await Promise.all(
       bookmarks.map(async (bookmark) => {
+        const preview = await getPublicPreviewByEventId(ctx, bookmark.eventId);
+        if (preview) {
+          return {
+            _id: preview.eventId,
+            slug: preview.slug,
+            title: preview.title,
+            imageUrl: preview.imageUrl,
+            imageAlt: preview.imageAlt,
+            perspectiveSummaries: preview.perspectiveSummaries,
+            globalImpact: preview.globalImpact,
+            firstPublishedAt: preview.firstPublishedAt,
+            lastUpdatedAt: preview.lastUpdatedAt,
+            articleCount: preview.articleCount,
+            sourceCount: preview.sourceCount,
+            sourceBiasCounts: preview.sourceBiasCounts,
+            topicIds: preview.topicIds,
+            sources: preview.sources,
+            bookmarkedAt: bookmark.timestamp,
+          };
+        }
+
         const event = await ctx.db.get(bookmark.eventId);
         if (!event || event.status !== "published") return null;
 
-        const articles = await ctx.db
-          .query("articles")
-          .withIndex("by_event", (q) => q.eq("eventId", event._id))
-          .collect();
+        let articleCount = event.articleCount;
+        let sourceIds = event.sourceIds;
+        if (articleCount === undefined || !sourceIds) {
+          console.log(
+            `[interactions] Falling back to article scan for bookmarked event ${String(bookmark.eventId)}`,
+          );
+          const articles = await ctx.db
+            .query("articles")
+            .withIndex("by_event", (q) => q.eq("eventId", event._id))
+            .collect();
+          articleCount = articleCount ?? articles.length;
+          sourceIds =
+            sourceIds ??
+            Array.from(new Set(articles.map((article) => article.sourceId)));
+        }
 
-        const sourceIds = Array.from(new Set(articles.map((a) => a.sourceId)));
         const sources = await Promise.all(
-          sourceIds.map((id) => ctx.db.get(id)),
+          (sourceIds ?? [])
+            .slice(0, MAX_PREVIEW_SOURCES)
+            .map((id) => ctx.db.get(id)),
         );
 
         return {
           ...event,
-          articleCount: articles.length,
+          articleCount: articleCount ?? 0,
+          sourceCount: event.sourceCount ?? sourceIds?.length ?? 0,
           sources: sources.filter((s) => s !== null),
           bookmarkedAt: bookmark.timestamp,
         };

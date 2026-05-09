@@ -67,6 +67,10 @@ export default defineSchema({
     status: v.union(v.literal("processing"), v.literal("published")),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
+    lastArticleAt: v.optional(v.number()),
+    articleCount: v.optional(v.number()),
+    sourceCount: v.optional(v.number()),
+    sourceIds: v.optional(v.array(v.id("sources"))),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
     lastSummarySignature: v.optional(v.string()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
@@ -77,6 +81,7 @@ export default defineSchema({
   })
     .index("by_slug", ["slug"])
     .index("by_status_recency", ["status", "firstPublishedAt"])
+    .index("by_status_last_article_at", ["status", "lastArticleAt"])
     .index("by_status_factual_coverage", [
       "status",
       "factualSourceCount",
@@ -105,15 +110,92 @@ export default defineSchema({
     eventId: v.id("events"),
     embedding: v.array(v.number()),
     version: v.number(), // Embedding model version for reprocessing tracking
+    status: v.optional(
+      v.union(v.literal("processing"), v.literal("published")),
+    ),
   })
     .index("by_event", ["eventId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,
+      filterFields: ["status"],
     }),
 
   // =========================================================================
-  // 3c. EVENT SHARE ASSETS (Cold path — social images stored outside hot reads)
+  // 3c. EVENT CANDIDACY (Clustering read model)
+  // =========================================================================
+  eventCandidacy: defineTable({
+    eventId: v.id("events"),
+    status: v.union(v.literal("processing"), v.literal("published")),
+    firstPublishedAt: v.number(),
+    lastArticleAt: v.number(),
+    articleCount: v.number(),
+    sourceCount: v.number(),
+    sourceIds: v.array(v.id("sources")),
+    titleTokens: v.array(v.string()),
+    evidenceTokens: v.array(v.string()),
+    factTokens: v.array(v.string()),
+    entityTokens: v.array(v.string()),
+    topicSlugs: v.array(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_status_last_article_at", ["status", "lastArticleAt"]),
+
+  // =========================================================================
+  // 3d. PUBLIC EVENT PREVIEWS (Denormalized feed cards for anonymous traffic)
+  // =========================================================================
+  publicEventPreviews: defineTable({
+    eventId: v.id("events"),
+    slug: v.string(),
+    title: v.string(),
+    imageUrl: v.optional(v.string()),
+    imageAlt: v.optional(v.string()),
+    perspectiveSummaries: v.optional(
+      v.object({
+        center: v.optional(v.string()),
+        left: v.optional(v.string()),
+        right: v.optional(v.string()),
+      }),
+    ),
+    globalImpact: v.optional(v.string()),
+    firstPublishedAt: v.number(),
+    lastUpdatedAt: v.number(),
+    articleCount: v.number(),
+    sourceCount: v.number(),
+    topicIds: v.array(v.id("topics")),
+    factualArticleCount: v.optional(v.number()),
+    factualSourceCount: v.optional(v.number()),
+    trendingScore: v.number(),
+    sourceBiasCounts: v.object({
+      left: v.number(),
+      center: v.number(),
+      right: v.number(),
+    }),
+    sources: v.array(
+      v.object({
+        _id: v.id("sources"),
+        name: v.string(),
+        logoUrl: v.optional(v.string()),
+        baseBias: v.number(),
+        reliabilityScore: v.number(),
+        mbfcCategory: v.optional(v.string()),
+        mbfcFactual: v.optional(v.string()),
+        mbfcCredibility: v.optional(v.string()),
+      }),
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_first_published_at", ["firstPublishedAt"])
+    .index("by_last_updated_at", ["lastUpdatedAt"])
+    .index("by_trending_score", ["trendingScore"])
+    .searchIndex("by_title", {
+      searchField: "title",
+    }),
+
+  // =========================================================================
+  // 3e. EVENT SHARE ASSETS (Cold path — social images stored outside hot reads)
   // =========================================================================
   eventShareAssets: defineTable({
     eventId: v.id("events"),
@@ -306,6 +388,7 @@ export default defineSchema({
     publishedAt: v.number(), // Epoch ms
   })
     .index("by_event", ["eventId"])
+    .index("by_event_published", ["eventId", "publishedAt"])
     .index("by_canonical_url", ["canonicalUrl"])
     .index("by_source_content_fingerprint", ["sourceId", "contentFingerprint"])
     .index("by_status", ["status"])
@@ -325,6 +408,7 @@ export default defineSchema({
     version: v.number(), // Embedding model version for reprocessing tracking
   })
     .index("by_article", ["articleId"])
+    .index("by_article_version", ["articleId", "version"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 512,
@@ -423,11 +507,7 @@ export default defineSchema({
       timeSpentSeconds: v.optional(v.number()), // For "read" events
       scrollDepthPercentage: v.optional(v.number()), // 0.0 to 1.0
       deviceType: v.optional(
-        v.union(
-          v.literal("mobile"),
-          v.literal("tablet"),
-          v.literal("desktop"),
-        ),
+        v.union(v.literal("mobile"), v.literal("tablet"), v.literal("desktop")),
       ),
 
       extras: v.optional(
@@ -534,6 +614,19 @@ export default defineSchema({
     .index("by_callType_timestamp", ["callType", "timestamp"]),
 
   // =========================================================================
+  // 11a. AI BUDGET DAILY SHARDS (Sharded daily aggregates)
+  // =========================================================================
+  aiBudgetDaily: defineTable({
+    date: v.string(), // "YYYY-MM-DD"
+    shard: v.number(), // 0-23 (UTC hour)
+    spentUsd: v.number(),
+    reservedUsd: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_date", ["date"])
+    .index("by_date_shard", ["date", "shard"]),
+
+  // =========================================================================
   // 11a. AI BUDGET RESERVATIONS (In-flight budget holds)
   // =========================================================================
   aiBudgetReservations: defineTable({
@@ -544,6 +637,8 @@ export default defineSchema({
     costUsd: v.number(),
     createdAt: v.number(),
     expiresAt: v.number(),
+    date: v.optional(v.string()),
+    shard: v.optional(v.number()),
   }).index("by_expiresAt", ["expiresAt"]),
 
   // =========================================================================

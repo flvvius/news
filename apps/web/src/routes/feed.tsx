@@ -237,17 +237,14 @@ function FeedContent() {
     api.user.getCurrentUser,
     isAuthenticated ? {} : "skip",
   );
-  const pageSizeConfig = useQuery(api.config.get, { key: "feed_page_size" });
-  const rawPageSize = Number(pageSizeConfig?.value);
+  const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
+  const rawPageSize = Number(runtimeConfig?.feedPageSize);
   const MAX_FEED_PAGE_SIZE = 50;
   const pageSize = Number.isFinite(rawPageSize)
     ? Math.min(MAX_FEED_PAGE_SIZE, Math.max(1, Math.floor(rawPageSize)))
     : 6;
 
-  const maxSourcesConfig = useQuery(api.config.get, {
-    key: "event_card_max_sources",
-  });
-  const rawMaxSources = Number(maxSourcesConfig?.value);
+  const rawMaxSources = Number(runtimeConfig?.eventCardMaxSources);
   const MAX_EVENT_CARD_SOURCES = 10;
   const maxSources = Number.isFinite(rawMaxSources)
     ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))

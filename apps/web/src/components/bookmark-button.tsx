@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { useRef, useCallback } from "react";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 
+const BOOKMARK_DEBOUNCE_MS = 800;
+
 type BookmarkButtonProps = {
   eventId: Id<"events">;
   interactionContext?: InteractionContextSnapshot;
@@ -30,16 +32,6 @@ export default function BookmarkButton({
 }: BookmarkButtonProps) {
   const { isAuthenticated } = useConvexAuth();
 
-  // Client-side debounce — prevents rapid-fire mutation calls.
-  // Value is tunable via the `bookmark_debounce_ms` config key.
-  const debounceConfig = useQuery(api.config.get, {
-    key: "bookmark_debounce_ms",
-  });
-  const raw = Number(debounceConfig?.value);
-  const MAX_BOOKMARK_DEBOUNCE_MS = 5_000;
-  const debounceMs = Number.isFinite(raw)
-    ? Math.min(MAX_BOOKMARK_DEBOUNCE_MS, Math.max(1, Math.floor(raw)))
-    : 800;
   const lastClickRef = useRef(0);
 
   // Reactive bookmark status — returns false for unauthenticated users
@@ -62,6 +54,7 @@ export default function BookmarkButton({
       toast.error("Something went wrong. Please try again.");
     },
   });
+  const { mutate } = toggle;
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -83,10 +76,10 @@ export default function BookmarkButton({
 
       // Client-side debounce guard
       const now = Date.now();
-      if (now - lastClickRef.current < debounceMs) return;
+      if (now - lastClickRef.current < BOOKMARK_DEBOUNCE_MS) return;
       lastClickRef.current = now;
 
-      toggle.mutate({
+      mutate({
         eventId,
         context: interactionContext,
         metadata: {
@@ -94,7 +87,7 @@ export default function BookmarkButton({
         },
       });
     },
-    [isAuthenticated, toggle, eventId, interactionContext, debounceMs],
+    [isAuthenticated, mutate, eventId, interactionContext, redirectTo],
   );
 
   const bookmarked = isBookmarked === true;

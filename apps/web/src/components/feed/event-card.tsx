@@ -22,6 +22,12 @@ type EventCardProps = {
     lastUpdatedAt?: number;
     topicIds?: Id<"topics">[];
     articleCount?: number;
+    sourceCount?: number;
+    sourceBiasCounts?: {
+      left: number;
+      center: number;
+      right: number;
+    };
     sources?: Array<{
       _id: Id<"sources">;
       name: string;
@@ -120,14 +126,22 @@ const EventCard = ({
   const interactionContext = buildInteractionContextFromSources(
     event.sources ?? [],
   );
-  const biasDistribution = (event.sources ?? []).reduce(
+  const fallbackBiasDistribution = (event.sources ?? []).reduce(
     (counts, source) => {
       counts[getBiasBucket(source)]++;
       return counts;
     },
     { left: 0, center: 0, right: 0 } as Record<BiasBucket, number>,
   );
-  const distributionTotal = Math.max(1, event.sources?.length ?? 0);
+  const biasDistribution =
+    event.sourceBiasCounts ?? fallbackBiasDistribution;
+  const totalSources = Math.max(0, event.sourceCount ?? event.sources?.length ?? 0);
+  const distributionTotal =
+    biasDistribution.left + biasDistribution.center + biasDistribution.right;
+  const showBiasDistribution =
+    totalSources > 0 &&
+    distributionTotal > 0 &&
+    (event.sourceBiasCounts !== undefined || (event.sources?.length ?? 0) > 0);
 
   return (
     <Link
@@ -257,7 +271,7 @@ const EventCard = ({
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-card-foreground">
-                    {event.sources?.length ?? 0} sources
+                    {totalSources} sources
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {event.articleCount !== undefined
@@ -267,7 +281,7 @@ const EventCard = ({
                 </div>
               </div>
 
-              {(event.sources?.length ?? 0) > 0 && (
+              {showBiasDistribution && (
                 <div className="space-y-1.5">
                   <div
                     className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"

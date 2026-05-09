@@ -6,15 +6,15 @@ import type { Doc, Id } from "./_generated/dataModel";
 
 const RANKED_CURSOR_PREFIX = "ranked:";
 const TRENDING_SCAN_LIMIT = 250;
+const TOPIC_SCAN_LIMIT = 500;
 
 const FEED_SORT_VALIDATOR = v.union(v.literal("recent"), v.literal("trending"));
 
 type FeedSort = "recent" | "trending";
 
-type EnrichableEvent = Pick<
-  Doc<"events">,
-  | "_id"
-  | "_creationTime"
+type PublicPreviewRow = Pick<
+  Doc<"publicEventPreviews">,
+  | "eventId"
   | "slug"
   | "title"
   | "imageUrl"
@@ -23,8 +23,14 @@ type EnrichableEvent = Pick<
   | "globalImpact"
   | "firstPublishedAt"
   | "lastUpdatedAt"
+  | "articleCount"
+  | "sourceCount"
+  | "sources"
+  | "sourceBiasCounts"
+  | "topicIds"
   | "factualArticleCount"
   | "factualSourceCount"
+  | "trendingScore"
 >;
 
 type RankedCursorPayload = {
@@ -32,30 +38,21 @@ type RankedCursorPayload = {
   score: number;
   updatedAt: number;
   firstPublishedAt: number;
-  createdAt: number;
 };
 
-function updatedAtForSort(event: EnrichableEvent): number {
-  return event.lastUpdatedAt ?? event.firstPublishedAt;
-}
-
-function trendingScore(event: EnrichableEvent): number {
-  const sourceScore = (event.factualSourceCount ?? 0) * 10;
-  const articleScore = (event.factualArticleCount ?? 0) * 3;
-  const recencyScore = updatedAtForSort(event) / 3_600_000;
-  return sourceScore + articleScore + recencyScore;
+function updatedAtForSort(event: PublicPreviewRow): number {
+  return event.lastUpdatedAt;
 }
 
 function rankedPayload(
-  event: EnrichableEvent,
+  event: PublicPreviewRow,
   sort: FeedSort,
 ): RankedCursorPayload {
   return {
-    eventId: event._id,
-    score: sort === "trending" ? trendingScore(event) : event.firstPublishedAt,
+    eventId: event.eventId,
+    score: sort === "trending" ? event.trendingScore : event.firstPublishedAt,
     updatedAt: updatedAtForSort(event),
     firstPublishedAt: event.firstPublishedAt,
-    createdAt: event._creationTime,
   };
 }
 
@@ -67,12 +64,11 @@ function compareRankedPayload(
     b.score - a.score ||
     b.updatedAt - a.updatedAt ||
     b.firstPublishedAt - a.firstPublishedAt ||
-    b.createdAt - a.createdAt ||
     String(a.eventId).localeCompare(String(b.eventId))
   );
 }
 
-function encodeRankedCursor(event: EnrichableEvent, sort: FeedSort): string {
+function encodeRankedCursor(event: PublicPreviewRow, sort: FeedSort): string {
   return `${RANKED_CURSOR_PREFIX}${encodeURIComponent(
     JSON.stringify(rankedPayload(event, sort)),
   )}`;
@@ -88,8 +84,7 @@ function decodeRankedCursor(cursor: string | null): RankedCursorPayload | null {
       typeof parsed.eventId === "string" &&
       typeof parsed.score === "number" &&
       typeof parsed.updatedAt === "number" &&
-      typeof parsed.firstPublishedAt === "number" &&
-      typeof parsed.createdAt === "number"
+      typeof parsed.firstPublishedAt === "number"
     ) {
       return parsed as RankedCursorPayload;
     }
@@ -99,28 +94,21 @@ function decodeRankedCursor(cursor: string | null): RankedCursorPayload | null {
   return null;
 }
 
-function sortEventsForFeed(events: EnrichableEvent[], sort: FeedSort) {
+function sortEventsForFeed(events: PublicPreviewRow[], sort: FeedSort) {
   return [...events].sort((a, b) => {
-    if (sort === "trending") {
-      return compareRankedPayload(
-        rankedPayload(a, sort),
-        rankedPayload(b, sort),
-      );
-    }
-
     return compareRankedPayload(rankedPayload(a, sort), rankedPayload(b, sort));
   });
 }
 
 function paginateRankedEvents(
-  events: EnrichableEvent[],
+  events: PublicPreviewRow[],
   cursor: string | null,
   targetSize: number,
   sort: FeedSort,
 ) {
   const resumePayload = decodeRankedCursor(cursor);
   const resumeIndex = resumePayload
-    ? events.findIndex((event) => event._id === resumePayload.eventId)
+    ? events.findIndex((event) => event.eventId === resumePayload.eventId)
     : -1;
   const startIndex =
     resumeIndex >= 0
@@ -148,128 +136,54 @@ function paginateRankedEvents(
   };
 }
 
-async function enrichEventsWithTopicsAndSources(
+function toFeedEvent(row: PublicPreviewRow) {
+  return {
+    _id: row.eventId,
+    slug: row.slug,
+    title: row.title,
+    imageUrl: row.imageUrl,
+    imageAlt: row.imageAlt,
+    perspectiveSummaries: row.perspectiveSummaries,
+    globalImpact: row.globalImpact,
+    firstPublishedAt: row.firstPublishedAt,
+    lastUpdatedAt: row.lastUpdatedAt,
+    topicIds: row.topicIds,
+    articleCount: row.articleCount,
+    sourceCount: row.sourceCount,
+    sourceBiasCounts: row.sourceBiasCounts,
+    sources: row.sources,
+  };
+}
+
+async function getFeedCandidates(
   ctx: QueryCtx,
-  events: EnrichableEvent[],
+  sort: FeedSort,
+  scanLimit: number,
 ) {
-  const eventIds = events.map((event) => event._id);
-  const allEventTopicRows = await Promise.all(
-    eventIds.map((eventId) =>
-      ctx.db
-        .query("eventTopics")
-        .withIndex("by_event", (q) => q.eq("eventId", eventId))
-        .collect(),
-    ),
-  );
-  const topicsByEventId = new Map<string, (typeof allEventTopicRows)[0]>();
-  for (let i = 0; i < eventIds.length; i++) {
-    topicsByEventId.set(eventIds[i]!, allEventTopicRows[i]!);
+  if (sort === "trending") {
+    return await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_trending_score")
+      .order("desc")
+      .take(scanLimit);
   }
 
-  const allArticlesByEventId = new Map<Id<"events">, Doc<"articles">[]>();
-  const articleRows = await Promise.all(
-    eventIds.map((eventId) =>
-      ctx.db
-        .query("articles")
-        .withIndex("by_event", (q) => q.eq("eventId", eventId))
-        .collect(),
-    ),
-  );
-
-  const uniqueSourceIds = new Set<Id<"sources">>();
-  for (let i = 0; i < eventIds.length; i++) {
-    const articles = articleRows[i] ?? [];
-    allArticlesByEventId.set(eventIds[i]!, articles);
-    for (const article of articles) {
-      uniqueSourceIds.add(article.sourceId);
-    }
-  }
-
-  const sourceRows = await Promise.all(
-    Array.from(uniqueSourceIds).map(
-      async (sourceId) => [sourceId, await ctx.db.get(sourceId)] as const,
-    ),
-  );
-  const sourcesById = new Map(sourceRows);
-
-  return events.map((event) => {
-    const articles = allArticlesByEventId.get(event._id) ?? [];
-    const articleCount = articles.length;
-    const sourceIds = Array.from(
-      new Set(articles.map((article) => article.sourceId)),
-    );
-    const sources = sourceIds
-      .map((sourceId) => sourcesById.get(sourceId) ?? null)
-      .filter((source) => source !== null);
-    const topicIds = (topicsByEventId.get(event._id) ?? []).map(
-      (row) => row.topicId,
-    );
-
-    return {
-      _id: event._id,
-      slug: event.slug,
-      title: event.title,
-      imageUrl: event.imageUrl,
-      imageAlt: event.imageAlt,
-      perspectiveSummaries: event.perspectiveSummaries,
-      globalImpact: event.globalImpact,
-      firstPublishedAt: event.firstPublishedAt,
-      lastUpdatedAt: event.lastUpdatedAt,
-      topicIds,
-      articleCount,
-      sources,
-    };
-  });
+  return await ctx.db
+    .query("publicEventPreviews")
+    .withIndex("by_first_published_at")
+    .order("desc")
+    .take(scanLimit);
 }
 
 async function getRankedFeedCandidates(
   ctx: QueryCtx,
-  topicId?: Id<"topics">,
-): Promise<Doc<"events">[]> {
-  const scanLimit = topicId ? TRENDING_SCAN_LIMIT * 2 : TRENDING_SCAN_LIMIT;
-  const recentPublished = await ctx.db
-    .query("events")
-    .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-    .order("desc")
-    .take(scanLimit);
-
-  if (!topicId) return recentPublished;
-
-  const topicMatches = await Promise.all(
-    recentPublished.map(async (event) => {
-      const eventTopic = await ctx.db
-        .query("eventTopics")
-        .withIndex("by_event_topic", (q) =>
-          q.eq("eventId", event._id).eq("topicId", topicId),
-        )
-        .unique();
-      return eventTopic ? event : null;
-    }),
-  );
-
-  return topicMatches
-    .filter((event): event is Doc<"events"> => event !== null)
-    .slice(0, TRENDING_SCAN_LIMIT);
-}
-
-function redactPublicEventPreview(
-  event: Awaited<ReturnType<typeof enrichEventsWithTopicsAndSources>>[number],
+  topicId: Id<"topics"> | undefined,
+  sort: FeedSort,
 ) {
-  return {
-    _id: event._id,
-    slug: event.slug,
-    title: event.title,
-    imageUrl: event.imageUrl,
-    imageAlt: event.imageAlt,
-    firstPublishedAt: event.firstPublishedAt,
-    lastUpdatedAt: event.lastUpdatedAt,
-    topicIds: event.topicIds,
-    articleCount: event.articleCount,
-    sources: event.sources,
-    perspectiveSummaries: {
-      center: event.perspectiveSummaries?.center,
-    },
-  };
+  const scanLimit = topicId ? TOPIC_SCAN_LIMIT : TRENDING_SCAN_LIMIT;
+  const candidates = await getFeedCandidates(ctx, sort, scanLimit);
+  if (!topicId) return candidates;
+  return candidates.filter((event) => event.topicIds.includes(topicId));
 }
 
 export const getPublishedEvents = query({
@@ -284,10 +198,12 @@ export const getPublishedEvents = query({
     let events;
 
     if (args.topicId || sort === "trending") {
-      // Ranked/topic pages use bounded candidates and a cursor carrying the
-      // stable sort tuple, so pagination doesn't drift between requests.
       const targetSize = args.paginationOpts.numItems;
-      const publishedMatches = await getRankedFeedCandidates(ctx, args.topicId);
+      const publishedMatches = await getRankedFeedCandidates(
+        ctx,
+        args.topicId,
+        sort,
+      );
       const sortedMatches = sortEventsForFeed(publishedMatches, sort);
 
       events = paginateRankedEvents(
@@ -306,20 +222,15 @@ export const getPublishedEvents = query({
         : args.paginationOpts;
 
       events = await ctx.db
-        .query("events")
-        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .query("publicEventPreviews")
+        .withIndex("by_first_published_at")
         .order("desc")
         .paginate(paginationOpts);
     }
 
-    const enrichedPage = await enrichEventsWithTopicsAndSources(
-      ctx,
-      events.page,
-    );
-
     return {
       ...events,
-      page: enrichedPage,
+      page: events.page.map(toFeedEvent),
     };
   },
 });
@@ -338,18 +249,15 @@ export const searchPublishedEvents = query({
 
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 12), 1), 30);
     const rawMatches = await ctx.db
-      .query("events")
-      .withSearchIndex("by_search_text", (q) =>
-        q.search("title", normalizedQuery).eq("status", "published"),
-      )
+      .query("publicEventPreviews")
+      .withSearchIndex("by_title", (q) => q.search("title", normalizedQuery))
       .take(args.topicId ? safeLimit * 4 : safeLimit);
 
-    const enriched = await enrichEventsWithTopicsAndSources(ctx, rawMatches);
     const filtered = args.topicId
-      ? enriched.filter((event) => event.topicIds.includes(args.topicId!))
-      : enriched;
+      ? rawMatches.filter((event) => event.topicIds.includes(args.topicId!))
+      : rawMatches;
 
-    return filtered.slice(0, safeLimit);
+    return filtered.slice(0, safeLimit).map(toFeedEvent);
   },
 });
 
@@ -365,39 +273,20 @@ export const getPublishedEventsByTopicIds = query({
     }
 
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5), 1), 20);
-    const eventIds = new Set<Id<"events">>();
-
-    await Promise.all(
-      uniqueTopicIds.map(async (topicId) => {
-        const rows = await ctx.db
-          .query("eventTopics")
-          .withIndex("by_topic", (q) => q.eq("topicId", topicId))
-          .take(safeLimit * 4);
-        for (const row of rows) {
-          eventIds.add(row.eventId);
-        }
-      }),
-    );
-
-    const matchedEvents = await Promise.all(
-      Array.from(eventIds).map((eventId) => ctx.db.get(eventId)),
-    );
-
-    const publishedEvents = matchedEvents
-      .filter(
-        (event): event is Doc<"events"> =>
-          event !== null && event.status === "published",
+    const previews = await getFeedCandidates(ctx, "recent", TOPIC_SCAN_LIMIT);
+    const publishedEvents = previews
+      .filter((event) =>
+        event.topicIds.some((topicId) => uniqueTopicIds.includes(topicId)),
       )
       .sort(
         (a, b) =>
-          (b.lastUpdatedAt ?? b.firstPublishedAt) -
-            (a.lastUpdatedAt ?? a.firstPublishedAt) ||
+          b.lastUpdatedAt - a.lastUpdatedAt ||
           b.firstPublishedAt - a.firstPublishedAt ||
-          b._creationTime - a._creationTime,
+          String(b.eventId).localeCompare(String(a.eventId)),
       )
       .slice(0, safeLimit);
 
-    return await enrichEventsWithTopicsAndSources(ctx, publishedEvents);
+    return publishedEvents.map(toFeedEvent);
   },
 });
 
@@ -407,14 +296,12 @@ export const getPublicPublishedEventsPreview = query({
   },
   handler: async (ctx, args) => {
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 3), 1), 20);
-    const candidates = await getRankedFeedCandidates(ctx);
-    const events = sortEventsForFeed(candidates, "trending").slice(
-      0,
-      safeLimit,
-    );
-
-    const enriched = await enrichEventsWithTopicsAndSources(ctx, events);
-    return enriched.map(redactPublicEventPreview);
+    const events = await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_trending_score")
+      .order("desc")
+      .take(safeLimit);
+    return events.map(toFeedEvent);
   },
 });
 
@@ -428,14 +315,14 @@ export const getSitemapPublishedEvents = query({
       10000,
     );
     const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .query("publicEventPreviews")
+      .withIndex("by_last_updated_at")
       .order("desc")
       .take(safeLimit);
 
     return events.map((event) => ({
       slug: event.slug,
-      lastModifiedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
+      lastModifiedAt: event.lastUpdatedAt,
     }));
   },
 });

@@ -77,6 +77,33 @@ export const get = query({
   },
 });
 
+export const getPublicRuntimeConfig = query({
+  args: {},
+  handler: async (ctx) => {
+    const [
+      landingPreviewCount,
+      eventCardMaxSources,
+      feedPageSize,
+      biasThresholds,
+      waitlistToastDismissMs,
+    ] = await Promise.all([
+      getConfig(ctx, "landing_preview_count", 5),
+      getConfig(ctx, "event_card_max_sources", 5),
+      getConfig(ctx, "feed_page_size", 6),
+      getConfig(ctx, "bias_thresholds", [-2, -0.5, 0.5, 2]),
+      getConfig(ctx, "waitlist_toast_dismiss_ms", 6000),
+    ]);
+
+    return {
+      landingPreviewCount,
+      eventCardMaxSources,
+      feedPageSize,
+      biasThresholds,
+      waitlistToastDismissMs,
+    };
+  },
+});
+
 /** List all config entries (for an admin panel). */
 export const list = query({
   args: {},

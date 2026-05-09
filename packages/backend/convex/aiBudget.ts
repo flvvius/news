@@ -130,6 +130,88 @@ function startOfUtcDay(timestamp: number): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+function formatUtcDate(timestamp: number): string {
+  return new Date(timestamp).toISOString().split("T")[0]!;
+}
+
+function getUtcShard(timestamp: number): number {
+  return new Date(timestamp).getUTCHours();
+}
+
+async function getDailyBudgetTotals(
+  ctx: QueryCtx | MutationCtx,
+  date: string,
+): Promise<{ spentUsd: number; reservedUsd: number }> {
+  const rows = await ctx.db
+    .query("aiBudgetDaily")
+    .withIndex("by_date", (q) => q.eq("date", date))
+    .collect();
+  const spentUsd = rows.reduce((sum, row) => sum + row.spentUsd, 0);
+  const reservedUsd = rows.reduce((sum, row) => sum + row.reservedUsd, 0);
+  return {
+    spentUsd: roundUsd(spentUsd),
+    reservedUsd: roundUsd(reservedUsd),
+  };
+}
+
+async function adjustBudgetShard(
+  ctx: MutationCtx,
+  args: {
+    date: string;
+    shard: number;
+    deltaSpentUsd?: number;
+    deltaReservedUsd?: number;
+  },
+): Promise<void> {
+  const deltaSpent = args.deltaSpentUsd ?? 0;
+  const deltaReserved = args.deltaReservedUsd ?? 0;
+  if (deltaSpent === 0 && deltaReserved === 0) return;
+
+  const existing = await ctx.db
+    .query("aiBudgetDaily")
+    .withIndex("by_date_shard", (q) =>
+      q.eq("date", args.date).eq("shard", args.shard),
+    )
+    .unique();
+
+  const existingSpentUsd = existing?.spentUsd ?? 0;
+  const existingReservedUsd = existing?.reservedUsd ?? 0;
+  const rawSpent = existingSpentUsd + deltaSpent;
+  const rawReserved = existingReservedUsd + deltaReserved;
+  const nextSpent = roundUsd(Math.max(0, rawSpent));
+  const nextReserved = roundUsd(Math.max(0, rawReserved));
+
+  if (rawSpent < 0 || rawReserved < 0) {
+    console.warn("[aiBudget.adjustBudgetShard] Clamped negative shard total", {
+      date: args.date,
+      shard: args.shard,
+      deltaSpentUsd: deltaSpent,
+      deltaReservedUsd: deltaReserved,
+      existingSpentUsd,
+      existingReservedUsd,
+      nextSpentUsd: nextSpent,
+      nextReservedUsd: nextReserved,
+    });
+  }
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      spentUsd: nextSpent,
+      reservedUsd: nextReserved,
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+
+  await ctx.db.insert("aiBudgetDaily", {
+    date: args.date,
+    shard: args.shard,
+    spentUsd: nextSpent,
+    reservedUsd: nextReserved,
+    updatedAt: Date.now(),
+  });
+}
+
 async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
   const limitConfig = await ctx.db
     .query("config")
@@ -156,17 +238,6 @@ async function getConfigBoolean(
   }
 }
 
-async function getActiveReservationTotal(
-  ctx: QueryCtx | MutationCtx,
-  now: number,
-): Promise<number> {
-  const reservations = await ctx.db
-    .query("aiBudgetReservations")
-    .withIndex("by_expiresAt", (q) => q.gt("expiresAt", now))
-    .collect();
-  return reservations.reduce((sum, row) => sum + row.costUsd, 0);
-}
-
 /**
  * Check if today's AI spend is under the daily budget limit.
  * Returns { allowed, spentUsd, remainingUsd, dailyLimitUsd }.
@@ -188,14 +259,9 @@ export const checkBudget = internalQuery({
 
 async function getDailyBudgetState(ctx: QueryCtx | MutationCtx) {
   const now = Date.now();
-  const since = startOfUtcDay(now);
+  const today = formatUtcDate(now);
   const dailyLimitUsd = await getDailyLimitUsd(ctx);
-  const todaysUsage = await ctx.db
-    .query("aiUsage")
-    .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
-    .collect();
-  const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
-  const reservedUsd = await getActiveReservationTotal(ctx, now);
+  const { spentUsd, reservedUsd } = await getDailyBudgetTotals(ctx, today);
   const committedUsd = spentUsd + reservedUsd;
   const roundedSpent = roundUsd(spentUsd);
   const roundedReserved = roundUsd(reservedUsd);
@@ -249,14 +315,11 @@ export const reserveBudget = internalMutation({
       ),
     );
 
-    const since = startOfUtcDay(now);
+    const date = formatUtcDate(now);
+    const shard = getUtcShard(now);
+
     const dailyLimitUsd = await getDailyLimitUsd(ctx);
-    const todaysUsage = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
-      .collect();
-    const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
-    const reservedUsd = await getActiveReservationTotal(ctx, now);
+    const { spentUsd, reservedUsd } = await getDailyBudgetTotals(ctx, date);
     const projectedUsd = spentUsd + reservedUsd + args.costUsd;
 
     if (projectedUsd > dailyLimitUsd) {
@@ -279,6 +342,14 @@ export const reserveBudget = internalMutation({
       costUsd: args.costUsd,
       createdAt: now,
       expiresAt: now + ttlMs,
+      date,
+      shard,
+    });
+
+    await adjustBudgetShard(ctx, {
+      date,
+      shard,
+      deltaReservedUsd: args.costUsd,
     });
 
     return {
@@ -300,6 +371,13 @@ export const releaseReservation = internalMutation({
     const reservation = await ctx.db.get(reservationId);
     if (!reservation) return { released: false };
     await ctx.db.delete(reservationId);
+    if (reservation.date !== undefined && reservation.shard !== undefined) {
+      await adjustBudgetShard(ctx, {
+        date: reservation.date,
+        shard: reservation.shard,
+        deltaReservedUsd: -reservation.costUsd,
+      });
+    }
     return { released: true };
   },
 });
@@ -325,6 +403,13 @@ export const cleanupExpiredAiBudgetReservations = internalMutation({
 
     for (const row of expired) {
       await ctx.db.delete(row._id);
+      if (row.date !== undefined && row.shard !== undefined) {
+        await adjustBudgetShard(ctx, {
+          date: row.date,
+          shard: row.shard,
+          deltaReservedUsd: -row.costUsd,
+        });
+      }
     }
 
     return { deleted: expired.length, remainingMayExist: expired.length === safeLimit };
@@ -388,22 +473,25 @@ async function recordUsageInternal(
   }
 
   const now = Date.now();
-  const today = new Date(now).toISOString().split("T")[0]!;
+  const today = formatUtcDate(now);
+  const shard = getUtcShard(now);
   const dailyLimitUsd = await getDailyLimitUsd(ctx);
 
   if (args.reservationId) {
     const reservation = await ctx.db.get(args.reservationId);
     if (reservation) {
       await ctx.db.delete(reservation._id);
+      if (reservation.date !== undefined && reservation.shard !== undefined) {
+        await adjustBudgetShard(ctx, {
+          date: reservation.date,
+          shard: reservation.shard,
+          deltaReservedUsd: -reservation.costUsd,
+        });
+      }
     }
   }
 
-  const todaysUsage = await ctx.db
-    .query("aiUsage")
-    .withIndex("by_timestamp", (q) => q.gte("timestamp", startOfUtcDay(now)))
-    .collect();
-  const spentUsd = todaysUsage.reduce((sum, row) => sum + row.costUsd, 0);
-  const reservedUsd = await getActiveReservationTotal(ctx, now);
+  const { spentUsd, reservedUsd } = await getDailyBudgetTotals(ctx, today);
   const projectedSpentUsd = spentUsd + args.costUsd;
   const allowed = projectedSpentUsd + reservedUsd <= dailyLimitUsd;
 
@@ -420,6 +508,12 @@ async function recordUsageInternal(
     articleId: args.articleId,
     latencyMs: args.latencyMs,
     timestamp: now,
+  });
+
+  await adjustBudgetShard(ctx, {
+    date: today,
+    shard,
+    deltaSpentUsd: args.costUsd,
   });
 
   const updatedSpentUsd = projectedSpentUsd;
@@ -463,11 +557,12 @@ export const recordUsage = internalMutation({
 export const getTodaysUsage = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const today = new Date().toISOString().split("T")[0]!;
-    const since = startOfUtcDay(Date.now());
+    const today = formatUtcDate(Date.now());
+    const { spentUsd } = await getDailyBudgetTotals(ctx, today);
+
     const usage = await ctx.db
       .query("aiUsage")
-      .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
+      .withIndex("by_date", (q) => q.eq("date", today))
       .collect();
 
     type UsageGroup = {
@@ -508,12 +603,13 @@ export const getTodaysUsage = internalQuery({
       addUsage(byCallType, row.callType ?? row.operation, row);
     }
 
-    const totalCostUsd = usage.reduce((sum, r) => sum + r.costUsd, 0);
+    const totalCostUsd = usage.reduce((sum, row) => sum + row.costUsd, 0);
 
     return {
       date: today,
       totalCalls: usage.length,
       totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+      reportedSpentUsd: Math.round(spentUsd * 1_000_000) / 1_000_000,
       byModel,
       byCallType,
     };

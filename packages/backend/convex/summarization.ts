@@ -13,6 +13,7 @@ import {
   buildEventShareRenderSignature,
   type EventShareRenderData,
 } from "./shareAssets";
+import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 
 const TERMINAL_SUCCESS_WINDOW_MS = 60 * 60 * 1000;
 const DEFAULT_MIN_ARTICLES = 3;
@@ -150,6 +151,36 @@ async function getEventEligibility(
     };
   }
 
+  const storedArticleCount = event.articleCount;
+  const storedSourceCount = event.sourceCount;
+  if (
+    storedArticleCount !== undefined &&
+    storedSourceCount !== undefined &&
+    (storedArticleCount < minArticles || storedSourceCount < minSources)
+  ) {
+    return {
+      eligible: false,
+      articleCount: storedArticleCount,
+      sourceCount: storedSourceCount,
+      reason:
+        storedArticleCount < minArticles
+          ? "not_enough_articles"
+          : "not_enough_sources",
+    };
+  }
+  if (
+    storedArticleCount !== undefined &&
+    storedSourceCount !== undefined &&
+    storedArticleCount >= minArticles &&
+    storedSourceCount >= minSources
+  ) {
+    return {
+      eligible: true,
+      articleCount: storedArticleCount,
+      sourceCount: storedSourceCount,
+    };
+  }
+
   const articles = await ctx.db
     .query("articles")
     .withIndex("by_event", (q) => q.eq("eventId", event._id))
@@ -185,15 +216,30 @@ async function buildShareRenderData(
   ctx: MutationCtx,
   event: Doc<"events">,
 ): Promise<EventShareRenderData> {
-  const articles = await ctx.db
-    .query("articles")
-    .withIndex("by_event", (q) => q.eq("eventId", event._id))
-    .collect();
-  const uniqueSourceIds = Array.from(
-    new Set(articles.map((article) => article.sourceId)),
-  );
+  let articleCount = event.articleCount;
+  let sourceCount = event.sourceCount;
+  let sourceIds = event.sourceIds;
+
+  if (!sourceIds || articleCount === undefined || sourceCount === undefined) {
+    console.log(
+      `[summarization] Falling back to article scan for share render data on event ${String(event._id)}`,
+    );
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+    const uniqueSourceIds = Array.from(
+      new Set(articles.map((article) => article.sourceId)),
+    );
+    sourceIds = sourceIds ?? uniqueSourceIds;
+    articleCount = articleCount ?? articles.length;
+    sourceCount = sourceCount ?? uniqueSourceIds.length;
+  }
+
   const sources = (
-    await Promise.all(uniqueSourceIds.map((sourceId) => ctx.db.get(sourceId)))
+    await Promise.all(
+      (sourceIds ?? []).slice(0, 3).map((sourceId) => ctx.db.get(sourceId)),
+    )
   ).filter((source) => source !== null);
 
   return {
@@ -202,8 +248,8 @@ async function buildShareRenderData(
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
-    articleCount: articles.length,
-    sourceCount: sources.length,
+    articleCount: articleCount ?? 0,
+    sourceCount: sourceCount ?? (sourceIds ? sourceIds.length : 0),
     sources: sources.map((source) => ({
       name: source.name,
       logoUrl: source.logoUrl,
@@ -693,6 +739,7 @@ export const applyEventSummaryResult = internalMutation({
 
     const updatedEvent = await ctx.db.get(eventId);
     if (updatedEvent) {
+      await syncPublicEventPreview(ctx, eventId);
       const shareData = await buildShareRenderData(ctx, updatedEvent);
       await ctx.runMutation(internal.shareAssets.ensureEventShareAssetQueued, {
         eventId,

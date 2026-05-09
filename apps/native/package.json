@@ -43,7 +43,7 @@
     "convex": "catalog:",
     "@news-app/backend": "workspace:*",
     "better-auth": "catalog:",
-    "@better-auth/expo": "1.4.9",
+    "@better-auth/expo": "catalog:",
     "@convex-dev/better-auth": "catalog:"
   },
   "devDependencies": {

@@ -25,6 +25,30 @@ const fetchAuth = createServerFn({ method: "GET" }).handler(async () => {
   return { token };
 });
 
+function getExistingAuthContext(
+  matches: Array<{ context: unknown }>,
+): {
+  token?: string;
+  isAuthenticated?: boolean;
+} {
+  const rootContext = matches[0]?.context;
+  if (!rootContext || typeof rootContext !== "object") {
+    return {};
+  }
+
+  const token =
+    "token" in rootContext && typeof rootContext.token === "string"
+      ? rootContext.token
+      : undefined;
+  const isAuthenticated =
+    "isAuthenticated" in rootContext &&
+    typeof rootContext.isAuthenticated === "boolean"
+      ? rootContext.isAuthenticated
+      : undefined;
+
+  return { token, isAuthenticated };
+}
+
 export interface RouterAppContext {
   queryClient: QueryClient;
   convexClient: ConvexReactClient;
@@ -67,6 +91,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
   component: RootDocument,
   beforeLoad: async (ctx) => {
+    // Only fetch the auth token during SSR. On the client, auth state is
+    // already maintained by ConvexBetterAuthProvider and intent preloading
+    // would otherwise hit this server function on every hover.
+    if (typeof document !== "undefined" || ctx.preload) {
+      return getExistingAuthContext(ctx.matches);
+    }
+
     const { token } = await fetchAuth();
     if (token) {
       ctx.context.convexQueryClient.serverHttpClient?.setAuth(token);

@@ -2,6 +2,7 @@ import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 import { Button } from "./ui/button";
@@ -10,6 +11,15 @@ import { Label } from "./ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Loader2, Mail } from "lucide-react";
 import { AuthDivider, GoogleSignInButton } from "./auth-social";
+
+function getPasswordResetRedirectURL() {
+  if (typeof window === "undefined") {
+    return `${redirectFallbackOrigin}/reset-password`;
+  }
+  return `${window.location.origin}/reset-password`;
+}
+
+const redirectFallbackOrigin = "http://localhost:3001";
 
 export default function SignInForm({
   onSwitchToSignUp,
@@ -33,6 +43,8 @@ export default function SignInForm({
   const navigate = useNavigate({
     from: "/",
   });
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetStatusMessage, setResetStatusMessage] = useState("");
 
   const form = useForm({
     defaultValues: {
@@ -119,7 +131,85 @@ export default function SignInForm({
             <form.Field name="password">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Password</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor={field.name}>Password</Label>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isSendingReset}
+                      onClick={async () => {
+                        const email = form.getFieldValue("email").trim();
+                        const parsedEmail = z.email().safeParse(email);
+
+                        if (!parsedEmail.success) {
+                          setResetStatusMessage(
+                            "Enter your email address first so we know where to send the reset link.",
+                          );
+                          toast.error(
+                            "Enter your email address first so we know where to send the reset link.",
+                          );
+                          return;
+                        }
+
+                        setResetStatusMessage("");
+                        setIsSendingReset(true);
+                        try {
+                          const response = await fetch(
+                            "/api/auth/request-password-reset",
+                            {
+                              method: "POST",
+                              headers: {
+                                "content-type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                email,
+                                redirectTo: getPasswordResetRedirectURL(),
+                              }),
+                            },
+                          );
+                          const payload = (await response.json().catch(() => null)) as
+                            | { message?: string }
+                            | null;
+
+                          if (!response.ok) {
+                            throw new Error(
+                              payload?.message ||
+                                "We couldn't send a reset link. Please try again.",
+                            );
+                          }
+
+                          setResetStatusMessage(
+                            payload?.message ||
+                              "If that email exists, we sent a password reset link.",
+                          );
+                          toast.success(
+                            payload?.message ||
+                              "If that email exists, we sent a password reset link.",
+                          );
+                        } catch (error) {
+                          setResetStatusMessage(
+                            error instanceof Error
+                              ? error.message
+                              : "We couldn't send a reset link. Please try again.",
+                          );
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : "We couldn't send a reset link. Please try again.",
+                          );
+                        } finally {
+                          setIsSendingReset(false);
+                        }
+                      }}
+                    >
+                      {isSendingReset ? "Sending..." : "Forgot password?"}
+                    </button>
+                    <div aria-live="polite" role="status" className="sr-only">
+                      {isSendingReset
+                        ? "Sending password reset..."
+                        : resetStatusMessage}
+                    </div>
+                  </div>
                   <Input
                     id={field.name}
                     name={field.name}
