@@ -2,7 +2,15 @@ const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
 
+function isFiniteTimestamp(timestamp: number): boolean {
+  return Number.isFinite(timestamp);
+}
+
 export function formatRelativeTimestamp(timestamp: number): string {
+  if (!isFiniteTimestamp(timestamp)) {
+    return "recently";
+  }
+
   const now = Date.now();
   const diffMs = timestamp - now;
   const diffMinutes = Math.round(diffMs / (60 * 1000));
@@ -36,6 +44,10 @@ export function formatRelativeTimestamp(timestamp: number): string {
 }
 
 export function formatAbsoluteTimestamp(timestamp: number): string {
+  if (!isFiniteTimestamp(timestamp)) {
+    return "Unknown time";
+  }
+
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",

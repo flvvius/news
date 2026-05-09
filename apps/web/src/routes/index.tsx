@@ -51,15 +51,18 @@ function LandingActions({
 
 // Fallback events for when the feed is empty - intentionally minimal
 // These are demo placeholders; EventCard will render them without images/badges
+const FALLBACK_BASE_TIMESTAMP = Date.now();
 const FALLBACK_EVENTS = [
   {
     _id: "demo-1" as unknown as import("@news-app/backend/convex/_generated/dataModel").Id<"events">,
-    _creationTime: Date.now() - 3600000,
+    slug: "demo-federal-reserve-rate-changes",
+    _creationTime: FALLBACK_BASE_TIMESTAMP - 3600000,
     title:
       "Federal Reserve Signals Potential Rate Changes Amid Economic Uncertainty",
-    summary:
+    globalImpact:
       "The Federal Reserve indicated possible adjustments to interest rates as economic indicators show mixed signals across different sectors.",
-    publishedAt: Date.now() - 3600000,
+    firstPublishedAt: FALLBACK_BASE_TIMESTAMP - 3600000,
+    lastUpdatedAt: FALLBACK_BASE_TIMESTAMP - 3600000,
     sourceCount: 12,
     topicIds: [],
     status: "published" as const,
@@ -69,12 +72,14 @@ const FALLBACK_EVENTS = [
   },
   {
     _id: "demo-2" as unknown as import("@news-app/backend/convex/_generated/dataModel").Id<"events">,
-    _creationTime: Date.now() - 7200000,
+    slug: "demo-tech-earnings-beat-expectations",
+    _creationTime: FALLBACK_BASE_TIMESTAMP - 7200000,
     title:
       "Major Tech Companies Report Quarterly Earnings Exceeding Expectations",
-    summary:
+    globalImpact:
       "Several leading technology firms announced better-than-expected quarterly results, driving market optimism despite ongoing regulatory scrutiny.",
-    publishedAt: Date.now() - 7200000,
+    firstPublishedAt: FALLBACK_BASE_TIMESTAMP - 7200000,
+    lastUpdatedAt: FALLBACK_BASE_TIMESTAMP - 7200000,
     sourceCount: 8,
     topicIds: [],
     status: "published" as const,
@@ -84,11 +89,13 @@ const FALLBACK_EVENTS = [
   },
   {
     _id: "demo-3" as unknown as import("@news-app/backend/convex/_generated/dataModel").Id<"events">,
-    _creationTime: Date.now() - 14400000,
+    slug: "demo-climate-summit-new-agreements",
+    _creationTime: FALLBACK_BASE_TIMESTAMP - 14400000,
     title: "Climate Summit Concludes with New International Agreements",
-    summary:
+    globalImpact:
       "World leaders reached consensus on several key environmental initiatives following intense negotiations at the annual climate conference.",
-    publishedAt: Date.now() - 14400000,
+    firstPublishedAt: FALLBACK_BASE_TIMESTAMP - 14400000,
+    lastUpdatedAt: FALLBACK_BASE_TIMESTAMP - 14400000,
     sourceCount: 15,
     topicIds: [],
     status: "published" as const,
@@ -266,6 +273,7 @@ function LandingPage() {
                       event={event}
                       topicNamesById={topicNamesById}
                       maxSources={maxSources}
+                      interactive={!isUsingFallback}
                     />
                   </div>
                 ))

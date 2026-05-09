@@ -45,6 +45,7 @@ type EventCardProps = {
   variant?: "default" | "feature";
   searchQuery?: string;
   returnToFeed?: boolean;
+  interactive?: boolean;
 };
 
 function escapeRegExp(value: string) {
@@ -110,6 +111,7 @@ const EventCard = ({
   variant = "default",
   searchQuery,
   returnToFeed = false,
+  interactive = true,
 }: EventCardProps) => {
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
@@ -143,68 +145,63 @@ const EventCard = ({
     distributionTotal > 0 &&
     (event.sourceBiasCounts !== undefined || (event.sources?.length ?? 0) > 0);
 
-  return (
-    <Link
-      to="/event/$slug"
-      params={{ slug: event.slug }}
-      search={returnToFeed ? { returnToFeed: "1" } : undefined}
-      className="group block"
+  const cardContent = (
+    <Card
+      className={cn(
+        "overflow-hidden border-border/80 bg-card/95 py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
+        isFeature ? "rounded-[1.4rem]" : "rounded-[1.2rem]",
+      )}
     >
-      <Card
+      <div
         className={cn(
-          "overflow-hidden border-border/80 bg-card/95 py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
-          isFeature ? "rounded-[1.4rem]" : "rounded-[1.2rem]",
+          "relative overflow-hidden bg-muted/40",
+          isFeature
+            ? "aspect-[16/10] sm:aspect-[16/10]"
+            : "aspect-[16/10] lg:aspect-[16/10]",
         )}
       >
-        <div
-          className={cn(
-            "relative overflow-hidden bg-muted/40",
-            isFeature
-              ? "aspect-[16/10] sm:aspect-[16/10]"
-              : "aspect-[16/10] lg:aspect-[16/10]",
-          )}
-        >
-          <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
-            {(topics.length > 0 ? topics : ["General"])
-              .slice(0, isFeature ? 3 : 2)
-              .map((topic) => (
-                <span
-                  key={topic}
-                  className="inline-flex h-7 items-center rounded-full border border-white/20 bg-black/45 px-3 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-                >
-                  {topic}
-                </span>
-              ))}
-          </div>
-          {event.imageUrl ? (
-            <img
-              src={event.imageUrl}
-              alt={event.title}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
-              <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
-                {primaryTopic}
-              </span>
-            </div>
-          )}
-        </div>
-        <CardContent
-          className={cn(
-            "space-y-4 px-5 pb-6 pt-0 sm:px-6",
-            isFeature && "px-5 pb-7 pt-1 sm:px-8",
-          )}
-        >
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <p
-                className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground -mt-1"
-                title={lastUpdatedTitle}
+        <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
+          {(topics.length > 0 ? topics : ["General"])
+            .slice(0, isFeature ? 3 : 2)
+            .map((topic) => (
+              <span
+                key={topic}
+                className="inline-flex h-7 items-center rounded-full border border-white/20 bg-black/45 px-3 text-xs font-medium text-white shadow-sm backdrop-blur-md"
               >
-                Updated {lastUpdatedLabel}
-              </p>
+                {topic}
+              </span>
+            ))}
+        </div>
+        {event.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
+            <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
+              {primaryTopic}
+            </span>
+          </div>
+        )}
+      </div>
+      <CardContent
+        className={cn(
+          "space-y-4 px-5 pb-6 pt-0 sm:px-6",
+          isFeature && "px-5 pb-7 pt-1 sm:px-8",
+        )}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <p
+              className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground -mt-1"
+              title={lastUpdatedTitle}
+            >
+              Updated {lastUpdatedLabel}
+            </p>
+            {interactive && (
               <div className="flex items-center gap-2 -mt-1">
                 <ShareEventButton
                   eventId={event._id}
@@ -223,98 +220,113 @@ const EventCard = ({
                   className="rounded-full border border-border/80 bg-background/80"
                 />
               </div>
-            </div>
-            <CardTitle
-              className={cn(
-                "leading-tight tracking-tight text-card-foreground",
-                isFeature ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl",
-              )}
-            >
-              {highlightTitle(event.title, searchQuery)}
-            </CardTitle>
+            )}
           </div>
-
-          <p
+          <CardTitle
             className={cn(
-              "text-muted-foreground",
-              isFeature ? "text-base" : "text-sm line-clamp-3",
+              "leading-tight tracking-tight text-card-foreground",
+              isFeature ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl",
             )}
           >
-            {summaryPreview}
-          </p>
+            {highlightTitle(event.title, searchQuery)}
+          </CardTitle>
+        </div>
 
-          <div className="border-t border-border/70 pt-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                {event.sources && event.sources.length > 0 && (
-                  <div className="flex -space-x-3">
-                    {event.sources.slice(0, maxSources).map((source) => (
-                      <div
-                        key={source._id}
-                        className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
-                        title={source.name}
-                      >
-                        {source.logoUrl ? (
-                          <img
-                            src={source.logoUrl}
-                            alt={source.name}
-                            className="h-full w-full object-contain p-1.5"
-                          />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center text-xs font-medium text-foreground">
-                            {source.name.charAt(0)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-card-foreground">
-                    {totalSources} sources
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {event.articleCount !== undefined
-                      ? `${event.articleCount} ${event.articleCount === 1 ? "article" : "articles"}`
-                      : "Follow the event"}
-                  </p>
-                </div>
-              </div>
+        <p
+          className={cn(
+            "text-muted-foreground",
+            isFeature ? "text-base" : "text-sm line-clamp-3",
+          )}
+        >
+          {summaryPreview}
+        </p>
 
-              {showBiasDistribution && (
-                <div className="space-y-1.5">
-                  <div
-                    className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"
-                    aria-label={`Source bias distribution: ${biasDistribution.left} left, ${biasDistribution.center} center, ${biasDistribution.right} right`}
-                    role="img"
-                  >
-                    {(["left", "center", "right"] as BiasBucket[]).map(
-                      (bucket) => {
-                        const count = biasDistribution[bucket];
-                        if (count === 0) return null;
-                        return (
-                          <div
-                            key={bucket}
-                            className={biasBucketClass(bucket)}
-                            style={{
-                              width: `${(count / distributionTotal) * 100}%`,
-                            }}
-                          />
-                        );
-                      },
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>{biasDistribution.left} left</span>
-                    <span>{biasDistribution.center} center</span>
-                    <span>{biasDistribution.right} right</span>
-                  </div>
+        <div className="border-t border-border/70 pt-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {event.sources && event.sources.length > 0 && (
+                <div className="flex -space-x-3">
+                  {event.sources.slice(0, maxSources).map((source) => (
+                    <div
+                      key={source._id}
+                      className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
+                      title={source.name}
+                    >
+                      {source.logoUrl ? (
+                        <img
+                          src={source.logoUrl}
+                          alt={source.name}
+                          className="h-full w-full object-contain p-1.5"
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-xs font-medium text-foreground">
+                          {source.name.charAt(0)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-card-foreground">
+                  {totalSources} sources
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {event.articleCount !== undefined
+                    ? `${event.articleCount} ${event.articleCount === 1 ? "article" : "articles"}`
+                    : "Follow the event"}
+                </p>
+              </div>
             </div>
+
+            {showBiasDistribution && (
+              <div className="space-y-1.5">
+                <div
+                  className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"
+                  aria-label={`Source bias distribution: ${biasDistribution.left} left, ${biasDistribution.center} center, ${biasDistribution.right} right`}
+                  role="img"
+                >
+                  {(["left", "center", "right"] as BiasBucket[]).map(
+                    (bucket) => {
+                      const count = biasDistribution[bucket];
+                      if (count === 0) return null;
+                      return (
+                        <div
+                          key={bucket}
+                          className={biasBucketClass(bucket)}
+                          style={{
+                            width: `${(count / distributionTotal) * 100}%`,
+                          }}
+                        />
+                      );
+                    },
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>{biasDistribution.left} left</span>
+                  <span>{biasDistribution.center} center</span>
+                  <span>{biasDistribution.right} right</span>
+                </div>
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  if (!interactive) {
+    return <div className="group block">{cardContent}</div>;
+  }
+
+  return (
+    <Link
+      to="/event/$slug"
+      params={{ slug: event.slug }}
+      search={returnToFeed ? { returnToFeed: "1" } : undefined}
+      className="group block"
+    >
+      {cardContent}
     </Link>
   );
 };
