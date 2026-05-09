@@ -4,6 +4,7 @@ import { authClient } from "@/lib/auth-client";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type AuthenticatedProfileUser = {
   email: string;
@@ -35,13 +36,18 @@ export function AuthenticatedProfile({
   const initials = getInitials(displayName);
 
   const handleSignOut = async () => {
-    await authClient.signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          location.reload();
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            location.reload();
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error("Sign-out failed:", error);
+      toast.error(t("auth.signOutError"));
+    }
   };
 
   return (

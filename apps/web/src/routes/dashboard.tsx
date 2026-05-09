@@ -3,7 +3,7 @@ import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useConvexAuth } from "convex/react";
 import { useEffect, useRef } from "react";
 import { isAuthRedirectPath, type AuthRedirectPath } from "@/lib/auth-redirect";
@@ -39,6 +39,7 @@ export const Route = createFileRoute("/dashboard")({
 
 function DashboardAuthPage() {
   const t = useT();
+  const navigate = useNavigate({ from: "/dashboard" });
   const search = Route.useSearch();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const redirectTo: AuthRedirectPath =
@@ -51,26 +52,23 @@ function DashboardAuthPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      window.location.replace("/activitate");
+      void navigate({ to: "/activitate", replace: true });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigate]);
 
   const replaceDashboardSearch = (
     mode: "signin" | "signup",
     verified?: string | number,
   ) => {
-    const params = new URLSearchParams();
-    params.set("mode", mode);
-
-    if (search.redirect) {
-      params.set("redirect", search.redirect);
-    }
-
-    if (verified !== undefined) {
-      params.set("verified", String(verified));
-    }
-
-    window.location.replace(`/dashboard?${params.toString()}`);
+    return navigate({
+      to: "/dashboard",
+      replace: true,
+      search: () => ({
+        mode,
+        redirect: search.redirect,
+        ...(verified !== undefined ? { verified } : {}),
+      }),
+    });
   };
 
   useEffect(() => {
@@ -80,8 +78,8 @@ function DashboardAuthPage() {
 
     hasShownVerifiedToastRef.current = true;
     toast.message(t("auth.verifiedToast"));
-    replaceDashboardSearch("signin");
-  }, [isVerified, search.redirect, t]);
+    void replaceDashboardSearch("signin");
+  }, [isVerified, search.redirect, t, navigate]);
 
   if (isLoading || isAuthenticated) {
     return (

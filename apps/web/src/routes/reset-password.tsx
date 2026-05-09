@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -34,6 +34,7 @@ export const Route = createFileRoute("/reset-password")({
 });
 
 function ResetPasswordRoute() {
+  const navigate = useNavigate({ from: "/reset-password" });
   const t = useT();
   const search = Route.useSearch();
   const token = search.token?.trim();
@@ -77,7 +78,10 @@ function ResetPasswordRoute() {
         {
           onSuccess: () => {
             toast.success(t("reset.success"));
-            window.location.assign("/dashboard?mode=signin");
+            void navigate({
+              to: "/dashboard",
+              search: { mode: "signin" },
+            });
           },
           onError: (error) => {
             const message = error.error.message || t("reset.error");

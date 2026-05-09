@@ -45,12 +45,7 @@ export default function BookmarkButton({
   const toggle = useMutation({
     mutationFn: useConvexMutation(api.interactions.toggleBookmark),
     onSuccess: (data) => {
-      if (
-        typeof data === "object" &&
-        data !== null &&
-        "bookmarked" in data &&
-        data.bookmarked === true
-      ) {
+      if (data?.bookmarked === true) {
         toast.success(t("bookmark.added"));
       } else {
         toast(t("bookmark.removed"));
