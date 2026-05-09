@@ -10,12 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as TermeniRouteImport } from './routes/termeni'
+import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
+import { Route as ParteneriRouteImport } from './routes/parteneri'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as DespreRouteImport } from './routes/despre'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CumFunctioneazaRouteImport } from './routes/cum-functioneaza'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as BookmarksRouteImport } from './routes/bookmarks'
+import { Route as ActivitateRouteImport } from './routes/activitate'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
 import { Route as EventSlugRouteImport } from './routes/event.$slug'
@@ -24,6 +32,16 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
   path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermeniRoute = TermeniRouteImport.update({
+  id: '/termeni',
+  path: '/termeni',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SurseleNoastreRoute = SurseleNoastreRouteImport.update({
+  id: '/sursele-noastre',
+  path: '/sursele-noastre',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -41,9 +59,25 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoliticaConfidentialitateRoute =
+  PoliticaConfidentialitateRouteImport.update({
+    id: '/politica-confidentialitate',
+    path: '/politica-confidentialitate',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ParteneriRoute = ParteneriRouteImport.update({
+  id: '/parteneri',
+  path: '/parteneri',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeedRoute = FeedRouteImport.update({
   id: '/feed',
   path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DespreRoute = DespreRouteImport.update({
+  id: '/despre',
+  path: '/despre',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -51,9 +85,24 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CumFunctioneazaRoute = CumFunctioneazaRouteImport.update({
+  id: '/cum-functioneaza',
+  path: '/cum-functioneaza',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BookmarksRoute = BookmarksRouteImport.update({
   id: '/bookmarks',
   path: '/bookmarks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivitateRoute = ActivitateRouteImport.update({
+  id: '/activitate',
+  path: '/activitate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,12 +128,20 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/contact': typeof ContactRoute
+  '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
+  '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/parteneri': typeof ParteneriRoute
+  '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sursele-noastre': typeof SurseleNoastreRoute
+  '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -92,12 +149,20 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/contact': typeof ContactRoute
+  '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
+  '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/parteneri': typeof ParteneriRoute
+  '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sursele-noastre': typeof SurseleNoastreRoute
+  '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -106,12 +171,20 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/contact': typeof ContactRoute
+  '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
+  '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/parteneri': typeof ParteneriRoute
+  '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/sursele-noastre': typeof SurseleNoastreRoute
+  '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -121,12 +194,20 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activitate'
     | '/bookmarks'
+    | '/contact'
+    | '/cum-functioneaza'
     | '/dashboard'
+    | '/despre'
     | '/feed'
+    | '/parteneri'
+    | '/politica-confidentialitate'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/sursele-noastre'
+    | '/termeni'
     | '/unsubscribe'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -134,12 +215,20 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activitate'
     | '/bookmarks'
+    | '/contact'
+    | '/cum-functioneaza'
     | '/dashboard'
+    | '/despre'
     | '/feed'
+    | '/parteneri'
+    | '/politica-confidentialitate'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/sursele-noastre'
+    | '/termeni'
     | '/unsubscribe'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -147,12 +236,20 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/activitate'
     | '/bookmarks'
+    | '/contact'
+    | '/cum-functioneaza'
     | '/dashboard'
+    | '/despre'
     | '/feed'
+    | '/parteneri'
+    | '/politica-confidentialitate'
     | '/reset-password'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/sursele-noastre'
+    | '/termeni'
     | '/unsubscribe'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -161,12 +258,20 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivitateRoute: typeof ActivitateRoute
   BookmarksRoute: typeof BookmarksRoute
+  ContactRoute: typeof ContactRoute
+  CumFunctioneazaRoute: typeof CumFunctioneazaRoute
   DashboardRoute: typeof DashboardRoute
+  DespreRoute: typeof DespreRoute
   FeedRoute: typeof FeedRoute
+  ParteneriRoute: typeof ParteneriRoute
+  PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  SurseleNoastreRoute: typeof SurseleNoastreRoute
+  TermeniRoute: typeof TermeniRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EventSlugRoute: typeof EventSlugRoute
   SourceSourceIdRoute: typeof SourceSourceIdRoute
@@ -180,6 +285,20 @@ declare module '@tanstack/react-router' {
       path: '/unsubscribe'
       fullPath: '/unsubscribe'
       preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/termeni': {
+      id: '/termeni'
+      path: '/termeni'
+      fullPath: '/termeni'
+      preLoaderRoute: typeof TermeniRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sursele-noastre': {
+      id: '/sursele-noastre'
+      path: '/sursele-noastre'
+      fullPath: '/sursele-noastre'
+      preLoaderRoute: typeof SurseleNoastreRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -203,11 +322,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/politica-confidentialitate': {
+      id: '/politica-confidentialitate'
+      path: '/politica-confidentialitate'
+      fullPath: '/politica-confidentialitate'
+      preLoaderRoute: typeof PoliticaConfidentialitateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/parteneri': {
+      id: '/parteneri'
+      path: '/parteneri'
+      fullPath: '/parteneri'
+      preLoaderRoute: typeof ParteneriRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/feed': {
       id: '/feed'
       path: '/feed'
       fullPath: '/feed'
       preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/despre': {
+      id: '/despre'
+      path: '/despre'
+      fullPath: '/despre'
+      preLoaderRoute: typeof DespreRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -217,11 +357,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cum-functioneaza': {
+      id: '/cum-functioneaza'
+      path: '/cum-functioneaza'
+      fullPath: '/cum-functioneaza'
+      preLoaderRoute: typeof CumFunctioneazaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/bookmarks': {
       id: '/bookmarks'
       path: '/bookmarks'
       fullPath: '/bookmarks'
       preLoaderRoute: typeof BookmarksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activitate': {
+      id: '/activitate'
+      path: '/activitate'
+      fullPath: '/activitate'
+      preLoaderRoute: typeof ActivitateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,12 +418,20 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivitateRoute: ActivitateRoute,
   BookmarksRoute: BookmarksRoute,
+  ContactRoute: ContactRoute,
+  CumFunctioneazaRoute: CumFunctioneazaRoute,
   DashboardRoute: DashboardRoute,
+  DespreRoute: DespreRoute,
   FeedRoute: FeedRoute,
+  ParteneriRoute: ParteneriRoute,
+  PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  SurseleNoastreRoute: SurseleNoastreRoute,
+  TermeniRoute: TermeniRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EventSlugRoute: EventSlugRoute,
   SourceSourceIdRoute: SourceSourceIdRoute,
