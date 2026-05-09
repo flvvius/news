@@ -1,40 +1,36 @@
 import { Bookmark, BarChart3, Newspaper, User } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ComponentType, MouseEvent } from "react";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 
 type TabItem = {
   to: string;
-  label: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   isActive?: (pathname: string) => boolean;
 };
 
-const tabs: TabItem[] = [
+type TabKey =
+  | "tabs.feed"
+  | "tabs.saved"
+  | "tabs.activity"
+  | "tabs.profile";
+
+type TabDefinition = TabItem & { key: TabKey };
+
+const tabDefinitions: readonly TabDefinition[] = [
   {
     to: "/feed",
-    label: "Feed",
+    key: "tabs.feed",
     icon: Newspaper,
-    isActive: (pathname) =>
+    isActive: (pathname: string) =>
       pathname === "/feed" ||
       pathname.startsWith("/feed/") ||
       pathname.startsWith("/event/"),
   },
-  {
-    to: "/salvate",
-    label: "Salvate",
-    icon: Bookmark,
-  },
-  {
-    to: "/activitate",
-    label: "Activitate",
-    icon: BarChart3,
-  },
-  {
-    to: "/profil",
-    label: "Profil",
-    icon: User,
-  },
+  { to: "/salvate", key: "tabs.saved", icon: Bookmark },
+  { to: "/activitate", key: "tabs.activity", icon: BarChart3 },
+  { to: "/profil", key: "tabs.profile", icon: User },
 ];
 
 function matchesPath(pathname: string, to: string) {
@@ -42,6 +38,7 @@ function matchesPath(pathname: string, to: string) {
 }
 
 export function MobileTabBar() {
+  const t = useT();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -61,15 +58,16 @@ export function MobileTabBar() {
 
   return (
     <nav
-      aria-label="Navigație mobilă"
+      aria-label={t("nav.mobile")}
       className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 backdrop-blur md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="mx-auto grid max-w-md grid-cols-4 px-2 py-2">
-        {tabs.map(({ to, label, icon: Icon, isActive: customIsActive }) => {
+        {tabDefinitions.map(({ to, key, icon: Icon, isActive: customIsActive }) => {
           const isActive = customIsActive
             ? customIsActive(pathname)
             : matchesPath(pathname, to);
+          const label = t(key);
 
           return (
             <Link

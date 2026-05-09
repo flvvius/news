@@ -1,6 +1,8 @@
 import { Bell, LogOut, MoonStar, ShieldCheck, User2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
+import { LanguagePicker } from "@/components/LanguagePicker";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { Button } from "@/components/ui/button";
 
 type AuthenticatedProfileUser = {
@@ -27,6 +29,7 @@ export function AuthenticatedProfile({
 }: {
   user: AuthenticatedProfileUser;
 }) {
+  const t = useT();
   const displayName = user.profile?.name || user.name || user.email;
   const avatarSrc = user.profile?.avatar || user.image || undefined;
   const initials = getInitials(displayName);
@@ -61,7 +64,7 @@ export function AuthenticatedProfile({
 
               <div className="min-w-0">
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">
-                  Contul tău
+                  {t("profile.account")}
                 </p>
                 <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">
                   {displayName}
@@ -77,46 +80,62 @@ export function AuthenticatedProfile({
             <div className="flex items-center gap-3">
               <MoonStar className="size-5 text-primary" />
               <div>
-                <h2 className="font-semibold">Setări</h2>
+                <h2 className="font-semibold">{t("profile.settings")}</h2>
                 <p className="text-sm text-muted-foreground">
-                  Opțiuni rapide pentru preferințele tale.
+                  {t("profile.settingsBody")}
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 space-y-4">
               <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <MoonStar className="size-4 text-primary" />
-                  Temă
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">
+                      {t("settings.language")}
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t("profile.settingsBody")}
+                    </p>
+                  </div>
+                  <LanguagePicker />
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Selectorul de temă va fi disponibil în curând.
-                </p>
-                <Button
-                  variant="outline"
-                  className="mt-4 w-full justify-start"
-                  disabled
-                >
-                  În curând
-                </Button>
               </div>
 
-              <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Bell className="size-4 text-primary" />
-                  Notificări
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <MoonStar className="size-4 text-primary" />
+                    {t("profile.theme")}
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {t("profile.themeBody")}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="mt-4 w-full justify-start"
+                    disabled
+                  >
+                    {t("profile.comingSoon")}
+                  </Button>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Preferințele pentru alerte și rezumate vor apărea aici.
-                </p>
-                <Button
-                  variant="outline"
-                  className="mt-4 w-full justify-start"
-                  disabled
-                >
-                  În curând
-                </Button>
+
+                <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Bell className="size-4 text-primary" />
+                    {t("profile.notifications")}
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {t("profile.notificationsBody")}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="mt-4 w-full justify-start"
+                    disabled
+                  >
+                    {t("profile.comingSoon")}
+                  </Button>
+                </div>
               </div>
             </div>
           </section>
@@ -125,10 +144,9 @@ export function AuthenticatedProfile({
             <div className="flex items-center gap-3">
               <User2 className="size-5 text-primary" />
               <div>
-                <h2 className="font-semibold">Cont</h2>
+                <h2 className="font-semibold">{t("profile.accountSection")}</h2>
                 <p className="text-sm text-muted-foreground">
-                  Informațiile tale de autentificare și opțiunile sensibile ale
-                  contului.
+                  {t("profile.accountBody")}
                 </p>
               </div>
             </div>
@@ -141,21 +159,20 @@ export function AuthenticatedProfile({
 
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button asChild variant="outline" className="sm:flex-1">
-                  <Link to="/reset-password">Schimbă parola</Link>
+                  <Link to="/reset-password">{t("profile.changePassword")}</Link>
                 </Button>
                 <Button asChild variant="outline" className="sm:flex-1">
-                  <Link to="/contact">Solicită ștergerea contului</Link>
+                  <Link to="/contact">{t("profile.deleteAccount")}</Link>
                 </Button>
               </div>
 
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2 font-medium text-foreground">
                   <ShieldCheck className="size-4 text-amber-600" />
-                  Siguranța contului
+                  {t("profile.security")}
                 </div>
                 <p className="mt-2">
-                  Dacă vrei modificări mai sensibile, ne poți scrie din pagina
-                  de contact și te ajutăm manual.
+                  {t("profile.securityBody")}
                 </p>
               </div>
             </div>
@@ -168,7 +185,7 @@ export function AuthenticatedProfile({
             onClick={handleSignOut}
           >
             <LogOut className="size-4" />
-            Deconectare
+            {t("auth.signOut")}
           </Button>
         </div>
       </div>

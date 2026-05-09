@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, Newspaper, Bookmark, LayoutDashboard, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n/LocaleContext";
 import {
   Sheet,
   SheetContent,
@@ -10,14 +11,15 @@ import {
 } from "@/components/ui/sheet";
 
 const links = [
-  { to: "/feed", label: "Feed", icon: Newspaper },
-  { to: "/salvate", label: "Salvate", icon: Bookmark },
-  { to: "/activitate", label: "Activitate", icon: LayoutDashboard },
-  { to: "/profil", label: "Profil", icon: User },
+  { to: "/feed", key: "tabs.feed", icon: Newspaper },
+  { to: "/salvate", key: "tabs.saved", icon: Bookmark },
+  { to: "/activitate", key: "tabs.activity", icon: LayoutDashboard },
+  { to: "/profil", key: "tabs.profile", icon: User },
 ] as const;
 
 export default function Header() {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
@@ -36,8 +38,8 @@ export default function Header() {
 
           {/* Desktop nav */}
           <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
-            {links.map(({ to, label, icon: Icon }) => {
-              const isActive = to === "/" ? currentPath === "/" : currentPath.startsWith(to);
+            {links.map(({ to, key, icon: Icon }) => {
+              const isActive = currentPath === to || currentPath.startsWith(`${to}/`);
               return (
                 <Link
                   key={to}
@@ -51,7 +53,7 @@ export default function Header() {
                   `}
                 >
                   <Icon className="size-4" />
-                  {label}
+                  {t(key)}
                 </Link>
               );
             })}
@@ -80,8 +82,9 @@ export default function Header() {
                   </SheetTitle>
                 </div>
                 <nav aria-label="Mobile" className="flex flex-col gap-1 p-4">
-                  {links.map(({ to, label, icon: Icon }) => {
-                    const isActive = to === "/" ? currentPath === "/" : currentPath.startsWith(to);
+                  {links.map(({ to, key, icon: Icon }) => {
+                    const isActive =
+                      currentPath === to || currentPath.startsWith(`${to}/`);
                     return (
                       <Link
                         key={to}
@@ -96,7 +99,7 @@ export default function Header() {
                         onClick={() => setOpen(false)}
                       >
                         <Icon className="size-5" />
-                        {label}
+                        {t(key)}
                       </Link>
                     );
                   })}

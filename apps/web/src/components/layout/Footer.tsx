@@ -1,42 +1,45 @@
 import { Link } from "@tanstack/react-router";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 const footerSections = [
   {
-    title: "Despre",
+    titleKey: "footer.aboutSection",
     links: [
-      { to: "/despre", label: "Despre noi" },
-      { to: "/contact", label: "Contact" },
-      { to: "/parteneri", label: "Parteneri" },
+      { to: "/despre", labelKey: "footer.about" },
+      { to: "/contact", labelKey: "footer.contact" },
+      { to: "/parteneri", labelKey: "footer.partners" },
     ],
   },
   {
-    title: "Resurse",
+    titleKey: "footer.resourcesSection",
     links: [
-      { to: "/cum-functioneaza", label: "Cum funcționează" },
-      { to: "/sursele-noastre", label: "Sursele noastre" },
+      { to: "/cum-functioneaza", labelKey: "footer.howItWorks" },
+      { to: "/sursele-noastre", labelKey: "footer.sources" },
     ],
   },
   {
-    title: "Legal",
+    titleKey: "footer.legalSection",
     links: [
       {
         to: "/politica-confidentialitate",
-        label: "Confidențialitate",
+        labelKey: "footer.privacy",
       },
-      { to: "/termeni", label: "Termeni" },
+      { to: "/termeni", labelKey: "footer.terms" },
     ],
   },
 ] as const;
 
 export function Footer() {
+  const t = useT();
+
   return (
     <footer className="border-t border-border bg-muted/20 pb-24 md:pb-8">
       <div className="container mx-auto max-w-6xl px-4 py-10">
         <div className="grid gap-8 md:grid-cols-3">
           {footerSections.map((section) => (
-            <div key={section.title} className="space-y-3">
+            <div key={section.titleKey} className="space-y-3">
               <h2 className="text-sm font-semibold text-foreground">
-                {section.title}
+                {t(section.titleKey)}
               </h2>
               <div className="flex flex-col gap-2">
                 {section.links.map((link) => (
@@ -45,7 +48,7 @@ export function Footer() {
                     to={link.to}
                     className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    {link.label}
+                    {t(link.labelKey)}
                   </Link>
                 ))}
               </div>
