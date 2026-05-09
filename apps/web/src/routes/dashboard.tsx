@@ -2,6 +2,7 @@ import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvexAuth } from "convex/react";
 import { useEffect, useRef } from "react";
@@ -17,12 +18,22 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/dashboard")({
   validateSearch: searchSchema,
-  head: () => ({
-    meta: [
-      { title: "Cont — Biviant" },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ matches }) => {
+    const locale =
+      matches[0]?.context &&
+      typeof matches[0].context === "object" &&
+      "locale" in matches[0].context &&
+      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
+        ? matches[0].context.locale
+        : "en";
+
+    return {
+      meta: [
+        { title: getString(locale, "auth.metaTitle") },
+        { name: "robots", content: "noindex, nofollow" },
+      ],
+    };
+  },
   component: DashboardAuthPage,
 });
 

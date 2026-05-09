@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 export function PageLoadingState({
   title = "Loading your page",
@@ -11,6 +12,9 @@ export function PageLoadingState({
   description?: string;
   cardCount?: number;
 }) {
+  const t = useT();
+  const resolvedTitle = title ?? t("feed.loading");
+  const resolvedDescription = description ?? t("activity.loading.body");
   return (
     <div className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
@@ -28,9 +32,11 @@ export function PageLoadingState({
               </div>
             </CardHeader>
             <CardContent className="space-y-3 pt-6">
-              <p className="text-sm font-medium text-foreground">{title}</p>
+              <p className="text-sm font-medium text-foreground">
+                {resolvedTitle}
+              </p>
               <p className="max-w-[52ch] text-sm text-muted-foreground">
-                {description}
+                {resolvedDescription}
               </p>
               <div className="grid gap-2 pt-1">
                 <Skeleton className="h-3 w-full" />

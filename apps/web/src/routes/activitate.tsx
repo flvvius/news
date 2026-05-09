@@ -5,7 +5,8 @@ import StreakActivityCalendar from "@/components/streak-activity-calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
-import { useT } from "@/lib/i18n/LocaleContext";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -60,12 +61,22 @@ function getNextStreakMilestone(streak: number) {
 }
 
 export const Route = createFileRoute("/activitate")({
-  head: () => ({
-    meta: [
-      { title: "Activitate — Biviant" },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ matches }) => {
+    const locale =
+      matches[0]?.context &&
+      typeof matches[0].context === "object" &&
+      "locale" in matches[0].context &&
+      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
+        ? matches[0].context.locale
+        : "en";
+
+    return {
+      meta: [
+        { title: getString(locale, "activity.metaTitle") },
+        { name: "robots", content: "noindex, nofollow" },
+      ],
+    };
+  },
   component: RouteComponent,
 });
 
@@ -96,6 +107,7 @@ function RouteComponent() {
 }
 
 function AuthorizedDashboard() {
+  const locale = useLocale();
   const t = useT();
   const currentUser = useQuery(api.user.getCurrentUser);
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
@@ -160,7 +172,7 @@ function AuthorizedDashboard() {
     const maxTopics = Number(maxTopicsInput);
 
     if (!Number.isFinite(minScore) || minScore < 1 || minScore > 20) {
-      setConfigMessage("Min score must be a number between 1 and 20.");
+      setConfigMessage(t("activity.admin.minScoreError"));
       return;
     }
     if (
@@ -168,11 +180,11 @@ function AuthorizedDashboard() {
       confidenceRatio < 0.1 ||
       confidenceRatio > 1
     ) {
-      setConfigMessage("Confidence ratio must be between 0.1 and 1.");
+      setConfigMessage(t("activity.admin.confidenceError"));
       return;
     }
     if (!Number.isInteger(maxTopics) || maxTopics < 1 || maxTopics > 5) {
-      setConfigMessage("Max topics must be a whole number between 1 and 5.");
+      setConfigMessage(t("activity.admin.maxTopicsError"));
       return;
     }
 
@@ -200,16 +212,17 @@ function AuthorizedDashboard() {
             "Maximum number of inferred topics attached to an event during clustering.",
         }),
       ]);
-      setConfigMessage("Topic inference settings saved.");
+      setConfigMessage(t("activity.admin.saved"));
     } catch (error) {
       console.error("Failed to save topic inference settings:", error);
-      setConfigMessage("Could not save settings. Please try again.");
+      setConfigMessage(t("activity.admin.saveError"));
     } finally {
       setIsSavingConfig(false);
     }
   };
 
-  const userName = currentUser?.profile?.name || currentUser?.email || "User";
+  const userName =
+    currentUser?.profile?.name || currentUser?.email || t("activity.userFallback");
   const readingStreak =
     dashboardOverview?.stats.currentStreak ??
     currentUser?.stats.currentStreak ??
@@ -464,7 +477,10 @@ function AuthorizedDashboard() {
                             </p>
                             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                               <span>
-                                {formatRelativeTimestamp(entry.lastViewedAt)}
+                                {formatRelativeTimestamp(
+                                  entry.lastViewedAt,
+                                  locale,
+                                )}
                               </span>
                               {detailBits.length > 0 && (
                                 <>
@@ -532,7 +548,10 @@ function AuthorizedDashboard() {
                           </p>
                           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                             <span>
-                              {formatRelativeTimestamp(entry.bookmarkedAt)}
+                              {formatRelativeTimestamp(
+                                entry.bookmarkedAt,
+                                locale,
+                              )}
                             </span>
                             <span>·</span>
                             <span>
@@ -596,26 +615,26 @@ function AuthorizedDashboard() {
             <section className="space-y-4 rounded-xl border border-border bg-card p-6">
               <div>
                 <h2 className="text-lg font-semibold">
-                  Topic Inference Diagnostics
+                  {t("activity.adminTitle")}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Review recent event topic assignments
+                  {t("activity.adminBody")}
                 </p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <MetricCard
-                  label="Min score"
+                  label={t("activity.admin.minScore")}
                   value={String(topicDiagnostics[0]?.settings.minScore ?? "-")}
                 />
                 <MetricCard
-                  label="Confidence ratio"
+                  label={t("activity.admin.confidence")}
                   value={String(
                     topicDiagnostics[0]?.settings.confidenceRatio ?? "-",
                   )}
                 />
                 <MetricCard
-                  label="Max topics"
+                  label={t("activity.admin.maxTopics")}
                   value={String(topicDiagnostics[0]?.settings.maxTopics ?? "-")}
                 />
               </div>
@@ -628,7 +647,7 @@ function AuthorizedDashboard() {
                         htmlFor="topic-inference-min-score"
                         className="text-xs font-medium text-muted-foreground"
                       >
-                        Min score
+                        {t("activity.admin.minScore")}
                       </label>
                       <Input
                         id="topic-inference-min-score"
@@ -643,7 +662,7 @@ function AuthorizedDashboard() {
                         htmlFor="topic-inference-confidence-ratio"
                         className="text-xs font-medium text-muted-foreground"
                       >
-                        Confidence ratio
+                        {t("activity.admin.confidence")}
                       </label>
                       <Input
                         id="topic-inference-confidence-ratio"
@@ -660,7 +679,7 @@ function AuthorizedDashboard() {
                         htmlFor="topic-inference-max-topics"
                         className="text-xs font-medium text-muted-foreground"
                       >
-                        Max topics
+                        {t("activity.admin.maxTopics")}
                       </label>
                       <Input
                         id="topic-inference-max-topics"
@@ -677,7 +696,9 @@ function AuthorizedDashboard() {
                       size="sm"
                       disabled={isSavingConfig || !hasConfigChanges}
                     >
-                      {isSavingConfig ? "Saving..." : "Save settings"}
+                      {isSavingConfig
+                        ? t("activity.admin.saving")
+                        : t("activity.admin.save")}
                     </Button>
                     <Button
                       type="button"
@@ -686,7 +707,7 @@ function AuthorizedDashboard() {
                       onClick={handleResetConfig}
                       disabled={isSavingConfig || !hasConfigChanges}
                     >
-                      Reset
+                      {t("activity.admin.reset")}
                     </Button>
                     {configMessage && (
                       <p className="text-sm text-muted-foreground">
@@ -707,19 +728,23 @@ function AuthorizedDashboard() {
                       <div>
                         <h3 className="font-medium">{event.eventTitle}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {event.articleCount} article
-                          {event.articleCount === 1 ? "" : "s"}
+                          {event.articleCount === 1
+                            ? t("activity.admin.articles.one")
+                            : t("activity.admin.articles.many").replace(
+                                "{count}",
+                                String(event.articleCount),
+                              )}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <TopicChipList
-                          label="Attached"
+                          label={t("activity.admin.attached")}
                           topics={event.attachedTopics.map(
                             (t) => t.displayName,
                           )}
                         />
                         <TopicChipList
-                          label="Inferred"
+                          label={t("activity.admin.inferred")}
                           topics={event.inferredTopics.map(
                             (t) => t.displayName,
                           )}
@@ -731,7 +756,7 @@ function AuthorizedDashboard() {
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs font-medium text-muted-foreground">
-                            Inference Input
+                            {t("activity.admin.input")}
                           </p>
                           <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                             <p>{event.inferenceInput.title}</p>
@@ -744,7 +769,7 @@ function AuthorizedDashboard() {
                         {event.inferenceInput.atomicFacts.length > 0 && (
                           <div>
                             <p className="text-xs font-medium text-muted-foreground">
-                              Facts
+                              {t("activity.admin.facts")}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1">
                               {event.inferenceInput.atomicFacts.map((fact) => (
@@ -762,7 +787,7 @@ function AuthorizedDashboard() {
 
                       <div>
                         <p className="text-xs font-medium text-muted-foreground">
-                          Top Candidates
+                          {t("activity.admin.candidates")}
                         </p>
                         <div className="mt-2 space-y-2">
                           {event.topCandidates.map((candidate) => (
@@ -775,7 +800,10 @@ function AuthorizedDashboard() {
                                   {candidate.displayName}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {candidate.signalCount} signals
+                                  {t("activity.admin.signals").replace(
+                                    "{count}",
+                                    String(candidate.signalCount),
+                                  )}
                                 </p>
                               </div>
                               <p className="text-sm font-semibold tabular-nums">
@@ -809,6 +837,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 }
 
 function TopicChipList({ label, topics }: { label: string; topics: string[] }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-xs text-muted-foreground">{label}:</span>
@@ -822,7 +851,7 @@ function TopicChipList({ label, topics }: { label: string; topics: string[] }) {
           </span>
         ))
       ) : (
-        <span className="text-xs text-muted-foreground">None</span>
+        <span className="text-xs text-muted-foreground">{t("activity.none")}</span>
       )}
     </div>
   );

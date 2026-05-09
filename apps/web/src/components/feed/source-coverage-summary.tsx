@@ -2,6 +2,7 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
 import BiasIndicator from "@/components/bias-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 type SourceCoverageArticle = {
   _id: Id<"articles">;
@@ -32,10 +33,10 @@ function getCoverageBucket(
 }
 
 function getCoverageLabel(bucket: CoverageBucket) {
-  if (bucket === "left") return "Left / left-center";
-  if (bucket === "right") return "Right / right-center";
-  if (bucket === "center") return "Center";
-  return "Unknown";
+  if (bucket === "left") return "coverage.left";
+  if (bucket === "right") return "coverage.right";
+  if (bucket === "center") return "coverage.center";
+  return "coverage.unknown";
 }
 
 function bucketClass(bucket: CoverageBucket) {
@@ -50,6 +51,7 @@ export default function SourceCoverageSummary({
 }: {
   articles: SourceCoverageArticle[];
 }) {
+  const t = useT();
   const sources = Array.from(
     new Map(
       articles
@@ -76,7 +78,7 @@ export default function SourceCoverageSummary({
     <Card className="overflow-hidden border-border/80 py-0">
       <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
         <CardTitle className="text-xl tracking-tight">
-          Source Coverage
+          {t("coverage.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5 px-6 py-6 sm:px-8">
@@ -90,7 +92,7 @@ export default function SourceCoverageSummary({
                   key={bucket}
                   className={bucketClass(bucket)}
                   style={{ width: `${(count / total) * 100}%` }}
-                  title={`${getCoverageLabel(bucket)}: ${count}`}
+                  title={`${t(getCoverageLabel(bucket))}: ${count}`}
                 />
               );
             })}
@@ -104,7 +106,7 @@ export default function SourceCoverageSummary({
                   className="rounded-lg border border-border/70 bg-background/55 px-3 py-2"
                 >
                   <p className="text-xs text-muted-foreground">
-                    {getCoverageLabel(bucket)}
+                    {t(getCoverageLabel(bucket))}
                   </p>
                   <p className="text-lg font-semibold text-card-foreground">
                     {counts[bucket]}
@@ -149,12 +151,12 @@ export default function SourceCoverageSummary({
                 <BiasIndicator bias={source.baseBias} size="sm" />
                 {(source.mbfcFactual || source.mbfcCredibility) && (
                   <p className="truncate text-xs text-muted-foreground">
-                    {[
-                      source.mbfcFactual
-                        ? `Factual: ${source.mbfcFactual}`
+                      {[
+                        source.mbfcFactual
+                        ? `${t("coverage.factual")}: ${source.mbfcFactual}`
                         : null,
                       source.mbfcCredibility
-                        ? `Credibility: ${source.mbfcCredibility}`
+                        ? `${t("coverage.credibility")}: ${source.mbfcCredibility}`
                         : null,
                     ]
                       .filter(Boolean)

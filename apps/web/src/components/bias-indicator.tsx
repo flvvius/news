@@ -1,3 +1,5 @@
+import { useT } from "@/lib/i18n/LocaleContext";
+
 type BiasIndicatorProps = {
   bias: number; // -5 (Left) to +5 (Right)
   size?: "sm" | "md" | "lg";
@@ -24,6 +26,7 @@ const BiasIndicator = ({
   size = "md",
   thresholds: thresholdsProp,
 }: BiasIndicatorProps) => {
+  const t = useT();
   const thresholds = validateThresholds(thresholdsProp ?? DEFAULT_THRESHOLDS);
 
   // Normalize bias to a 0-100 scale for positioning
@@ -40,11 +43,11 @@ const BiasIndicator = ({
 
   // Determine label
   const getLabel = (biasValue: number) => {
-    if (biasValue < thresholds[0]) return "Left";
-    if (biasValue < thresholds[1]) return "Lean Left";
-    if (biasValue <= thresholds[2]) return "Center";
-    if (biasValue <= thresholds[3]) return "Lean Right";
-    return "Right";
+    if (biasValue < thresholds[0]) return t("bias.label.leftStrong");
+    if (biasValue < thresholds[1]) return t("bias.label.left");
+    if (biasValue <= thresholds[2]) return t("bias.center");
+    if (biasValue <= thresholds[3]) return t("bias.label.right");
+    return t("bias.label.rightStrong");
   };
 
   // Determine text color
@@ -82,7 +85,7 @@ const BiasIndicator = ({
         aria-valuenow={bias}
         aria-valuemin={-5}
         aria-valuemax={5}
-        aria-label={`Bias: ${getLabel(bias)}`}
+        aria-label={`${t("bias.balance")}: ${getLabel(bias)}`}
       >
         {/* Gradient track for visual interest */}
         <div className="absolute inset-0 rounded-full overflow-hidden opacity-40">

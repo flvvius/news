@@ -39,28 +39,41 @@ import {
 } from "@/components/ui/popover";
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
 import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
-  head: () => ({
-    meta: [
-      { title: `Feed — ${SITE.name}` },
-      {
-        name: "description",
-        content:
-          "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
-      },
-      { property: "og:title", content: `Feed — ${SITE.name}` },
-      {
-        property: "og:description",
-        content:
-          "Browse the day’s important stories from multiple perspectives.",
-      },
-      { property: "og:url", content: `${SITE.url}/feed` },
-    ],
-    links: [{ rel: "canonical", href: `${SITE.url}/feed` }],
-  }),
+  head: ({ matches }) => {
+    const locale =
+      matches[0]?.context &&
+      typeof matches[0].context === "object" &&
+      "locale" in matches[0].context &&
+      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
+        ? matches[0].context.locale
+        : "en";
+    const title = getString(locale, "feed.meta.title");
+    const description = getString(locale, "feed.meta.description");
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:site_name", content: SITE.name },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { property: "og:image", content: SITE.ogImage },
+        { name: "twitter:image", content: SITE.ogImage },
+        { property: "og:url", content: `${SITE.url}/feed` },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
+      ],
+      links: [{ rel: "canonical", href: `${SITE.url}/feed` }],
+    };
+  },
   component: FeedComponent,
 });
 
@@ -529,7 +542,10 @@ function FeedContent() {
                 )}
                 {isSearching && (
                   <p className="text-xs text-muted-foreground">
-                    Showing indexed search results for “{debouncedSearch}”.
+                    {t("feed.search.indexed").replace(
+                      "{query}",
+                      debouncedSearch,
+                    )}
                   </p>
                 )}
               </div>
@@ -540,8 +556,8 @@ function FeedContent() {
             <AuthPromptBanner
               redirectTo="/feed"
               compact
-              title="Free accounts unlock bookmarks and a personalized feed"
-              description="You can read everything anonymously. Sign in only when you want synced bookmarks, ranking tuned to your interests, and future alerts."
+              title={t("feed.authTitle")}
+              description={t("feed.authBody")}
             />
           )}
 
@@ -552,7 +568,7 @@ function FeedContent() {
                 aria-live="polite"
                 className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
               >
-                Searching events…
+                {t("feed.searching")}
               </div>
             )}
             {status === "LoadingFirstPage" && (
@@ -561,7 +577,7 @@ function FeedContent() {
                 aria-live="polite"
                 className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
               >
-                Loading…
+                {t("feed.loading")}
               </div>
             )}
 
@@ -569,10 +585,12 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {feedSort === "recent" ? "Lead Story" : "Trending Story"}
+                    {feedSort === "recent"
+                      ? t("feed.leadStory")
+                      : t("feed.trendingStory")}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {feedSort === "recent" ? "Featured" : "Ranked"}
+                    {feedSort === "recent" ? t("feed.featured") : t("feed.ranked")}
                   </p>
                 </div>
                 <EventCard
@@ -589,10 +607,10 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    Top Search Match
+                    {t("feed.topSearch")}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Search
+                    {t("feed.searchTag")}
                   </p>
                 </div>
                 <EventCard
@@ -611,14 +629,14 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {isSearching ? "More Search Results" : "More Events"}
+                    {isSearching ? t("feed.moreSearch") : t("feed.moreEvents")}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     {isSearching
-                      ? "Best matches"
+                      ? t("feed.bestMatches")
                       : feedSort === "recent"
-                        ? "Latest coverage"
-                        : "Ranked coverage"}
+                        ? t("feed.latestCoverage")
+                        : t("feed.rankedCoverage")}
                   </p>
                 </div>
                 <div className="grid gap-5">
@@ -639,17 +657,17 @@ function FeedContent() {
             {isSearching && searchResults?.length === 0 && (
               <section className="flex flex-col gap-4">
                 <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
-                  <p>No events matched “{debouncedSearch}”.</p>
-                  <p className="mt-2">Try fewer keywords.</p>
+                  <p>{t("feed.noMatch").replace("{query}", debouncedSearch)}</p>
+                  <p className="mt-2">{t("feed.tryFewer")}</p>
                 </div>
                 {fallbackEvents && fallbackEvents.length > 0 && (
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between gap-4">
                       <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                        From your preferred topics
+                        {t("feed.preferredTopics")}
                       </h2>
                       <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        Latest 5
+                        {t("feed.latestFive")}
                       </p>
                     </div>
                     <div className="grid gap-5">
@@ -672,7 +690,7 @@ function FeedContent() {
               status !== "LoadingFirstPage" &&
               (!events || events.length === 0) && (
                 <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
-                  No events found.
+                  {t("feed.none")}
                 </div>
               )}
           </div>
@@ -685,7 +703,7 @@ function FeedContent() {
                 variant="outline"
                 className="rounded-full"
               >
-                Load more
+                {t("feed.loadMore")}
               </Button>
             </div>
           )}

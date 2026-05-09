@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import {
   AlertCircle,
   CheckCircle,
@@ -21,12 +22,22 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/unsubscribe")({
   validateSearch: searchSchema,
-  head: () => ({
-    meta: [
-      { title: "Unsubscribe — Biviant" },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ matches }) => {
+    const locale =
+      matches[0]?.context &&
+      typeof matches[0].context === "object" &&
+      "locale" in matches[0].context &&
+      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
+        ? matches[0].context.locale
+        : "en";
+
+    return {
+      meta: [
+        { title: getString(locale, "unsubscribe.meta.title") },
+        { name: "robots", content: "noindex, nofollow" },
+      ],
+    };
+  },
   component: UnsubscribePage,
 });
 

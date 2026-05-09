@@ -37,7 +37,10 @@ export default function Header() {
           </Link>
 
           {/* Desktop nav */}
-          <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
+          <nav
+            aria-label={t("header.primaryNav")}
+            className="hidden md:flex items-center gap-1"
+          >
             {links.map(({ to, key, icon: Icon }) => {
               const isActive = currentPath === to || currentPath.startsWith(`${to}/`);
               return (
@@ -66,7 +69,7 @@ export default function Header() {
                 variant="ghost"
                 size="icon"
                 className="md:hidden"
-                aria-label="Open menu"
+                aria-label={t("header.openMenu")}
               >
                 <Menu className="size-5" />
               </Button>
@@ -81,7 +84,10 @@ export default function Header() {
                     <span className="font-bold">Biviant</span>
                   </SheetTitle>
                 </div>
-                <nav aria-label="Mobile" className="flex flex-col gap-1 p-4">
+                <nav
+                  aria-label={t("header.mobileNav")}
+                  className="flex flex-col gap-1 p-4"
+                >
                   {links.map(({ to, key, icon: Icon }) => {
                     const isActive =
                       currentPath === to || currentPath.startsWith(`${to}/`);

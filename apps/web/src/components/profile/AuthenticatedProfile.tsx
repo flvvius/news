@@ -153,7 +153,7 @@ export function AuthenticatedProfile({
 
             <div className="mt-5 space-y-3">
               <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                <p className="text-sm font-medium">Email</p>
+                <p className="text-sm font-medium">{t("profile.emailLabel")}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
               </div>
 

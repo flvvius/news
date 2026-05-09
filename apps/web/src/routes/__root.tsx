@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
-import type { Locale } from "@/lib/i18n/strings";
+import { getString, type Locale } from "@/lib/i18n/strings";
 import { api } from "@news-app/backend/convex/_generated/api";
 
 import {
@@ -70,46 +70,62 @@ export interface RouterAppContext {
 }
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: SITE.title },
-      { name: "description", content: SITE.description },
-      // Open Graph defaults (child routes override title/description)
-      { property: "og:site_name", content: SITE.name },
-      { property: "og:type", content: "website" },
-      { property: "og:title", content: SITE.title },
-      { property: "og:description", content: SITE.description },
-      { property: "og:image", content: SITE.ogImage },
-      // Twitter / X
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: SITE.title },
-      { name: "twitter:description", content: SITE.description },
-      { name: "twitter:image", content: SITE.ogImage },
-      // PWA / browser chrome
-      { name: "theme-color", content: "#0f172a" },
-    ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      // Inter font — preload most critical weight (self-hosted)
-      {
-        rel: "preload",
-        href: "/fonts/inter-latin-wght-normal.woff2",
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-    ],
-  }),
+  head: ({ matches }) => {
+    const locale = getExistingAuthContext(matches).locale ?? "en";
+    const title = getString(locale, "seo.siteTitle");
+    const description = getString(locale, "seo.siteDescription");
+
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { title },
+        { name: "description", content: description },
+        { property: "og:site_name", content: SITE.name },
+        { property: "og:type", content: "website" },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:image", content: SITE.ogImage },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: SITE.ogImage },
+        { name: "theme-color", content: "#0f172a" },
+      ],
+      links: [
+        { rel: "stylesheet", href: appCss },
+        {
+          rel: "preload",
+          href: "/fonts/inter-latin-wght-normal.woff2",
+          as: "font",
+          type: "font/woff2",
+          crossOrigin: "anonymous",
+        },
+      ],
+    };
+  },
 
   component: RootDocument,
   beforeLoad: async (ctx): Promise<RootContextState> => {
-    // Only fetch the auth token during SSR. On the client, auth state is
-    // already maintained by ConvexBetterAuthProvider and intent preloading
-    // would otherwise hit this server function on every hover.
-    if (typeof document !== "undefined" || ctx.preload) {
+    // During intent preloading we avoid extra round-trips and keep existing
+    // auth/locale context. During real client invalidations/navigation we
+    // still re-resolve locale so cookie changes apply immediately.
+    if (ctx.preload) {
       return getExistingAuthContext(ctx.matches);
+    }
+
+    if (typeof document !== "undefined") {
+      const existing = getExistingAuthContext(ctx.matches);
+      const locale = await getServerLocale({
+        data: {
+          userPreference: null,
+        },
+      });
+
+      return {
+        ...existing,
+        locale,
+      };
     }
 
     const { token } = await fetchAuth();

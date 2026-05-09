@@ -12,7 +12,7 @@ import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { SITE } from "@/lib/seo";
+import { getString } from "@/lib/i18n/strings";
 
 function safePositiveInt(raw: unknown, fallback: number): number {
   const n = Number(raw);
@@ -20,12 +20,22 @@ function safePositiveInt(raw: unknown, fallback: number): number {
 }
 
 export const Route = createFileRoute("/salvate")({
-  head: () => ({
-    meta: [
-      { title: `Salvate — ${SITE.name}` },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ matches }) => {
+    const locale =
+      matches[0]?.context &&
+      typeof matches[0].context === "object" &&
+      "locale" in matches[0].context &&
+      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
+        ? matches[0].context.locale
+        : "en";
+
+    return {
+      meta: [
+        { title: getString(locale, "saved.metaTitle") },
+        { name: "robots", content: "noindex, nofollow" },
+      ],
+    };
+  },
   component: SalvatePage,
 });
 

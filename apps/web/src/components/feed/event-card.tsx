@@ -5,7 +5,7 @@ import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { buildInteractionContextFromSources } from "@/lib/interaction-tracking";
-import { useT } from "@/lib/i18n/LocaleContext";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -114,6 +114,7 @@ const EventCard = ({
   returnToFeed = false,
   interactive = true,
 }: EventCardProps) => {
+  const locale = useLocale();
   const t = useT();
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
@@ -125,8 +126,8 @@ const EventCard = ({
     t("event.coveragePreview");
   const isFeature = variant === "feature";
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
-  const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt);
-  const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
+  const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt, locale);
+  const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt, locale);
   const interactionContext = buildInteractionContextFromSources(
     event.sources ?? [],
   );

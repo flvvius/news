@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRef, useCallback } from "react";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 const BOOKMARK_DEBOUNCE_MS = 800;
 
@@ -30,6 +31,7 @@ export default function BookmarkButton({
   className,
   redirectTo = "/feed",
 }: BookmarkButtonProps) {
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
 
   const lastClickRef = useRef(0);
@@ -49,14 +51,14 @@ export default function BookmarkButton({
         "bookmarked" in data &&
         data.bookmarked === true
       ) {
-        toast.success("Bookmarked");
+        toast.success(t("bookmark.added"));
       } else {
-        toast("Bookmark removed");
+        toast(t("bookmark.removed"));
       }
     },
     onError: (error) => {
       console.error("Bookmark toggle failed:", error);
-      toast.error("Something went wrong. Please try again.");
+      toast.error(t("bookmark.error"));
     },
   });
   const { mutate } = toggle;
@@ -68,9 +70,9 @@ export default function BookmarkButton({
       e.stopPropagation();
 
       if (!isAuthenticated) {
-        toast("Sign in to bookmark events", {
+        toast(t("bookmark.signInTitle"), {
           action: {
-            label: "Sign in",
+            label: t("bookmark.signInAction"),
             onClick: () => {
               window.location.href = `/dashboard?mode=signin&redirect=${encodeURIComponent(redirectTo)}`;
             },
@@ -114,7 +116,7 @@ export default function BookmarkButton({
       )}
       disabled={toggle.isPending}
       onClick={handleClick}
-      aria-label={bookmarked ? "Remove bookmark" : "Bookmark this event"}
+      aria-label={bookmarked ? t("bookmark.remove") : t("bookmark.add")}
       aria-pressed={bookmarked}
     >
       <Bookmark
