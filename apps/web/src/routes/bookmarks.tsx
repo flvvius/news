@@ -54,7 +54,7 @@ function BookmarksPage() {
                     </p>
                   </div>
                   <Button asChild size="lg" className="w-full rounded-full">
-                    <Link to="/dashboard">
+                    <Link to="/activitate">
                       Sign in to continue
                     </Link>
                   </Button>

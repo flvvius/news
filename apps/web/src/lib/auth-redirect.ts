@@ -1,5 +1,6 @@
 export type AuthRedirectPath =
   | "/"
+  | "/activitate"
   | "/bookmarks"
   | "/dashboard"
   | "/feed"
@@ -15,6 +16,7 @@ export function isAuthRedirectPath(value: string): value is AuthRedirectPath {
 
   return (
     value === "/" ||
+    value === "/activitate" ||
     value === "/bookmarks" ||
     value === "/dashboard" ||
     value === "/feed" ||

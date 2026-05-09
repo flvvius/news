@@ -69,7 +69,7 @@ export const Route = createFileRoute("/activitate")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Dashboard — Biviant" },
+      { title: "Activitate — Biviant" },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
@@ -212,8 +212,8 @@ function RouteComponent() {
       </Unauthenticated>
       <AuthLoading>
         <PageLoadingState
-          title="Checking your session"
-          description="We’re confirming your account and preparing your dashboard."
+          title="Verificăm sesiunea"
+          description="Pregătim activitatea ta și verificăm starea contului."
           cardCount={2}
         />
       </AuthLoading>
@@ -255,8 +255,8 @@ function AuthorizedDashboard() {
   ) {
     return (
       <PageLoadingState
-        title="Loading your dashboard"
-        description="Bookmarks, streaks, and reading insights are on the way."
+        title="Se încarcă activitatea"
+        description="Pregătim salvările, streak-urile și statisticile tale."
         cardCount={3}
       />
     );

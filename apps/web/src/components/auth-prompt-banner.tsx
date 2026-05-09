@@ -26,12 +26,12 @@ export default function AuthPromptBanner({
         </div>
         <div className="flex flex-wrap gap-3">
           <Button asChild size={compact ? "sm" : "default"}>
-            <Link to="/dashboard" search={{ mode: "signup", redirect: redirectTo }}>
+            <Link to="/activitate" search={{ mode: "signup", redirect: redirectTo }}>
               Create account
             </Link>
           </Button>
           <Button asChild variant="ghost" size={compact ? "sm" : "default"}>
-            <Link to="/dashboard" search={{ mode: "signin", redirect: redirectTo }}>
+            <Link to="/activitate" search={{ mode: "signin", redirect: redirectTo }}>
               Sign in
             </Link>
           </Button>

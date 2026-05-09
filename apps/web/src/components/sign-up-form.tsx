@@ -17,14 +17,14 @@ function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
     verified: "1",
     redirect: redirectTo,
   });
-  return `/dashboard?${params.toString()}`;
+  return `/activitate?${params.toString()}`;
 }
 
 export default function SignUpForm({
   onSwitchToSignIn,
   initialEmail = "",
   emailLocked = false,
-  redirectTo = "/dashboard",
+  redirectTo = "/activitate",
   title = "Create Account",
   subtitle = "Join Biviant and see the whole story",
   submitLabel = "Create Account",

@@ -25,7 +25,7 @@ export default function SignInForm({
   onSwitchToSignUp,
   initialEmail = "",
   emailLocked = false,
-  redirectTo = "/dashboard",
+  redirectTo = "/activitate",
   title = "Welcome Back",
   subtitle = "Sign in to your Biviant account",
   submitLabel = "Sign In",

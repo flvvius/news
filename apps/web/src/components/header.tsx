@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/sheet";
 
 const links = [
-  { to: "/", label: "Home", icon: Home },
+  { to: "/", label: "Acasă", icon: Home },
   { to: "/feed", label: "Feed", icon: Newspaper },
-  { to: "/bookmarks", label: "Bookmarks", icon: Bookmark },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/bookmarks", label: "Salvate", icon: Bookmark },
+  { to: "/activitate", label: "Activitate", icon: LayoutDashboard },
 ] as const;
 
 export default function Header() {
