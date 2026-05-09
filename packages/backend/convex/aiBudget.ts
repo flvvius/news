@@ -115,7 +115,7 @@ function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
 
   const trimmed = limitConfig.value.trim();
   const parsed = trimmed.length > 0 ? Number(trimmed) : Number.NaN;
-  if (Number.isFinite(parsed) && !Number.isNaN(parsed) && parsed >= 0) {
+  if (Number.isFinite(parsed) && !Number.isNaN(parsed) && parsed >= 0.1) {
     return parsed;
   }
 
@@ -142,6 +142,17 @@ async function getDailyBudgetTotals(
   ctx: QueryCtx | MutationCtx,
   date: string,
 ): Promise<{ spentUsd: number; reservedUsd: number }> {
+  const total = await ctx.db
+    .query("aiBudgetDailyTotal")
+    .withIndex("by_date", (q) => q.eq("date", date))
+    .unique();
+  if (total) {
+    return {
+      spentUsd: roundUsd(total.spentUsd),
+      reservedUsd: roundUsd(total.reservedUsd),
+    };
+  }
+
   const rows = await ctx.db
     .query("aiBudgetDaily")
     .withIndex("by_date", (q) => q.eq("date", date))
@@ -152,6 +163,26 @@ async function getDailyBudgetTotals(
     spentUsd: roundUsd(spentUsd),
     reservedUsd: roundUsd(reservedUsd),
   };
+}
+
+async function ensureDailyBudgetTotal(ctx: MutationCtx, date: string) {
+  const existing = await ctx.db
+    .query("aiBudgetDailyTotal")
+    .withIndex("by_date", (q) => q.eq("date", date))
+    .unique();
+  if (existing) return existing;
+
+  const rows = await ctx.db
+    .query("aiBudgetDaily")
+    .withIndex("by_date", (q) => q.eq("date", date))
+    .collect();
+  const totalId = await ctx.db.insert("aiBudgetDailyTotal", {
+    date,
+    spentUsd: roundUsd(rows.reduce((sum, row) => sum + row.spentUsd, 0)),
+    reservedUsd: roundUsd(rows.reduce((sum, row) => sum + row.reservedUsd, 0)),
+    updatedAt: Date.now(),
+  });
+  return await ctx.db.get(totalId);
 }
 
 async function adjustBudgetShard(
@@ -180,6 +211,13 @@ async function adjustBudgetShard(
   const rawReserved = existingReservedUsd + deltaReserved;
   const nextSpent = roundUsd(Math.max(0, rawSpent));
   const nextReserved = roundUsd(Math.max(0, rawReserved));
+  const total = await ensureDailyBudgetTotal(ctx, args.date);
+  const nextTotalSpent = roundUsd(
+    Math.max(0, (total?.spentUsd ?? 0) + deltaSpent),
+  );
+  const nextTotalReserved = roundUsd(
+    Math.max(0, (total?.reservedUsd ?? 0) + deltaReserved),
+  );
 
   if (rawSpent < 0 || rawReserved < 0) {
     console.warn("[aiBudget.adjustBudgetShard] Clamped negative shard total", {
@@ -200,16 +238,30 @@ async function adjustBudgetShard(
       reservedUsd: nextReserved,
       updatedAt: Date.now(),
     });
-    return;
+  } else {
+    await ctx.db.insert("aiBudgetDaily", {
+      date: args.date,
+      shard: args.shard,
+      spentUsd: nextSpent,
+      reservedUsd: nextReserved,
+      updatedAt: Date.now(),
+    });
   }
 
-  await ctx.db.insert("aiBudgetDaily", {
-    date: args.date,
-    shard: args.shard,
-    spentUsd: nextSpent,
-    reservedUsd: nextReserved,
-    updatedAt: Date.now(),
-  });
+  if (total) {
+    await ctx.db.patch(total._id, {
+      spentUsd: nextTotalSpent,
+      reservedUsd: nextTotalReserved,
+      updatedAt: Date.now(),
+    });
+  } else {
+    await ctx.db.insert("aiBudgetDailyTotal", {
+      date: args.date,
+      spentUsd: nextTotalSpent,
+      reservedUsd: nextTotalReserved,
+      updatedAt: Date.now(),
+    });
+  }
 }
 
 async function getDailyLimitUsd(ctx: QueryCtx | MutationCtx): Promise<number> {
@@ -412,7 +464,10 @@ export const cleanupExpiredAiBudgetReservations = internalMutation({
       }
     }
 
-    return { deleted: expired.length, remainingMayExist: expired.length === safeLimit };
+    return {
+      deleted: expired.length,
+      remainingMayExist: expired.length === safeLimit,
+    };
   },
 });
 

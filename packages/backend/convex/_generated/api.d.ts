@@ -32,6 +32,7 @@ import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as lib_publicEventPreviews from "../lib/publicEventPreviews.js";
+import type * as lib_sourceBias from "../lib/sourceBias.js";
 import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
 import type * as pipelineDiagnostics from "../pipelineDiagnostics.js";
@@ -79,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;
   "lib/openai": typeof lib_openai;
   "lib/publicEventPreviews": typeof lib_publicEventPreviews;
+  "lib/sourceBias": typeof lib_sourceBias;
   mbfc: typeof mbfc;
   migrations: typeof migrations;
   pipelineDiagnostics: typeof pipelineDiagnostics;

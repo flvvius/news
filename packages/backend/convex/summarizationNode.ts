@@ -20,10 +20,10 @@ const DEFAULT_MAX_INPUT_ARTICLES = 12;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const SUMMARY_WORD_LIMITS = {
-  center: 110,
-  left: 70,
-  right: 70,
-  globalImpact: 50,
+  center: 120,
+  left: 100,
+  right: 100,
+  globalImpact: 100,
 };
 
 type SummarySettings = {
@@ -75,22 +75,22 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
       center: {
         type: "string",
         description:
-          "60-110 word factual core, grounded in supplied article material.",
+          "60-120 word factual core, grounded in supplied article material.",
       },
       left: {
         type: "string",
         description:
-          "25-70 word left/left-center framing summary or the limited-coverage fallback.",
+          "25-100 word left/left-center framing summary or the limited-coverage fallback.",
       },
       right: {
         type: "string",
         description:
-          "25-70 word right/right-center framing summary or the limited-coverage fallback.",
+          "25-100 word right/right-center framing summary or the limited-coverage fallback.",
       },
       globalImpact: {
         type: "string",
         description:
-          "25-50 word concrete downstream impact, or the exact fallback when unsupported.",
+          "25-100 word concrete downstream impact, or the exact fallback when unsupported.",
       },
     },
     required: ["center", "left", "right", "globalImpact"],

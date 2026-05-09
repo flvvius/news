@@ -2,25 +2,7 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-
-function sourceBiasLabel(source: Doc<"sources">): string {
-  const mbfcCategory = source.mbfcCategory?.toLowerCase();
-  if (
-    mbfcCategory === "left" ||
-    mbfcCategory === "left-center" ||
-    mbfcCategory === "center" ||
-    mbfcCategory === "right-center" ||
-    mbfcCategory === "right"
-  ) {
-    return mbfcCategory;
-  }
-  if (source.baseBias === 0) return "center";
-  if (source.baseBias <= -3) return "left";
-  if (source.baseBias < 0) return "left-center";
-  if (source.baseBias >= 3) return "right";
-  if (source.baseBias > 0) return "right-center";
-  return "center";
-}
+import { sourceBiasLabel } from "./lib/sourceBias";
 
 async function getEventTopics(ctx: QueryCtx, eventId: Id<"events">) {
   const rows = await ctx.db

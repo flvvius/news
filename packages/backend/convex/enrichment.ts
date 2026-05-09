@@ -6,10 +6,11 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+import { sourceBiasLabel } from "./lib/sourceBias";
 
 const ARTICLE_FACT_STATUS_VALIDATOR = v.union(
   v.literal("pending"),
@@ -29,71 +30,6 @@ const ARTICLE_BIAS_STATUS_VALIDATOR = v.union(
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
-
-function sourceBiasLabel(source: Doc<"sources">): string {
-  const mbfcCategory = source.mbfcCategory?.toLowerCase();
-  if (
-    mbfcCategory === "left" ||
-    mbfcCategory === "left-center" ||
-    mbfcCategory === "center" ||
-    mbfcCategory === "right-center" ||
-    mbfcCategory === "right"
-  ) {
-    return mbfcCategory;
-  }
-  if (source.baseBias === 0) return "center";
-  if (source.baseBias <= -3) return "left";
-  if (source.baseBias < 0) return "left-center";
-  if (source.baseBias >= 3) return "right";
-  if (source.baseBias > 0) return "right-center";
-  return "center";
-}
-
-// ---------------------------------------------------------------------------
-// Internal Queries
-// ---------------------------------------------------------------------------
-
-/** Fetch a batch of unprocessed articles, oldest first. */
-export const getUnprocessedArticles = internalQuery({
-  args: { limit: v.number() },
-  handler: async (ctx, { limit }) => {
-    const articles = await ctx.db
-      .query("articles")
-      .withIndex("by_status", (q) => q.eq("status", "unprocessed"))
-      .take(limit);
-
-    // Also fetch source data for each article (for bias score)
-    const enriched = (
-      await Promise.all(
-        articles.map(async (article) => {
-          const source = await ctx.db.get(article.sourceId);
-          if (!source) {
-            console.error(
-              `[enrichment] Missing source ${article.sourceId} for article ${article._id} — skipping`,
-            );
-            return null;
-          }
-          return {
-            _id: article._id,
-            title: article.title,
-            url: article.url,
-            canonicalUrl: article.canonicalUrl,
-            rssSnippet: article.rssSnippet ?? "",
-            publishedAt: article.publishedAt,
-            entities: article.entities ?? [],
-            extractionQuality: article.extractionQuality,
-            sourceBaseBias: source.baseBias,
-            sourceName: source.name,
-            sourceLean: sourceBiasLabel(source),
-            sourceReliability: source.reliabilityScore,
-          };
-        }),
-      )
-    ).filter((a) => a !== null);
-
-    return enriched;
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Internal Mutations
@@ -177,6 +113,34 @@ export const claimUnprocessedArticles = internalMutation({
   },
 });
 
+function hasAtomicFacts(article: Pick<Doc<"articles">, "atomicFacts" | "status">) {
+  if (article.status === "discarded") return false;
+  return (article.atomicFacts ?? []).some((fact) => fact.trim().length > 0);
+}
+
+function needsFactExtraction(
+  article: Pick<
+    Doc<"articles">,
+    | "atomicFacts"
+    | "status"
+    | "factExtractionStatus"
+    | "factExtractionAttempts"
+  >,
+): boolean {
+  if (article.status === "discarded") return false;
+  if (hasAtomicFacts(article)) return false;
+  if (article.factExtractionStatus === "skipped") return false;
+  if (article.factExtractionStatus === "deferred") return true;
+  if (article.factExtractionStatus === "failed") {
+    return (
+      (article.factExtractionAttempts ?? 0) < MAX_FACT_EXTRACTION_ATTEMPTS
+    );
+  }
+  if (article.factExtractionStatus === "succeeded") return false;
+  if (article.factExtractionStatus === "succeeded_empty") return false;
+  return true;
+}
+
 function articleNeedsReenrichment(
   article: Doc<"articles">,
   embeddingVersion: number,
@@ -215,6 +179,37 @@ function articleNeedsReenrichment(
   return false;
 }
 
+function deriveArticleMaintenanceFields(
+  article: Doc<"articles">,
+  overrides: Partial<Doc<"articles">>,
+) {
+  const nextArticle = {
+    ...article,
+    ...overrides,
+  } as Doc<"articles">;
+
+  return {
+    needsFactExtraction: needsFactExtraction(nextArticle),
+    needsReenrichment: articleNeedsReenrichment(
+      nextArticle,
+      nextArticle.latestEmbeddingVersion ?? 0,
+      nextArticle.latestEmbeddingVersion ?? 0,
+    ),
+  };
+}
+
+async function getLatestEmbeddingVersion(
+  ctx: MutationCtx,
+  articleId: Doc<"articles">["_id"],
+): Promise<number> {
+  const latest = await ctx.db
+    .query("articleEmbeddings")
+    .withIndex("by_article_version", (q) => q.eq("articleId", articleId))
+    .order("desc")
+    .first();
+  return latest?.version ?? 0;
+}
+
 export const claimArticlesForReenrichment = internalMutation({
   args: {
     limit: v.number(),
@@ -226,28 +221,50 @@ export const claimArticlesForReenrichment = internalMutation({
     const batchSize = Math.max(0, Math.floor(limit));
     if (batchSize === 0) return [];
 
-    const candidates: Doc<"articles">[] = [];
+    const candidateMap = new Map<string, Doc<"articles">>();
+    const addCandidates = (rows: Doc<"articles">[]) => {
+      for (const row of rows) {
+        if (!candidateMap.has(row._id)) {
+          candidateMap.set(row._id, row);
+        }
+      }
+    };
+
     for (const status of ["enriched", "clustered"] as const) {
-      const rows = await ctx.db
-        .query("articles")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .take(batchSize * 4);
-      candidates.push(...rows);
-      if (candidates.length >= batchSize * 4) break;
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_status_latest_embedding_version", (q) =>
+            q.eq("status", status).lt("latestEmbeddingVersion", targetVersion),
+          )
+          .take(batchSize * 2),
+      );
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_needs_reenrichment_status_published", (q) =>
+            q.eq("needsReenrichment", true).eq("status", status),
+          )
+          .order("desc")
+          .take(batchSize * 2),
+      );
+      // Compatibility path until all legacy rows have denormalized fields.
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_status_published", (q) => q.eq("status", status))
+          .order("desc")
+          .take(batchSize),
+      );
     }
 
     const claimed = [];
-    for (const article of candidates) {
+    for (const article of candidateMap.values()) {
       if (claimed.length >= batchSize) break;
 
-      const embeddingRows = await ctx.db
-        .query("articleEmbeddings")
-        .withIndex("by_article", (q) => q.eq("articleId", article._id))
-        .collect();
-      const latestVersion = embeddingRows.reduce(
-        (maxVersion, row) => Math.max(maxVersion, row.version),
-        0,
-      );
+      const latestVersion =
+        article.latestEmbeddingVersion ??
+        (await getLatestEmbeddingVersion(ctx, article._id));
 
       if (!articleNeedsReenrichment(article, latestVersion, targetVersion)) {
         continue;
@@ -257,6 +274,10 @@ export const claimArticlesForReenrichment = internalMutation({
       if (!enriched) continue;
 
       await ctx.db.patch(article._id, {
+        latestEmbeddingVersion: latestVersion,
+        ...deriveArticleMaintenanceFields(article, {
+          latestEmbeddingVersion: latestVersion,
+        }),
         status: "processing",
         enrichmentRunId: runId,
         enrichmentLeaseExpiresAt: leaseExpiresAt,
@@ -292,16 +313,71 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
     if (batchSize === 0) return [];
 
     const now = Date.now();
-    const candidates = await ctx.db
-      .query("articles")
-      .withIndex("by_published", (q) =>
-        beforePublishedAt ? q.lt("publishedAt", beforePublishedAt) : q,
-      )
-      .order("desc")
-      .take(Math.min(1000, Math.max(batchSize * 10, batchSize)));
+    const candidateMap = new Map<string, Doc<"articles">>();
+    const addCandidates = (rows: Doc<"articles">[]) => {
+      for (const row of rows) {
+        if (!candidateMap.has(row._id)) {
+          candidateMap.set(row._id, row);
+        }
+      }
+    };
+
+    for (const status of ["unprocessed", "enriched", "clustered"] as const) {
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_needs_fact_extraction_status_published", (q) => {
+            const base = q.eq("needsFactExtraction", true).eq("status", status);
+            return beforePublishedAt
+              ? base.lt("publishedAt", beforePublishedAt)
+              : base;
+          })
+          .order("desc")
+          .take(batchSize),
+      );
+    }
+
+    const factStatuses: Array<
+      | "deferred"
+      | "failed"
+      | "succeeded_empty"
+      | "succeeded"
+    > = ["deferred"];
+    if (includeFailed) {
+      factStatuses.push("failed");
+    }
+    if (includeSucceededEmpty) {
+      factStatuses.push("succeeded_empty", "succeeded");
+    }
+
+    for (const factStatus of factStatuses) {
+      addCandidates(
+        await ctx.db
+          .query("articles")
+          .withIndex("by_fact_extraction_status_published", (q) => {
+            const base = q.eq("factExtractionStatus", factStatus);
+            return beforePublishedAt
+              ? base.lt("publishedAt", beforePublishedAt)
+              : base;
+          })
+          .order("desc")
+          .take(batchSize),
+      );
+    }
+
+    // Compatibility path for legacy rows without derived fields.
+    addCandidates(
+      await ctx.db
+        .query("articles")
+        .withIndex("by_published", (q) =>
+          beforePublishedAt ? q.lt("publishedAt", beforePublishedAt) : q,
+        )
+        .order("desc")
+        .take(batchSize),
+    );
 
     const claimed = [];
-    for (const article of candidates) {
+    for (const article of candidateMap.values()) {
       if (claimed.length >= batchSize) break;
       if (article.status === "discarded") continue;
       if (
@@ -335,6 +411,7 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
       if (!enriched) continue;
 
       await ctx.db.patch(article._id, {
+        ...deriveArticleMaintenanceFields(article, {}),
         status: "processing",
         enrichmentRunId: runId,
         enrichmentLeaseExpiresAt: leaseExpiresAt,
@@ -370,8 +447,15 @@ export const deferArticleFactExtraction = internalMutation({
       return { updated: false, eventId: undefined };
     }
 
+    const nextStatus =
+      previousStatus === "processing" ? "unprocessed" : previousStatus;
     await ctx.db.patch(articleId, {
-      status: previousStatus === "processing" ? "unprocessed" : previousStatus,
+      ...deriveArticleMaintenanceFields(article, {
+        status: nextStatus,
+        factExtractionStatus: "deferred",
+        factExtractionAttempts: (article.factExtractionAttempts ?? 0) + 1,
+      }),
+      status: nextStatus,
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
       factExtractionStatus: "deferred",
@@ -411,8 +495,15 @@ export const deferArticleBiasDetection = internalMutation({
       return { updated: false, eventId: undefined };
     }
 
+    const nextStatus =
+      previousStatus === "processing" ? "unprocessed" : previousStatus;
     await ctx.db.patch(articleId, {
-      status: previousStatus === "processing" ? "unprocessed" : previousStatus,
+      ...deriveArticleMaintenanceFields(article, {
+        status: nextStatus,
+        biasDetectionStatus: "deferred",
+        biasDetectionAttempts: (article.biasDetectionAttempts ?? 0) + 1,
+      }),
+      status: nextStatus,
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
       biasDetectionStatus: "deferred",
@@ -438,8 +529,9 @@ export const claimEventArticlesForReenrichment = internalMutation({
 
     const articles = await ctx.db
       .query("articles")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .collect();
+      .withIndex("by_event_published", (q) => q.eq("eventId", eventId))
+      .order("desc")
+      .take(batchSize * 3);
 
     const claimed = [];
     for (const article of articles) {
@@ -452,6 +544,7 @@ export const claimEventArticlesForReenrichment = internalMutation({
       if (!enriched) continue;
 
       await ctx.db.patch(article._id, {
+        ...deriveArticleMaintenanceFields(article, {}),
         status: "processing",
         enrichmentRunId: runId,
         enrichmentLeaseExpiresAt: leaseExpiresAt,
@@ -546,13 +639,11 @@ export const markArticleEnriched = internalMutation({
       return { updated: false, eventId: undefined };
     }
 
-    const existingEmbeddings = await ctx.db
+    const latestEmbeddingRow = await ctx.db
       .query("articleEmbeddings")
-      .withIndex("by_article", (q) => q.eq("articleId", articleId))
-      .collect();
-    for (const row of existingEmbeddings) {
-      await ctx.db.delete(row._id);
-    }
+      .withIndex("by_article_version", (q) => q.eq("articleId", articleId))
+      .order("desc")
+      .first();
 
     const shouldRecordFactAttempt =
       factExtractionStatus !== undefined &&
@@ -564,15 +655,22 @@ export const markArticleEnriched = internalMutation({
     const shouldRecordBiasAttempt =
       biasDetectionStatus !== undefined && biasDetectionStatus !== "skipped";
 
-    // Store embedding in dedicated table (hot/cold split)
-    await ctx.db.insert("articleEmbeddings", {
-      articleId,
-      embedding,
-      version,
-    });
+    // Keep a single hot embedding row per article in steady state.
+    if (latestEmbeddingRow) {
+      await ctx.db.patch(latestEmbeddingRow._id, {
+        embedding,
+        version,
+      });
+    } else {
+      await ctx.db.insert("articleEmbeddings", {
+        articleId,
+        embedding,
+        version,
+      });
+    }
 
     // Update article status & bias score (no embedding on the article itself)
-    await ctx.db.patch(articleId, {
+    const nextArticlePatch = {
       aiBiasScore: aiBiasScore ?? article.aiBiasScore,
       biasComponents: biasComponents ?? article.biasComponents,
       sourceBiasDelta: sourceBiasDelta ?? article.sourceBiasDelta,
@@ -611,9 +709,15 @@ export const markArticleEnriched = internalMutation({
       imageSource: imageSource ?? article.imageSource,
       entities: entities ?? article.entities,
       extractionQuality: extractionQuality ?? article.extractionQuality,
+      latestEmbeddingVersion: version,
       status: "enriched",
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
+    } satisfies Partial<Doc<"articles">>;
+
+    await ctx.db.patch(articleId, {
+      ...deriveArticleMaintenanceFields(article, nextArticlePatch),
+      ...nextArticlePatch,
     });
 
     if (article.eventId) {
@@ -638,6 +742,9 @@ export const markArticleDiscarded = internalMutation({
     }
 
     await ctx.db.patch(articleId, {
+      ...deriveArticleMaintenanceFields(article, {
+        status: "discarded",
+      }),
       status: "discarded",
       enrichmentRunId: undefined,
       enrichmentLeaseExpiresAt: undefined,
