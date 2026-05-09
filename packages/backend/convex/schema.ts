@@ -449,6 +449,9 @@ export default defineSchema({
       avatar: v.optional(v.string()),
       job: v.optional(v.string()),
       location: v.optional(v.string()),
+      preferredLanguage: v.optional(
+        v.union(v.literal("ro"), v.literal("en")),
+      ),
     }),
   })
     .index("by_email", ["email"])

@@ -95,6 +95,9 @@ export const updateProfile = mutation({
       avatar: v.optional(v.string()),
       job: v.optional(v.string()),
       location: v.optional(v.string()),
+      preferredLanguage: v.optional(
+        v.union(v.literal("ro"), v.literal("en")),
+      ),
     }),
   },
   handler: async (ctx, args) => {
@@ -117,6 +120,33 @@ export const updateProfile = mutation({
     });
 
     return await ctx.db.get(user._id);
+  },
+});
+
+export const updatePreferredLanguage = mutation({
+  args: {
+    language: v.union(v.literal("ro"), v.literal("en")),
+  },
+  handler: async (ctx, { language }) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
+      .unique();
+
+    if (!user) {
+      throw new ConvexError("User not found - please refresh and try again");
+    }
+
+    await ctx.db.patch(user._id, {
+      profile: { ...user.profile, preferredLanguage: language },
+    });
+
+    return { ok: true };
   },
 });
 
