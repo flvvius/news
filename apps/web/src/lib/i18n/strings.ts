@@ -27,6 +27,9 @@ const ro = {
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
   "auth.promptBody":
     "Poți citi fără cont. Autentificarea adaugă salvări, recomandări personale și funcții viitoare.",
+  "share.copied": "Linkul evenimentului a fost copiat",
+  "share.failed": "Nu am putut distribui acest eveniment. Încearcă din nou.",
+  "share.label": "Distribuie acest eveniment",
   "auth.unlockTitle": "Ce deblochează contul",
   "auth.unlockBody":
     "Conținutul rămâne deschis. Contul adaugă doar funcții personale și persistente.",
@@ -226,7 +229,39 @@ const ro = {
   "bias.leftHeavy": "Mai mult stânga",
   "bias.center": "Echilibrat",
   "bias.rightHeavy": "Mai mult dreapta",
-} as const;
+  "calendar.weekday.mon": "Lun",
+  "calendar.weekday.tue": "Mar",
+  "calendar.weekday.wed": "Mie",
+  "calendar.weekday.thu": "Joi",
+  "calendar.weekday.fri": "Vin",
+  "calendar.weekday.sat": "Sâm",
+  "calendar.weekday.sun": "Dum",
+  "calendar.eventsRead.one": "{count} eveniment citit",
+  "calendar.eventsRead.many": "{count} evenimente citite",
+  "calendar.less": "Mai puțin",
+  "calendar.more": "Mai mult",
+  "unsubscribe.meta.title": "Dezabonare — Biviant",
+  "unsubscribe.invalidTitle": "Link invalid",
+  "unsubscribe.invalidBody":
+    "Acest link de dezabonare nu conține adresa de email. Folosește linkul primit în email.",
+  "unsubscribe.goHome": "Mergi la început",
+  "unsubscribe.loading": "Te dezabonăm...",
+  "unsubscribe.errorTitle": "Ceva nu a mers bine",
+  "unsubscribe.errorBody":
+    "Nu am putut procesa cererea. Încearcă din nou sau răspunde la emailul nostru și te vom elimina manual.",
+  "unsubscribe.retry": "Încearcă din nou",
+  "unsubscribe.successTitle": "Te-ai dezabonat",
+  "unsubscribe.successBody":
+    "{email} a fost eliminat din toate emailurile Biviant. Nu te vom mai contacta.",
+  "unsubscribe.changedMind": "Te-ai răzgândit?",
+  "unsubscribe.rejoin": "Înscrie-te din nou pe lista de așteptare",
+  "articles.originalReporting": "Relatări originale",
+  "articles.source": "Sursă",
+  "articles.viewSource": "Vezi profilul sursei {name}",
+  "articles.readOriginal": "Citește originalul",
+  "articles.readOriginalAria":
+    "Citește articolul original (se deschide într-o filă nouă)",
+  } as const;
 
 type BaseStrings = typeof ro;
 
@@ -257,6 +292,9 @@ const en: { [K in keyof BaseStrings]: string } = {
     "Create a free account to save and personalize your news",
   "auth.promptBody":
     "You can read without an account. Signing in adds saved items, recommendations, and upcoming features.",
+  "share.copied": "Event link copied",
+  "share.failed": "Could not share this event. Please try again.",
+  "share.label": "Share this event",
   "auth.unlockTitle": "What an account unlocks",
   "auth.unlockBody":
     "The content stays open. An account only adds personal, persistent features.",
@@ -453,6 +491,38 @@ const en: { [K in keyof BaseStrings]: string } = {
   "bias.leftHeavy": "Left-heavy",
   "bias.center": "Balanced",
   "bias.rightHeavy": "Right-heavy",
+  "calendar.weekday.mon": "Mon",
+  "calendar.weekday.tue": "Tue",
+  "calendar.weekday.wed": "Wed",
+  "calendar.weekday.thu": "Thu",
+  "calendar.weekday.fri": "Fri",
+  "calendar.weekday.sat": "Sat",
+  "calendar.weekday.sun": "Sun",
+  "calendar.eventsRead.one": "{count} event read",
+  "calendar.eventsRead.many": "{count} events read",
+  "calendar.less": "Less",
+  "calendar.more": "More",
+  "unsubscribe.meta.title": "Unsubscribe — Biviant",
+  "unsubscribe.invalidTitle": "Invalid link",
+  "unsubscribe.invalidBody":
+    "This unsubscribe link is missing the email address. Please use the link from your email.",
+  "unsubscribe.goHome": "Go to home",
+  "unsubscribe.loading": "Unsubscribing...",
+  "unsubscribe.errorTitle": "Something went wrong",
+  "unsubscribe.errorBody":
+    "We couldn't process your request. Please try again or reply to our email and we'll remove you manually.",
+  "unsubscribe.retry": "Try again",
+  "unsubscribe.successTitle": "You're unsubscribed",
+  "unsubscribe.successBody":
+    "{email} has been removed from all Biviant emails. You won't hear from us again.",
+  "unsubscribe.changedMind": "Changed your mind?",
+  "unsubscribe.rejoin": "Re-join the waitlist",
+  "articles.originalReporting": "Original reporting",
+  "articles.source": "Source",
+  "articles.viewSource": "View {name} source profile",
+  "articles.readOriginal": "Read original",
+  "articles.readOriginalAria":
+    "Read original article (opens in a new tab)",
 } satisfies { [K in keyof BaseStrings]: string };
 
 export const STRINGS = {

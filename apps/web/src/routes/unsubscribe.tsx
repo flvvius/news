@@ -6,6 +6,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { z } from "zod";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n/LocaleContext";
 import {
   AlertCircle,
   CheckCircle,
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/unsubscribe")({
 });
 
 function UnsubscribePage() {
+  const t = useT();
   const { email } = Route.useSearch();
   const [lastEmail, setLastEmail] = useState<string | undefined>(undefined);
 
@@ -65,13 +67,14 @@ function UnsubscribePage() {
     return (
       <PageShell>
         <StatusIcon variant="error" />
-        <h1 className="text-2xl font-bold mt-6">Invalid Link</h1>
+        <h1 className="text-2xl font-bold mt-6">
+          {t("unsubscribe.invalidTitle")}
+        </h1>
         <p className="text-muted-foreground mt-2 max-w-sm">
-          This unsubscribe link is missing the email address. Please use the
-          link from your email.
+          {t("unsubscribe.invalidBody")}
         </p>
         <Button asChild variant="outline" className="mt-6">
-          <Link to="/">Go to homepage</Link>
+          <Link to="/">{t("unsubscribe.goHome")}</Link>
         </Button>
       </PageShell>
     );
@@ -88,7 +91,7 @@ function UnsubscribePage() {
           role="status"
           aria-live="polite"
         >
-          Unsubscribing...
+          {t("unsubscribe.loading")}
         </p>
       </PageShell>
     );
@@ -98,16 +101,17 @@ function UnsubscribePage() {
     return (
       <PageShell>
         <StatusIcon variant="error" />
-        <h1 className="text-2xl font-bold mt-6">Something went wrong</h1>
+        <h1 className="text-2xl font-bold mt-6">
+          {t("unsubscribe.errorTitle")}
+        </h1>
         <p className="text-muted-foreground mt-2 max-w-sm">
-          We couldn&apos;t process your request. Please try again or reply to
-          our email and we&apos;ll remove you manually.
+          {t("unsubscribe.errorBody")}
         </p>
         <Button
           onClick={() => unsubscribe.mutate({ email })}
           className="mt-6"
         >
-          Try again
+          {t("unsubscribe.retry")}
         </Button>
       </PageShell>
     );
@@ -116,17 +120,23 @@ function UnsubscribePage() {
   return (
     <PageShell>
       <StatusIcon variant="success" />
-      <h1 className="text-2xl font-bold mt-6">You&apos;re unsubscribed</h1>
+      <h1 className="text-2xl font-bold mt-6">
+        {t("unsubscribe.successTitle")}
+      </h1>
       <p className="text-muted-foreground mt-2 max-w-sm">
-        <strong className="text-foreground">{email}</strong> has been removed
-        from all Biviant emails. You won&apos;t hear from us again.
+        {t("unsubscribe.successBody").replace(
+          "{email}",
+          email ? email : "",
+        )}
       </p>
       <div className="flex flex-col items-center gap-3 mt-8">
-        <p className="text-sm text-muted-foreground">Changed your mind?</p>
+        <p className="text-sm text-muted-foreground">
+          {t("unsubscribe.changedMind")}
+        </p>
         <Button asChild variant="outline" className="gap-2">
           <Link to="/">
             <Mail className="size-4" />
-            Re-join the waitlist
+            {t("unsubscribe.rejoin")}
           </Link>
         </Button>
       </div>

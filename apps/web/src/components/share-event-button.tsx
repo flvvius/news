@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { InteractionContextSnapshot } from "@/lib/interaction-tracking";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { SITE } from "@/lib/seo";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 
 type ShareEventButtonProps = {
@@ -31,6 +32,7 @@ export default function ShareEventButton({
   size = "default",
   className,
 }: ShareEventButtonProps) {
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const shareOrigin = SITE.url || window.location.origin;
   const shareUrl = `${shareOrigin}/event/${slug}`;
@@ -76,10 +78,10 @@ export default function ShareEventButton({
     try {
       await navigator.clipboard.writeText(shareUrl);
       logShare();
-      toast.success("Event link copied");
+      toast.success(t("share.copied"));
     } catch (error) {
       console.error("Share failed:", error);
-      toast.error("Could not share this event. Please try again.");
+      toast.error(t("share.failed"));
     }
   };
 
@@ -94,7 +96,7 @@ export default function ShareEventButton({
         className,
       )}
       onClick={handleClick}
-      aria-label="Share this event"
+      aria-label={t("share.label")}
     >
       <Share2 className={iconSize} />
     </Button>
