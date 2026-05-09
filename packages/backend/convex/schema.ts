@@ -348,6 +348,7 @@ export default defineSchema({
     factExtractedAt: v.optional(v.number()),
     factExtractionAttempts: v.optional(v.number()),
     factExtractionLastAttemptAt: v.optional(v.number()),
+    needsFactExtraction: v.optional(v.boolean()),
 
     // Populated by enrichment pipeline (AI bias detection)
     aiBiasScore: v.optional(v.number()),
@@ -383,6 +384,8 @@ export default defineSchema({
       v.literal("clustered"),
       v.literal("discarded"),
     ),
+    latestEmbeddingVersion: v.optional(v.number()),
+    needsReenrichment: v.optional(v.boolean()),
     enrichmentRunId: v.optional(v.string()),
     enrichmentLeaseExpiresAt: v.optional(v.number()),
     publishedAt: v.number(), // Epoch ms
@@ -393,6 +396,24 @@ export default defineSchema({
     .index("by_source_content_fingerprint", ["sourceId", "contentFingerprint"])
     .index("by_status", ["status"])
     .index("by_status_published", ["status", "publishedAt"])
+    .index("by_status_latest_embedding_version", [
+      "status",
+      "latestEmbeddingVersion",
+    ])
+    .index("by_needs_reenrichment_status_published", [
+      "needsReenrichment",
+      "status",
+      "publishedAt",
+    ])
+    .index("by_needs_fact_extraction_status_published", [
+      "needsFactExtraction",
+      "status",
+      "publishedAt",
+    ])
+    .index("by_fact_extraction_status_published", [
+      "factExtractionStatus",
+      "publishedAt",
+    ])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
     .index("by_source", ["sourceId"])
     .index("by_source_publishedAt", ["sourceId", "publishedAt"])
@@ -625,6 +646,13 @@ export default defineSchema({
   })
     .index("by_date", ["date"])
     .index("by_date_shard", ["date", "shard"]),
+
+  aiBudgetDailyTotal: defineTable({
+    date: v.string(),
+    spentUsd: v.number(),
+    reservedUsd: v.number(),
+    updatedAt: v.number(),
+  }).index("by_date", ["date"]),
 
   // =========================================================================
   // 11a. AI BUDGET RESERVATIONS (In-flight budget holds)

@@ -11,9 +11,82 @@
 import { mutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Doc } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
+
+const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
+const MAX_BIAS_DETECTION_ATTEMPTS = 3;
+
+function articleHasAtomicFacts(article: {
+  atomicFacts?: string[];
+  status?: string;
+}): boolean {
+  if (article.status === "discarded") return false;
+  return (article.atomicFacts ?? []).some((fact) => fact.trim().length > 0);
+}
+
+function articleNeedsFactExtraction(article: Doc<"articles">): boolean {
+  if (article.status === "discarded") return false;
+  if (articleHasAtomicFacts(article)) return false;
+  if (article.factExtractionStatus === "skipped") return false;
+  if (article.factExtractionStatus === "deferred") return true;
+  if (article.factExtractionStatus === "failed") {
+    return (
+      (article.factExtractionAttempts ?? 0) < MAX_FACT_EXTRACTION_ATTEMPTS
+    );
+  }
+  if (article.factExtractionStatus === "succeeded") return false;
+  if (article.factExtractionStatus === "succeeded_empty") return false;
+  return true;
+}
+
+function articleNeedsReenrichmentForBackfill(
+  article: Doc<"articles">,
+  _latestEmbeddingVersion: number,
+): boolean {
+  if ((article.summary ?? "").trim().length < 120) return true;
+  if (
+    article.atomicFacts === undefined &&
+    article.factExtractionStatus !== "skipped" &&
+    article.factExtractionStatus !== "succeeded_empty"
+  ) {
+    return true;
+  }
+  if (
+    article.factExtractionStatus === "failed" &&
+    (article.factExtractionAttempts ?? 0) < MAX_FACT_EXTRACTION_ATTEMPTS
+  ) {
+    return true;
+  }
+  if (article.factExtractionStatus === "deferred") return true;
+  if (
+    article.biasAnalyzedAt === undefined &&
+    article.biasDetectionStatus !== "skipped"
+  ) {
+    return true;
+  }
+  if (
+    article.biasDetectionStatus === "failed" ||
+    article.biasDetectionStatus === "deferred"
+  ) {
+    return (article.biasDetectionAttempts ?? 0) < MAX_BIAS_DETECTION_ATTEMPTS;
+  }
+  if (article.url.includes("news.google.com")) return true;
+  if (article.canonicalUrl.includes("news.google.com")) return true;
+  return false;
+}
+
+function pickLatestArticleEmbeddingRow(rows: Doc<"articleEmbeddings">[]) {
+  return rows.reduce<Doc<"articleEmbeddings"> | null>((latest, row) => {
+    if (!latest) return row;
+    if (row.version !== latest.version) {
+      return row.version > latest.version ? row : latest;
+    }
+    return row._creationTime > latest._creationTime ? row : latest;
+  }, null);
+}
 
 export const syncTopicCatalogMigration = mutation({
   args: {},
@@ -308,6 +381,70 @@ export const backfillEventSearchAndRecency = mutation({
     return {
       processed: page.page.length,
       updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+export const backfillArticleEnrichmentMetadata = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      250,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let updatedArticles = 0;
+    let dedupedEmbeddings = 0;
+
+    for (const article of page.page) {
+      const embeddingRows = await ctx.db
+        .query("articleEmbeddings")
+        .withIndex("by_article_version", (q) => q.eq("articleId", article._id))
+        .collect();
+      const latestEmbeddingRow = pickLatestArticleEmbeddingRow(embeddingRows);
+      const latestEmbeddingVersion = latestEmbeddingRow?.version ?? 0;
+
+      if (latestEmbeddingRow) {
+        for (const row of embeddingRows) {
+          if (row._id === latestEmbeddingRow._id) continue;
+          await ctx.db.delete(row._id);
+          dedupedEmbeddings++;
+        }
+      }
+
+      const nextNeedsFactExtraction = articleNeedsFactExtraction(article);
+      const nextNeedsReenrichment = articleNeedsReenrichmentForBackfill(
+        article,
+        latestEmbeddingVersion,
+      );
+
+      if (
+        article.latestEmbeddingVersion !== latestEmbeddingVersion ||
+        article.needsFactExtraction !== nextNeedsFactExtraction ||
+        article.needsReenrichment !== nextNeedsReenrichment
+      ) {
+        await ctx.db.patch(article._id, {
+          latestEmbeddingVersion,
+          needsFactExtraction: nextNeedsFactExtraction,
+          needsReenrichment: nextNeedsReenrichment,
+        });
+        updatedArticles++;
+      }
+    }
+
+    return {
+      processed: page.page.length,
+      updatedArticles,
+      dedupedEmbeddings,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
     };

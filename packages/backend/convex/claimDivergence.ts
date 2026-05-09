@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+import { sourceBiasLabel } from "./lib/sourceBias";
 
 const CLAIM_STATUS_VALIDATOR = v.union(
   v.literal("agreement"),
@@ -44,16 +45,6 @@ const CLAIM_INPUT_VALIDATOR = v.object({
   importance: v.number(),
   confidence: v.number(),
 });
-
-function sourceLean(source: Doc<"sources"> | null): string {
-  if (!source) return "center";
-  if (source.mbfcCategory) return source.mbfcCategory;
-  if (source.baseBias <= -3) return "left";
-  if (source.baseBias < 0) return "left-center";
-  if (source.baseBias >= 3) return "right";
-  if (source.baseBias > 0) return "right-center";
-  return "center";
-}
 
 function leanGroup(lean: string): "left" | "center" | "right" | "other" {
   if (lean === "left" || lean === "left-center") return "left";
@@ -327,8 +318,8 @@ export const getClaimAnalysisInput = internalQuery({
           _id: article._id,
           sourceId: article.sourceId,
           sourceName: source?.name ?? "Unknown source",
-          sourceLean: sourceLean(source),
-          sourceLeanGroup: leanGroup(sourceLean(source)),
+          sourceLean: sourceBiasLabel(source),
+          sourceLeanGroup: leanGroup(sourceBiasLabel(source)),
           sourceReliability: source?.reliabilityScore ?? 5,
           title: article.title,
           publishedAt: article.publishedAt,

@@ -30,7 +30,10 @@ import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
-import { deletePublicEventPreview, syncPublicEventPreview } from "./lib/publicEventPreviews";
+import {
+  deletePublicEventPreview,
+  syncPublicEventPreview,
+} from "./lib/publicEventPreviews";
 import { buildEventShareRenderSignature } from "./shareAssets";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
@@ -254,15 +257,10 @@ function mergeTopicSlugs(
 }
 
 function buildArticleEvidenceTokens(
-  article: Pick<
-    Doc<"articles">,
-    "rssSnippet" | "summary"
-  >,
+  article: Pick<Doc<"articles">, "rssSnippet" | "summary">,
 ): Set<string> {
   return mergeTokenSets(
-    normalizeTitleTokens(
-      normalizeSnippetForClustering(article.rssSnippet),
-    ),
+    normalizeTitleTokens(normalizeSnippetForClustering(article.rssSnippet)),
     normalizeTitleTokens(normalizeSnippetForClustering(article.summary)),
   );
 }
@@ -1153,9 +1151,8 @@ async function refreshEventPresentation(
 
     totalArticleCount = totalArticleCount ?? allArticles.length;
     if (totalSourceCount === undefined) {
-      totalSourceCount = new Set(
-        allArticles.map((article) => article.sourceId),
-      ).size;
+      totalSourceCount = new Set(allArticles.map((article) => article.sourceId))
+        .size;
     }
   }
 
@@ -1220,7 +1217,9 @@ async function refreshEventPresentation(
     180,
   );
   const latestArticlePublishedAt =
-    event.lastArticleAt ?? recentArticles[0]?.publishedAt ?? event.firstPublishedAt;
+    event.lastArticleAt ??
+    recentArticles[0]?.publishedAt ??
+    event.firstPublishedAt;
   const nextLastUpdatedAt = Math.max(
     event.lastUpdatedAt ?? 0,
     latestArticlePublishedAt,
@@ -1268,8 +1267,7 @@ async function refreshEventPresentation(
   const countsUnchanged =
     event.articleCount === resolvedArticleCount &&
     event.sourceCount === resolvedSourceCount;
-  const lastUpdatedUnchanged =
-    nextLastUpdatedAt === (event.lastUpdatedAt ?? 0);
+  const lastUpdatedUnchanged = nextLastUpdatedAt === (event.lastUpdatedAt ?? 0);
   const globalImpactUnchanged = nextGlobalImpact === event.globalImpact;
   const perspectiveSourceUnchanged =
     nextPerspectiveSource === event.perspectiveSource;
@@ -1799,29 +1797,38 @@ export const backfillEventCandidacy = internalAction({
         topicSlugs,
       );
 
-      await ctx.runMutation(internal.clustering.upsertEventCandidacyForBackfill, {
-        eventId: event._id,
-        status: event.status,
-        firstPublishedAt: event.firstPublishedAt,
-        lastArticleAt,
-        articleCount,
-        sourceCount,
-        sourceIds,
-        titleTokens: tokens.titleTokens,
-        evidenceTokens: tokens.evidenceTokens,
-        factTokens: tokens.factTokens,
-        entityTokens: tokens.entityTokens,
-        topicSlugs: tokens.topicSlugs,
-      });
+      await ctx.runMutation(
+        internal.clustering.upsertEventCandidacyForBackfill,
+        {
+          eventId: event._id,
+          status: event.status,
+          firstPublishedAt: event.firstPublishedAt,
+          lastArticleAt,
+          articleCount,
+          sourceCount,
+          sourceIds,
+          titleTokens: tokens.titleTokens,
+          evidenceTokens: tokens.evidenceTokens,
+          factTokens: tokens.factTokens,
+          entityTokens: tokens.entityTokens,
+          topicSlugs: tokens.topicSlugs,
+        },
+      );
 
-      await ctx.runMutation(internal.clustering.syncEmbeddingStatusForBackfill, {
-        eventId: event._id,
-        status: event.status,
-      });
+      await ctx.runMutation(
+        internal.clustering.syncEmbeddingStatusForBackfill,
+        {
+          eventId: event._id,
+          status: event.status,
+        },
+      );
 
-      await ctx.runMutation(internal.clustering.syncPublicEventPreviewForBackfill, {
-        eventId: event._id,
-      });
+      await ctx.runMutation(
+        internal.clustering.syncPublicEventPreviewForBackfill,
+        {
+          eventId: event._id,
+        },
+      );
     }
 
     return {
@@ -1852,9 +1859,7 @@ export const getTopicSlugsForEventBackfill = internalQuery({
     const topics = await Promise.all(
       eventTopicRows.map((row) => ctx.db.get(row.topicId)),
     );
-    return topics
-      .filter((topic) => topic !== null)
-      .map((topic) => topic.slug);
+    return topics.filter((topic) => topic !== null).map((topic) => topic.slug);
   },
 });
 
@@ -2004,7 +2009,8 @@ export const getRecentClusterCandidates = internalQuery({
     const rows = [...candidacies[0], ...candidacies[1]]
       .sort(
         (a, b) =>
-          b.lastArticleAt - a.lastArticleAt || b._creationTime - a._creationTime,
+          b.lastArticleAt - a.lastArticleAt ||
+          b._creationTime - a._creationTime,
       )
       .slice(0, limit);
 
@@ -2038,7 +2044,10 @@ export const getRecentClusterCandidates = internalQuery({
           });
         }),
       )
-    ).filter((candidate): candidate is ClusterCandidateQueryResult => candidate !== null);
+    ).filter(
+      (candidate): candidate is ClusterCandidateQueryResult =>
+        candidate !== null,
+    );
 
     if (missingEvents > 0 || missingEmbeddings > 0) {
       console.log(
@@ -2306,14 +2315,10 @@ export const attachArticleToEvent = internalMutation({
       event.lastArticleAt ?? event.firstPublishedAt,
       publishedAt,
     );
-    const nextStatus = shouldPublishCluster(
-      nextArticleCount,
-      nextSourceCount,
-      {
-        minArticles: publishMinArticles,
-        minSources: publishMinSources,
-      },
-    )
+    const nextStatus = shouldPublishCluster(nextArticleCount, nextSourceCount, {
+      minArticles: publishMinArticles,
+      minSources: publishMinSources,
+    })
       ? "published"
       : event.status;
     if (
@@ -2378,10 +2383,7 @@ export const attachArticleToEvent = internalMutation({
     const evidenceTokens = buildArticleEvidenceTokens(article);
     const factTokens = buildArticleFactTokens(article);
     const entityTokens = buildArticleEntityTokens(event.title, article);
-    const mergedTopicSlugs = mergeTopicSlugs(
-      candidacy?.topicSlugs,
-      topicSlugs,
-    );
+    const mergedTopicSlugs = mergeTopicSlugs(candidacy?.topicSlugs, topicSlugs);
 
     if (candidacy) {
       await ctx.db.patch(candidacy._id, {
@@ -2396,15 +2398,16 @@ export const attachArticleToEvent = internalMutation({
         titleTokens:
           candidacy.titleTokens.length > 0
             ? candidacy.titleTokens
-            : [...normalizeTitleTokens(normalizeTitleForClustering(event.title))],
+            : [
+                ...normalizeTitleTokens(
+                  normalizeTitleForClustering(event.title),
+                ),
+              ],
         evidenceTokens: mergeAndCapTokenArray(
           candidacy.evidenceTokens,
           evidenceTokens,
         ),
-        factTokens: mergeAndCapTokenArray(
-          candidacy.factTokens,
-          factTokens,
-        ),
+        factTokens: mergeAndCapTokenArray(candidacy.factTokens, factTokens),
         entityTokens: mergeAndCapTokenArray(
           candidacy.entityTokens,
           entityTokens,
@@ -3952,8 +3955,7 @@ export const mergeNearDuplicateEvents = internalAction({
         ...candidate,
         embeddingId: candidate.embeddingId,
         lastArticleAt: candidate.lastArticleAt ?? candidate.firstPublishedAt,
-        sourceCount:
-          candidate.sourceCount ?? (candidate.sourceIds?.length ?? 0),
+        sourceCount: candidate.sourceCount ?? candidate.sourceIds?.length ?? 0,
         titleTokens: normalizeTitleTokens(candidate.title),
         evidenceTokens: new Set(candidate.evidenceTokens ?? []),
         factTokens: new Set(candidate.factTokens ?? []),
@@ -3981,10 +3983,7 @@ export const mergeNearDuplicateEvents = internalAction({
             vector: toEventEmbedding(candidate.embedding),
             limit: MERGE_VECTOR_SEARCH_LIMIT,
             filter: (q) =>
-              q.or(
-                q.eq("status", "published"),
-                q.eq("status", "processing"),
-              ),
+              q.or(q.eq("status", "published"), q.eq("status", "processing")),
           },
         );
 
@@ -4015,8 +4014,7 @@ export const mergeNearDuplicateEvents = internalAction({
         examinedPairs++;
 
         const timeDeltaHours =
-          Math.abs(a.firstPublishedAt - b.firstPublishedAt) /
-          (60 * 60 * 1000);
+          Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
         if (timeDeltaHours > settings.maxTimeDeltaHours) {
           continue;
         }
@@ -4228,7 +4226,7 @@ export const reclusterRecentSingletonEvents = internalAction({
           embeddingId: candidate.embeddingId,
           lastArticleAt: candidate.lastArticleAt ?? candidate.firstPublishedAt,
           sourceCount:
-            candidate.sourceCount ?? (candidate.sourceIds?.length ?? 0),
+            candidate.sourceCount ?? candidate.sourceIds?.length ?? 0,
           titleTokens: normalizeTitleTokens(candidate.title),
           evidenceTokens: new Set(candidate.evidenceTokens ?? []),
           factTokens: new Set(candidate.factTokens ?? []),
@@ -4256,10 +4254,7 @@ export const reclusterRecentSingletonEvents = internalAction({
             vector: toEventEmbedding(candidate.embedding),
             limit: RECLUSTER_VECTOR_SEARCH_LIMIT,
             filter: (q) =>
-              q.or(
-                q.eq("status", "published"),
-                q.eq("status", "processing"),
-              ),
+              q.or(q.eq("status", "published"), q.eq("status", "processing")),
           },
         );
 
@@ -4289,8 +4284,7 @@ export const reclusterRecentSingletonEvents = internalAction({
         examinedPairs++;
 
         const hoursApart =
-          Math.abs(a.firstPublishedAt - b.firstPublishedAt) /
-          (60 * 60 * 1000);
+          Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
         if (hoursApart > settings.windowHours) continue;
 
         const similarity = maxCrossEventSimilarity(a, b);
@@ -4298,9 +4292,9 @@ export const reclusterRecentSingletonEvents = internalAction({
         const topicOverlap = countTokenOverlap(a.topicSlugs, b.topicSlugs);
         const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
         const hasEntitySupport = entityOverlap >= 1;
-        const hasTitleSupport =
-          titleJaccard >= DEFAULT_MIN_TITLE_JACCARD * 1.5;
-        const hasSimilaritySupport = similarity >= settings.minSimilarity + 0.08;
+        const hasTitleSupport = titleJaccard >= DEFAULT_MIN_TITLE_JACCARD * 1.5;
+        const hasSimilaritySupport =
+          similarity >= settings.minSimilarity + 0.08;
         const hasTopicSupport = topicOverlap >= 1;
         if (
           similarity < settings.minSimilarity ||
@@ -4634,8 +4628,7 @@ export const clusterEnrichedArticles = internalAction({
             candidate = {
               ...result,
               lastArticleAt: result.lastArticleAt ?? result.firstPublishedAt,
-              sourceCount:
-                result.sourceCount ?? (result.sourceIds?.length ?? 0),
+              sourceCount: result.sourceCount ?? result.sourceIds?.length ?? 0,
               titleTokens: normalizeTitleTokens(result.title),
               evidenceTokens: new Set(result.evidenceTokens ?? []),
               factTokens: new Set(result.factTokens ?? []),

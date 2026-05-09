@@ -9,6 +9,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
+import { sourceBiasLabel } from "./lib/sourceBias";
 import {
   buildEventShareRenderSignature,
   type EventShareRenderData,
@@ -42,17 +43,6 @@ type SummaryQueueHealth = {
   };
 };
 
-function sourceBiasLabel(source: Doc<"sources"> | null): string {
-  if (!source) return "unknown";
-  if (source.mbfcCategory) return source.mbfcCategory;
-  if (source.baseBias === 0) return "center";
-  if (source.baseBias <= -3) return "left";
-  if (source.baseBias < 0) return "left-center";
-  if (source.baseBias >= 3) return "right";
-  if (source.baseBias > 0) return "right-center";
-  return "center";
-}
-
 function safeInteger(
   value: unknown,
   fallback: number,
@@ -69,10 +59,10 @@ function shouldResummarize(event: Doc<"events">): boolean {
 
   const hasFullAiSummary = Boolean(
     event.perspectiveSummaries?.center?.trim() &&
-      event.perspectiveSummaries?.left?.trim() &&
-      event.perspectiveSummaries?.right?.trim() &&
-      event.globalImpact?.trim() &&
-      event.lastSummarizedAt,
+    event.perspectiveSummaries?.left?.trim() &&
+    event.perspectiveSummaries?.right?.trim() &&
+    event.globalImpact?.trim() &&
+    event.lastSummarizedAt,
   );
   if (!hasFullAiSummary) return true;
 
@@ -131,8 +121,8 @@ async function hasBlockingSummaryJob(
 
   return Boolean(
     queued ||
-      processing.some((job) => summaryJobBlocksEnqueue(job, now)) ||
-      failed.some((job) => summaryJobBlocksEnqueue(job, now)),
+    processing.some((job) => summaryJobBlocksEnqueue(job, now)) ||
+    failed.some((job) => summaryJobBlocksEnqueue(job, now)),
   );
 }
 
@@ -331,7 +321,13 @@ export const enqueueEligibleEventSummaries = internalMutation({
       .order("desc")
       .take(safeLimit * 3);
 
-    return enqueueEligibleEvents(ctx, events, safeLimit, minArticles, minSources);
+    return enqueueEligibleEvents(
+      ctx,
+      events,
+      safeLimit,
+      minArticles,
+      minSources,
+    );
   },
 });
 
@@ -569,10 +565,7 @@ export const startSummaryJob = internalMutation({
       return { started: false as const, reason: "completed" };
     }
 
-    if (
-      job.status === "processing" &&
-      (job.leaseExpiresAt ?? 0) > now
-    ) {
+    if (job.status === "processing" && (job.leaseExpiresAt ?? 0) > now) {
       return { started: false as const, reason: "lease_active" };
     }
 
@@ -692,7 +685,16 @@ export const applyEventSummaryResult = internalMutation({
   },
   handler: async (
     ctx,
-    { jobId, eventId, runId, center, left, right, globalImpact, summarySignature },
+    {
+      jobId,
+      eventId,
+      runId,
+      center,
+      left,
+      right,
+      globalImpact,
+      summarySignature,
+    },
   ) => {
     const job = await ctx.db.get(jobId);
     if (
@@ -759,16 +761,9 @@ export const markSummaryJobFailed = internalMutation({
     retryAfterMs: v.number(),
     maxAttempts: v.number(),
   },
-  handler: async (
-    ctx,
-    { jobId, runId, error, retryAfterMs, maxAttempts },
-  ) => {
+  handler: async (ctx, { jobId, runId, error, retryAfterMs, maxAttempts }) => {
     const job = await ctx.db.get(jobId);
-    if (
-      !job ||
-      job.status !== "processing" ||
-      job.processingRunId !== runId
-    ) {
+    if (!job || job.status !== "processing" || job.processingRunId !== runId) {
       return { updated: false as const };
     }
 
