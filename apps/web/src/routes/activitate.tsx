@@ -270,9 +270,9 @@ function AuthorizedDashboard() {
           </header>
 
           {/* Bento Grid - Main Stats */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             {/* Streak - Prominent */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                   <Flame className="size-5 text-primary" />
@@ -299,7 +299,7 @@ function AuthorizedDashboard() {
             </div>
 
             {/* Articles Read */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
                   <Newspaper className="size-5 text-muted-foreground" />
@@ -316,7 +316,7 @@ function AuthorizedDashboard() {
             </div>
 
             {/* Events Explored */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
                   <Sparkles className="size-5 text-muted-foreground" />
@@ -333,7 +333,7 @@ function AuthorizedDashboard() {
             </div>
 
             {/* Bookmarks */}
-            <div className="rounded-xl border border-border bg-card p-5">
+            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
                   <Bookmark className="size-5 text-muted-foreground" />

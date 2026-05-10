@@ -35,9 +35,12 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-muted/20 pb-24 md:pb-8">
       <div className="container mx-auto max-w-6xl px-4 py-10">
-        <div className="grid gap-8 md:grid-cols-3">
-          {footerSections.map((section) => (
-            <div key={section.titleKey} className="space-y-3">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-3">
+          {footerSections.map((section, index) => (
+            <div
+              key={section.titleKey}
+              className={index === footerSections.length - 1 ? "col-span-2 space-y-3 md:col-span-1" : "space-y-3"}
+            >
               <h2 className="text-sm font-semibold text-foreground">
                 {t(section.titleKey)}
               </h2>

@@ -237,8 +237,8 @@ const EventCard = ({
 
         <p
           className={cn(
-            "text-muted-foreground",
-            isFeature ? "text-base" : "text-sm line-clamp-3",
+            "line-clamp-3 text-sm text-muted-foreground",
+            isFeature && "sm:text-base",
           )}
         >
           {summaryPreview}

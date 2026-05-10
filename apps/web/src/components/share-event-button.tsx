@@ -28,7 +28,7 @@ export default function ShareEventButton({
   interactionContext,
   slug,
   title,
-  summary,
+  summary: _summary,
   size = "default",
   className,
 }: ShareEventButtonProps) {
@@ -36,7 +36,6 @@ export default function ShareEventButton({
   const { isAuthenticated } = useConvexAuth();
   const shareOrigin = SITE.url || window.location.origin;
   const shareUrl = `${shareOrigin}/event/${slug}`;
-  const shareText = summary?.trim() ? `${title} — ${summary.trim()}` : title;
   const iconSize = size === "sm" ? "size-4" : "size-5";
   const buttonSize = size === "sm" ? "size-8" : "size-9";
   const logInteraction = useMutation({
@@ -63,7 +62,7 @@ export default function ShareEventButton({
       try {
         await navigator.share({
           title,
-          text: shareText,
+          text: title,
           url: shareUrl,
         });
         logShare();

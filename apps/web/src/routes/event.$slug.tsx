@@ -386,22 +386,28 @@ function EventDetailPage() {
             >
               {hasPerspectives ? (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
                     <CardTitle className="text-xl tracking-tight">
                       {t("event.multiplePerspectives")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
                     <Tabs defaultValue="center" className="w-full gap-5">
                       <TabsList
                         className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
                       >
                         {event.perspectiveSummaries?.left && (
-                          <TabsTrigger value="left">{t("event.left")}</TabsTrigger>
+                          <TabsTrigger value="left">
+                            {t("event.left")}
+                          </TabsTrigger>
                         )}
-                        <TabsTrigger value="center">{t("event.centerTab")}</TabsTrigger>
+                        <TabsTrigger value="center">
+                          {t("event.centerTab")}
+                        </TabsTrigger>
                         {event.perspectiveSummaries?.right && (
-                          <TabsTrigger value="right">{t("event.right")}</TabsTrigger>
+                          <TabsTrigger value="right">
+                            {t("event.right")}
+                          </TabsTrigger>
                         )}
                       </TabsList>
 
@@ -432,12 +438,12 @@ function EventDetailPage() {
                 </Card>
               ) : (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 py-3 sm:py-4">
                     <CardTitle className="text-xl tracking-tight">
                       {t("event.summary")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pt-3 pb-4 sm:px-8 sm:pt-4 sm:pb-5">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.perspectiveSummaries?.center ??
                         t("event.compareOriginal")}
@@ -448,12 +454,12 @@ function EventDetailPage() {
 
               {event.globalImpact && (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
                     <CardTitle className="text-xl tracking-tight">
                       {t("event.meaning")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.globalImpact}
                     </p>
