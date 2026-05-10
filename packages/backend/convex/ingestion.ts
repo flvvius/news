@@ -14,6 +14,7 @@
  */
 
 import { v } from "convex/values";
+import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import {
   internalAction,
   internalMutation,
@@ -39,7 +40,7 @@ const USER_AGENT =
 /** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
 const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
 const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
-const EVENT_EMBEDDING_DIMENSIONS = 1536;
+const EVENT_EMBEDDING_DIMENSIONS = 512;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -481,6 +482,33 @@ function toEventEmbedding(articleEmbedding: number[]): number[] {
   return padded;
 }
 
+function formatUtcDayBucket(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function buildEventEmbeddingFilterFields(args: {
+  status?: "processing" | "published";
+  lastArticleAt: number;
+  articleCount: number;
+  referenceTime?: number;
+}) {
+  const referenceTime = args.referenceTime ?? Date.now();
+  const recentWindowBucket =
+    referenceTime - args.lastArticleAt <= 48 * 60 * 60 * 1000
+      ? "recent_2d"
+      : "stale";
+  const singletonBucket = args.articleCount <= 2 ? "singleton" : "multi";
+  const updatedDayBucket = formatUtcDayBucket(args.lastArticleAt);
+  const status = args.status ?? "processing";
+  return {
+    recentWindowBucket,
+    singletonBucket,
+    updatedDayBucket,
+    mergeSearchBucket: `${status}::${recentWindowBucket}::${updatedDayBucket}`,
+    singletonSearchBucket: `${status}::${singletonBucket}::${updatedDayBucket}`,
+  };
+}
+
 /** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
 function extractDomain(url: string): string {
   try {
@@ -788,6 +816,11 @@ async function recomputeEventEmbeddingForEvent(
       embedding: averagedEmbedding,
       version: latestVersion,
       status: event.status,
+      ...buildEventEmbeddingFilterFields({
+        status: event.status,
+        lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+        articleCount: event.articleCount ?? articles.length,
+      }),
     });
   } else {
     await ctx.db.insert("eventEmbeddings", {
@@ -795,9 +828,70 @@ async function recomputeEventEmbeddingForEvent(
       embedding: averagedEmbedding,
       version: latestVersion,
       status: event.status,
+      ...buildEventEmbeddingFilterFields({
+        status: event.status,
+        lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+        articleCount: event.articleCount ?? articles.length,
+      }),
     });
   }
 }
+
+export const recomputeEventEmbeddingForEventInternal = internalMutation({
+  args: {
+    eventId: v.id("events"),
+  },
+  handler: async (ctx, { eventId }) => {
+    await recomputeEventEmbeddingForEvent(ctx, eventId);
+    return { recomputed: true as const };
+  },
+});
+
+export const getEventsForEmbeddingBackfill = internalQuery({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, { paginationOpts }) => {
+    return (await ctx.db
+      .query("events")
+      .order("desc")
+      .paginate(paginationOpts)) as PaginationResult<{ _id: Id<"events"> }>;
+  },
+});
+
+export const backfillEventEmbeddingDimensions = internalAction({
+  args: {
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { cursor, limit }) => {
+    const pageSize = Math.min(Math.max(Math.floor(limit ?? 100), 1), 200);
+    const page: PaginationResult<{ _id: Id<"events"> }> = await ctx.runQuery(
+      internal.ingestion.getEventsForEmbeddingBackfill,
+      {
+        paginationOpts: {
+          cursor: cursor ?? null,
+          numItems: pageSize,
+        },
+      },
+    );
+
+    for (const event of page.page) {
+      await ctx.runMutation(
+        internal.ingestion.recomputeEventEmbeddingForEventInternal,
+        {
+          eventId: event._id,
+        },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      continueCursor: page.continueCursor ?? null,
+      isDone: page.isDone,
+    };
+  },
+});
 
 export const cleanupDuplicateArticlesInEvents = internalMutation({
   args: {

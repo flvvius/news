@@ -113,12 +113,24 @@ export default defineSchema({
     status: v.optional(
       v.union(v.literal("processing"), v.literal("published")),
     ),
+    recentWindowBucket: v.optional(v.string()),
+    singletonBucket: v.optional(v.string()),
+    updatedDayBucket: v.optional(v.string()),
+    mergeSearchBucket: v.optional(v.string()),
+    singletonSearchBucket: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: 1536,
-      filterFields: ["status"],
+      dimensions: 512,
+      filterFields: [
+        "status",
+        "recentWindowBucket",
+        "singletonBucket",
+        "updatedDayBucket",
+        "mergeSearchBucket",
+        "singletonSearchBucket",
+      ],
     }),
 
   // =========================================================================
@@ -673,6 +685,47 @@ export default defineSchema({
   }).index("by_expiresAt", ["expiresAt"]),
 
   // =========================================================================
+  // 11b. VECTOR SEARCH BUDGET DAILY SHARDS
+  // =========================================================================
+  vectorSearchDaily: defineTable({
+    date: v.string(), // "YYYY-MM-DD"
+    shard: v.number(), // 0-23 (UTC hour)
+    qgbRead: v.number(),
+    vectorSearches: v.number(),
+    runCount: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_date", ["date"])
+    .index("by_date_shard", ["date", "shard"]),
+
+  vectorSearchDailyTotal: defineTable({
+    date: v.string(),
+    qgbRead: v.number(),
+    vectorSearches: v.number(),
+    runCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_date", ["date"]),
+
+  vectorSearchRuns: defineTable({
+    jobName: v.string(),
+    runId: v.string(),
+    date: v.string(),
+    qgbRead: v.number(),
+    vectorSearches: v.number(),
+    vectorMatchesReturned: v.number(),
+    vectorMatchesHydrated: v.number(),
+    vectorMatchesDiscardedPostFetch: v.number(),
+    usedFallbackMode: v.boolean(),
+    budgetAllowed: v.boolean(),
+    elapsedMs: v.number(),
+    metricsJson: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_run_id", ["runId"])
+    .index("by_date", ["date"])
+    .index("by_job_createdAt", ["jobName", "createdAt"]),
+
+  // =========================================================================
   // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)
   // =========================================================================
   pipelineLocks: defineTable({
@@ -682,4 +735,13 @@ export default defineSchema({
     updatedAt: v.number(),
     expiresAt: v.number(),
   }).index("by_key", ["key"]),
+
+  clusteringJobState: defineTable({
+    jobName: v.string(),
+    lastProcessedAt: v.optional(v.number()),
+    lastProcessedDayBucket: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    lastRunMetricsJson: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_job_name", ["jobName"]),
 });

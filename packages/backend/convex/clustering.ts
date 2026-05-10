@@ -35,6 +35,7 @@ import {
   syncPublicEventPreview,
 } from "./lib/publicEventPreviews";
 import { buildEventShareRenderSignature } from "./shareAssets";
+import { estimateVectorSearchQgbRead } from "./vectorSearchBudget";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
@@ -47,7 +48,7 @@ const MAX_CANDIDATE_EVENTS = 250;
 const VECTOR_SEARCH_LIMIT = 40;
 const EVENT_PRESENTATION_ARTICLE_LIMIT = 10;
 const CANDIDACY_TOKEN_CAP = 200;
-const EVENT_EMBEDDING_DIMENSIONS = 1536;
+const EVENT_EMBEDDING_DIMENSIONS = 512;
 const DEFAULT_MIN_CLUSTER_SIMILARITY = 0.74;
 const DEFAULT_STRONG_CLUSTER_SIMILARITY = 0.84;
 const DEFAULT_MIN_TITLE_TOKEN_OVERLAP = 2;
@@ -67,6 +68,35 @@ const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 48;
 const MERGE_VECTOR_SEARCH_LIMIT = 24;
 const RECLUSTER_VECTOR_SEARCH_LIMIT = 24;
+const MERGE_RECENT_BUCKET = "recent_2d";
+const MERGE_STALE_BUCKET = "stale";
+const SINGLETON_BUCKET = "singleton";
+const MULTI_ARTICLE_BUCKET = "multi";
+
+type ClusteringJobName =
+  | "clusterEnrichedArticles"
+  | "mergeNearDuplicateEvents"
+  | "reclusterRecentSingletonEvents";
+
+type JobMetrics = {
+  jobName: ClusteringJobName;
+  runId: string;
+  budgetAllowed: boolean;
+  usedFallbackMode: boolean;
+  vectorSearches: number;
+  vectorMatchesReturned: number;
+  vectorMatchesHydrated: number;
+  vectorMatchesDiscardedPostFetch: number;
+  vectorSearchesPerArticle: number;
+  vectorSearchesPerCandidateEvent: number;
+  batchArticles: number;
+  candidateCacheSize: number;
+  mergeSeedEvents: number;
+  reclusterSeedEvents: number;
+  qgbRead: number;
+  elapsedMs: number;
+  stageMs: Record<string, number>;
+};
 
 const STOPWORDS = new Set([
   "a",
@@ -142,6 +172,144 @@ function toEventEmbedding(articleEmbedding: number[]): number[] {
     padded[i] = articleEmbedding[i]!;
   }
   return padded;
+}
+
+function formatUtcDayBucket(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function buildRecentWindowBucket(
+  lastArticleAt: number,
+  referenceTime: number = Date.now(),
+): string {
+  return referenceTime - lastArticleAt <= RECENT_EVENT_WINDOW_MS
+    ? MERGE_RECENT_BUCKET
+    : MERGE_STALE_BUCKET;
+}
+
+function buildSingletonBucket(articleCount: number): string {
+  return articleCount <= 2 ? SINGLETON_BUCKET : MULTI_ARTICLE_BUCKET;
+}
+
+function buildEventEmbeddingFilterFields(args: {
+  status?: "processing" | "published";
+  lastArticleAt: number;
+  articleCount: number;
+  referenceTime?: number;
+}) {
+  const recentWindowBucket = buildRecentWindowBucket(
+    args.lastArticleAt,
+    args.referenceTime,
+  );
+  const singletonBucket = buildSingletonBucket(args.articleCount);
+  const updatedDayBucket = formatUtcDayBucket(args.lastArticleAt);
+  const status = args.status ?? "processing";
+
+  return {
+    recentWindowBucket,
+    singletonBucket,
+    updatedDayBucket,
+    mergeSearchBucket: `${status}::${recentWindowBucket}::${updatedDayBucket}`,
+    singletonSearchBucket: `${status}::${singletonBucket}::${updatedDayBucket}`,
+  };
+}
+
+function collectRecentDayBuckets(windowHours: number, now: number = Date.now()) {
+  const dayCount = Math.max(1, Math.ceil(windowHours / 24) + 1);
+  const buckets: string[] = [];
+  for (let offset = 0; offset < dayCount; offset++) {
+    buckets.push(formatUtcDayBucket(now - offset * 24 * 60 * 60 * 1000));
+  }
+  return buckets;
+}
+
+function buildMergeSearchBuckets(dayBuckets: string[]) {
+  return dayBuckets.flatMap((dayBucket) => [
+    `published::${MERGE_RECENT_BUCKET}::${dayBucket}`,
+    `processing::${MERGE_RECENT_BUCKET}::${dayBucket}`,
+  ]);
+}
+
+function buildSingletonSearchBuckets(dayBuckets: string[]) {
+  return dayBuckets.flatMap((dayBucket) => [
+    `published::${SINGLETON_BUCKET}::${dayBucket}`,
+    `processing::${SINGLETON_BUCKET}::${dayBucket}`,
+  ]);
+}
+
+function buildRunId(jobName: ClusteringJobName): string {
+  return `${jobName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createJobMetrics(jobName: ClusteringJobName): JobMetrics {
+  return {
+    jobName,
+    runId: buildRunId(jobName),
+    budgetAllowed: true,
+    usedFallbackMode: false,
+    vectorSearches: 0,
+    vectorMatchesReturned: 0,
+    vectorMatchesHydrated: 0,
+    vectorMatchesDiscardedPostFetch: 0,
+    vectorSearchesPerArticle: 0,
+    vectorSearchesPerCandidateEvent: 0,
+    batchArticles: 0,
+    candidateCacheSize: 0,
+    mergeSeedEvents: 0,
+    reclusterSeedEvents: 0,
+    qgbRead: 0,
+    elapsedMs: 0,
+    stageMs: {},
+  };
+}
+
+function markStageDuration(
+  metrics: JobMetrics,
+  stage: string,
+  startedAt: number,
+): number {
+  const elapsed = Date.now() - startedAt;
+  metrics.stageMs[stage] = (metrics.stageMs[stage] ?? 0) + elapsed;
+  return elapsed;
+}
+
+async function flushJobMetrics(
+  ctx: any,
+  metrics: JobMetrics,
+  startedAt: number,
+): Promise<void> {
+  metrics.elapsedMs = Date.now() - startedAt;
+  metrics.qgbRead = estimateVectorSearchQgbRead({
+    vectorSearches: metrics.vectorSearches,
+    averageMatchesReturned:
+      metrics.vectorSearches > 0
+        ? metrics.vectorMatchesReturned / metrics.vectorSearches
+        : 0,
+  });
+
+  console.log(
+    `[clustering] ${metrics.jobName} metrics ${JSON.stringify(metrics)}`,
+  );
+
+  await ctx.runMutation(internal.vectorSearchBudget.recordUsage, {
+    jobName: metrics.jobName,
+    runId: metrics.runId,
+    qgbRead: metrics.qgbRead,
+    vectorSearches: metrics.vectorSearches,
+    vectorMatchesReturned: metrics.vectorMatchesReturned,
+    vectorMatchesHydrated: metrics.vectorMatchesHydrated,
+    vectorMatchesDiscardedPostFetch: metrics.vectorMatchesDiscardedPostFetch,
+    usedFallbackMode: metrics.usedFallbackMode,
+    budgetAllowed: metrics.budgetAllowed,
+    elapsedMs: metrics.elapsedMs,
+    metricsJson: JSON.stringify(metrics),
+  });
+}
+
+async function getVectorSearchBudgetState(
+  ctx: any,
+) {
+  return await ctx.runQuery(internal.vectorSearchBudget.checkBudget, {});
 }
 
 function appendArticleEmbeddingToEventMean(
@@ -531,6 +699,23 @@ type ClusterCandidateQueryResult = {
 type ClusterCandidateVectorResult = ClusterCandidateQueryResult & {
   similarity: number;
 };
+
+function hydrateClusterCandidate(
+  candidate: ClusterCandidateQueryResult | ClusterCandidateVectorResult,
+): ClusterCandidate {
+  return {
+    ...candidate,
+    embeddingId: candidate.embeddingId,
+    lastArticleAt: candidate.lastArticleAt ?? candidate.firstPublishedAt,
+    sourceCount: candidate.sourceCount ?? candidate.sourceIds?.length ?? 0,
+    titleTokens: normalizeTitleTokens(candidate.title),
+    evidenceTokens: new Set(candidate.evidenceTokens ?? []),
+    factTokens: new Set(candidate.factTokens ?? []),
+    entityTokens: new Set(candidate.entityTokens ?? []),
+    topicSlugs: new Set(candidate.topicSlugs ?? []),
+    sourceIds: new Set(candidate.sourceIds ?? []),
+  };
+}
 
 type ClusterSettings = {
   minSimilarity: number;
@@ -1561,6 +1746,88 @@ function findBestCandidate(
   return best?.candidate ?? null;
 }
 
+function findBatchLocalCandidate(
+  article: {
+    articleId: Id<"articles">;
+    title: string;
+    rssSnippet: string;
+    summary: string;
+    atomicFacts: string[];
+    entities: string[];
+    topicSlugs: string[];
+    extractionQuality: "strong" | "weak";
+    publishedAt: number;
+    embedding: number[];
+    sourceId: Id<"sources">;
+  },
+  candidates: ClusterCandidate[],
+  settings: ClusterSettings,
+): ClusterCandidate | null {
+  const enrichedCandidates = candidates.map((candidate) => ({
+    ...candidate,
+    similarity: cosineSimilarity(
+      toEventEmbedding(article.embedding),
+      toEventEmbedding(candidate.embedding),
+    ),
+  }));
+
+  return findBestCandidate(article, enrichedCandidates, settings);
+}
+
+function findHeuristicCandidate(
+  article: {
+    title: string;
+    rssSnippet: string;
+    summary: string;
+    atomicFacts: string[];
+    entities: string[];
+    topicSlugs: string[];
+    publishedAt: number;
+    sourceId: Id<"sources">;
+  },
+  candidates: ClusterCandidate[],
+): ClusterCandidate | null {
+  const titleTokens = normalizeTitleTokens(normalizeTitleForClustering(article.title));
+  const evidenceTokens = mergeTokenSets(
+    normalizeTitleTokens(normalizeSnippetForClustering(article.rssSnippet)),
+    normalizeTitleTokens(normalizeSnippetForClustering(article.summary)),
+  );
+  const factTokens = normalizeTitleTokens(article.atomicFacts.join(" "));
+  const entityTokens = extractEntityTokens(
+    article.title,
+    article.rssSnippet,
+    article.summary,
+    article.entities.join(" "),
+    article.atomicFacts.join(" "),
+  );
+  const topicTokens = new Set(article.topicSlugs);
+
+  let best: { candidate: ClusterCandidate; score: number } | null = null;
+  for (const candidate of candidates) {
+    const timeDeltaMs = Math.abs(
+      article.publishedAt - candidate.firstPublishedAt,
+    );
+    if (timeDeltaMs > RECENT_EVENT_WINDOW_MS) continue;
+
+    const sameSourcePenalty = candidate.sourceIds.has(article.sourceId) ? -1.5 : 0;
+    const score =
+      countTokenOverlap(titleTokens, candidate.titleTokens) * 4 +
+      jaccardSimilarity(titleTokens, candidate.titleTokens) * 6 +
+      countTokenOverlap(evidenceTokens, candidate.evidenceTokens) * 1.8 +
+      countTokenOverlap(factTokens, candidate.factTokens) * 2 +
+      countTokenOverlap(entityTokens, candidate.entityTokens) * 2.2 +
+      countTokenOverlap(topicTokens, candidate.topicSlugs) * 2.5 +
+      sameSourcePenalty;
+
+    if (score < 4) continue;
+    if (!best || score > best.score) {
+      best = { candidate, score };
+    }
+  }
+
+  return best?.candidate ?? null;
+}
+
 function shouldPublishCluster(
   articleCount: number,
   uniqueSourceCount: number,
@@ -1820,6 +2087,8 @@ export const backfillEventCandidacy = internalAction({
         {
           eventId: event._id,
           status: event.status,
+          lastArticleAt,
+          articleCount,
         },
       );
 
@@ -1829,6 +2098,62 @@ export const backfillEventCandidacy = internalAction({
           eventId: event._id,
         },
       );
+    }
+
+    return {
+      processed: page.page.length,
+      continueCursor: page.continueCursor ?? null,
+      isDone: page.isDone,
+    };
+  },
+});
+
+export const backfillEventEmbeddingBuckets = internalAction({
+  args: {
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    { cursor, limit },
+  ): Promise<{
+    processed: number;
+    continueCursor: string | null;
+    isDone: boolean;
+  }> => {
+    const pageSize = Math.min(Math.max(Math.floor(limit ?? 100), 1), 200);
+    const page: PaginationResult<Doc<"events">> = await ctx.runQuery(
+      internal.clustering.getEventsForCandidacyBackfill,
+      {
+        paginationOpts: {
+          cursor: cursor ?? null,
+          numItems: pageSize,
+        },
+      },
+    );
+
+    for (const event of page.page) {
+      const fallbackArticles =
+        event.articleCount === undefined || event.lastArticleAt === undefined
+          ? await ctx.runQuery(internal.clustering.getArticlesForEventBackfill, {
+              eventId: event._id,
+            })
+          : null;
+      const articleCount = event.articleCount ?? fallbackArticles?.length ?? 0;
+      const lastArticleAt =
+        event.lastArticleAt ??
+        (fallbackArticles && fallbackArticles.length > 0
+          ? fallbackArticles.reduce(
+              (max, article) => Math.max(max, article.publishedAt),
+              event.firstPublishedAt,
+            )
+          : event.firstPublishedAt);
+      await ctx.runMutation(internal.clustering.syncEmbeddingStatusForBackfill, {
+        eventId: event._id,
+        status: event.status,
+        lastArticleAt,
+        articleCount,
+      });
     }
 
     return {
@@ -1941,14 +2266,23 @@ export const syncEmbeddingStatusForBackfill = internalMutation({
   args: {
     eventId: v.id("events"),
     status: v.union(v.literal("processing"), v.literal("published")),
+    lastArticleAt: v.number(),
+    articleCount: v.number(),
   },
-  handler: async (ctx, { eventId, status }) => {
+  handler: async (ctx, { eventId, status, lastArticleAt, articleCount }) => {
     const embeddingRow = await ctx.db
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .first();
-    if (embeddingRow && embeddingRow.status !== status) {
-      await ctx.db.patch(embeddingRow._id, { status });
+    if (embeddingRow) {
+      await ctx.db.patch(embeddingRow._id, {
+        status,
+        ...buildEventEmbeddingFilterFields({
+          status,
+          lastArticleAt,
+          articleCount,
+        }),
+      });
     }
   },
 });
@@ -2059,6 +2393,93 @@ export const getRecentClusterCandidates = internalQuery({
   },
 });
 
+export const getChangedClusterCandidates = internalQuery({
+  args: {
+    sinceTs: v.number(),
+    recentSinceTs: v.number(),
+    limit: v.number(),
+    singletonOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { sinceTs, recentSinceTs, limit, singletonOnly }) => {
+    const candidacies = await Promise.all([
+      ctx.db
+        .query("eventCandidacy")
+        .withIndex("by_status_last_article_at", (q) =>
+          q.eq("status", "published").gte("lastArticleAt", recentSinceTs),
+        )
+        .order("desc")
+        .take(limit * 3),
+      ctx.db
+        .query("eventCandidacy")
+        .withIndex("by_status_last_article_at", (q) =>
+          q.eq("status", "processing").gte("lastArticleAt", recentSinceTs),
+        )
+        .order("desc")
+        .take(limit * 3),
+    ]);
+
+    return [...candidacies[0], ...candidacies[1]]
+      .filter(
+        (row) =>
+          row.updatedAt > sinceTs &&
+          (!singletonOnly || row.articleCount <= 2),
+      )
+      .sort(
+        (a, b) =>
+          b.updatedAt - a.updatedAt ||
+          b.lastArticleAt - a.lastArticleAt ||
+          b._creationTime - a._creationTime,
+      )
+      .slice(0, limit);
+  },
+});
+
+export const getClusteringJobState = internalQuery({
+  args: {
+    jobName: v.string(),
+  },
+  handler: async (ctx, { jobName }) => {
+    return await ctx.db
+      .query("clusteringJobState")
+      .withIndex("by_job_name", (q) => q.eq("jobName", jobName))
+      .unique();
+  },
+});
+
+export const upsertClusteringJobState = internalMutation({
+  args: {
+    jobName: v.string(),
+    lastProcessedAt: v.optional(v.number()),
+    lastProcessedDayBucket: v.optional(v.string()),
+    lastRunAt: v.number(),
+    lastRunMetricsJson: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("clusteringJobState")
+      .withIndex("by_job_name", (q) => q.eq("jobName", args.jobName))
+      .unique();
+
+    const payload = {
+      lastProcessedAt: args.lastProcessedAt,
+      lastProcessedDayBucket: args.lastProcessedDayBucket,
+      lastRunAt: args.lastRunAt,
+      lastRunMetricsJson: args.lastRunMetricsJson,
+      updatedAt: Date.now(),
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      return;
+    }
+
+    await ctx.db.insert("clusteringJobState", {
+      jobName: args.jobName,
+      ...payload,
+    });
+  },
+});
+
 export const getClusterCandidatesByEmbeddingMatches = internalQuery({
   args: {
     embeddingMatches: v.array(
@@ -2069,16 +2490,55 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
     ),
   },
   handler: async (ctx, { embeddingMatches }) => {
+    const uniqueEmbeddingIds = Array.from(
+      new Set(embeddingMatches.map((match) => String(match.embeddingId))),
+    );
+    const embeddingRows = await Promise.all(
+      uniqueEmbeddingIds.map((embeddingId) => ctx.db.get(embeddingId as Id<"eventEmbeddings">)),
+    );
+    const embeddingsById = new Map<string, Doc<"eventEmbeddings">>();
+    for (const row of embeddingRows) {
+      if (row) embeddingsById.set(String(row._id), row);
+    }
+
+    const uniqueEventIds = Array.from(
+      new Set(
+        embeddingRows
+          .filter((row): row is Doc<"eventEmbeddings"> => row !== null)
+          .map((row) => String(row.eventId)),
+      ),
+    );
+    const eventRows = await Promise.all(
+      uniqueEventIds.map((eventId) => ctx.db.get(eventId as Id<"events">)),
+    );
+    const eventsById = new Map<string, Doc<"events">>();
+    for (const row of eventRows) {
+      if (row) eventsById.set(String(row._id), row);
+    }
+
+    const candidacyRows = await Promise.all(
+      uniqueEventIds.map((eventId) =>
+        ctx.db
+          .query("eventCandidacy")
+          .withIndex("by_event", (q) => q.eq("eventId", eventId as Id<"events">))
+          .first(),
+      ),
+    );
+    const candidaciesByEventId = new Map<string, Doc<"eventCandidacy">>();
+    for (const row of candidacyRows) {
+      if (row) candidaciesByEventId.set(String(row.eventId), row);
+    }
+
     const seenEventIds = new Set<string>();
     const candidates: ClusterCandidateVectorResult[] = [];
     let missingCandidacy = 0;
     let missingEvents = 0;
 
     for (const match of embeddingMatches) {
-      const embeddingRow = await ctx.db.get(match.embeddingId);
+      const embeddingRow = embeddingsById.get(String(match.embeddingId));
       if (!embeddingRow) continue;
 
-      const event = await ctx.db.get(embeddingRow.eventId);
+      const event = eventsById.get(String(embeddingRow.eventId));
       if (!event) {
         missingEvents++;
         continue;
@@ -2088,10 +2548,7 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
       if (seenEventIds.has(eventKey)) continue;
       seenEventIds.add(eventKey);
 
-      const candidacy = await ctx.db
-        .query("eventCandidacy")
-        .withIndex("by_event", (q) => q.eq("eventId", event._id))
-        .first();
+      const candidacy = candidaciesByEventId.get(eventKey);
       if (!candidacy) {
         missingCandidacy++;
         continue;
@@ -2114,6 +2571,45 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
     }
 
     return candidates;
+  },
+});
+
+export const getClusterCandidatesByEventIds = internalQuery({
+  args: {
+    eventIds: v.array(v.id("events")),
+  },
+  handler: async (ctx, { eventIds }) => {
+    const uniqueEventIds = Array.from(
+      new Set(eventIds.map((eventId) => String(eventId))),
+    ) as Array<Id<"events">>;
+
+    const rows = await Promise.all(
+      uniqueEventIds.map(async (eventId) => {
+        const [event, candidacy, embeddingRow] = await Promise.all([
+          ctx.db.get(eventId),
+          ctx.db
+            .query("eventCandidacy")
+            .withIndex("by_event", (q) => q.eq("eventId", eventId))
+            .first(),
+          ctx.db
+            .query("eventEmbeddings")
+            .withIndex("by_event", (q) => q.eq("eventId", eventId))
+            .first(),
+        ]);
+
+        if (!event || !candidacy || !embeddingRow) return null;
+
+        return buildCandidateQueryResult({
+          event,
+          embeddingRow,
+          candidacy,
+        });
+      }),
+    );
+
+    return rows.filter(
+      (candidate): candidate is ClusterCandidateQueryResult => candidate !== null,
+    );
   },
 });
 
@@ -2169,6 +2665,11 @@ export const createEventFromArticle = internalMutation({
       embedding: toEventEmbedding(eventEmbedding),
       version,
       status: initialStatus,
+      ...buildEventEmbeddingFilterFields({
+        status: initialStatus,
+        lastArticleAt: publishedAt,
+        articleCount: 1,
+      }),
     });
 
     const candidacyTokens = buildCandidacyFromArticle(
@@ -2345,6 +2846,11 @@ export const attachArticleToEvent = internalMutation({
         embedding: nextEmbedding,
         version,
         status: nextStatus,
+        ...buildEventEmbeddingFilterFields({
+          status: nextStatus,
+          lastArticleAt: nextLastArticleAt,
+          articleCount: nextArticleCount,
+        }),
       });
     } else {
       await ctx.db.insert("eventEmbeddings", {
@@ -2352,6 +2858,11 @@ export const attachArticleToEvent = internalMutation({
         embedding: nextEmbedding,
         version,
         status: nextStatus,
+        ...buildEventEmbeddingFilterFields({
+          status: nextStatus,
+          lastArticleAt: nextLastArticleAt,
+          articleCount: nextArticleCount,
+        }),
       });
     }
 
@@ -3795,6 +4306,11 @@ export const mergeEvents = internalMutation({
         embedding: mergedEmbedding,
         version,
         status: mergedStatus,
+        ...buildEventEmbeddingFilterFields({
+          status: mergedStatus,
+          lastArticleAt: mergedLastArticleAt,
+          articleCount: mergedArticleCount,
+        }),
       });
     } else {
       await ctx.db.insert("eventEmbeddings", {
@@ -3802,6 +4318,11 @@ export const mergeEvents = internalMutation({
         embedding: mergedEmbedding,
         version,
         status: mergedStatus,
+        ...buildEventEmbeddingFilterFields({
+          status: mergedStatus,
+          lastArticleAt: mergedLastArticleAt,
+          articleCount: mergedArticleCount,
+        }),
       });
     }
 
@@ -3909,22 +4430,32 @@ export const mergeNearDuplicateEvents = internalAction({
       return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
     }
 
-    try {
-      const candidateFetchStart = Date.now();
-      const recentCandidatesRaw = await ctx.runQuery(
-        internal.clustering.getRecentClusterCandidates,
-        {
-          sinceTs: Date.now() - RECENT_EVENT_WINDOW_MS,
-          limit: MAX_CANDIDATE_EVENTS,
-        },
-      );
-      const candidateFetchMs = Date.now() - candidateFetchStart;
+    const startedAt = Date.now();
+    const metrics = createJobMetrics("mergeNearDuplicateEvents");
 
+    try {
+      const budget = await getVectorSearchBudgetState(ctx);
+      metrics.budgetAllowed = budget.allowed;
+      if (!budget.allowed) {
+        console.log(
+          `[clustering] mergeNearDuplicateEvents skipped: vector-search budget exhausted (${budget.usedQgb}/${budget.dailyLimitQgb} qGB)`,
+        );
+        await flushJobMetrics(ctx, metrics, startedAt);
+        return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
+      }
+
+      const jobState = await ctx.runQuery(internal.clustering.getClusteringJobState, {
+        jobName: "mergeNearDuplicateEvents",
+      });
+      const sinceTs = jobState?.lastProcessedAt ?? 0;
+
+      const candidateFetchStart = Date.now();
       const mergeConfig = await ctx.runQuery(internal.config.getBatch, {
         keys: [
           "merge_min_similarity",
           "merge_min_title_jaccard",
           "merge_max_time_delta_hours",
+          "merge_vector_search_limit",
         ],
       });
 
@@ -3948,47 +4479,105 @@ export const mergeNearDuplicateEvents = internalAction({
           72,
         ),
       };
+      const vectorSearchLimit = safeInteger(
+        mergeConfig.merge_vector_search_limit,
+        MERGE_VECTOR_SEARCH_LIMIT,
+        1,
+        60,
+      );
+      const recentSinceTs = Date.now() - settings.maxTimeDeltaHours * 60 * 60 * 1000;
+      const changedCandidateRows = await ctx.runQuery(
+        internal.clustering.getChangedClusterCandidates,
+        {
+          sinceTs,
+          recentSinceTs,
+          limit: MAX_CANDIDATE_EVENTS,
+          singletonOnly: false,
+        },
+      );
+      markStageDuration(metrics, "candidateFetch", candidateFetchStart);
 
-      const candidates: ClusterCandidate[] = (
-        recentCandidatesRaw as ClusterCandidateQueryResult[]
-      ).map((candidate) => ({
-        ...candidate,
-        embeddingId: candidate.embeddingId,
-        lastArticleAt: candidate.lastArticleAt ?? candidate.firstPublishedAt,
-        sourceCount: candidate.sourceCount ?? candidate.sourceIds?.length ?? 0,
-        titleTokens: normalizeTitleTokens(candidate.title),
-        evidenceTokens: new Set(candidate.evidenceTokens ?? []),
-        factTokens: new Set(candidate.factTokens ?? []),
-        entityTokens: new Set(candidate.entityTokens ?? []),
-        topicSlugs: new Set(candidate.topicSlugs ?? []),
-        sourceIds: new Set(candidate.sourceIds ?? []),
-      }));
-
-      const neighborSearchStart = Date.now();
-      const candidatesByEmbeddingId = new Map<string, ClusterCandidate>();
-      for (const candidate of candidates) {
-        if (!candidate.embeddingId) continue;
-        candidatesByEmbeddingId.set(String(candidate.embeddingId), candidate);
+      if (changedCandidateRows.length === 0) {
+        await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
+          jobName: "mergeNearDuplicateEvents",
+          lastProcessedAt: jobState?.lastProcessedAt ?? sinceTs,
+          lastProcessedDayBucket:
+            jobState?.lastProcessedDayBucket ?? formatUtcDayBucket(Date.now()),
+          lastRunAt: Date.now(),
+          lastRunMetricsJson: JSON.stringify(metrics),
+        });
+        await flushJobMetrics(ctx, metrics, startedAt);
+        return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
       }
 
+      const seedCandidateResults = await ctx.runQuery(
+        internal.clustering.getClusterCandidatesByEventIds,
+        {
+          eventIds: changedCandidateRows.map((row) => row.eventId),
+        },
+      );
+      const seeds = (seedCandidateResults as ClusterCandidateQueryResult[]).map(
+        (candidate) => hydrateClusterCandidate(candidate),
+      );
+      metrics.mergeSeedEvents = seeds.length;
+
+      const neighborSearchStart = Date.now();
+      const dayBuckets = collectRecentDayBuckets(settings.maxTimeDeltaHours);
+      const mergeSearchBuckets = buildMergeSearchBuckets(dayBuckets);
+      const candidatesByEventId = new Map<string, ClusterCandidate>();
+      for (const candidate of seeds) {
+        candidatesByEventId.set(String(candidate.eventId), candidate);
+      }
       const pairKeys = new Set<string>();
       const candidatePairs: Array<[ClusterCandidate, ClusterCandidate]> = [];
 
-      for (const candidate of candidates) {
+      for (const candidate of seeds) {
         if (!candidate.embeddingId) continue;
+        metrics.vectorSearches++;
         const neighbors = await ctx.vectorSearch(
           "eventEmbeddings",
           "by_embedding",
           {
             vector: toEventEmbedding(candidate.embedding),
-            limit: MERGE_VECTOR_SEARCH_LIMIT,
+            limit: vectorSearchLimit,
             filter: (q) =>
-              q.or(q.eq("status", "published"), q.eq("status", "processing")),
+              mergeSearchBuckets.length <= 1
+                ? q.eq(
+                    "mergeSearchBucket",
+                    mergeSearchBuckets[0] ??
+                      `published::${MERGE_RECENT_BUCKET}::${formatUtcDayBucket(Date.now())}`,
+                  )
+                : q.or(
+                    ...mergeSearchBuckets.map((bucket) =>
+                      q.eq("mergeSearchBucket", bucket),
+                    ),
+                  ),
           },
         );
+        metrics.vectorMatchesReturned += neighbors.length;
+        if (neighbors.length === 0) continue;
 
-        for (const neighbor of neighbors) {
-          const match = candidatesByEmbeddingId.get(String(neighbor._id));
+        const hydratedResults = await ctx.runQuery(
+          internal.clustering.getClusterCandidatesByEmbeddingMatches,
+          {
+            embeddingMatches: neighbors.map((result) => ({
+              embeddingId: result._id,
+              similarity: result._score,
+            })),
+          },
+        );
+        metrics.vectorMatchesHydrated += hydratedResults.length;
+        metrics.vectorMatchesDiscardedPostFetch +=
+          neighbors.length - hydratedResults.length;
+
+        for (const result of hydratedResults as ClusterCandidateVectorResult[]) {
+          const matchKey = String(result.eventId);
+          let match = candidatesByEventId.get(matchKey);
+          if (!match) {
+            match = hydrateClusterCandidate(result);
+            candidatesByEventId.set(matchKey, match);
+          }
+          match.similarity = result.similarity;
           if (!match || match.eventId === candidate.eventId) continue;
           const key = buildEventPairKey(candidate.eventId, match.eventId);
           if (pairKeys.has(key)) continue;
@@ -3996,10 +4585,11 @@ export const mergeNearDuplicateEvents = internalAction({
           candidatePairs.push([candidate, match]);
         }
       }
-      const neighborSearchMs = Date.now() - neighborSearchStart;
+      markStageDuration(metrics, "neighborSearch", neighborSearchStart);
+      metrics.candidateCacheSize = candidatesByEventId.size;
 
       console.log(
-        `[clustering] Merge candidates: ${candidates.length} events, ${candidatePairs.length} pairs (fetchMs=${candidateFetchMs}, neighborMs=${neighborSearchMs})`,
+        `[clustering] Merge candidates: ${seeds.length} seeds, ${candidatePairs.length} pairs`,
       );
 
       const removedIds = new Set<string>();
@@ -4133,11 +4723,28 @@ export const mergeNearDuplicateEvents = internalAction({
         for (const topicSlug of remove.topicSlugs) {
           keep.topicSlugs.add(topicSlug);
         }
+        candidatesByEventId.set(String(keep.eventId), keep);
       }
+
+      metrics.vectorSearchesPerCandidateEvent =
+        seeds.length > 0 ? metrics.vectorSearches / seeds.length : 0;
 
       console.log(
         `[clustering] Merge pass complete: ${mergedPairs} merged, ${examinedPairs} pairs examined, ${skipped} skipped`,
       );
+
+      const lastProcessedAt = changedCandidateRows.reduce(
+        (max, row) => Math.max(max, row.updatedAt),
+        sinceTs,
+      );
+      await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
+        jobName: "mergeNearDuplicateEvents",
+        lastProcessedAt,
+        lastProcessedDayBucket: formatUtcDayBucket(Date.now()),
+        lastRunAt: Date.now(),
+        lastRunMetricsJson: JSON.stringify(metrics),
+      });
+      await flushJobMetrics(ctx, metrics, startedAt);
 
       return { mergedPairs, examinedPairs, skipped };
     } finally {
@@ -4186,11 +4793,30 @@ export const reclusterRecentSingletonEvents = internalAction({
       return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
     }
 
+    const startedAt = Date.now();
+    const metrics = createJobMetrics("reclusterRecentSingletonEvents");
+
     try {
+      const budget = await getVectorSearchBudgetState(ctx);
+      metrics.budgetAllowed = budget.allowed;
+      if (!budget.allowed) {
+        console.log(
+          `[clustering] reclusterRecentSingletonEvents skipped: vector-search budget exhausted (${budget.usedQgb}/${budget.dailyLimitQgb} qGB)`,
+        );
+        await flushJobMetrics(ctx, metrics, startedAt);
+        return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
+      }
+
+      const jobState = await ctx.runQuery(internal.clustering.getClusteringJobState, {
+        jobName: "reclusterRecentSingletonEvents",
+      });
+      const sinceTs = jobState?.lastProcessedAt ?? 0;
+
       const reclusterConfig = await ctx.runQuery(internal.config.getBatch, {
         keys: [
           "singleton_recluster_min_similarity",
           "singleton_recluster_window_hours",
+          "recluster_vector_search_limit",
         ],
       });
       const settings: ReclusterSettings = {
@@ -4207,59 +4833,108 @@ export const reclusterRecentSingletonEvents = internalAction({
           168,
         ),
       };
+      const vectorSearchLimit = safeInteger(
+        reclusterConfig.recluster_vector_search_limit,
+        RECLUSTER_VECTOR_SEARCH_LIMIT,
+        1,
+        60,
+      );
 
       const candidateFetchStart = Date.now();
-      const recentCandidatesRaw = await ctx.runQuery(
-        internal.clustering.getRecentClusterCandidates,
+      const changedCandidateRows = await ctx.runQuery(
+        internal.clustering.getChangedClusterCandidates,
         {
-          sinceTs: Date.now() - settings.windowHours * 60 * 60 * 1000,
+          sinceTs,
+          recentSinceTs: Date.now() - settings.windowHours * 60 * 60 * 1000,
           limit: MAX_CANDIDATE_EVENTS,
+          singletonOnly: true,
         },
       );
-      const candidateFetchMs = Date.now() - candidateFetchStart;
-      const candidates: ClusterCandidate[] = (
-        recentCandidatesRaw as ClusterCandidateQueryResult[]
-      )
-        .filter((candidate) => candidate.articleCount <= 2)
-        .map((candidate) => ({
-          ...candidate,
-          embeddingId: candidate.embeddingId,
-          lastArticleAt: candidate.lastArticleAt ?? candidate.firstPublishedAt,
-          sourceCount:
-            candidate.sourceCount ?? candidate.sourceIds?.length ?? 0,
-          titleTokens: normalizeTitleTokens(candidate.title),
-          evidenceTokens: new Set(candidate.evidenceTokens ?? []),
-          factTokens: new Set(candidate.factTokens ?? []),
-          entityTokens: new Set(candidate.entityTokens ?? []),
-          topicSlugs: new Set(candidate.topicSlugs ?? []),
-          sourceIds: new Set(candidate.sourceIds ?? []),
-        }));
+      markStageDuration(metrics, "candidateFetch", candidateFetchStart);
+
+      if (changedCandidateRows.length === 0) {
+        await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
+          jobName: "reclusterRecentSingletonEvents",
+          lastProcessedAt: jobState?.lastProcessedAt ?? sinceTs,
+          lastProcessedDayBucket:
+            jobState?.lastProcessedDayBucket ?? formatUtcDayBucket(Date.now()),
+          lastRunAt: Date.now(),
+          lastRunMetricsJson: JSON.stringify(metrics),
+        });
+        await flushJobMetrics(ctx, metrics, startedAt);
+        return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
+      }
+
+      const seedCandidateResults = await ctx.runQuery(
+        internal.clustering.getClusterCandidatesByEventIds,
+        {
+          eventIds: changedCandidateRows.map((row) => row.eventId),
+        },
+      );
+      const candidates = (seedCandidateResults as ClusterCandidateQueryResult[]).map(
+        (candidate) => hydrateClusterCandidate(candidate),
+      );
+      metrics.reclusterSeedEvents = candidates.length;
 
       const neighborSearchStart = Date.now();
-      const candidatesByEmbeddingId = new Map<string, ClusterCandidate>();
+      const candidatesByEventId = new Map<string, ClusterCandidate>();
       for (const candidate of candidates) {
         if (!candidate.embeddingId) continue;
-        candidatesByEmbeddingId.set(String(candidate.embeddingId), candidate);
+        candidatesByEventId.set(String(candidate.eventId), candidate);
       }
 
       const pairKeys = new Set<string>();
       const candidatePairs: Array<[ClusterCandidate, ClusterCandidate]> = [];
+      const dayBuckets = collectRecentDayBuckets(settings.windowHours);
+      const singletonSearchBuckets = buildSingletonSearchBuckets(dayBuckets);
 
       for (const candidate of candidates) {
         if (!candidate.embeddingId) continue;
+        metrics.vectorSearches++;
         const neighbors = await ctx.vectorSearch(
           "eventEmbeddings",
           "by_embedding",
           {
             vector: toEventEmbedding(candidate.embedding),
-            limit: RECLUSTER_VECTOR_SEARCH_LIMIT,
+            limit: vectorSearchLimit,
             filter: (q) =>
-              q.or(q.eq("status", "published"), q.eq("status", "processing")),
+              singletonSearchBuckets.length <= 1
+                ? q.eq(
+                    "singletonSearchBucket",
+                    singletonSearchBuckets[0] ??
+                      `published::${SINGLETON_BUCKET}::${formatUtcDayBucket(Date.now())}`,
+                  )
+                : q.or(
+                    ...singletonSearchBuckets.map((bucket) =>
+                      q.eq("singletonSearchBucket", bucket),
+                    ),
+                  ),
           },
         );
+        metrics.vectorMatchesReturned += neighbors.length;
+        if (neighbors.length === 0) continue;
 
-        for (const neighbor of neighbors) {
-          const match = candidatesByEmbeddingId.get(String(neighbor._id));
+        const hydratedResults = await ctx.runQuery(
+          internal.clustering.getClusterCandidatesByEmbeddingMatches,
+          {
+            embeddingMatches: neighbors.map((result) => ({
+              embeddingId: result._id,
+              similarity: result._score,
+            })),
+          },
+        );
+        metrics.vectorMatchesHydrated += hydratedResults.length;
+        metrics.vectorMatchesDiscardedPostFetch +=
+          neighbors.length - hydratedResults.length;
+
+        for (const result of hydratedResults as ClusterCandidateVectorResult[]) {
+          const matchKey = String(result.eventId);
+          let match = candidatesByEventId.get(matchKey);
+          if (!match) {
+            match = hydrateClusterCandidate(result);
+            candidatesByEventId.set(matchKey, match);
+          }
+          match.similarity = result.similarity;
           if (!match || match.eventId === candidate.eventId) continue;
           const key = buildEventPairKey(candidate.eventId, match.eventId);
           if (pairKeys.has(key)) continue;
@@ -4267,10 +4942,11 @@ export const reclusterRecentSingletonEvents = internalAction({
           candidatePairs.push([candidate, match]);
         }
       }
-      const neighborSearchMs = Date.now() - neighborSearchStart;
+      markStageDuration(metrics, "neighborSearch", neighborSearchStart);
+      metrics.candidateCacheSize = candidatesByEventId.size;
 
       console.log(
-        `[clustering] Recluster candidates: ${candidates.length} events, ${candidatePairs.length} pairs (fetchMs=${candidateFetchMs}, neighborMs=${neighborSearchMs})`,
+        `[clustering] Recluster candidates: ${candidates.length} seeds, ${candidatePairs.length} pairs`,
       );
 
       const removedIds = new Set<string>();
@@ -4397,11 +5073,28 @@ export const reclusterRecentSingletonEvents = internalAction({
         for (const topicSlug of remove.topicSlugs) {
           keep.topicSlugs.add(topicSlug);
         }
+        candidatesByEventId.set(String(keep.eventId), keep);
       }
+
+      metrics.vectorSearchesPerCandidateEvent =
+        candidates.length > 0 ? metrics.vectorSearches / candidates.length : 0;
 
       console.log(
         `[clustering] Singleton recluster complete: ${mergedPairs} merged, ${examinedPairs} pairs examined, ${skipped} skipped`,
       );
+
+      const lastProcessedAt = changedCandidateRows.reduce(
+        (max, row) => Math.max(max, row.updatedAt),
+        sinceTs,
+      );
+      await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
+        jobName: "reclusterRecentSingletonEvents",
+        lastProcessedAt,
+        lastProcessedDayBucket: formatUtcDayBucket(Date.now()),
+        lastRunAt: Date.now(),
+        lastRunMetricsJson: JSON.stringify(metrics),
+      });
+      await flushJobMetrics(ctx, metrics, startedAt);
 
       return { mergedPairs, examinedPairs, skipped };
     } finally {
@@ -4456,6 +5149,9 @@ export const clusterEnrichedArticles = internalAction({
       };
     }
 
+    const startedAt = Date.now();
+    const metrics = createJobMetrics("clusterEnrichedArticles");
+
     try {
       const hasEnriched = await ctx.runQuery(
         internal.clustering.hasEnrichedArticlesForClustering,
@@ -4505,6 +5201,7 @@ export const clusterEnrichedArticles = internalAction({
           "topic_inference_min_score",
           "topic_inference_confidence_ratio",
           "topic_inference_max_topics",
+          "clustering_vector_search_limit",
         ],
       });
 
@@ -4586,27 +5283,70 @@ export const clusterEnrichedArticles = internalAction({
           5,
         ),
       };
+      const vectorSearchLimit = safeInteger(
+        clusteringConfig.clustering_vector_search_limit,
+        VECTOR_SEARCH_LIMIT,
+        1,
+        80,
+      );
+
+      const budget = await getVectorSearchBudgetState(ctx);
+      metrics.budgetAllowed = budget.allowed;
+      metrics.batchArticles = articles.length;
+      const useFallbackMode = !budget.allowed && budget.fallbackModeEnabled;
+      metrics.usedFallbackMode = useFallbackMode;
+
+      if (!budget.allowed && !budget.fallbackModeEnabled) {
+        console.log(
+          `[clustering] clusterEnrichedArticles skipped: vector-search budget exhausted (${budget.usedQgb}/${budget.dailyLimitQgb} qGB)`,
+        );
+        await flushJobMetrics(ctx, metrics, startedAt);
+        return {
+          clusteredIntoExisting: 0,
+          createdEvents: 0,
+          skipped: 0,
+        };
+      }
 
       const candidateSearchStart = Date.now();
-      let vectorSearches = 0;
-      let vectorMatches = 0;
       const candidateCache = new Map<string, ClusterCandidate>();
+      let batchStateVersion = 0;
+      const searchedArticleIds = new Set<string>();
+      const articleBatchVersionSeen = new Map<string, number>();
+      if (useFallbackMode) {
+        const fallbackCandidates = await ctx.runQuery(
+          internal.clustering.getRecentClusterCandidates,
+          {
+            sinceTs: Date.now() - RECENT_EVENT_WINDOW_MS,
+            limit: MAX_CANDIDATE_EVENTS,
+          },
+        );
+        for (const candidate of fallbackCandidates as ClusterCandidateQueryResult[]) {
+          candidateCache.set(
+            String(candidate.eventId),
+            hydrateClusterCandidate(candidate),
+          );
+        }
+        metrics.candidateCacheSize = candidateCache.size;
+      }
       const loadCandidatesForEmbedding = async (
+        articleId: Id<"articles">,
         embedding: number[],
       ): Promise<ClusterCandidate[]> => {
-        vectorSearches++;
+        searchedArticleIds.add(String(articleId));
+        metrics.vectorSearches++;
         const vectorResults = await ctx.vectorSearch(
           "eventEmbeddings",
           "by_embedding",
           {
             vector: toEventEmbedding(embedding),
-            limit: VECTOR_SEARCH_LIMIT,
+            limit: vectorSearchLimit,
             filter: (q) =>
               q.or(q.eq("status", "published"), q.eq("status", "processing")),
           },
         );
 
-        vectorMatches += vectorResults.length;
+        metrics.vectorMatchesReturned += vectorResults.length;
 
         if (vectorResults.length === 0) return [];
 
@@ -4619,23 +5359,16 @@ export const clusterEnrichedArticles = internalAction({
             })),
           },
         );
+        metrics.vectorMatchesHydrated += vectorCandidates.length;
+        metrics.vectorMatchesDiscardedPostFetch +=
+          vectorResults.length - vectorCandidates.length;
 
         const matches: ClusterCandidate[] = [];
         for (const result of vectorCandidates as ClusterCandidateVectorResult[]) {
           const key = String(result.eventId);
           let candidate = candidateCache.get(key);
           if (!candidate) {
-            candidate = {
-              ...result,
-              lastArticleAt: result.lastArticleAt ?? result.firstPublishedAt,
-              sourceCount: result.sourceCount ?? result.sourceIds?.length ?? 0,
-              titleTokens: normalizeTitleTokens(result.title),
-              evidenceTokens: new Set(result.evidenceTokens ?? []),
-              factTokens: new Set(result.factTokens ?? []),
-              entityTokens: new Set(result.entityTokens ?? []),
-              topicSlugs: new Set(result.topicSlugs ?? []),
-              sourceIds: new Set(result.sourceIds ?? []),
-            };
+            candidate = hydrateClusterCandidate(result);
             candidateCache.set(key, candidate);
           }
           candidate.similarity = result.similarity;
@@ -4661,6 +5394,8 @@ export const clusterEnrichedArticles = internalAction({
           publishedAt: number;
           id: string;
         };
+        lastBatchStateVersionSeen: number;
+        needsFreshVectorSearch: boolean;
       };
       const pendingArticles: PendingArticle[] = [];
 
@@ -4698,33 +5433,31 @@ export const clusterEnrichedArticles = internalAction({
         for (const topicSlug of topicSlugs) {
           candidate.topicSlugs.add(topicSlug);
         }
+        batchStateVersion++;
       };
 
-      const tryAttach = async (
+      const resolveArticle = (
+        article: (typeof articles)[number],
+        topicSlugs: string[],
+      ) => ({
+        articleId: article._id,
+        title: article.title,
+        rssSnippet: article.rssSnippet,
+        summary: article.summary,
+        atomicFacts: article.atomicFacts,
+        entities: article.entities,
+        topicSlugs,
+        extractionQuality: article.extractionQuality,
+        publishedAt: article.publishedAt,
+        embedding: article.embedding,
+        sourceId: article.sourceId,
+      });
+
+      const attachToMatch = async (
         payload: AttachPayload,
-      ): Promise<"attached" | "unmatched" | "skipped"> => {
+        match: ClusterCandidate,
+      ): Promise<"attached" | "skipped"> => {
         const { article, paddedEmbedding, topicSlugs } = payload;
-        const candidates = await loadCandidatesForEmbedding(paddedEmbedding);
-        const match = findBestCandidate(
-          {
-            articleId: article._id,
-            title: article.title,
-            rssSnippet: article.rssSnippet,
-            summary: article.summary,
-            atomicFacts: article.atomicFacts,
-            entities: article.entities,
-            topicSlugs,
-            extractionQuality: article.extractionQuality,
-            publishedAt: article.publishedAt,
-            embedding: article.embedding,
-            sourceId: article.sourceId,
-          },
-          candidates,
-          settings,
-        );
-
-        if (!match) return "unmatched";
-
         const result = await ctx.runMutation(
           internal.clustering.attachArticleToEvent,
           {
@@ -4754,6 +5487,36 @@ export const clusterEnrichedArticles = internalAction({
         return "attached";
       };
 
+      const tryBatchLocalAttach = async (
+        payload: AttachPayload,
+        heuristicOnly: boolean,
+      ): Promise<"attached" | "unmatched" | "skipped"> => {
+        const { article, topicSlugs } = payload;
+        const candidatePool = Array.from(candidateCache.values());
+        if (candidatePool.length === 0) return "unmatched";
+
+        const articleContext = resolveArticle(article, topicSlugs);
+        const match = heuristicOnly
+          ? findHeuristicCandidate(articleContext, candidatePool)
+          : findBatchLocalCandidate(articleContext, candidatePool, settings);
+        if (!match) return "unmatched";
+        return await attachToMatch(payload, match);
+      };
+
+      const tryVectorAttach = async (
+        payload: AttachPayload,
+      ): Promise<"attached" | "unmatched" | "skipped"> => {
+        const { article, paddedEmbedding, topicSlugs } = payload;
+        const candidates = await loadCandidatesForEmbedding(article._id, paddedEmbedding);
+        const match = findBestCandidate(
+          resolveArticle(article, topicSlugs),
+          candidates,
+          settings,
+        );
+        if (!match) return "unmatched";
+        return await attachToMatch(payload, match);
+      };
+
       for (const article of articles) {
         const paddedEmbedding = toEventEmbedding(article.embedding);
         const topicSlugs = inferTopicSlugs(
@@ -4773,7 +5536,9 @@ export const clusterEnrichedArticles = internalAction({
           paddedEmbedding,
           topicSlugs,
         };
-        const outcome = await tryAttach(payload);
+        const outcome = useFallbackMode
+          ? await tryBatchLocalAttach(payload, true)
+          : await tryVectorAttach(payload);
         if (outcome === "unmatched") {
           const entityTokenCount = extractEntityTokens(
             article.title,
@@ -4791,7 +5556,10 @@ export const clusterEnrichedArticles = internalAction({
               publishedAt: article.publishedAt,
               id: String(article._id),
             },
+            lastBatchStateVersionSeen: batchStateVersion,
+            needsFreshVectorSearch: false,
           });
+          articleBatchVersionSeen.set(String(article._id), batchStateVersion);
         }
       }
 
@@ -4805,7 +5573,25 @@ export const clusterEnrichedArticles = internalAction({
       );
 
       for (const pending of pendingArticles) {
-        const outcome = await tryAttach(pending);
+        let outcome = await tryBatchLocalAttach(pending, useFallbackMode);
+        if (outcome !== "unmatched") continue;
+
+        const pendingKey = String(pending.article._id);
+        const lastSeenVersion =
+          articleBatchVersionSeen.get(pendingKey) ??
+          pending.lastBatchStateVersionSeen;
+        const batchChanged = batchStateVersion > lastSeenVersion;
+        if (!useFallbackMode && batchChanged) {
+          pending.needsFreshVectorSearch = true;
+        }
+        articleBatchVersionSeen.set(pendingKey, batchStateVersion);
+
+        if (!useFallbackMode && pending.needsFreshVectorSearch) {
+          outcome = await tryVectorAttach(pending);
+          pending.needsFreshVectorSearch = false;
+          pending.lastBatchStateVersionSeen = batchStateVersion;
+        }
+
         if (outcome !== "unmatched") continue;
 
         const { article, paddedEmbedding, topicSlugs } = pending;
@@ -4876,15 +5662,20 @@ export const clusterEnrichedArticles = internalAction({
           creationTime: Date.now(),
         };
         candidateCache.set(String(result.eventId), newCandidate);
+        batchStateVersion++;
       }
 
-      const candidateSearchMs = Date.now() - candidateSearchStart;
+      markStageDuration(metrics, "candidateSearch", candidateSearchStart);
+      metrics.candidateCacheSize = candidateCache.size;
+      metrics.vectorSearchesPerArticle =
+        articles.length > 0 ? metrics.vectorSearches / articles.length : 0;
       console.log(
-        `[clustering] Candidate search: ${vectorSearches} queries, ${vectorMatches} matches, ${candidateCache.size} unique (ms=${candidateSearchMs})`,
+        `[clustering] Candidate search: ${metrics.vectorSearches} queries, ${metrics.vectorMatchesReturned} matches, ${candidateCache.size} unique`,
       );
       console.log(
         `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, publishMin=${publishSettings.minArticles} articles/${publishSettings.minSources} sources, topicMinScore=${topicSettings.minScore})`,
       );
+      await flushJobMetrics(ctx, metrics, startedAt);
 
       return {
         clusteredIntoExisting,

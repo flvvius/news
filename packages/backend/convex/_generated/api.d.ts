@@ -47,6 +47,7 @@ import type * as summarizationNode from "../summarizationNode.js";
 import type * as topicCatalog from "../topicCatalog.js";
 import type * as topics from "../topics.js";
 import type * as user from "../user.js";
+import type * as vectorSearchBudget from "../vectorSearchBudget.js";
 import type * as waitlist from "../waitlist.js";
 
 import type {
@@ -95,6 +96,7 @@ declare const fullApi: ApiFromModules<{
   topicCatalog: typeof topicCatalog;
   topics: typeof topics;
   user: typeof user;
+  vectorSearchBudget: typeof vectorSearchBudget;
   waitlist: typeof waitlist;
 }>;
 

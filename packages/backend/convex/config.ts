@@ -737,6 +737,42 @@ export const seedDefaults = internalMutation({
         description:
           "How many hours back the singleton recluster pass should inspect recent small events.",
       },
+      {
+        key: "vector_search_daily_budget_qgb",
+        value: 0.25,
+        description:
+          "Daily Convex vector-search read budget in qGB. Clustering workers use this to hard-stop expensive semantic search when spend spikes.",
+      },
+      {
+        key: "vector_search_budget_enabled",
+        value: true,
+        description:
+          "When true, clustering workers enforce the daily vector-search qGB budget before semantic matching work.",
+      },
+      {
+        key: "vector_search_fallback_mode_enabled",
+        value: true,
+        description:
+          "When true, clusterEnrichedArticles falls back to heuristic-only batch-local matching after the vector-search budget is exhausted.",
+      },
+      {
+        key: "clustering_vector_search_limit",
+        value: 40,
+        description:
+          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
+      },
+      {
+        key: "merge_vector_search_limit",
+        value: 24,
+        description:
+          "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
+      },
+      {
+        key: "recluster_vector_search_limit",
+        value: 24,
+        description:
+          "Top-K limit used for event-to-event vector search during singleton recluster passes.",
+      },
     ];
 
     const forcedDefaultKeys = new Set([
@@ -753,6 +789,12 @@ export const seedDefaults = internalMutation({
       "merge_min_title_jaccard",
       "merge_max_time_delta_hours",
       "singleton_recluster_min_similarity",
+      "vector_search_daily_budget_qgb",
+      "vector_search_budget_enabled",
+      "vector_search_fallback_mode_enabled",
+      "clustering_vector_search_limit",
+      "merge_vector_search_limit",
+      "recluster_vector_search_limit",
     ]);
 
     let created = 0;
