@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { SITE } from "@/lib/seo";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -15,12 +16,38 @@ import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
 function getPasswordResetRedirectURL() {
   if (typeof window === "undefined") {
-    return `${redirectFallbackOrigin}/reset-password`;
+    return `${SITE.url}/reset-password`;
   }
   return `${window.location.origin}/reset-password`;
 }
 
-const redirectFallbackOrigin = "http://localhost:3001";
+function getLocalizedSignInError(
+  t: ReturnType<typeof useT>,
+  error: {
+    error?: {
+      code?: string;
+      message?: string;
+      statusText?: string;
+    };
+  },
+) {
+  const code = error.error?.code?.trim().toLowerCase();
+  const message = error.error?.message?.trim().toLowerCase();
+
+  if (
+    code === "invalid_credentials" ||
+    message === "invalid credentials" ||
+    message === "invalid email or password"
+  ) {
+    return t("auth.invalidCredentials");
+  }
+
+  return (
+    error.error?.message ??
+    error.error?.statusText ??
+    t("auth.signInError")
+  );
+}
 
 export default function SignInForm({
   onSwitchToSignUp,
@@ -68,11 +95,7 @@ export default function SignInForm({
             toast.success(t("auth.signInSuccess"));
           },
           onError: (error) => {
-            toast.error(
-              error.error?.message ??
-                error.error?.statusText ??
-                t("auth.signInError"),
-            );
+            toast.error(getLocalizedSignInError(t, error));
           },
         }
       );
@@ -245,7 +268,7 @@ export default function SignInForm({
                 {state.isSubmitting ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    {t("auth.signIn")}...
+                    {t("auth.signingIn")}
                   </>
                 ) : (
                   resolvedSubmitLabel

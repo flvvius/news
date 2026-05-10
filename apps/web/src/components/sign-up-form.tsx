@@ -197,7 +197,7 @@ export default function SignUpForm({
                 {state.isSubmitting ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    {t("auth.createAccount")}...
+                    {t("auth.creatingAccount")}
                   </>
                 ) : (
                   resolvedSubmitLabel

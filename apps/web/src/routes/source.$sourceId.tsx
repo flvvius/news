@@ -12,6 +12,7 @@ import BiasIndicator from "@/components/bias-indicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { SITE } from "@/lib/seo";
@@ -44,21 +45,15 @@ export const Route = createFileRoute("/source/$sourceId")({
     }
   },
   head: ({ loaderData, params, matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
-    const sourceName = loaderData?.source.name ?? getString(locale, "source.metaTitle");
-    const title = loaderData?.source.name
-      ? `${loaderData.source.name} — ${SITE.name}`
+    const locale = getLocaleFromMatches(matches);
+    const sourceName = loaderData?.source?.name;
+    const title = sourceName
+      ? `${sourceName} — ${SITE.name}`
       : getString(locale, "source.metaTitle");
-    const description = loaderData
+    const description = loaderData?.source
       ? getString(locale, "source.metaDescriptionLoaded").replace(
           "{name}",
-          sourceName,
+          sourceName ?? getString(locale, "source.metaTitle"),
         )
       : getString(locale, "source.metaDescription");
 
@@ -217,7 +212,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                       </span>
                       <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
                         {t("source.reliability").replace(
-                          "{count}",
+                          "{score}",
                           String(source.reliabilityScore),
                         )}
                       </span>
@@ -322,12 +317,12 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   {typeof source.rollingBiasMean === "number" && (
                     <p className="text-sm text-muted-foreground">
                       {t("source.mean").replace(
-                        "{count}",
+                        "{value}",
                         source.rollingBiasMean.toFixed(1),
                       )}
                       {typeof source.rollingBiasStddev === "number"
                         ? ` · ${t("source.stddev").replace(
-                            "{count}",
+                            "{value}",
                             source.rollingBiasStddev.toFixed(1),
                           )}`
                         : ""}

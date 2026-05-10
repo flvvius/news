@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, Newspaper, Bookmark, LayoutDashboard, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LanguagePicker } from "@/components/LanguagePicker";
+import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { cn } from "@/lib/utils";
 import {
   Sheet,
   SheetContent,
@@ -19,14 +22,20 @@ const links = [
 
 export default function Header() {
   const [open, setOpen] = useState(false);
+  const isVisible = useScrollVisibility();
   const t = useT();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   return (
-    <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-50 border-b border-border bg-background/88 backdrop-blur-xl transition-transform duration-300 ease-out",
+        isVisible ? "translate-y-0" : "-translate-y-full",
+      )}
+    >
       <div className="container mx-auto max-w-6xl">
-        <div className="flex items-center justify-between px-4 h-16">
+        <div className="flex h-16 items-center justify-between px-4">
           {/* Logo */}
           <Link to="/feed" className="flex items-center gap-2 group">
             <div className="relative flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground font-bold text-lg transition-transform group-hover:scale-105">
@@ -61,6 +70,10 @@ export default function Header() {
               );
             })}
           </nav>
+
+          <div className="hidden md:flex items-center">
+            <LanguagePicker compact />
+          </div>
 
           {/* Mobile burger */}
           <Sheet open={open} onOpenChange={setOpen}>
@@ -110,6 +123,9 @@ export default function Header() {
                     );
                   })}
                 </nav>
+                <div className="mt-auto border-t border-border p-4">
+                  <LanguagePicker compact className="justify-center" />
+                </div>
               </div>
             </SheetContent>
           </Sheet>

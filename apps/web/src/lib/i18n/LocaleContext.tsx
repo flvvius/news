@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { STRINGS, type Locale, type StringKey } from "./strings";
+import { getString, type Locale, type StringKey } from "./strings";
 
 const LocaleContext = createContext<Locale>("en");
 
@@ -23,6 +23,6 @@ export function useT() {
   const locale = useLocale();
 
   return (key: StringKey, fallback?: string): string => {
-    return STRINGS[locale][key] ?? STRINGS.en[key] ?? fallback ?? key;
+    return getString(locale, key, fallback);
   };
 }

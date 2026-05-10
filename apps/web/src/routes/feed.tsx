@@ -38,6 +38,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useIsMobile } from "@/components/ui/use-mobile";
+import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
@@ -45,13 +47,7 @@ import { SITE } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "feed.meta.title");
     const description = getString(locale, "feed.meta.description");
 
@@ -252,6 +248,7 @@ function FeedComponent() {
 
 function FeedContent() {
   const t = useT();
+  const isMobile = useIsMobile();
   const { isAuthenticated } = useConvexAuth();
   const topics = useQuery(api.topics.getTopics);
   const currentUser = useQuery(
@@ -277,11 +274,16 @@ function FeedContent() {
   const [feedSort, setFeedSort] = useState<"recent" | "trending">("trending");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const isSearching = debouncedSearch.length >= 2;
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const controlsRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const isLoadingMoreRef = useRef(false);
+  const areControlsVisible = useScrollVisibility();
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const hiddenControlsOffset = controlsHeight + (isMobile ? 12 : 80);
 
   useEffect(() => {
     try {
@@ -332,6 +334,45 @@ function FeedContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    const element = controlsRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateHeight = () => {
+      const nextHeight = Math.round(element.getBoundingClientRect().height);
+      setControlsHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateHeight);
+      return () => {
+        window.removeEventListener("resize", updateHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    isSearchFocused,
+    recentSearches.length,
+    searchInput.length,
+    selectedTopic,
+    feedSort,
+    isSearching,
+  ]);
+
   const {
     results: events,
     status,
@@ -343,7 +384,6 @@ function FeedContent() {
       : { topicId: selectedTopic, sort: feedSort },
     { initialNumItems: pageSize },
   );
-  const isSearching = debouncedSearch.length >= 2;
   const searchResults = useQuery(
     api.events.searchPublishedEvents,
     isSearching
@@ -356,6 +396,7 @@ function FeedContent() {
   );
   const canLoadMore = !isSearching && status === "CanLoadMore";
   const isLoadingMore = !isSearching && status === "LoadingMore";
+  const loadMoreRef = useRef(loadMore);
 
   const preferredTopicIds = useMemo(() => {
     if (!topics || !currentUser?.privateContext?.interests?.length) {
@@ -389,6 +430,10 @@ function FeedContent() {
   );
 
   useEffect(() => {
+    loadMoreRef.current = loadMore;
+  }, [loadMore]);
+
+  useEffect(() => {
     if (status !== "LoadingMore") {
       isLoadingMoreRef.current = false;
     }
@@ -412,7 +457,7 @@ function FeedContent() {
         }
 
         isLoadingMoreRef.current = true;
-        loadMore(pageSize);
+        loadMoreRef.current(pageSize);
       },
       {
         rootMargin: "1200px 0px",
@@ -422,7 +467,7 @@ function FeedContent() {
     observer.observe(target);
 
     return () => observer.disconnect();
-  }, [canLoadMore, loadMore, pageSize]);
+  }, [canLoadMore, pageSize]);
 
   useEffect(() => {
     if (
@@ -477,123 +522,143 @@ function FeedContent() {
     <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <div className="flex flex-col gap-6 sm:gap-8">
-          <header className="overflow-hidden rounded-[1.35rem] border border-border/70 bg-card/80 shadow-sm sm:rounded-[1.6rem]">
-            <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-3 sm:px-4 sm:py-5">
-              <div className="flex flex-col gap-2.5 sm:gap-3">
-                <div className="flex flex-col gap-3">
-                  <div className="relative flex-1">
-                    <Input
-                      ref={searchInputRef}
-                      type="search"
-                      value={searchInput}
-                      onChange={(event) => setSearchInput(event.target.value)}
-                      onFocus={() => setIsSearchFocused(true)}
-                      onBlur={() => {
-                        window.setTimeout(() => setIsSearchFocused(false), 100);
-                      }}
-                      placeholder={t("feed.search.placeholder")}
-                      className="h-10 rounded-full border-border/80 bg-background/75 pr-11 text-base sm:h-11 sm:pr-12"
-                      aria-label={t("feed.search.label")}
-                    />
-                    {searchInput.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1 size-8 rounded-full sm:size-9"
-                        onClick={() => {
-                          setSearchInput("");
-                          setDebouncedSearch("");
-                        }}
-                        aria-label={t("feed.search.clear")}
-                      >
-                        <XIcon className="size-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="border-t border-border/60 pt-2.5 sm:pt-3">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="min-w-0 w-full max-w-[13rem] sm:max-w-[15rem] md:max-w-[16rem]">
-                      <TopicFilter
-                        topics={topics}
-                        selectedTopic={selectedTopic}
-                        onSelect={setSelectedTopic}
-                      />
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: controlsHeight > 0 ? `${controlsHeight}px` : undefined }}
+          />
+
+          <div
+            className="fixed inset-x-0 top-0 z-40 px-4 pt-3 transition-transform duration-300 ease-out md:top-16 md:pt-4"
+            style={{
+              transform: areControlsVisible
+                ? "translateY(0)"
+                : `translateY(-${Math.max(hiddenControlsOffset, 0)}px)`,
+            }}
+          >
+            <div className="mx-auto max-w-4xl">
+              <header
+                ref={controlsRef}
+                className="overflow-hidden rounded-[1.35rem] border border-border/70 bg-card/88 shadow-lg shadow-foreground/5 backdrop-blur-xl sm:rounded-[1.6rem]"
+              >
+                <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-3 sm:px-4 sm:py-5">
+                  <div className="flex flex-col gap-2.5 sm:gap-3">
+                    <div className="flex flex-col gap-3">
+                      <div className="relative flex-1">
+                        <Input
+                          ref={searchInputRef}
+                          type="search"
+                          value={searchInput}
+                          onChange={(event) => setSearchInput(event.target.value)}
+                          onFocus={() => setIsSearchFocused(true)}
+                          onBlur={() => {
+                            window.setTimeout(() => setIsSearchFocused(false), 100);
+                          }}
+                          placeholder={t("feed.search.placeholder")}
+                          className="h-10 rounded-full border-border/80 bg-background/75 pr-11 text-base sm:h-11 sm:pr-12"
+                          aria-label={t("feed.search.label")}
+                        />
+                        {searchInput.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-1 top-1 size-8 rounded-full sm:size-9"
+                            onClick={() => {
+                              setSearchInput("");
+                              setDebouncedSearch("");
+                            }}
+                            aria-label={t("feed.search.clear")}
+                          >
+                            <XIcon className="size-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    {!isSearching && (
-                      <div className="inline-grid h-8 shrink-0 grid-cols-2 rounded-full bg-muted/70 p-1 sm:h-9">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className={cn(
-                            "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
-                            feedSort === "recent" &&
-                              "bg-background text-foreground shadow-sm",
-                          )}
-                          onClick={() => setFeedSort("recent")}
-                          aria-pressed={feedSort === "recent"}
-                        >
-                          <ClockIcon className="size-3.5" />
-                          {t("feed.sort.recent")}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className={cn(
-                            "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
-                            feedSort === "trending" &&
-                              "bg-background text-foreground shadow-sm",
-                          )}
-                          onClick={() => setFeedSort("trending")}
-                          aria-pressed={feedSort === "trending"}
-                        >
-                          <TrendingUpIcon className="size-3.5" />
-                          {t("feed.sort.trending")}
-                        </Button>
+                    <div className="border-t border-border/60 pt-2.5 sm:pt-3">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="min-w-0 w-full max-w-[13rem] sm:max-w-[15rem] md:max-w-[16rem]">
+                          <TopicFilter
+                            topics={topics}
+                            selectedTopic={selectedTopic}
+                            onSelect={setSelectedTopic}
+                          />
+                        </div>
+                        {!isSearching && (
+                          <div className="inline-grid h-8 shrink-0 grid-cols-2 rounded-full bg-muted/70 p-1 sm:h-9">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
+                                feedSort === "recent" &&
+                                  "bg-background text-foreground shadow-sm",
+                              )}
+                              onClick={() => setFeedSort("recent")}
+                              aria-pressed={feedSort === "recent"}
+                            >
+                              <ClockIcon className="size-3.5" />
+                              {t("feed.sort.recent")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
+                                feedSort === "trending" &&
+                                  "bg-background text-foreground shadow-sm",
+                              )}
+                              onClick={() => setFeedSort("trending")}
+                              aria-pressed={feedSort === "trending"}
+                            >
+                              <TrendingUpIcon className="size-3.5" />
+                              {t("feed.sort.trending")}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {shouldShowThresholdHint && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("feed.search.threshold")}
+                      </p>
+                    )}
+                    {shouldShowRecentSearches && (
+                      <div className="flex flex-wrap gap-2">
+                        {recentSearches.map((recentSearch) => (
+                          <Button
+                            key={recentSearch}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setSearchInput(recentSearch);
+                              setDebouncedSearch(recentSearch);
+                              searchInputRef.current?.focus();
+                            }}
+                          >
+                            {recentSearch}
+                          </Button>
+                        ))}
                       </div>
                     )}
+                    {isSearching && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("feed.search.indexed").replace(
+                          "{query}",
+                          debouncedSearch,
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
-                {shouldShowThresholdHint && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("feed.search.threshold")}
-                  </p>
-                )}
-                {shouldShowRecentSearches && (
-                  <div className="flex flex-wrap gap-2">
-                    {recentSearches.map((recentSearch) => (
-                      <Button
-                        key={recentSearch}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setSearchInput(recentSearch);
-                          setDebouncedSearch(recentSearch);
-                          searchInputRef.current?.focus();
-                        }}
-                      >
-                        {recentSearch}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                {isSearching && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("feed.search.indexed").replace(
-                      "{query}",
-                      debouncedSearch,
-                    )}
-                  </p>
-                )}
-              </div>
+              </header>
             </div>
-          </header>
+          </div>
 
           {!isAuthenticated && (
             <AuthPromptBanner

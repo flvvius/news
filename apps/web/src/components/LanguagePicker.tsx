@@ -6,6 +6,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import type { Locale } from "@/lib/i18n/strings";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 function validateLocale(input: unknown): Locale {
   if (input === "ro" || input === "en") {
@@ -27,7 +28,33 @@ const setLocaleCookie = createServerFn({ method: "POST" })
     return { locale: data };
   });
 
-export function LanguagePicker() {
+const LANGUAGE_OPTIONS: Array<{
+  locale: Locale;
+  flag: string;
+  shortLabel: string;
+  translationKey: "settings.language.ro" | "settings.language.en";
+}> = [
+  {
+    locale: "ro",
+    flag: "🇷🇴",
+    shortLabel: "RO",
+    translationKey: "settings.language.ro",
+  },
+  {
+    locale: "en",
+    flag: "🇺🇸",
+    shortLabel: "EN",
+    translationKey: "settings.language.en",
+  },
+];
+
+export function LanguagePicker({
+  compact = false,
+  className,
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
   const router = useRouter();
   const t = useT();
   const currentLocale = useLocale();
@@ -54,24 +81,30 @@ export function LanguagePicker() {
 
   return (
     <div
-      className="flex gap-2"
+      className={cn("flex gap-2", className)}
       role="group"
       aria-label={t("settings.language")}
     >
-      <Button
-        variant={currentLocale === "ro" ? "default" : "outline"}
-        size="sm"
-        onClick={() => void handleChange("ro")}
-      >
-        {t("settings.language.ro")}
-      </Button>
-      <Button
-        variant={currentLocale === "en" ? "default" : "outline"}
-        size="sm"
-        onClick={() => void handleChange("en")}
-      >
-        {t("settings.language.en")}
-      </Button>
+      {LANGUAGE_OPTIONS.map(({ locale, flag, shortLabel, translationKey }) => (
+        <Button
+          key={locale}
+          type="button"
+          variant={currentLocale === locale ? "default" : "outline"}
+          size="sm"
+          className={cn(
+            "min-w-0 gap-2",
+            compact ? "px-2.5" : "px-3",
+          )}
+          onClick={() => void handleChange(locale)}
+          aria-pressed={currentLocale === locale}
+          aria-label={t(translationKey)}
+        >
+          <span aria-hidden="true" className="text-base leading-none">
+            {flag}
+          </span>
+          <span className={cn(compact ? "text-xs" : "text-sm")}>{shortLabel}</span>
+        </Button>
+      ))}
     </div>
   );
 }

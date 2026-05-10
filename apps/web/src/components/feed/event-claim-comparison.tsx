@@ -49,6 +49,57 @@ const STATUS_ICONS: Record<ClaimStatus, typeof AlertTriangleIcon> = {
   exclusive_center: MinusCircleIcon,
 };
 
+function getStatusLabel(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreement");
+    case "divergence":
+      return t("claim.divergence");
+    case "framing":
+      return t("claim.framing");
+    case "exclusive_left":
+      return t("claim.leftExclusive");
+    case "exclusive_right":
+      return t("claim.rightExclusive");
+    case "exclusive_center":
+      return t("claim.centerExclusive");
+  }
+}
+
+function getStatusHeading(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreements");
+    case "divergence":
+      return t("claim.divergences");
+    case "framing":
+      return t("claim.framings");
+    case "exclusive_left":
+      return t("claim.leftExclusives");
+    case "exclusive_right":
+      return t("claim.rightExclusives");
+    case "exclusive_center":
+      return t("claim.centerExclusives");
+  }
+}
+
+function getStatusBody(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreementBody");
+    case "divergence":
+      return t("claim.divergenceBody");
+    case "framing":
+      return t("claim.framingBody");
+    case "exclusive_left":
+      return t("claim.leftExclusiveBody");
+    case "exclusive_right":
+      return t("claim.rightExclusiveBody");
+    case "exclusive_center":
+      return t("claim.centerExclusiveBody");
+  }
+}
+
 function formatLean(value: string) {
   return value
     .split("-")
@@ -176,17 +227,7 @@ function ClaimCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
               <Icon className="size-3.5" />
-              {status === "agreement"
-                ? t("claim.agreement")
-                : status === "divergence"
-                  ? t("claim.divergence")
-                  : status === "framing"
-                    ? t("claim.framing")
-                    : status === "exclusive_left"
-                      ? t("claim.leftExclusive")
-                      : status === "exclusive_right"
-                        ? t("claim.rightExclusive")
-                        : t("claim.centerExclusive")}
+              {getStatusLabel(t, status)}
             </span>
             <span className="text-xs text-muted-foreground">
               {claim.importance}/5 {t("claim.importance")}
@@ -311,7 +352,12 @@ export default function EventClaimComparison({
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 py-6 sm:px-6">
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span className="text-sm text-muted-foreground">
               {t("claim.loading")}
@@ -455,30 +501,10 @@ export default function EventClaimComparison({
                 <section key={status} className="space-y-4">
                   <div className="border-l-2 border-primary pl-3">
                     <h3 className="text-base font-semibold tracking-tight text-card-foreground">
-                      {status === "agreement"
-                        ? t("claim.agreements")
-                        : status === "divergence"
-                          ? t("claim.divergences")
-                          : status === "framing"
-                            ? t("claim.framings")
-                            : status === "exclusive_left"
-                              ? t("claim.leftExclusives")
-                              : status === "exclusive_right"
-                                ? t("claim.rightExclusives")
-                                : t("claim.centerExclusives")}
+                      {getStatusHeading(t, status)}
                     </h3>
                     <p className="text-sm text-muted-foreground max-w-[55ch]">
-                      {status === "agreement"
-                        ? t("claim.agreementBody")
-                        : status === "divergence"
-                          ? t("claim.divergenceBody")
-                          : status === "framing"
-                            ? t("claim.framingBody")
-                            : status === "exclusive_left"
-                              ? t("claim.leftExclusiveBody")
-                              : status === "exclusive_right"
-                                ? t("claim.rightExclusiveBody")
-                                : t("claim.centerExclusiveBody")}
+                      {getStatusBody(t, status)}
                     </p>
                   </div>
                   <div className="grid gap-4">

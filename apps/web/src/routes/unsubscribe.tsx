@@ -6,6 +6,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { z } from "zod";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import {
@@ -23,13 +24,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/unsubscribe")({
   validateSearch: searchSchema,
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
 
     return {
       meta: [
@@ -49,13 +44,14 @@ function UnsubscribePage() {
   const unsubscribe = useMutation({
     mutationFn: useConvexMutation(api.waitlist.unsubscribe),
   });
+  const { reset } = unsubscribe;
 
   useEffect(() => {
     if (email !== lastEmail) {
-      unsubscribe.reset();
+      reset();
       setLastEmail(email);
     }
-  }, [email, lastEmail]);
+  }, [email, lastEmail, reset]);
 
   useEffect(() => {
     if (
@@ -135,10 +131,7 @@ function UnsubscribePage() {
         {t("unsubscribe.successTitle")}
       </h1>
       <p className="text-muted-foreground mt-2 max-w-sm">
-        {t("unsubscribe.successBody").replace(
-          "{email}",
-          email ? email : "",
-        )}
+        {t("unsubscribe.successBody").replace("{email}", email)}
       </p>
       <div className="flex flex-col items-center gap-3 mt-8">
         <p className="text-sm text-muted-foreground">

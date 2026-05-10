@@ -5,14 +5,13 @@ import StreakActivityCalendar from "@/components/streak-activity-calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
+  useConvexAuth,
   useMutation as useConvexMutationHook,
   useQuery,
 } from "convex/react";
@@ -27,16 +26,27 @@ import {
   Sparkles,
 } from "lucide-react";
 
-function formatReadDuration(seconds?: number) {
+function formatReadDuration(
+  t: ReturnType<typeof useT>,
+  seconds?: number,
+) {
   if (!seconds || seconds <= 0) return null;
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) {
+    return t("read.duration.seconds").replace("{count}", String(seconds));
+  }
   const minutes = Math.round(seconds / 60);
-  return `${minutes} min`;
+  return t("read.duration.minutes").replace("{count}", String(minutes));
 }
 
-function formatScrollDepth(percentage?: number) {
+function formatScrollDepth(
+  t: ReturnType<typeof useT>,
+  percentage?: number,
+) {
   if (percentage === undefined) return null;
-  return `${Math.round(percentage * 100)}% depth`;
+  return t("scroll.depth").replace(
+    "{count}",
+    String(Math.round(percentage * 100)),
+  );
 }
 
 function getBiasSnapshotLabel(
@@ -62,13 +72,7 @@ function getNextStreakMilestone(streak: number) {
 
 export const Route = createFileRoute("/activitate")({
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
 
     return {
       meta: [
@@ -82,34 +86,44 @@ export const Route = createFileRoute("/activitate")({
 
 function RouteComponent() {
   const t = useT();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const currentUser = useQuery(
+    api.user.getCurrentUser,
+    isAuthenticated ? {} : "skip",
+  );
+
+  if (isLoading || (isAuthenticated && currentUser === undefined)) {
+    return (
+      <PageLoadingState
+        title={t("activity.checking.title")}
+        description={t("activity.checking.body")}
+        cardCount={2}
+      />
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <SignInPrompt
+        title={t("activity.empty.title")}
+        description={t("activity.empty.body")}
+        redirectTo="/activitate"
+      />
+    );
+  }
 
   return (
-    <>
-      <Authenticated>
-        <AuthorizedDashboard />
-      </Authenticated>
-      <Unauthenticated>
-        <SignInPrompt
-          title={t("activity.empty.title")}
-          description={t("activity.empty.body")}
-          redirectTo="/activitate"
-        />
-      </Unauthenticated>
-      <AuthLoading>
-        <PageLoadingState
-          title={t("activity.checking.title")}
-          description={t("activity.checking.body")}
-          cardCount={2}
-        />
-      </AuthLoading>
-    </>
+    <AuthorizedDashboard currentUser={currentUser} />
   );
 }
 
-function AuthorizedDashboard() {
+function AuthorizedDashboard({
+  currentUser,
+}: {
+  currentUser: NonNullable<ReturnType<typeof useQuery<typeof api.user.getCurrentUser>>>;
+}) {
   const locale = useLocale();
   const t = useT();
-  const currentUser = useQuery(api.user.getCurrentUser);
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
   const isAdmin = useQuery(api.user.isCurrentUserAdmin);
   const topicDiagnostics = useQuery(
@@ -129,17 +143,9 @@ function AuthorizedDashboard() {
     setMinScoreInput(String(currentSettings.minScore));
     setConfidenceRatioInput(String(currentSettings.confidenceRatio));
     setMaxTopicsInput(String(currentSettings.maxTopics));
-  }, [
-    currentSettings?.minScore,
-    currentSettings?.confidenceRatio,
-    currentSettings?.maxTopics,
-  ]);
+  }, [currentSettings]);
 
-  if (
-    currentUser === undefined ||
-    dashboardOverview === undefined ||
-    isAdmin === undefined
-  ) {
+  if (dashboardOverview === undefined || isAdmin === undefined) {
     return (
       <PageLoadingState
         title={t("activity.loading.title")}
@@ -427,7 +433,7 @@ function AuthorizedDashboard() {
                 </div>
                 <Button asChild variant="ghost" size="sm">
                   <Link to="/feed" className="gap-1">
-                    Feed
+                    {t("tabs.feed")}
                     <ChevronRight className="size-4" />
                   </Link>
                 </Button>
@@ -441,9 +447,11 @@ function AuthorizedDashboard() {
                   <div className="space-y-3">
                     {recentHistory.slice(0, 4).map((entry) => {
                       const durationLabel = formatReadDuration(
+                        t,
                         entry.metadata.timeSpentSeconds,
                       );
                       const scrollLabel = formatScrollDepth(
+                        t,
                         entry.metadata.scrollDepthPercentage,
                       );
                       const detailBits = [durationLabel, scrollLabel].filter(
@@ -710,7 +718,11 @@ function AuthorizedDashboard() {
                       {t("activity.admin.reset")}
                     </Button>
                     {configMessage && (
-                      <p className="text-sm text-muted-foreground">
+                      <p
+                        className="text-sm text-muted-foreground"
+                        role="status"
+                        aria-live="polite"
+                      >
                         {configMessage}
                       </p>
                     )}
@@ -740,13 +752,13 @@ function AuthorizedDashboard() {
                         <TopicChipList
                           label={t("activity.admin.attached")}
                           topics={event.attachedTopics.map(
-                            (t) => t.displayName,
+                            (topic) => topic.displayName,
                           )}
                         />
                         <TopicChipList
                           label={t("activity.admin.inferred")}
                           topics={event.inferredTopics.map(
-                            (t) => t.displayName,
+                            (topic) => topic.displayName,
                           )}
                         />
                       </div>

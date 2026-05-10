@@ -28,13 +28,26 @@ function isSupported(value: string | null | undefined): value is Locale {
 function parseAcceptLanguage(header: string | null | undefined): Locale | null {
   if (!header) return null;
 
-  const codes = header
+  const weightedCodes = header
     .split(",")
-    .map((part) => part.split(";")[0]?.trim().toLowerCase().split("-")[0])
-    .filter(Boolean);
+    .map((part) => {
+      const [languagePart, ...params] = part.split(";");
+      const code = languagePart?.trim().toLowerCase().split("-")[0];
+      const qParam = params
+        .map((param) => param.trim())
+        .find((param) => param.startsWith("q="));
+      const weight = Number.parseFloat(qParam?.slice(2) ?? "1");
 
-  for (const code of codes) {
-    if (code && SUPPORTED.includes(code as Locale)) {
+      return {
+        code,
+        weight: Number.isFinite(weight) ? weight : 1,
+      };
+    })
+    .filter((entry): entry is { code: string; weight: number } => Boolean(entry.code))
+    .sort((a, b) => b.weight - a.weight);
+
+  for (const { code } of weightedCodes) {
+    if (SUPPORTED.includes(code as Locale)) {
       return code as Locale;
     }
   }

@@ -1,10 +1,12 @@
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
+import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvexAuth } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useEffect, useRef } from "react";
 import { isAuthRedirectPath, type AuthRedirectPath } from "@/lib/auth-redirect";
 import { toast } from "sonner";
@@ -19,13 +21,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/dashboard")({
   validateSearch: searchSchema,
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
 
     return {
       meta: [
@@ -42,6 +38,10 @@ function DashboardAuthPage() {
   const navigate = useNavigate({ from: "/dashboard" });
   const search = Route.useSearch();
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const currentUser = useQuery(
+    api.user.getCurrentUser,
+    isAuthenticated ? {} : "skip",
+  );
   const redirectTo: AuthRedirectPath =
     search.redirect && isAuthRedirectPath(search.redirect)
       ? search.redirect
@@ -51,10 +51,10 @@ function DashboardAuthPage() {
   const showSignIn = search.mode !== "signup" || isVerified;
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (currentUser) {
       void navigate({ to: "/activitate", replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [currentUser, navigate]);
 
   const replaceDashboardSearch = (
     mode: "signin" | "signup",
@@ -81,7 +81,7 @@ function DashboardAuthPage() {
     void replaceDashboardSearch("signin");
   }, [isVerified, search.redirect, t, navigate]);
 
-  if (isLoading || isAuthenticated) {
+  if (isLoading || (isAuthenticated && currentUser === undefined)) {
     return (
       <PageLoadingState
         title={t("activity.checking.title")}

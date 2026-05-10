@@ -3,6 +3,7 @@ import { SITE } from "@/lib/seo";
 import { Footer } from "@/components/layout/Footer";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
 import { getString, type Locale } from "@/lib/i18n/strings";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -49,10 +50,7 @@ function getExistingAuthContext(
       ? rootContext.isAuthenticated
       : undefined;
   const locale =
-    "locale" in rootContext &&
-    (rootContext.locale === "ro" || rootContext.locale === "en")
-      ? rootContext.locale
-      : undefined;
+    "locale" in rootContext ? getLocaleFromMatches([{ context: rootContext }]) : undefined;
 
   return { token, isAuthenticated, locale };
 }
@@ -71,7 +69,7 @@ export interface RouterAppContext {
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: ({ matches }) => {
-    const locale = getExistingAuthContext(matches).locale ?? "en";
+    const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "seo.siteTitle");
     const description = getString(locale, "seo.siteDescription");
 
@@ -116,9 +114,43 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
     if (typeof document !== "undefined") {
       const existing = getExistingAuthContext(ctx.matches);
+      const searchLocale = new URLSearchParams(window.location.search).get("lang");
+      const cookieLocale =
+        document.cookie
+          .split("; ")
+          .find((entry) => entry.startsWith("bv_locale="))
+          ?.split("=")[1] ?? null;
+      const decodedCookieLocale = cookieLocale
+        ? decodeURIComponent(cookieLocale)
+        : null;
+
+      if (
+        existing.locale &&
+        (!searchLocale || searchLocale === existing.locale) &&
+        (!decodedCookieLocale || decodedCookieLocale === existing.locale)
+      ) {
+        return existing;
+      }
+
+      let userPreference: string | null = null;
+      if (existing.isAuthenticated) {
+        try {
+          const currentUser = await ctx.context.convexClient.query(
+            api.user.getCurrentUser,
+            {},
+          );
+          userPreference = currentUser?.profile?.preferredLanguage ?? null;
+        } catch (error) {
+          console.warn(
+            "Failed to resolve client-side user locale preference:",
+            error,
+          );
+        }
+      }
+
       const locale = await getServerLocale({
         data: {
-          userPreference: null,
+          userPreference,
         },
       });
 
@@ -139,7 +171,8 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
             {},
           );
         userPreference = currentUser?.profile?.preferredLanguage ?? null;
-      } catch {
+      } catch (error) {
+        console.warn("Failed to resolve current user locale preference:", error);
         userPreference = null;
       }
     }
@@ -168,7 +201,7 @@ function RootDocument() {
             <HeadContent />
           </head>
           <body className="min-h-svh flex flex-col antialiased">
-            <div className="hidden md:block">
+            <div className="hidden h-16 md:block">
               <Header />
             </div>
             <main className="flex-1 pb-20 md:pb-0">

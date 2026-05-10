@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -18,13 +20,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/reset-password")({
   validateSearch: searchSchema,
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
 
     return {
       meta: [{ title: getString(locale, "reset.metaTitle") }],
@@ -38,15 +34,19 @@ function ResetPasswordRoute() {
   const t = useT();
   const search = Route.useSearch();
   const token = search.token?.trim();
-  const resetPasswordSchema = z
-    .object({
-      password: z.string().min(8, t("reset.passwordMin")),
-      confirmPassword: z.string(),
-    })
-    .refine((value) => value.password === value.confirmPassword, {
-      message: t("reset.passwordMismatch"),
-      path: ["confirmPassword"],
-    });
+  const resetPasswordSchema = useMemo(
+    () =>
+      z
+        .object({
+          password: z.string().min(8, t("reset.passwordMin")),
+          confirmPassword: z.string(),
+        })
+        .refine((value) => value.password === value.confirmPassword, {
+          message: t("reset.passwordMismatch"),
+          path: ["confirmPassword"],
+        }),
+    [t],
+  );
 
   const errorMessage = !search.error
     ? null
@@ -150,7 +150,7 @@ function ResetPasswordRoute() {
                           className="h-11"
                         />
                         {field.state.meta.errors.map((error, index) => (
-                          <p key={index} className="text-destructive text-sm">
+                          <p key={index} className="text-destructive text-sm" role="alert">
                             {error?.message}
                           </p>
                         ))}
@@ -180,7 +180,7 @@ function ResetPasswordRoute() {
                           className="h-11"
                         />
                         {field.state.meta.errors.map((error, index) => (
-                          <p key={index} className="text-destructive text-sm">
+                          <p key={index} className="text-destructive text-sm" role="alert">
                             {error?.message}
                           </p>
                         ))}

@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { ChevronDown, Flame, LogOut, User } from "lucide-react";
+import { toast } from "sonner";
 
 export default function UserMenu() {
   const t = useT();
@@ -19,13 +20,18 @@ export default function UserMenu() {
   const streak = user?.stats.currentStreak ?? 0;
 
   const handleSignOut = async () => {
-    await authClient.signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          location.reload();
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            location.reload();
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error("Failed to sign out from user menu:", error);
+      toast.error(t("auth.signOutError"));
+    }
   };
 
   const userName = user?.profile?.name || user?.email || t("user.account");

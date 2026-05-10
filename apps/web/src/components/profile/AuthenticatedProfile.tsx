@@ -1,28 +1,48 @@
-import { Bell, LogOut, MoonStar, ShieldCheck, User2 } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Globe2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
+import { SITE } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { toast } from "sonner";
 
 type AuthenticatedProfileUser = {
   email: string;
+  emailVerified?: boolean;
   image?: string | null;
   name?: string | null;
   profile?: {
     avatar?: string;
     name?: string;
+    preferredLanguage?: "ro" | "en";
   };
 };
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
+function getAvatarFallback(name: string, email: string) {
+  const firstNameLetter = name.trim().charAt(0).toUpperCase();
+
+  if (firstNameLetter) {
+    return firstNameLetter;
+  }
+
+  return email.trim().charAt(0).toUpperCase() || "?";
+}
+
+function getPasswordResetRedirectURL() {
+  if (typeof window === "undefined") {
+    return `${SITE.url}/reset-password`;
+  }
+
+  return `${window.location.origin}/reset-password`;
 }
 
 export function AuthenticatedProfile({
@@ -33,7 +53,9 @@ export function AuthenticatedProfile({
   const t = useT();
   const displayName = user.profile?.name || user.name || user.email;
   const avatarSrc = user.profile?.avatar || user.image || undefined;
-  const initials = getInitials(displayName);
+  const avatarFallback = getAvatarFallback(displayName, user.email);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetStatusMessage, setResetStatusMessage] = useState("");
 
   const handleSignOut = async () => {
     try {
@@ -50,149 +72,175 @@ export function AuthenticatedProfile({
     }
   };
 
+  const handleRequestPasswordReset = async () => {
+    setResetStatusMessage("");
+    setIsSendingReset(true);
+
+    try {
+      const response = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: user.email,
+          redirectTo: getPasswordResetRedirectURL(),
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.message || t("auth.resetLinkFailed"));
+      }
+
+      const message = payload?.message || t("auth.resetLinkSent");
+      setResetStatusMessage(message);
+      toast.success(message);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t("auth.resetLinkFailed");
+      setResetStatusMessage(message);
+      toast.error(message);
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/20">
-      <div className="container mx-auto max-w-4xl px-4 py-10 sm:py-14">
-        <div className="space-y-6">
-          <section className="rounded-[1.75rem] border border-border/70 bg-card/80 p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              {avatarSrc ? (
-                <img
-                  src={avatarSrc}
-                  alt={displayName}
-                  className="size-20 rounded-3xl object-cover"
-                />
-              ) : (
-                <div className="flex size-20 items-center justify-center rounded-3xl bg-primary/10 text-2xl font-semibold text-primary">
-                  {initials || "B"}
-                </div>
-              )}
-
-              <div className="min-w-0">
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">
-                  {t("profile.account")}
-                </p>
-                <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">
-                  {displayName}
-                </h1>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {user.email}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-border/70 bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <MoonStar className="size-5 text-primary" />
-              <div>
-                <h2 className="font-semibold">{t("profile.settings")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("profile.settingsBody")}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium">
-                      {t("settings.language")}
+    <div className="bg-background">
+      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <div className="space-y-6">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                  {avatarSrc ? (
+                    <img
+                      src={avatarSrc}
+                      alt={displayName}
+                      className="size-18 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="flex size-18 items-center justify-center rounded-xl bg-muted text-xl font-semibold text-foreground">
+                      {avatarFallback}
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                  )}
+
+                  <div className="min-w-0 space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      {t("profile.account")}
+                    </p>
+                    <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                      {displayName}
+                    </h1>
+                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          {t("profile.emailLabel")}
+                        </dt>
+                        <dd className="mt-1 break-all text-card-foreground">
+                          {user.email}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          {t("profile.security")}
+                        </dt>
+                        <dd className="mt-1 text-card-foreground">
+                          {user.emailVerified
+                            ? t("profile.verified")
+                            : t("auth.checkEmailVerify")}
+                        </dd>
+                      </div>
+                    </dl>
+                    {user.emailVerified ? (
+                      <div className="inline-flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                        <CheckCircle2 className="size-4 text-success" />
+                        <span>{t("profile.verified")}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>{t("profile.settings")}</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
+                      <Globe2 className="size-4 text-primary" />
+                      <span>{t("settings.language")}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
                       {t("profile.settingsBody")}
                     </p>
                   </div>
                   <LanguagePicker />
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <MoonStar className="size-4 text-primary" />
-                    {t("profile.theme")}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {t("profile.themeBody")}
-                  </p>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>{t("profile.security")}</CardTitle>
+                <CardDescription>{t("profile.securityBody")}</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="space-y-3">
                   <Button
+                    type="button"
                     variant="outline"
-                    className="mt-4 w-full justify-start"
-                    disabled
+                    className="w-full justify-between"
+                    disabled={isSendingReset}
+                    onClick={() => void handleRequestPasswordReset()}
                   >
-                    {t("profile.comingSoon")}
+                    <span>
+                      {isSendingReset
+                        ? t("auth.resetSendingStatus")
+                        : t("profile.changePassword")}
+                    </span>
+                    <KeyRound className="size-4" />
+                  </Button>
+
+                  <Button asChild variant="outline" className="w-full justify-between">
+                    <Link to="/contact">
+                      <span>{t("profile.requestDeletion")}</span>
+                      <ShieldCheck className="size-4" />
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="destructive"
+                    className="w-full justify-between"
+                    onClick={handleSignOut}
+                  >
+                    <span>{t("auth.signOut")}</span>
+                    <LogOut className="size-4" />
                   </Button>
                 </div>
 
-                <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Bell className="size-4 text-primary" />
-                    {t("profile.notifications")}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {t("profile.notificationsBody")}
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="mt-4 w-full justify-start"
-                    disabled
+                {resetStatusMessage ? (
+                  <div
+                    className="mt-4 rounded-lg border border-border bg-muted/30 px-4 py-3"
+                    role="status"
+                    aria-live="polite"
                   >
-                    {t("profile.comingSoon")}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-border/70 bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <User2 className="size-5 text-primary" />
-              <div>
-                <h2 className="font-semibold">{t("profile.accountSection")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("profile.accountBody")}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                <p className="text-sm font-medium">{t("profile.emailLabel")}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button asChild variant="outline" className="sm:flex-1">
-                  <Link to="/reset-password">{t("profile.changePassword")}</Link>
-                </Button>
-                <Button asChild variant="outline" className="sm:flex-1">
-                  <Link to="/contact">{t("profile.deleteAccount")}</Link>
-                </Button>
-              </div>
-
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2 font-medium text-foreground">
-                  <ShieldCheck className="size-4 text-amber-600" />
-                  {t("profile.security")}
-                </div>
-                <p className="mt-2">
-                  {t("profile.securityBody")}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <Button
-            variant="destructive"
-            size="lg"
-            className="w-full"
-            onClick={handleSignOut}
-          >
-            <LogOut className="size-4" />
-            {t("auth.signOut")}
-          </Button>
+                    <p className="text-sm text-muted-foreground">
+                      {resetStatusMessage}
+                    </p>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

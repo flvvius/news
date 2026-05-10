@@ -18,13 +18,38 @@ import {
   getScrollDepthPercentage,
 } from "@/lib/interaction-tracking";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
-import { getString } from "@/lib/i18n/strings";
+import { getString, STRINGS, type Locale, type StringKey } from "@/lib/i18n/strings";
 import { SITE } from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
 });
+
+function getPluralizedCountLabel(
+  locale: Locale,
+  baseKey: "event.articles" | "event.sourceCount",
+  count: number,
+) {
+  const pluralCategory = new Intl.PluralRules(locale).select(count);
+  const candidates = [
+    `${baseKey}.${pluralCategory}`,
+    `${baseKey}.other`,
+    count === 1 ? `${baseKey}.one` : `${baseKey}.many`,
+  ] as const;
+
+  const resolvedKey =
+    candidates.find(
+      (candidate) =>
+        candidate in STRINGS[locale] || candidate in STRINGS.en,
+    ) ?? `${baseKey}.many`;
+
+  return getString(locale, resolvedKey as StringKey).replace(
+    "{count}",
+    String(count),
+  );
+}
 
 export const Route = createFileRoute("/event/$slug")({
   validateSearch: searchSchema,
@@ -49,13 +74,7 @@ export const Route = createFileRoute("/event/$slug")({
     }
   },
   head: ({ loaderData, params, matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
     const title = loaderData?.event?.title
       ? `${loaderData.event.title} — ${SITE.name}`
       : getString(locale, "event.metaTitle");
@@ -342,21 +361,19 @@ function EventDetailPage() {
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
                     <span className="font-medium text-card-foreground">
-                      {articles.length === 1
-                        ? t("event.articles.one")
-                        : t("event.articles.many").replace(
-                            "{count}",
-                            String(articles.length),
-                          )}
+                      {getPluralizedCountLabel(
+                        locale,
+                        "event.articles",
+                        articles.length,
+                      )}
                     </span>
                     <span>•</span>
                     <span>
-                      {sourceCount === 1
-                        ? t("event.sourceCount.one")
-                        : t("event.sourceCount.many").replace(
-                            "{count}",
-                            String(sourceCount),
-                          )}
+                      {getPluralizedCountLabel(
+                        locale,
+                        "event.sourceCount",
+                        sourceCount,
+                      )}
                     </span>
                   </div>
                 </div>

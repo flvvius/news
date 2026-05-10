@@ -4,8 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n/LocaleContext";
 
 export function PageLoadingState({
-  title = "Loading your page",
-  description = "Pulling in the latest view and getting things ready.",
+  title,
+  description,
   cardCount = 2,
 }: {
   title?: string;

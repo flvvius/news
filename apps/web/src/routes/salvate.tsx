@@ -1,33 +1,23 @@
 import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
-import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-  useQuery,
-} from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { SignInPrompt } from "@/components/SignInPrompt";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 
 function safePositiveInt(raw: unknown, fallback: number): number {
   const n = Number(raw);
-  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+  return Number.isFinite(n) ? Math.max(1, Math.floor(n)) : fallback;
 }
 
 export const Route = createFileRoute("/salvate")({
   head: ({ matches }) => {
-    const locale =
-      matches[0]?.context &&
-      typeof matches[0].context === "object" &&
-      "locale" in matches[0].context &&
-      (matches[0].context.locale === "ro" || matches[0].context.locale === "en")
-        ? matches[0].context.locale
-        : "en";
+    const locale = getLocaleFromMatches(matches);
 
     return {
       meta: [
@@ -41,44 +31,53 @@ export const Route = createFileRoute("/salvate")({
 
 function SalvatePage() {
   const t = useT();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const currentUser = useQuery(
+    api.user.getCurrentUser,
+    isAuthenticated ? {} : "skip",
+  );
+
+  if (isLoading || (isAuthenticated && currentUser === undefined)) {
+    return (
+      <PageLoadingState
+        title={t("saved.checking.title")}
+        description={t("saved.checking.body")}
+        cardCount={2}
+      />
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <SignInPrompt
+        title={t("saved.empty.title")}
+        description={t("saved.empty.body")}
+        redirectTo="/salvate"
+        illustration={
+          <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <svg
+              className="size-8"
+              aria-hidden="true"
+              focusable="false"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
+              />
+            </svg>
+          </div>
+        }
+      />
+    );
+  }
 
   return (
-    <>
-      <Authenticated>
-        <SalvateContent />
-      </Authenticated>
-      <Unauthenticated>
-        <SignInPrompt
-          title={t("saved.empty.title")}
-          description={t("saved.empty.body")}
-          redirectTo="/salvate"
-          illustration={
-            <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <svg
-                className="size-8"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-                />
-              </svg>
-            </div>
-          }
-        />
-      </Unauthenticated>
-      <AuthLoading>
-        <PageLoadingState
-          title={t("saved.checking.title")}
-          description={t("saved.checking.body")}
-          cardCount={2}
-        />
-      </AuthLoading>
-    </>
+    <SalvateContent />
   );
 }
 
@@ -142,6 +141,8 @@ function SalvateContent() {
                 <div className="flex size-16 items-center justify-center rounded-full bg-muted">
                   <svg
                     className="size-8 text-muted-foreground"
+                    aria-hidden="true"
+                    focusable="false"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
