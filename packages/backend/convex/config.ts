@@ -830,7 +830,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "vector_search_daily_budget_qgb",
-        value: 0.25,
+        value: 9,
         description:
           "Daily Convex vector-search read budget in qGB. Clustering workers use this to hard-stop expensive semantic search when spend spikes.",
       },
@@ -860,7 +860,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "merge_vector_search_limit",
-        value: 24,
+        value: 12,
         description:
           "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
       },

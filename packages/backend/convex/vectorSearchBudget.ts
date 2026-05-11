@@ -8,9 +8,9 @@ import { internal } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
-const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 0.25;
+const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 9;
 const DEFAULT_VECTOR_SEARCH_RUN_RETENTION_DAYS = 30;
-const ESTIMATED_VECTOR_ROW_BYTES = 5 * 1024;
+const ESTIMATED_PER_SEARCH_BYTES = 50 * 1024 * 1024;
 const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS = 500;
@@ -257,15 +257,12 @@ async function releaseExpiredReservations(
 
 export function estimateVectorSearchQgbRead(args: {
   vectorSearches: number;
-  averageMatchesReturned: number;
-  estimatedVectorRowBytes?: number;
+  estimatedPerSearchBytes?: number;
 }): number {
-  const estimatedVectorRowBytes =
-    args.estimatedVectorRowBytes ?? ESTIMATED_VECTOR_ROW_BYTES;
+  const estimatedPerSearchBytes =
+    args.estimatedPerSearchBytes ?? ESTIMATED_PER_SEARCH_BYTES;
   const bytesRead =
-    Math.max(0, args.vectorSearches) *
-    Math.max(0, args.averageMatchesReturned) *
-    estimatedVectorRowBytes;
+    Math.max(0, args.vectorSearches) * estimatedPerSearchBytes;
   return roundQgb(bytesRead / 1_000_000_000);
 }
 
