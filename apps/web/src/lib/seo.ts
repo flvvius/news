@@ -14,6 +14,10 @@ export const SITE = {
   ogImage: "https://biviant.com/og-image.png",
 } as const;
 
+export function absoluteSiteUrl(pathname: string): string {
+  return new URL(pathname, SITE.url).toString();
+}
+
 export function getSiteSeo(locale: Locale) {
   return {
     title: getString(locale, "seo.siteTitle"),

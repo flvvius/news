@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { SITE } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,10 +39,10 @@ function getAvatarFallback(name: string, email: string) {
 
 function getPasswordResetRedirectURL() {
   if (typeof window === "undefined") {
-    return `${SITE.url}/reset-password`;
+    return absoluteSiteUrl("/reset-password");
   }
 
-  return `${window.location.origin}/reset-password`;
+  return new URL("/reset-password", window.location.origin).toString();
 }
 
 export function AuthenticatedProfile({

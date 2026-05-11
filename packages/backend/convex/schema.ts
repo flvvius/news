@@ -724,6 +724,7 @@ export default defineSchema({
   })
     .index("by_run_id", ["runId"])
     .index("by_date", ["date"])
+    .index("by_createdAt", ["createdAt"])
     .index("by_job_createdAt", ["jobName", "createdAt"]),
 
   vectorSearchReservations: defineTable({

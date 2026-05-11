@@ -15,7 +15,7 @@ import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { SITE } from "@/lib/seo";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
@@ -65,12 +65,20 @@ export const Route = createFileRoute("/source/$sourceId")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:type", content: "website" },
         { property: "og:description", content: description },
-        { property: "og:url", content: `${SITE.url}/source/${params.sourceId}` },
+        {
+          property: "og:url",
+          content: absoluteSiteUrl(`/source/${params.sourceId}`),
+        },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
       ],
-      links: [{ rel: "canonical", href: `${SITE.url}/source/${params.sourceId}` }],
+      links: [
+        {
+          rel: "canonical",
+          href: absoluteSiteUrl(`/source/${params.sourceId}`),
+        },
+      ],
     };
   },
   component: SourceProfilePage,

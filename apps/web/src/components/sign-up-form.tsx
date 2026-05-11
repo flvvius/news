@@ -1,10 +1,11 @@
 import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
-import { useT } from "@/lib/i18n/LocaleContext";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -19,6 +20,35 @@ function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
     redirect: redirectTo,
   });
   return `/dashboard?${params.toString()}`;
+}
+
+function normalizeAuthError(value: string | undefined) {
+  return value?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function getLocalizedSignUpError(
+  t: ReturnType<typeof useT>,
+  error: {
+    error?: {
+      code?: string;
+      message?: string;
+      statusText?: string;
+    };
+  },
+) {
+  const code = normalizeAuthError(error.error?.code);
+  const message = normalizeAuthError(error.error?.message);
+  const emailInUseSignals = new Set([
+    "user_already_exists",
+    "email_already_exists",
+    "email_already_in_use",
+  ]);
+
+  if (emailInUseSignals.has(code) || emailInUseSignals.has(message)) {
+    return t("auth.emailInUse");
+  }
+
+  return t("auth.unexpectedError");
 }
 
 export default function SignUpForm({
@@ -41,12 +71,22 @@ export default function SignUpForm({
   showGoogle?: boolean;
 }) {
   const t = useT();
+  const locale = useLocale();
   const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const resolvedTitle = title ?? t("auth.signUpTitle");
   const resolvedSubtitle = subtitle ?? t("auth.signUpSubtitle");
   const resolvedSubmitLabel = submitLabel ?? t("auth.createAccount");
+  const signUpSchema = useMemo(
+    () =>
+      z.object({
+        name: z.string().min(2, getString(locale, "auth.nameMin")),
+        email: z.email(getString(locale, "auth.invalidEmail")),
+        password: z.string().min(8, getString(locale, "auth.passwordMin")),
+      }),
+    [locale],
+  );
 
   const form = useForm({
     defaultValues: {
@@ -77,17 +117,13 @@ export default function SignUpForm({
           },
           onError: (error) => {
             console.error(error);
-            toast.error(error.error.message || t("auth.unexpectedError"));
+            toast.error(getLocalizedSignUpError(t, error));
           },
         }
       );
     },
     validators: {
-      onSubmit: z.object({
-        name: z.string().min(2, t("auth.nameMin")),
-        email: z.email(t("auth.invalidEmail")),
-        password: z.string().min(8, t("auth.passwordMin")),
-      }),
+      onSubmit: signUpSchema,
     },
   });
 

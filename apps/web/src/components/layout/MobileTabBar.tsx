@@ -46,8 +46,8 @@ export function MobileTabBar() {
   const isVisible = useScrollVisibility();
 
   const handleTabClick =
-    (isActive: boolean) => (event: MouseEvent<HTMLAnchorElement>) => {
-      if (!isActive) {
+    (isSameDestination: boolean) => (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!isSameDestination) {
         return;
       }
 
@@ -73,13 +73,14 @@ export function MobileTabBar() {
           const isActive = customIsActive
             ? customIsActive(pathname)
             : matchesPath(pathname, to);
+          const isSameDestination = pathname === to;
           const label = t(key);
 
           return (
             <Link
               key={to}
               to={to}
-              onClick={handleTabClick(isActive)}
+              onClick={handleTabClick(isSameDestination)}
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[11px] transition-all",

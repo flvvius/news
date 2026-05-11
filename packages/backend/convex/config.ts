@@ -8,6 +8,12 @@ import {
 import type { QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
+export const TOPIC_INFERENCE_BOUNDS = {
+  minScore: { min: 1, max: 20 },
+  confidenceRatio: { min: 0.1, max: 1 },
+  maxTopics: { min: 1, max: 5 },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Server-side helper — use from any query or mutation handler
 // ---------------------------------------------------------------------------
@@ -102,6 +108,11 @@ export const getPublicRuntimeConfig = query({
       waitlistToastDismissMs,
     };
   },
+});
+
+export const getTopicInferenceBounds = query({
+  args: {},
+  handler: async () => TOPIC_INFERENCE_BOUNDS,
 });
 
 /** List all config entries (for an admin panel). */
@@ -348,20 +359,24 @@ export const setTopicInferenceSettings = mutation({
   handler: async (ctx, args) => {
     await requireAdminUser(ctx);
 
-    if (!Number.isFinite(args.minScore) || args.minScore < 1 || args.minScore > 20) {
+    if (
+      !Number.isFinite(args.minScore) ||
+      args.minScore < TOPIC_INFERENCE_BOUNDS.minScore.min ||
+      args.minScore > TOPIC_INFERENCE_BOUNDS.minScore.max
+    ) {
       throw new ConvexError("Invalid topic inference minimum score");
     }
     if (
       !Number.isFinite(args.confidenceRatio) ||
-      args.confidenceRatio < 0.1 ||
-      args.confidenceRatio > 1
+      args.confidenceRatio < TOPIC_INFERENCE_BOUNDS.confidenceRatio.min ||
+      args.confidenceRatio > TOPIC_INFERENCE_BOUNDS.confidenceRatio.max
     ) {
       throw new ConvexError("Invalid topic inference confidence ratio");
     }
     if (
       !Number.isInteger(args.maxTopics) ||
-      args.maxTopics < 1 ||
-      args.maxTopics > 5
+      args.maxTopics < TOPIC_INFERENCE_BOUNDS.maxTopics.min ||
+      args.maxTopics > TOPIC_INFERENCE_BOUNDS.maxTopics.max
     ) {
       throw new ConvexError("Invalid topic inference max topics");
     }
@@ -832,6 +847,12 @@ export const seedDefaults = internalMutation({
           "When true, clusterEnrichedArticles falls back to heuristic-only batch-local matching after the vector-search budget is exhausted.",
       },
       {
+        key: "vector_search_run_retention_days",
+        value: 30,
+        description:
+          "Number of days to retain detailed vector-search run rows before daily cleanup deletes them.",
+      },
+      {
         key: "clustering_vector_search_limit",
         value: 40,
         description:
@@ -865,12 +886,6 @@ export const seedDefaults = internalMutation({
       "merge_min_title_jaccard",
       "merge_max_time_delta_hours",
       "singleton_recluster_min_similarity",
-      "vector_search_daily_budget_qgb",
-      "vector_search_budget_enabled",
-      "vector_search_fallback_mode_enabled",
-      "clustering_vector_search_limit",
-      "merge_vector_search_limit",
-      "recluster_vector_search_limit",
     ]);
 
     let created = 0;

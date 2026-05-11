@@ -25,7 +25,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { requireAdminUser } from "./lib/betaAccess";
@@ -274,7 +274,7 @@ function markStageDuration(
 }
 
 async function flushJobMetrics(
-  ctx: any,
+  ctx: ActionCtx,
   metrics: JobMetrics,
   startedAt: number,
 ): Promise<void> {
@@ -307,13 +307,13 @@ async function flushJobMetrics(
 }
 
 async function getVectorSearchBudgetState(
-  ctx: any,
+  ctx: ActionCtx,
 ) {
   return await ctx.runQuery(internal.vectorSearchBudget.checkBudget, {});
 }
 
 async function reserveVectorSearch(
-  ctx: any,
+  ctx: ActionCtx,
   metrics: JobMetrics,
   limit: number,
 ) {
@@ -343,8 +343,8 @@ async function reserveVectorSearch(
 }
 
 async function consumeVectorSearchReservation(
-  ctx: any,
-  reservationId: any,
+  ctx: ActionCtx,
+  reservationId: Id<"vectorSearchReservations">,
   matchCount: number,
 ) {
   await ctx.runMutation(internal.vectorSearchBudget.consumeReservation, {
@@ -357,7 +357,10 @@ async function consumeVectorSearchReservation(
   });
 }
 
-async function releaseVectorSearchReservation(ctx: any, reservationId: any) {
+async function releaseVectorSearchReservation(
+  ctx: ActionCtx,
+  reservationId: Id<"vectorSearchReservations">,
+) {
   await ctx.runMutation(internal.vectorSearchBudget.releaseReservation, {
     reservationId,
   });
@@ -2462,14 +2465,14 @@ export const getChangedClusterCandidates = internalQuery({
         .withIndex("by_status_updated_at", (q) =>
           q.eq("status", "published").gte("updatedAt", sinceTs),
         )
-        .order("desc")
+        .order("asc")
         .take(limit),
       ctx.db
         .query("eventCandidacy")
         .withIndex("by_status_updated_at", (q) =>
           q.eq("status", "processing").gte("updatedAt", sinceTs),
         )
-        .order("desc")
+        .order("asc")
         .take(limit),
     ]);
 
@@ -2484,8 +2487,8 @@ export const getChangedClusterCandidates = internalQuery({
       )
       .sort(
         (a, b) =>
-          b.updatedAt - a.updatedAt ||
-          b._creationTime - a._creationTime,
+          a.updatedAt - b.updatedAt ||
+          a._creationTime - b._creationTime,
       )
       .slice(0, limit);
   },

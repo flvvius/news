@@ -10,6 +10,8 @@ const ro = {
   "tabs.activity": "Activitate",
   "tabs.profile": "Profil",
   "nav.mobile": "Navigație mobilă",
+  "common.loading.title": "Se încarcă",
+  "common.loading.body": "Pregătim informațiile.",
   "auth.signUp": "Creează cont gratuit",
   "auth.signIn": "Autentificare",
   "auth.signOut": "Deconectare",
@@ -42,6 +44,7 @@ const ro = {
   "auth.checkEmailVerifyDev":
     "Verifică e-mailul pentru a-ți confirma contul. Dacă nu apare nimic, folosește linkul de verificare afișat în logurile serverului.",
   "auth.unexpectedError": "A apărut o eroare neașteptată. Încearcă din nou.",
+  "auth.emailInUse": "Există deja un cont pentru această adresă de e-mail.",
   "auth.verifyMissingEmail":
     "Nu ai primit e-mailul? Verifică spamul, apoi retrimite linkul de verificare la {email}.",
   "auth.verifyResendFailed":
@@ -512,6 +515,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "tabs.activity": "Activity",
   "tabs.profile": "Profile",
   "nav.mobile": "Mobile navigation",
+  "common.loading.title": "Loading",
+  "common.loading.body": "Preparing the latest information.",
   "auth.signUp": "Create free account",
   "auth.signIn": "Sign in",
   "auth.signOut": "Sign out",
@@ -544,6 +549,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.checkEmailVerifyDev":
     "Check your email to verify your account. If nothing arrives, use the verification link printed in the server logs.",
   "auth.unexpectedError": "An unexpected error occurred. Please try again.",
+  "auth.emailInUse": "An account already exists for this email address.",
   "auth.verifyMissingEmail":
     "Didn't receive the email? Check spam, then resend the verification link to {email}.",
   "auth.verifyResendFailed":

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { SITE } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -16,9 +16,13 @@ import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
 function getPasswordResetRedirectURL() {
   if (typeof window === "undefined") {
-    return `${SITE.url}/reset-password`;
+    return absoluteSiteUrl("/reset-password");
   }
-  return `${window.location.origin}/reset-password`;
+  return new URL("/reset-password", window.location.origin).toString();
+}
+
+function normalizeErrorCode(code: string | undefined) {
+  return code?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
 }
 
 function getLocalizedSignInError(
@@ -31,14 +35,9 @@ function getLocalizedSignInError(
     };
   },
 ) {
-  const code = error.error?.code?.trim().toLowerCase();
-  const message = error.error?.message?.trim().toLowerCase();
+  const code = normalizeErrorCode(error.error?.code);
 
-  if (
-    code === "invalid_credentials" ||
-    message === "invalid credentials" ||
-    message === "invalid email or password"
-  ) {
+  if (["invalid_credentials", "invalid_password", "invalid_login"].includes(code)) {
     return t("auth.invalidCredentials");
   }
 

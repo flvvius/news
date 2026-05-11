@@ -16,7 +16,7 @@ import {
   useQuery,
 } from "convex/react";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatRelativeTimestamp } from "@/lib/dates";
 import {
   Bookmark,
@@ -157,6 +157,10 @@ function AuthorizedDashboard({
     api.config.get,
     isAdmin ? { key: "topic_inference_max_topics" } : "skip",
   );
+  const topicInferenceBounds = useQuery(
+    api.config.getTopicInferenceBounds,
+    isAdmin ? {} : "skip",
+  );
   const setTopicInferenceSettings = useConvexMutationHook(
     api.config.setTopicInferenceSettings,
   );
@@ -165,20 +169,23 @@ function AuthorizedDashboard({
   const [maxTopicsInput, setMaxTopicsInput] = useState("");
   const [configMessage, setConfigMessage] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const currentSettings = {
-    minScore: getNumericConfigValue(
-      minScoreConfig,
-      TOPIC_INFERENCE_DEFAULTS.minScore,
-    ),
-    confidenceRatio: getNumericConfigValue(
-      confidenceRatioConfig,
-      TOPIC_INFERENCE_DEFAULTS.confidenceRatio,
-    ),
-    maxTopics: getNumericConfigValue(
-      maxTopicsConfig,
-      TOPIC_INFERENCE_DEFAULTS.maxTopics,
-    ),
-  };
+  const currentSettings = useMemo(
+    () => ({
+      minScore: getNumericConfigValue(
+        minScoreConfig,
+        TOPIC_INFERENCE_DEFAULTS.minScore,
+      ),
+      confidenceRatio: getNumericConfigValue(
+        confidenceRatioConfig,
+        TOPIC_INFERENCE_DEFAULTS.confidenceRatio,
+      ),
+      maxTopics: getNumericConfigValue(
+        maxTopicsConfig,
+        TOPIC_INFERENCE_DEFAULTS.maxTopics,
+      ),
+    }),
+    [minScoreConfig, confidenceRatioConfig, maxTopicsConfig],
+  );
 
   useEffect(() => {
     setMinScoreInput(String(currentSettings.minScore));
@@ -220,19 +227,29 @@ function AuthorizedDashboard({
     const confidenceRatio = Number(confidenceRatioInput);
     const maxTopics = Number(maxTopicsInput);
 
-    if (!Number.isFinite(minScore) || minScore < 1 || minScore > 20) {
+    if (!topicInferenceBounds) return;
+
+    if (
+      !Number.isFinite(minScore) ||
+      minScore < topicInferenceBounds.minScore.min ||
+      minScore > topicInferenceBounds.minScore.max
+    ) {
       setConfigMessage(t("activity.admin.minScoreError"));
       return;
     }
     if (
       !Number.isFinite(confidenceRatio) ||
-      confidenceRatio < 0.1 ||
-      confidenceRatio > 1
+      confidenceRatio < topicInferenceBounds.confidenceRatio.min ||
+      confidenceRatio > topicInferenceBounds.confidenceRatio.max
     ) {
       setConfigMessage(t("activity.admin.confidenceError"));
       return;
     }
-    if (!Number.isInteger(maxTopics) || maxTopics < 1 || maxTopics > 5) {
+    if (
+      !Number.isInteger(maxTopics) ||
+      maxTopics < topicInferenceBounds.maxTopics.min ||
+      maxTopics > topicInferenceBounds.maxTopics.max
+    ) {
       setConfigMessage(t("activity.admin.maxTopicsError"));
       return;
     }
@@ -730,7 +747,9 @@ function AuthorizedDashboard({
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={isSavingConfig || !hasConfigChanges}
+                    disabled={
+                      isSavingConfig || !hasConfigChanges || !topicInferenceBounds
+                    }
                   >
                     {isSavingConfig
                       ? t("activity.admin.saving")

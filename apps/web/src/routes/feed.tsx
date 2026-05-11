@@ -43,7 +43,7 @@ import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
-import { SITE } from "@/lib/seo";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
   head: ({ matches }) => {
@@ -62,12 +62,12 @@ export const Route = createFileRoute("/feed")({
         { name: "twitter:description", content: description },
         { property: "og:image", content: SITE.ogImage },
         { name: "twitter:image", content: SITE.ogImage },
-        { property: "og:url", content: `${SITE.url}/feed` },
+        { property: "og:url", content: absoluteSiteUrl("/feed") },
         { property: "og:type", content: "website" },
         { name: "twitter:card", content: "summary_large_image" },
         { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
       ],
-      links: [{ rel: "canonical", href: `${SITE.url}/feed` }],
+      links: [{ rel: "canonical", href: absoluteSiteUrl("/feed") }],
     };
   },
   component: FeedComponent,
@@ -651,7 +651,12 @@ function FeedContent() {
                       </div>
                     )}
                     {isSearching && (
-                      <p className="text-xs text-muted-foreground">
+                      <p
+                        className="text-xs text-muted-foreground"
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
                         {t("feed.search.indexed").replace(
                           "{query}",
                           debouncedSearch,

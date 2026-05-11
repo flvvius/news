@@ -21,7 +21,7 @@ import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString, STRINGS, type Locale, type StringKey } from "@/lib/i18n/strings";
-import { SITE } from "@/lib/seo";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
@@ -93,7 +93,7 @@ export const Route = createFileRoute("/event/$slug")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:description", content: description },
         { property: "og:type", content: "article" },
-        { property: "og:url", content: `${SITE.url}/event/${params.slug}` },
+        { property: "og:url", content: absoluteSiteUrl(`/event/${params.slug}`) },
         ...(loaderData?.event?.firstPublishedAt
           ? [
               {
@@ -142,7 +142,7 @@ export const Route = createFileRoute("/event/$slug")({
             ]
           : []),
       ],
-      links: [{ rel: "canonical", href: `${SITE.url}/event/${params.slug}` }],
+      links: [{ rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) }],
     };
   },
   component: EventDetailPage,

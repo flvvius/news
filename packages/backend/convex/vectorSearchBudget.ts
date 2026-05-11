@@ -4,12 +4,16 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
 const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 0.25;
+const DEFAULT_VECTOR_SEARCH_RUN_RETENTION_DAYS = 30;
 const ESTIMATED_VECTOR_ROW_BYTES = 5 * 1024;
 const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS = 500;
 
 function roundQgb(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -95,14 +99,23 @@ async function ensureDailyTotal(ctx: MutationCtx, date: string) {
   if (existing) return existing;
 
   const totals = await getDailyTotals(ctx, date);
-  const totalId = await ctx.db.insert("vectorSearchDailyTotal", {
-    date,
-    qgbRead: totals.qgbRead,
-    vectorSearches: totals.vectorSearches,
-    runCount: totals.runCount,
-    updatedAt: Date.now(),
-  });
-  return await ctx.db.get(totalId);
+  try {
+    const totalId = await ctx.db.insert("vectorSearchDailyTotal", {
+      date,
+      qgbRead: totals.qgbRead,
+      vectorSearches: totals.vectorSearches,
+      runCount: totals.runCount,
+      updatedAt: Date.now(),
+    });
+    return await ctx.db.get(totalId);
+  } catch (error) {
+    const createdByConcurrentMutation = await ctx.db
+      .query("vectorSearchDailyTotal")
+      .withIndex("by_date", (q) => q.eq("date", date))
+      .unique();
+    if (createdByConcurrentMutation) return createdByConcurrentMutation;
+    throw error;
+  }
 }
 
 async function adjustDailyUsage(
@@ -134,6 +147,9 @@ async function adjustDailyUsage(
   const appliedSearches = nextVectorSearches - (existing?.vectorSearches ?? 0);
   const appliedRuns = nextRunCount - (existing?.runCount ?? 0);
   const total = await ensureDailyTotal(ctx, args.date);
+  let appliedQgbToTotal = appliedQgb;
+  let appliedSearchesToTotal = appliedSearches;
+  let appliedRunsToTotal = appliedRuns;
 
   if (existing) {
     await ctx.db.patch(existing._id, {
@@ -143,29 +159,67 @@ async function adjustDailyUsage(
       updatedAt: Date.now(),
     });
   } else {
-    await ctx.db.insert("vectorSearchDaily", {
-      date: args.date,
-      shard: args.shard,
-      qgbRead: nextQgbRead,
-      vectorSearches: nextVectorSearches,
-      runCount: nextRunCount,
-      updatedAt: Date.now(),
-    });
+    try {
+      await ctx.db.insert("vectorSearchDaily", {
+        date: args.date,
+        shard: args.shard,
+        qgbRead: nextQgbRead,
+        vectorSearches: nextVectorSearches,
+        runCount: nextRunCount,
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      const createdByConcurrentMutation = await ctx.db
+        .query("vectorSearchDaily")
+        .withIndex("by_date_shard", (q) =>
+          q.eq("date", args.date).eq("shard", args.shard),
+        )
+        .unique();
+      if (!createdByConcurrentMutation) throw error;
+
+      const retryQgbRead = roundQgb(
+        Math.max(0, createdByConcurrentMutation.qgbRead + args.deltaQgbRead),
+      );
+      const retryVectorSearches = Math.max(
+        0,
+        createdByConcurrentMutation.vectorSearches + args.deltaVectorSearches,
+      );
+      const retryRunCount = Math.max(
+        0,
+        createdByConcurrentMutation.runCount + args.deltaRunCount,
+      );
+      appliedQgbToTotal = roundQgb(
+        retryQgbRead - createdByConcurrentMutation.qgbRead,
+      );
+      appliedSearchesToTotal =
+        retryVectorSearches - createdByConcurrentMutation.vectorSearches;
+      appliedRunsToTotal = retryRunCount - createdByConcurrentMutation.runCount;
+
+      await ctx.db.patch(createdByConcurrentMutation._id, {
+        qgbRead: retryQgbRead,
+        vectorSearches: retryVectorSearches,
+        runCount: retryRunCount,
+        updatedAt: Date.now(),
+      });
+    }
   }
 
   if (total) {
     await ctx.db.patch(total._id, {
-      qgbRead: roundQgb((total.qgbRead ?? 0) + appliedQgb),
-      vectorSearches: Math.max(0, (total.vectorSearches ?? 0) + appliedSearches),
-      runCount: Math.max(0, (total.runCount ?? 0) + appliedRuns),
+      qgbRead: roundQgb((total.qgbRead ?? 0) + appliedQgbToTotal),
+      vectorSearches: Math.max(
+        0,
+        (total.vectorSearches ?? 0) + appliedSearchesToTotal,
+      ),
+      runCount: Math.max(0, (total.runCount ?? 0) + appliedRunsToTotal),
       updatedAt: Date.now(),
     });
   } else {
     await ctx.db.insert("vectorSearchDailyTotal", {
       date: args.date,
-      qgbRead: roundQgb(appliedQgb),
-      vectorSearches: Math.max(0, appliedSearches),
-      runCount: Math.max(0, appliedRuns),
+      qgbRead: roundQgb(appliedQgbToTotal),
+      vectorSearches: Math.max(0, appliedSearchesToTotal),
+      runCount: Math.max(0, appliedRunsToTotal),
       updatedAt: Date.now(),
     });
   }
@@ -175,25 +229,29 @@ async function releaseExpiredReservations(
   ctx: MutationCtx,
   now: number,
 ): Promise<void> {
-  const expired = await ctx.db
-    .query("vectorSearchReservations")
-    .withIndex("by_status_expiresAt", (q) =>
-      q.eq("status", "reserved").lte("expiresAt", now),
-    )
-    .take(100);
+  for (;;) {
+    const expired = await ctx.db
+      .query("vectorSearchReservations")
+      .withIndex("by_status_expiresAt", (q) =>
+        q.eq("status", "reserved").lte("expiresAt", now),
+      )
+      .take(100);
 
-  for (const reservation of expired) {
-    await adjustDailyUsage(ctx, {
-      date: reservation.date,
-      shard: reservation.shard,
-      deltaQgbRead: -reservation.qgbReserved,
-      deltaVectorSearches: -reservation.vectorSearchesReserved,
-      deltaRunCount: 0,
-    });
-    await ctx.db.patch(reservation._id, {
-      status: "released",
-      updatedAt: now,
-    });
+    if (expired.length === 0) return;
+
+    for (const reservation of expired) {
+      await adjustDailyUsage(ctx, {
+        date: reservation.date,
+        shard: reservation.shard,
+        deltaQgbRead: -reservation.qgbReserved,
+        deltaVectorSearches: -reservation.vectorSearchesReserved,
+        deltaRunCount: 0,
+      });
+      await ctx.db.patch(reservation._id, {
+        status: "released",
+        updatedAt: now,
+      });
+    }
   }
 }
 
@@ -472,7 +530,7 @@ export const getRecentRunSummaryForAdmin = query({
   handler: async (ctx, { limit }) => {
     await requireAdminUser(ctx);
 
-    const pageSize = Math.max(1, Math.min(limit ?? 50, 200));
+    const pageSize = Math.floor(Math.max(1, Math.min(limit ?? 50, 200)));
     const rows = await ctx.db
       .query("vectorSearchRuns")
       .withIndex("by_date")
@@ -520,6 +578,55 @@ export const getRecentRunSummaryForAdmin = query({
             }
           })(),
       })),
+    };
+  },
+});
+
+export const cleanupVectorSearchRuns = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    retentionDays: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const configuredRetentionDays = await getConfigNumber(
+      ctx,
+      "vector_search_run_retention_days",
+      DEFAULT_VECTOR_SEARCH_RUN_RETENTION_DAYS,
+    );
+    const retentionDays = Math.max(
+      1,
+      Math.floor(args.retentionDays ?? configuredRetentionDays),
+    );
+    const pageSize = Math.floor(Math.max(1, Math.min(args.limit ?? 100, 500)));
+    const cutoff = Date.now() - retentionDays * DAY_MS;
+    const rows = await ctx.db
+      .query("vectorSearchRuns")
+      .withIndex("by_createdAt", (q) => q.lt("createdAt", cutoff))
+      .take(pageSize);
+
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    const hasMore = rows.length === pageSize;
+    const scheduledContinuation = Boolean(args.autoContinue ?? true) && hasMore;
+    if (scheduledContinuation) {
+      await ctx.scheduler.runAfter(
+        VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS,
+        internal.vectorSearchBudget.cleanupVectorSearchRuns,
+        {
+          limit: pageSize,
+          retentionDays,
+          autoContinue: true,
+        },
+      );
+    }
+
+    return {
+      deleted: rows.length,
+      retentionDays,
+      hasMore,
+      scheduledContinuation,
     };
   },
 });

@@ -13,8 +13,8 @@ export function PageLoadingState({
   cardCount?: number;
 }) {
   const t = useT();
-  const resolvedTitle = title ?? t("feed.loading");
-  const resolvedDescription = description ?? t("activity.loading.body");
+  const resolvedTitle = title ?? t("common.loading.title");
+  const resolvedDescription = description ?? t("common.loading.body");
   return (
     <div
       aria-busy="true"

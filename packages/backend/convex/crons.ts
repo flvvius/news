@@ -131,6 +131,17 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
+// Vector Search Run Retention — Daily
+// ---------------------------------------------------------------------------
+// Keeps detailed vector-search telemetry bounded; daily totals remain intact.
+crons.daily(
+  "cleanup-vector-search-runs",
+  { hourUTC: 4, minuteUTC: 45 },
+  internal.vectorSearchBudget.cleanupVectorSearchRuns,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Unverified Auth Account Cleanup — Daily
 // ---------------------------------------------------------------------------
 // Deletes auth/app user rows for email/password accounts that never verified

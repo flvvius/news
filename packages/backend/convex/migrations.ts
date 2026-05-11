@@ -19,6 +19,8 @@ import { buildEventShareRenderSignature } from "./shareAssets";
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
 const EVENT_EMBEDDING_DIMENSIONS = 512;
+const MIGRATION_CONTINUATION_DELAY_MS = 500;
+const DEFAULT_MIGRATION_REMAINING_PAGES = 20;
 
 function articleHasAtomicFacts(article: {
   atomicFacts?: string[];
@@ -457,6 +459,7 @@ export const queueEventShareAssetsBackfill = mutation({
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
     autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const safePageSize = Math.min(
@@ -497,17 +500,25 @@ export const queueEventShareAssetsBackfill = mutation({
 
     const shouldAutoContinue = args.autoContinue ?? true;
     const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
     const scheduledContinuation =
-      shouldAutoContinue && !page.isDone && Boolean(nextCursor);
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
 
     if (scheduledContinuation && nextCursor) {
       await ctx.scheduler.runAfter(
-        0,
+        MIGRATION_CONTINUATION_DELAY_MS,
         api.migrations.queueEventShareAssetsBackfill,
         {
           cursor: nextCursor,
           pageSize: safePageSize,
           autoContinue: true,
+          remainingPages: remainingPages - 1,
         },
       );
     }
@@ -518,6 +529,7 @@ export const queueEventShareAssetsBackfill = mutation({
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       scheduledContinuation,
+      remainingPages,
     };
   },
 });
@@ -527,6 +539,7 @@ export const deleteInvalidEventEmbeddingsFor512dVectorIndex = mutation({
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
     autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const safePageSize = Math.min(
@@ -540,29 +553,45 @@ export const deleteInvalidEventEmbeddingsFor512dVectorIndex = mutation({
 
     let deleted = 0;
     let kept = 0;
+    let scheduledRecomputes = 0;
 
     for (const row of page.page) {
       if (row.embedding.length === EVENT_EMBEDDING_DIMENSIONS) {
         kept++;
         continue;
       }
+      const eventId = row.eventId;
       await ctx.db.delete(row._id);
+      await ctx.scheduler.runAfter(
+        MIGRATION_CONTINUATION_DELAY_MS,
+        internal.ingestion.recomputeEventEmbeddingForEventInternal,
+        { eventId },
+      );
       deleted++;
+      scheduledRecomputes++;
     }
 
     const shouldAutoContinue = args.autoContinue ?? true;
     const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
     const scheduledContinuation =
-      shouldAutoContinue && !page.isDone && Boolean(nextCursor);
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
 
     if (scheduledContinuation && nextCursor) {
       await ctx.scheduler.runAfter(
-        0,
+        MIGRATION_CONTINUATION_DELAY_MS,
         api.migrations.deleteInvalidEventEmbeddingsFor512dVectorIndex,
         {
           cursor: nextCursor,
           pageSize: safePageSize,
           autoContinue: true,
+          remainingPages: remainingPages - 1,
         },
       );
     }
@@ -571,9 +600,11 @@ export const deleteInvalidEventEmbeddingsFor512dVectorIndex = mutation({
       processed: page.page.length,
       deleted,
       kept,
+      scheduledRecomputes,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       scheduledContinuation,
+      remainingPages,
     };
   },
 });
