@@ -1,13 +1,22 @@
-import { createRouter as createTanStackRouter } from "@tanstack/react-router";
+import {
+  createRouter as createTanStackRouter,
+  type AnyRouter,
+} from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { routerWithQueryClient } from "@tanstack/react-router-with-query";
 import { ConvexQueryClient } from "@convex-dev/react-query";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { routeTree } from "./routeTree.gen";
 import Loader from "./components/loader";
 import "./index.css";
 
-export function getRouter() {
+function NotFound() {
+	const t = useT();
+	return <div>{t("router.notFound")}</div>;
+}
+
+export function getRouter(): AnyRouter {
 	const CONVEX_URL = (import.meta as any).env.VITE_CONVEX_URL!;
 	if (!CONVEX_URL) {
 		throw new Error(
@@ -35,7 +44,7 @@ export function getRouter() {
 			routeTree,
 			defaultPreload: "intent",
 			defaultPendingComponent: () => <Loader />,
-			defaultNotFoundComponent: () => <div>Not Found</div>,
+			defaultNotFoundComponent: NotFound,
 			context: { queryClient, convexClient: convex, convexQueryClient },
 			Wrap: ({ children }) => (
 				<ConvexProvider client={convexQueryClient.convexClient}>

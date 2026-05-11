@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { SITE } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/seo";
 
 const convexUrl = process.env.VITE_CONVEX_URL!;
 
@@ -15,7 +15,7 @@ function escapeXml(value: string) {
 }
 
 function toSitemapUrl(pathname: string, lastModifiedAt?: number) {
-  const url = `${SITE.url}${pathname}`;
+  const url = absoluteSiteUrl(pathname);
   const lastmod = lastModifiedAt
     ? `<lastmod>${new Date(lastModifiedAt).toISOString()}</lastmod>`
     : "";

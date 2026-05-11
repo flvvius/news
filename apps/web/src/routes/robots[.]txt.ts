@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SITE } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/seo";
 
 const ROBOTS_TXT = `User-agent: *
 Allow: /
@@ -8,7 +8,7 @@ Disallow: /dashboard
 Disallow: /api/
 Disallow: /unsubscribe
 
-Sitemap: ${SITE.url}/sitemap.xml
+Sitemap: ${absoluteSiteUrl("/sitemap.xml")}
 `;
 
 function buildRobotsHeaders() {

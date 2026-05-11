@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 type StreakDay = {
   timestamp: number;
@@ -30,6 +31,7 @@ export default function StreakActivityCalendar({
   days,
   className,
 }: StreakActivityCalendarProps) {
+  const t = useT();
   const sortedDays = [...days].sort((a, b) => a.timestamp - b.timestamp);
   const firstDay = sortedDays[0];
   const leadingBlankCount = firstDay
@@ -44,7 +46,15 @@ export default function StreakActivityCalendar({
   const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
   });
-  const weekdayRows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekdayRows = [
+    t("calendar.weekday.mon"),
+    t("calendar.weekday.tue"),
+    t("calendar.weekday.wed"),
+    t("calendar.weekday.thu"),
+    t("calendar.weekday.fri"),
+    t("calendar.weekday.sat"),
+    t("calendar.weekday.sun"),
+  ];
   const monthLabels = weeks.map((week, index) => {
     const firstRealDay = week.find((day) => day !== null);
     if (!firstRealDay) return "";
@@ -88,8 +98,28 @@ export default function StreakActivityCalendar({
                         day.isToday &&
                           "ring-1 ring-primary ring-offset-1 ring-offset-background",
                       )}
-                      title={`${fullDateFormatter.format(new Date(day.timestamp))}: ${day.readCount} ${day.readCount === 1 ? "event" : "events"} read`}
-                      aria-label={`${fullDateFormatter.format(new Date(day.timestamp))}: ${day.readCount} ${day.readCount === 1 ? "event" : "events"} read`}
+                      title={`${fullDateFormatter.format(new Date(day.timestamp))}: ${
+                        day.readCount === 1
+                          ? t("calendar.eventsRead.one").replace(
+                              "{count}",
+                              String(day.readCount),
+                            )
+                          : t("calendar.eventsRead.many").replace(
+                              "{count}",
+                              String(day.readCount),
+                            )
+                      }`}
+                      aria-label={`${fullDateFormatter.format(new Date(day.timestamp))}: ${
+                        day.readCount === 1
+                          ? t("calendar.eventsRead.one").replace(
+                              "{count}",
+                              String(day.readCount),
+                            )
+                          : t("calendar.eventsRead.many").replace(
+                              "{count}",
+                              String(day.readCount),
+                            )
+                      }`}
                     />
                   ) : (
                     <div
@@ -106,12 +136,12 @@ export default function StreakActivityCalendar({
       </div>
 
       <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-        <span>Less</span>
+        <span>{t("calendar.less")}</span>
         <span className="h-3 w-3 rounded-[3px] bg-muted" />
         <span className="h-3 w-3 rounded-[3px] bg-primary/25" />
         <span className="h-3 w-3 rounded-[3px] bg-primary/55" />
         <span className="h-3 w-3 rounded-[3px] bg-primary" />
-        <span>More</span>
+        <span>{t("calendar.more")}</span>
       </div>
     </div>
   );

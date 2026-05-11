@@ -5,6 +5,7 @@ import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { buildInteractionContextFromSources } from "@/lib/interaction-tracking";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -113,18 +114,20 @@ const EventCard = ({
   returnToFeed = false,
   interactive = true,
 }: EventCardProps) => {
+  const locale = useLocale();
+  const t = useT();
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
     .filter(Boolean);
-  const primaryTopic = topics[0] ?? "General";
+  const primaryTopic = topics[0] ?? t("event.general");
   const summaryPreview =
     event.perspectiveSummaries?.center ??
     event.globalImpact ??
-    "Coverage grouped from multiple sources. Open the event to compare articles.";
+    t("event.coveragePreview");
   const isFeature = variant === "feature";
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
-  const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt);
-  const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt);
+  const lastUpdatedLabel = formatRelativeTimestamp(lastUpdatedAt, locale);
+  const lastUpdatedTitle = formatAbsoluteTimestamp(lastUpdatedAt, locale);
   const interactionContext = buildInteractionContextFromSources(
     event.sources ?? [],
   );
@@ -161,7 +164,7 @@ const EventCard = ({
         )}
       >
         <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
-          {(topics.length > 0 ? topics : ["General"])
+          {(topics.length > 0 ? topics : [t("event.general")])
             .slice(0, isFeature ? 3 : 2)
             .map((topic) => (
               <span
@@ -199,7 +202,7 @@ const EventCard = ({
               className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground -mt-1"
               title={lastUpdatedTitle}
             >
-              Updated {lastUpdatedLabel}
+              {t("event.updated").replace("{time}", lastUpdatedLabel)}
             </p>
             {interactive && (
               <div className="flex items-center gap-2 -mt-1">
@@ -234,8 +237,8 @@ const EventCard = ({
 
         <p
           className={cn(
-            "text-muted-foreground",
-            isFeature ? "text-base" : "text-sm line-clamp-3",
+            "line-clamp-3 text-sm text-muted-foreground",
+            isFeature && "sm:text-base",
           )}
         >
           {summaryPreview}
@@ -269,12 +272,17 @@ const EventCard = ({
               )}
               <div className="min-w-0">
                 <p className="text-sm font-medium text-card-foreground">
-                  {totalSources} sources
+                  {t("event.sources").replace("{count}", String(totalSources))}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {event.articleCount !== undefined
-                    ? `${event.articleCount} ${event.articleCount === 1 ? "article" : "articles"}`
-                    : "Follow the event"}
+                    ? event.articleCount === 1
+                      ? t("event.articles.one")
+                      : t("event.articles.many").replace(
+                          "{count}",
+                          String(event.articleCount),
+                        )
+                    : t("event.follow")}
                 </p>
               </div>
             </div>
@@ -283,7 +291,10 @@ const EventCard = ({
               <div className="space-y-1.5">
                 <div
                   className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"
-                  aria-label={`Source bias distribution: ${biasDistribution.left} left, ${biasDistribution.center} center, ${biasDistribution.right} right`}
+                  aria-label={t("event.biasDistribution")
+                    .replace("{left}", String(biasDistribution.left))
+                    .replace("{center}", String(biasDistribution.center))
+                    .replace("{right}", String(biasDistribution.right))}
                   role="img"
                 >
                   {(["left", "center", "right"] as BiasBucket[]).map(
@@ -303,9 +314,24 @@ const EventCard = ({
                   )}
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>{biasDistribution.left} left</span>
-                  <span>{biasDistribution.center} center</span>
-                  <span>{biasDistribution.right} right</span>
+                  <span>
+                    {t("event.bias.left").replace(
+                      "{count}",
+                      String(biasDistribution.left),
+                    )}
+                  </span>
+                  <span>
+                    {t("event.bias.center").replace(
+                      "{count}",
+                      String(biasDistribution.center),
+                    )}
+                  </span>
+                  <span>
+                    {t("event.bias.right").replace(
+                      "{count}",
+                      String(biasDistribution.right),
+                    )}
+                  </span>
                 </div>
               </div>
             )}

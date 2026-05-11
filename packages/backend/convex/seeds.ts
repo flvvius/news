@@ -144,19 +144,30 @@ export const seedDB = internalMutation({
     // =========================================================================
     // 3b. EVENT EMBEDDINGS (placeholder zeros — real embeddings come from AI)
     // =========================================================================
-    const dummyEmbedding = new Array(1536).fill(0);
+    const dummyEmbedding = new Array(512).fill(0);
+    const day = new Date().toISOString().slice(0, 10);
 
     await ctx.db.insert("eventEmbeddings", {
       eventId: eventFedRates,
       embedding: dummyEmbedding,
       version: 1,
       status: "published",
+      recentWindowBucket: "recent_2d",
+      singletonBucket: "multi",
+      updatedDayBucket: day,
+      mergeSearchBucket: `published::recent_2d::${day}`,
+      singletonSearchBucket: `published::multi::${day}`,
     });
     await ctx.db.insert("eventEmbeddings", {
       eventId: eventAIRegulations,
       embedding: dummyEmbedding,
       version: 1,
       status: "published",
+      recentWindowBucket: "recent_2d",
+      singletonBucket: "multi",
+      updatedDayBucket: day,
+      mergeSearchBucket: `published::recent_2d::${day}`,
+      singletonSearchBucket: `published::multi::${day}`,
     });
 
     console.log("✅ Created 2 eventEmbeddings");

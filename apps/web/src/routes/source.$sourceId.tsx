@@ -12,7 +12,10 @@ import BiasIndicator from "@/components/bias-indicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
-import { SITE } from "@/lib/seo";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
@@ -41,12 +44,18 @@ export const Route = createFileRoute("/source/$sourceId")({
       return null;
     }
   },
-  head: ({ loaderData, params }) => {
-    const sourceName = loaderData?.source.name ?? "Source Profile";
-    const title = `${sourceName} — ${SITE.name}`;
-    const description = loaderData
-      ? `Review ${sourceName}'s bias, reliability, credibility metadata, and recent coverage on ${SITE.name}.`
-      : "Review source bias, reliability, credibility metadata, and recent articles on Biviant.";
+  head: ({ loaderData, params, matches }) => {
+    const locale = getLocaleFromMatches(matches);
+    const sourceName = loaderData?.source?.name;
+    const title = sourceName
+      ? `${sourceName} — ${SITE.name}`
+      : getString(locale, "source.metaTitle");
+    const description = loaderData?.source
+      ? getString(locale, "source.metaDescriptionLoaded").replace(
+          "{name}",
+          sourceName ?? getString(locale, "source.metaTitle"),
+        )
+      : getString(locale, "source.metaDescription");
 
     return {
       meta: [
@@ -56,12 +65,20 @@ export const Route = createFileRoute("/source/$sourceId")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:type", content: "website" },
         { property: "og:description", content: description },
-        { property: "og:url", content: `${SITE.url}/source/${params.sourceId}` },
+        {
+          property: "og:url",
+          content: absoluteSiteUrl(`/source/${params.sourceId}`),
+        },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
       ],
-      links: [{ rel: "canonical", href: `${SITE.url}/source/${params.sourceId}` }],
+      links: [
+        {
+          rel: "canonical",
+          href: absoluteSiteUrl(`/source/${params.sourceId}`),
+        },
+      ],
     };
   },
   component: SourceProfilePage,
@@ -74,8 +91,8 @@ function formatBiasLabel(label: string) {
     .join("-");
 }
 
-function formatOptional(value: string | undefined) {
-  if (!value) return "Not rated";
+function formatOptional(value: string | undefined, fallback: string) {
+  if (!value) return fallback;
   return value
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -107,6 +124,8 @@ function SourceProfilePage() {
 }
 
 function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
+  const locale = useLocale();
+  const t = useT();
   const loaderData = Route.useLoaderData();
   const queryData = useQuery(api.sources.getSourceProfile, {
     sourceId,
@@ -127,7 +146,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
           aria-live="polite"
           className="rounded-xl border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
         >
-          Loading source profile...
+          {t("source.loading")}
         </div>
       </div>
     );
@@ -137,12 +156,12 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     return (
       <div className="container mx-auto max-w-5xl px-4 py-8">
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">Source not found</h1>
+          <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
           <p className="mb-4 text-muted-foreground">
-            This source is not available.
+            {t("source.notFoundBody")}
           </p>
           <Button asChild>
-            <Link to="/feed">Back to feed</Link>
+            <Link to="/feed">{t("source.backToFeed")}</Link>
           </Button>
         </div>
       </div>
@@ -161,7 +180,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
             className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeftIcon className="size-4" />
-            Back to feed
+            {t("source.backToFeed")}
           </Link>
 
           <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
@@ -184,7 +203,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   <div className="min-w-0 space-y-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        Source Profile
+                        {t("source.profile")}
                       </p>
                       <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
                         {source.name}
@@ -200,7 +219,10 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                         {formatBiasLabel(source.biasLabel)}
                       </span>
                       <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
-                        Reliability {source.reliabilityScore}/10
+                        {t("source.reliability").replace(
+                          "{score}",
+                          String(source.reliabilityScore),
+                        )}
                       </span>
                     </div>
                   </div>
@@ -220,26 +242,32 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
               <div className="grid gap-3 border-t border-border/70 pt-5 sm:grid-cols-4">
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
                   <p className="text-xs text-muted-foreground">
-                    Recent Articles
+                    {t("source.recentArticles")}
                   </p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.totalArticles}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Events</p>
+                  <p className="text-xs text-muted-foreground">{t("source.events")}</p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.eventCount}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">AI Bias Avg</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.aiBiasAvg")}
+                  </p>
                   <p className="text-2xl font-semibold text-card-foreground">
-                    {averageAiBias === null ? "N/A" : averageAiBias.toFixed(1)}
+                    {averageAiBias === null
+                      ? t("source.notRated")
+                      : averageAiBias.toFixed(1)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Outliers</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.outliers")}
+                  </p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.biasOutlierCount + stats.sourceBiasOutlierCount}
                   </p>
@@ -253,40 +281,58 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
               <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
                 <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
                   <ShieldCheckIcon className="size-5" />
-                  Credibility
+                  {t("source.credibilityTitle")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 px-5 py-5">
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">MBFC category</p>
-                  <p className="font-medium text-card-foreground">
-                    {formatOptional(source.mbfcCategory)}
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.mbfcCategory")}
                   </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Factual rating</p>
                   <p className="font-medium text-card-foreground">
-                    {formatOptional(source.mbfcFactual)}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Credibility</p>
-                  <p className="font-medium text-card-foreground">
-                    {formatOptional(source.mbfcCredibility)}
+                    {formatOptional(source.mbfcCategory, t("source.notRated"))}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">
-                    Rolling AI bias sample
+                    {t("source.factualRating")}
                   </p>
                   <p className="font-medium text-card-foreground">
-                    {source.rollingBiasSampleSize ?? 0} articles
+                    {formatOptional(source.mbfcFactual, t("source.notRated"))}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.credibilityLabel")}
+                  </p>
+                  <p className="font-medium text-card-foreground">
+                    {formatOptional(
+                      source.mbfcCredibility,
+                      t("source.notRated"),
+                    )}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.rollingSample")}
+                  </p>
+                  <p className="font-medium text-card-foreground">
+                    {t("source.rollingArticles").replace(
+                      "{count}",
+                      String(source.rollingBiasSampleSize ?? 0),
+                    )}
                   </p>
                   {typeof source.rollingBiasMean === "number" && (
                     <p className="text-sm text-muted-foreground">
-                      Mean {source.rollingBiasMean.toFixed(1)}
+                      {t("source.mean").replace(
+                        "{value}",
+                        source.rollingBiasMean.toFixed(1),
+                      )}
                       {typeof source.rollingBiasStddev === "number"
-                        ? ` · Stddev ${source.rollingBiasStddev.toFixed(1)}`
+                        ? ` · ${t("source.stddev").replace(
+                            "{value}",
+                            source.rollingBiasStddev.toFixed(1),
+                          )}`
                         : ""}
                     </p>
                   )}
@@ -298,7 +344,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
               <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
                 <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
                   <NewspaperIcon className="size-5" />
-                  Recent Reporting
+                  {t("source.recentReporting")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-5 sm:px-6">
@@ -321,19 +367,29 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                           )}
                           <div className="min-w-0 flex-1 space-y-2">
                             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span title={formatAbsoluteTimestamp(article.publishedAt)}>
-                                {formatRelativeTimestamp(article.publishedAt)}
+                              <span
+                                title={formatAbsoluteTimestamp(
+                                  article.publishedAt,
+                                  locale,
+                                )}
+                              >
+                                {formatRelativeTimestamp(article.publishedAt, locale)}
                               </span>
                               {typeof article.aiBiasScore === "number" && (
                                 <>
                                   <span>·</span>
-                                  <span>AI bias {article.aiBiasScore.toFixed(1)}</span>
+                                  <span>
+                                    {t("source.aiBias").replace(
+                                      "{count}",
+                                      article.aiBiasScore.toFixed(1),
+                                    )}
+                                  </span>
                                 </>
                               )}
                               {(article.biasOutlierFlag ||
                                 article.sourceBiasOutlierFlag) && (
                                 <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-800">
-                                  Outlier
+                                  {t("source.outlier")}
                                 </span>
                               )}
                             </div>
@@ -356,7 +412,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                                 </Link>
                               ) : (
                                 <span className="inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-                                  Not clustered
+                                  {t("source.notClustered")}
                                 </span>
                               )}
                               <a
@@ -365,7 +421,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-muted"
                               >
-                                Read original
+                                {t("articles.readOriginal")}
                                 <ExternalLinkIcon className="size-3" />
                               </a>
                             </div>
@@ -385,15 +441,16 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
 }
 
 function InvalidSourceId() {
+  const t = useT();
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8">
       <div className="text-center">
-        <h1 className="mb-2 text-2xl font-semibold">Source not found</h1>
+        <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
         <p className="mb-4 text-muted-foreground">
-          This source link is invalid or no longer available.
+          {t("source.invalidBody")}
         </p>
         <Button asChild>
-          <Link to="/feed">Back to feed</Link>
+          <Link to="/feed">{t("source.backToFeed")}</Link>
         </Button>
       </div>
     </div>

@@ -1,8 +1,12 @@
+import { useMemo } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
+import { useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -13,39 +17,42 @@ const searchSchema = z.object({
   error: z.string().optional(),
 });
 
-const resetPasswordSchema = z
-  .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
-
-function getResetErrorMessage(error?: string) {
-  if (!error) return null;
-
-  if (error === "INVALID_TOKEN") {
-    return "This password reset link is invalid or has expired. Request a new one from the sign-in form.";
-  }
-
-  return "We couldn't verify this password reset link. Request a new one and try again.";
-}
-
 export const Route = createFileRoute("/reset-password")({
   validateSearch: searchSchema,
-  head: () => ({
-    meta: [{ title: "Reset Password — Biviant" }],
-  }),
+  head: ({ matches }) => {
+    const locale = getLocaleFromMatches(matches);
+
+    return {
+      meta: [{ title: getString(locale, "reset.metaTitle") }],
+    };
+  },
   component: ResetPasswordRoute,
 });
 
 function ResetPasswordRoute() {
-  const search = Route.useSearch();
   const navigate = useNavigate({ from: "/reset-password" });
+  const t = useT();
+  const search = Route.useSearch();
   const token = search.token?.trim();
-  const errorMessage = getResetErrorMessage(search.error);
+  const resetPasswordSchema = useMemo(
+    () =>
+      z
+        .object({
+          password: z.string().min(8, t("reset.passwordMin")),
+          confirmPassword: z.string(),
+        })
+        .refine((value) => value.password === value.confirmPassword, {
+          message: t("reset.passwordMismatch"),
+          path: ["confirmPassword"],
+        }),
+    [t],
+  );
+
+  const errorMessage = !search.error
+    ? null
+    : search.error === "INVALID_TOKEN"
+      ? t("reset.invalidToken")
+      : t("reset.verifyLink");
 
   const form = useForm({
     defaultValues: {
@@ -58,7 +65,7 @@ function ResetPasswordRoute() {
     onSubmit: async ({ value }) => {
       if (!token) {
         toast.error(
-          "This password reset link is invalid or has expired. Request a new one and try again.",
+          t("reset.invalidToast"),
         );
         return;
       }
@@ -70,16 +77,14 @@ function ResetPasswordRoute() {
         },
         {
           onSuccess: () => {
-            toast.success("Your password has been reset. You can sign in now.");
+            toast.success(t("reset.success"));
             void navigate({
               to: "/dashboard",
               search: { mode: "signin" },
             });
           },
           onError: (error) => {
-            const message =
-              error.error.message ||
-              "We couldn't reset your password. Request a new link and try again.";
+            const message = error.error.message || t("reset.error");
             toast.error(message);
           },
         },
@@ -93,10 +98,10 @@ function ResetPasswordRoute() {
         <Card className="w-full border-border shadow-lg">
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl font-bold">
-              Reset your password
+              {t("reset.title")}
             </CardTitle>
             <p className="text-muted-foreground text-sm mt-1">
-              Choose a new password for your Biviant account.
+              {t("reset.body")}
             </p>
           </CardHeader>
 
@@ -109,11 +114,11 @@ function ResetPasswordRoute() {
                   aria-live="polite"
                 >
                   {errorMessage ||
-                    "This password reset link is missing a token. Request a new one from the sign-in form."}
+                    t("reset.missingToken")}
                 </p>
                 <Button asChild className="w-full h-11">
                   <Link to="/dashboard" search={{ mode: "signin" }}>
-                    Back to sign in
+                    {t("reset.backToSignIn")}
                   </Link>
                 </Button>
               </div>
@@ -130,13 +135,13 @@ function ResetPasswordRoute() {
                   <form.Field name="password">
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor={field.name}>New password</Label>
+                        <Label htmlFor={field.name}>{t("reset.newPassword")}</Label>
                         <Input
                           id={field.name}
                           name={field.name}
                           type="password"
-                          aria-label="New password"
-                          placeholder="Create a new password"
+                          aria-label={t("reset.newPasswordAria")}
+                          placeholder={t("reset.newPasswordPlaceholder")}
                           value={field.state.value}
                           onBlur={field.handleBlur}
                           onChange={(event) =>
@@ -145,7 +150,7 @@ function ResetPasswordRoute() {
                           className="h-11"
                         />
                         {field.state.meta.errors.map((error, index) => (
-                          <p key={index} className="text-destructive text-sm">
+                          <p key={index} className="text-destructive text-sm" role="alert">
                             {error?.message}
                           </p>
                         ))}
@@ -158,13 +163,15 @@ function ResetPasswordRoute() {
                   <form.Field name="confirmPassword">
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor={field.name}>Confirm new password</Label>
+                        <Label htmlFor={field.name}>
+                          {t("reset.confirmPassword")}
+                        </Label>
                         <Input
                           id={field.name}
                           name={field.name}
                           type="password"
-                          aria-label="Confirm new password"
-                          placeholder="Repeat your new password"
+                          aria-label={t("reset.confirmPasswordAria")}
+                          placeholder={t("reset.confirmPasswordPlaceholder")}
                           value={field.state.value}
                           onBlur={field.handleBlur}
                           onChange={(event) =>
@@ -173,7 +180,7 @@ function ResetPasswordRoute() {
                           className="h-11"
                         />
                         {field.state.meta.errors.map((error, index) => (
-                          <p key={index} className="text-destructive text-sm">
+                          <p key={index} className="text-destructive text-sm" role="alert">
                             {error?.message}
                           </p>
                         ))}
@@ -190,8 +197,8 @@ function ResetPasswordRoute() {
                       disabled={!state.canSubmit || state.isSubmitting}
                     >
                       {state.isSubmitting
-                        ? "Updating password..."
-                        : "Reset password"}
+                        ? t("reset.updating")
+                        : t("reset.submit")}
                     </Button>
                   )}
                 </form.Subscribe>
@@ -202,7 +209,7 @@ function ResetPasswordRoute() {
                     search={{ mode: "signin" }}
                     className="text-primary hover:underline font-medium"
                   >
-                    Back to sign in
+                    {t("reset.backToSignIn")}
                   </Link>
                 </div>
               </form>

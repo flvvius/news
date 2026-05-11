@@ -18,11 +18,38 @@ import {
   getScrollDepthPercentage,
 } from "@/lib/interaction-tracking";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
-import { SITE } from "@/lib/seo";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import { getString, STRINGS, type Locale, type StringKey } from "@/lib/i18n/strings";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
 });
+
+function getPluralizedCountLabel(
+  locale: Locale,
+  baseKey: "event.articles" | "event.sourceCount",
+  count: number,
+) {
+  const pluralCategory = new Intl.PluralRules(locale).select(count);
+  const candidates = [
+    `${baseKey}.${pluralCategory}`,
+    `${baseKey}.other`,
+    count === 1 ? `${baseKey}.one` : `${baseKey}.many`,
+  ] as const;
+
+  const resolvedKey =
+    candidates.find(
+      (candidate) =>
+        candidate in STRINGS[locale] || candidate in STRINGS.en,
+    ) ?? `${baseKey}.many`;
+
+  return getString(locale, resolvedKey as StringKey).replace(
+    "{count}",
+    String(count),
+  );
+}
 
 export const Route = createFileRoute("/event/$slug")({
   validateSearch: searchSchema,
@@ -46,14 +73,15 @@ export const Route = createFileRoute("/event/$slug")({
       return null;
     }
   },
-  head: ({ loaderData, params }) => {
+  head: ({ loaderData, params, matches }) => {
+    const locale = getLocaleFromMatches(matches);
     const title = loaderData?.event?.title
       ? `${loaderData.event.title} — ${SITE.name}`
-      : `Event — ${SITE.name}`;
+      : getString(locale, "event.metaTitle");
     const description =
       loaderData?.event?.perspectiveSummaries?.center?.slice(0, 155) ??
       loaderData?.event?.globalImpact?.slice(0, 155) ??
-      "Read this story from multiple perspectives on Biviant.";
+      getString(locale, "event.metaDescription");
     const imageUrl =
       loaderData?.event?.shareImageUrl ?? loaderData?.event?.imageUrl;
 
@@ -65,7 +93,7 @@ export const Route = createFileRoute("/event/$slug")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:description", content: description },
         { property: "og:type", content: "article" },
-        { property: "og:url", content: `${SITE.url}/event/${params.slug}` },
+        { property: "og:url", content: absoluteSiteUrl(`/event/${params.slug}`) },
         ...(loaderData?.event?.firstPublishedAt
           ? [
               {
@@ -114,13 +142,15 @@ export const Route = createFileRoute("/event/$slug")({
             ]
           : []),
       ],
-      links: [{ rel: "canonical", href: `${SITE.url}/event/${params.slug}` }],
+      links: [{ rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) }],
     };
   },
   component: EventDetailPage,
 });
 
 function EventDetailPage() {
+  const locale = useLocale();
+  const t = useT();
   const { slug } = Route.useParams();
   const loaderData = Route.useLoaderData();
   const search = Route.useSearch();
@@ -190,7 +220,7 @@ function EventDetailPage() {
           aria-atomic="true"
           className="text-sm text-muted-foreground"
         >
-          Loading...
+          {t("event.loading")}
         </div>
       </div>
     );
@@ -200,12 +230,12 @@ function EventDetailPage() {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">Event not found</h1>
+          <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
           <p className="mb-4 text-muted-foreground">
-            The event you&apos;re looking for doesn&apos;t exist.
+            {t("event.notFoundBody")}
           </p>
           <Button asChild>
-            <Link to="/feed">Back to feed</Link>
+            <Link to="/feed">{t("event.backToFeed")}</Link>
           </Button>
         </div>
       </div>
@@ -237,7 +267,7 @@ function EventDetailPage() {
             onClick={handleBackToFeed}
             className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            &larr; Back to feed
+            &larr; {t("event.backToFeed")}
           </button>
 
           <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
@@ -251,7 +281,7 @@ function EventDetailPage() {
               ) : (
                 <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
                   <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
-                    Event
+                    {t("event.cardLabel")}
                   </span>
                 </div>
               )}
@@ -261,7 +291,7 @@ function EventDetailPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    Event Overview
+                    {t("event.overview")}
                   </p>
                   <div className="flex items-center gap-2">
                     <BookmarkButton
@@ -290,9 +320,12 @@ function EventDetailPage() {
               <div className="grid gap-3 border-t border-border/70 pt-4 sm:flex sm:flex-wrap sm:items-center">
                 <div
                   className="w-fit rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
-                  title={formatAbsoluteTimestamp(lastUpdatedAt)}
+                  title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
                 >
-                  Updated {formatRelativeTimestamp(lastUpdatedAt)}
+                  {t("event.updated").replace(
+                    "{time}",
+                    formatRelativeTimestamp(lastUpdatedAt, locale),
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3 sm:border-0 sm:bg-transparent sm:p-0">
                   <div className="flex -space-x-3">
@@ -328,11 +361,20 @@ function EventDetailPage() {
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
                     <span className="font-medium text-card-foreground">
-                      {articles.length}{" "}
-                      {articles.length === 1 ? "article" : "articles"}
+                      {getPluralizedCountLabel(
+                        locale,
+                        "event.articles",
+                        articles.length,
+                      )}
                     </span>
                     <span>•</span>
-                    <span>{sourceCount} sources</span>
+                    <span>
+                      {getPluralizedCountLabel(
+                        locale,
+                        "event.sourceCount",
+                        sourceCount,
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -345,13 +387,13 @@ function EventDetailPage() {
                 className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
                 value="perspectives"
               >
-                Perspectives
+                {t("event.perspectives")}
               </TabsTrigger>
               <TabsTrigger
                 className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
                 value="claims"
               >
-                Claim Breakdown
+                {t("event.claimBreakdown")}
               </TabsTrigger>
             </TabsList>
 
@@ -361,22 +403,28 @@ function EventDetailPage() {
             >
               {hasPerspectives ? (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
                     <CardTitle className="text-xl tracking-tight">
-                      Multiple Perspectives
+                      {t("event.multiplePerspectives")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
                     <Tabs defaultValue="center" className="w-full gap-5">
                       <TabsList
                         className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
                       >
                         {event.perspectiveSummaries?.left && (
-                          <TabsTrigger value="left">Left</TabsTrigger>
+                          <TabsTrigger value="left">
+                            {t("event.left")}
+                          </TabsTrigger>
                         )}
-                        <TabsTrigger value="center">Center</TabsTrigger>
+                        <TabsTrigger value="center">
+                          {t("event.centerTab")}
+                        </TabsTrigger>
                         {event.perspectiveSummaries?.right && (
-                          <TabsTrigger value="right">Right</TabsTrigger>
+                          <TabsTrigger value="right">
+                            {t("event.right")}
+                          </TabsTrigger>
                         )}
                       </TabsList>
 
@@ -391,7 +439,7 @@ function EventDetailPage() {
                       <TabsContent value="center">
                         <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                           {event.perspectiveSummaries?.center ??
-                            "Summary pending…"}
+                            t("event.summaryPending")}
                         </p>
                       </TabsContent>
 
@@ -407,15 +455,15 @@ function EventDetailPage() {
                 </Card>
               ) : (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 py-3 sm:py-4">
                     <CardTitle className="text-xl tracking-tight">
-                      Summary
+                      {t("event.summary")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pt-3 pb-4 sm:px-8 sm:pt-4 sm:pb-5">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.perspectiveSummaries?.center ??
-                        "Coverage grouped from multiple sources. Compare the original reporting below."}
+                        t("event.compareOriginal")}
                     </p>
                   </CardContent>
                 </Card>
@@ -423,12 +471,12 @@ function EventDetailPage() {
 
               {event.globalImpact && (
                 <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
+                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
                     <CardTitle className="text-xl tracking-tight">
-                      What This Means
+                      {t("event.meaning")}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-6 py-6 sm:px-8">
+                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
                       {event.globalImpact}
                     </p>

@@ -1,18 +1,25 @@
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 export function PageLoadingState({
-  title = "Loading your page",
-  description = "Pulling in the latest view and getting things ready.",
+  title,
+  description,
   cardCount = 2,
 }: {
   title?: string;
   description?: string;
   cardCount?: number;
 }) {
+  const t = useT();
+  const resolvedTitle = title ?? t("common.loading.title");
+  const resolvedDescription = description ?? t("common.loading.body");
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
+    <div
+      aria-busy="true"
+      className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]"
+    >
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-6">
           <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
@@ -27,10 +34,17 @@ export function PageLoadingState({
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-6">
-              <p className="text-sm font-medium text-foreground">{title}</p>
+            <CardContent
+              className="space-y-3 pt-6"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <p className="text-sm font-medium text-foreground">
+                {resolvedTitle}
+              </p>
               <p className="max-w-[52ch] text-sm text-muted-foreground">
-                {description}
+                {resolvedDescription}
               </p>
               <div className="grid gap-2 pt-1">
                 <Skeleton className="h-3 w-full" />

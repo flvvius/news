@@ -7,32 +7,48 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { Button } from "./ui/button";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { ChevronDown, Flame, LogOut, User } from "lucide-react";
+import { toast } from "sonner";
 
 export default function UserMenu() {
+  const t = useT();
   const user = useQuery(api.user.getCurrentUser);
   const streak = user?.stats.currentStreak ?? 0;
 
   const handleSignOut = async () => {
-    await authClient.signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          location.reload();
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            location.reload();
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error("Failed to sign out from user menu:", error);
+      toast.error(t("auth.signOutError"));
+    }
   };
 
-  const userName = user?.profile?.name || user?.email || "Account";
+  const userName = user?.profile?.name || user?.email || t("user.account");
   const userInitial = userName.charAt(0).toUpperCase();
+  const streakLabel =
+    streak === 1
+      ? t("user.streakOne")
+      : t("user.streakMany").replace("{count}", String(streak));
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 pr-3" aria-label="User menu">
+        <Button
+          variant="outline"
+          className="gap-2 pr-3"
+          aria-label={t("user.menu")}
+        >
           <div className="flex items-center justify-center size-6 rounded-md bg-primary/10 text-primary text-xs font-semibold">
             {userInitial}
           </div>
@@ -56,11 +72,11 @@ export default function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <Flame className="size-4" />
-          {streak} day{streak === 1 ? "" : "s"} streak
+          {streakLabel}
         </DropdownMenuItem>
         <DropdownMenuItem disabled className="gap-2 text-muted-foreground">
           <User className="size-4" />
-          Profile (Coming soon)
+          {t("user.profileSoon")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -68,7 +84,7 @@ export default function UserMenu() {
           className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10"
         >
           <LogOut className="size-4" />
-          Sign Out
+          {t("auth.signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

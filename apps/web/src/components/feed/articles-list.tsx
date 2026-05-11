@@ -7,6 +7,7 @@ import { useConvexMutation } from "@convex-dev/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BiasIndicator from "@/components/bias-indicator";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 type Article = {
   _id: Id<"articles">;
@@ -42,6 +43,7 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation({
     mutationFn: useConvexMutation(api.interactions.logInteraction),
@@ -73,7 +75,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
     <Card className="overflow-hidden border-border/80 py-0">
       <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
         <CardTitle className="text-xl tracking-tight">
-          Original Reporting ({articles.length})
+          {t("articles.originalReporting")} ({articles.length})
         </CardTitle>
       </CardHeader>
       <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
@@ -95,7 +97,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                   ) : (
                     <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
                       <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        {article.source?.name ?? "Source"}
+                        {article.source?.name ?? t("articles.source")}
                       </span>
                     </div>
                   )}
@@ -109,7 +111,10 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                           to="/source/$sourceId"
                           params={{ sourceId: article.source._id }}
                           className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
-                          aria-label={`View ${article.source.name} source profile`}
+                          aria-label={t("articles.viewSource").replace(
+                            "{name}",
+                            article.source.name,
+                          )}
                           onClick={() => logSourceClick(article)}
                         >
                           {article.source.logoUrl ? (
@@ -163,11 +168,11 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                       href={article.canonicalUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label="Read original (opens in a new tab)"
+                      aria-label={t("articles.readOriginalAria")}
                       className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
                       onClick={() => logSourceClick(article)}
                     >
-                      Read original
+                      {t("articles.readOriginal")}
                       <svg
                         className="h-3 w-3"
                         fill="none"

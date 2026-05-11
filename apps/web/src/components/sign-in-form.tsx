@@ -5,6 +5,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
+import { useT } from "@/lib/i18n/LocaleContext";
+import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -14,21 +16,46 @@ import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
 function getPasswordResetRedirectURL() {
   if (typeof window === "undefined") {
-    return `${redirectFallbackOrigin}/reset-password`;
+    return absoluteSiteUrl("/reset-password");
   }
-  return `${window.location.origin}/reset-password`;
+  return new URL("/reset-password", window.location.origin).toString();
 }
 
-const redirectFallbackOrigin = "http://localhost:3001";
+function normalizeErrorCode(code: string | undefined) {
+  return code?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function getLocalizedSignInError(
+  t: ReturnType<typeof useT>,
+  error: {
+    error?: {
+      code?: string;
+      message?: string;
+      statusText?: string;
+    };
+  },
+) {
+  const code = normalizeErrorCode(error.error?.code);
+
+  if (["invalid_credentials", "invalid_password", "invalid_login"].includes(code)) {
+    return t("auth.invalidCredentials");
+  }
+
+  return (
+    error.error?.message ??
+    error.error?.statusText ??
+    t("auth.signInError")
+  );
+}
 
 export default function SignInForm({
   onSwitchToSignUp,
   initialEmail = "",
   emailLocked = false,
-  redirectTo = "/dashboard",
-  title = "Welcome Back",
-  subtitle = "Sign in to your Biviant account",
-  submitLabel = "Sign In",
+  redirectTo = "/activitate",
+  title,
+  subtitle,
+  submitLabel,
   showGoogle = true,
 }: {
   onSwitchToSignUp?: () => void;
@@ -40,11 +67,15 @@ export default function SignInForm({
   submitLabel?: string;
   showGoogle?: boolean;
 }) {
+  const t = useT();
   const navigate = useNavigate({
     from: "/",
   });
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [resetStatusMessage, setResetStatusMessage] = useState("");
+  const resolvedTitle = title ?? t("auth.signInTitle");
+  const resolvedSubtitle = subtitle ?? t("auth.signInSubtitle");
+  const resolvedSubmitLabel = submitLabel ?? t("auth.signIn");
 
   const form = useForm({
     defaultValues: {
@@ -60,22 +91,18 @@ export default function SignInForm({
         {
           onSuccess: () => {
             navigate({ to: redirectTo as never });
-            toast.success("Signed in");
+            toast.success(t("auth.signInSuccess"));
           },
           onError: (error) => {
-            toast.error(
-              error.error?.message ??
-                error.error?.statusText ??
-                "Sign-in failed. Please try again.",
-            );
+            toast.error(getLocalizedSignInError(t, error));
           },
         }
       );
     },
     validators: {
       onSubmit: z.object({
-        email: z.email("Invalid email address"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
+        email: z.email(t("auth.invalidEmail")),
+        password: z.string().min(8, t("auth.passwordMin")),
       }),
     },
   });
@@ -86,9 +113,9 @@ export default function SignInForm({
         <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary mx-auto mb-4">
           <Mail className="size-6" />
         </div>
-        <CardTitle className="text-2xl font-bold">{title}</CardTitle>
+        <CardTitle className="text-2xl font-bold">{resolvedTitle}</CardTitle>
         <p className="text-muted-foreground text-sm mt-1">
-          {subtitle}
+          {resolvedSubtitle}
         </p>
       </CardHeader>
 
@@ -105,12 +132,13 @@ export default function SignInForm({
             <form.Field name="email">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Email</Label>
+                  <Label htmlFor={field.name}>{t("auth.email")}</Label>
                   <Input
                     id={field.name}
                     name={field.name}
                     type="email"
-                    placeholder="you@example.com"
+                    aria-label={t("auth.email")}
+                    placeholder={t("auth.emailPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -132,7 +160,7 @@ export default function SignInForm({
               {(field) => (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor={field.name}>Password</Label>
+                    <Label htmlFor={field.name}>{t("auth.password")}</Label>
                     <button
                       type="button"
                       className="text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-60"
@@ -143,10 +171,10 @@ export default function SignInForm({
 
                         if (!parsedEmail.success) {
                           setResetStatusMessage(
-                            "Enter your email address first so we know where to send the reset link.",
+                            t("auth.resetEmailFirst"),
                           );
                           toast.error(
-                            "Enter your email address first so we know where to send the reset link.",
+                            t("auth.resetEmailFirst"),
                           );
                           return;
                         }
@@ -174,39 +202,39 @@ export default function SignInForm({
                           if (!response.ok) {
                             throw new Error(
                               payload?.message ||
-                                "We couldn't send a reset link. Please try again.",
+                                t("auth.resetLinkFailed"),
                             );
                           }
 
                           setResetStatusMessage(
                             payload?.message ||
-                              "If that email exists, we sent a password reset link.",
+                              t("auth.resetLinkSent"),
                           );
                           toast.success(
                             payload?.message ||
-                              "If that email exists, we sent a password reset link.",
+                              t("auth.resetLinkSent"),
                           );
                         } catch (error) {
                           setResetStatusMessage(
                             error instanceof Error
                               ? error.message
-                              : "We couldn't send a reset link. Please try again.",
+                              : t("auth.resetLinkFailed"),
                           );
                           toast.error(
                             error instanceof Error
                               ? error.message
-                              : "We couldn't send a reset link. Please try again.",
+                              : t("auth.resetLinkFailed"),
                           );
                         } finally {
                           setIsSendingReset(false);
                         }
                       }}
                     >
-                      {isSendingReset ? "Sending..." : "Forgot password?"}
+                      {isSendingReset ? t("auth.sending") : t("auth.forgotPassword")}
                     </button>
                     <div aria-live="polite" role="status" className="sr-only">
                       {isSendingReset
-                        ? "Sending password reset..."
+                        ? t("auth.resetSendingStatus")
                         : resetStatusMessage}
                     </div>
                   </div>
@@ -214,7 +242,8 @@ export default function SignInForm({
                     id={field.name}
                     name={field.name}
                     type="password"
-                    placeholder="Enter your password"
+                    aria-label={t("auth.password")}
+                    placeholder={t("auth.passwordPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -240,10 +269,10 @@ export default function SignInForm({
                 {state.isSubmitting ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Signing in...
+                    {t("auth.signingIn")}
                   </>
                 ) : (
-                  submitLabel
+                  resolvedSubmitLabel
                 )}
               </Button>
             )}
@@ -260,13 +289,13 @@ export default function SignInForm({
         {onSwitchToSignUp && (
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Need an account?{" "}
+              {t("auth.needAccount")}{" "}
               <button
                 type="button"
                 onClick={onSwitchToSignUp}
                 className="text-primary hover:underline font-medium"
               >
-                Sign Up
+                {t("auth.signUp")}
               </button>
             </p>
           </div>

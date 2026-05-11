@@ -1,16 +1,29 @@
-const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-});
+import type { Locale } from "@/lib/i18n/strings";
 
 function isFiniteTimestamp(timestamp: number): boolean {
   return Number.isFinite(timestamp);
 }
 
-export function formatRelativeTimestamp(timestamp: number): string {
+function getIntlLocale(locale?: Locale): string | undefined {
+  if (locale === "ro") return "ro-RO";
+  if (locale === "en") return "en-US";
+  return undefined;
+}
+
+export function formatRelativeTimestamp(
+  timestamp: number,
+  locale?: Locale,
+): string {
   if (!isFiniteTimestamp(timestamp)) {
-    return "recently";
+    return locale === "ro" ? "recent" : "recently";
   }
 
+  const relativeTimeFormatter = new Intl.RelativeTimeFormat(
+    getIntlLocale(locale),
+    {
+      numeric: "auto",
+    },
+  );
   const now = Date.now();
   const diffMs = timestamp - now;
   const diffMinutes = Math.round(diffMs / (60 * 1000));
@@ -43,12 +56,15 @@ export function formatRelativeTimestamp(timestamp: number): string {
   return relativeTimeFormatter.format(diffYears, "year");
 }
 
-export function formatAbsoluteTimestamp(timestamp: number): string {
+export function formatAbsoluteTimestamp(
+  timestamp: number,
+  locale?: Locale,
+): string {
   if (!isFiniteTimestamp(timestamp)) {
-    return "Unknown time";
+    return locale === "ro" ? "Oră necunoscută" : "Unknown time";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(timestamp));

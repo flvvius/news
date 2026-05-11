@@ -8,6 +8,12 @@ import {
 import type { QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
+export const TOPIC_INFERENCE_BOUNDS = {
+  minScore: { min: 1, max: 20 },
+  confidenceRatio: { min: 0.1, max: 1 },
+  maxTopics: { min: 1, max: 5 },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Server-side helper — use from any query or mutation handler
 // ---------------------------------------------------------------------------
@@ -102,6 +108,11 @@ export const getPublicRuntimeConfig = query({
       waitlistToastDismissMs,
     };
   },
+});
+
+export const getTopicInferenceBounds = query({
+  args: {},
+  handler: async () => TOPIC_INFERENCE_BOUNDS,
 });
 
 /** List all config entries (for an admin panel). */
@@ -336,6 +347,86 @@ export const set = mutation({
         updatedAt: Date.now(),
       });
     }
+  },
+});
+
+export const setTopicInferenceSettings = mutation({
+  args: {
+    minScore: v.number(),
+    confidenceRatio: v.number(),
+    maxTopics: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+
+    if (
+      !Number.isFinite(args.minScore) ||
+      args.minScore < TOPIC_INFERENCE_BOUNDS.minScore.min ||
+      args.minScore > TOPIC_INFERENCE_BOUNDS.minScore.max
+    ) {
+      throw new ConvexError("Invalid topic inference minimum score");
+    }
+    if (
+      !Number.isFinite(args.confidenceRatio) ||
+      args.confidenceRatio < TOPIC_INFERENCE_BOUNDS.confidenceRatio.min ||
+      args.confidenceRatio > TOPIC_INFERENCE_BOUNDS.confidenceRatio.max
+    ) {
+      throw new ConvexError("Invalid topic inference confidence ratio");
+    }
+    if (
+      !Number.isInteger(args.maxTopics) ||
+      args.maxTopics < TOPIC_INFERENCE_BOUNDS.maxTopics.min ||
+      args.maxTopics > TOPIC_INFERENCE_BOUNDS.maxTopics.max
+    ) {
+      throw new ConvexError("Invalid topic inference max topics");
+    }
+
+    const now = Date.now();
+    const entries = [
+      {
+        key: "topic_inference_min_score",
+        value: args.minScore,
+        description:
+          "Minimum weighted lexical score required before a topic is attached to a clustered event.",
+      },
+      {
+        key: "topic_inference_confidence_ratio",
+        value: args.confidenceRatio,
+        description:
+          "Relative score threshold for keeping additional inferred topics alongside the top-scoring topic.",
+      },
+      {
+        key: "topic_inference_max_topics",
+        value: args.maxTopics,
+        description:
+          "Maximum number of inferred topics attached to an event during clustering.",
+      },
+    ];
+
+    for (const entry of entries) {
+      const existing = await ctx.db
+        .query("config")
+        .withIndex("by_key", (q) => q.eq("key", entry.key))
+        .unique();
+      const value = JSON.stringify(entry.value);
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          value,
+          description: entry.description,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("config", {
+          key: entry.key,
+          value,
+          description: entry.description,
+          updatedAt: now,
+        });
+      }
+    }
+
+    return { updated: true as const };
   },
 });
 
@@ -736,6 +827,48 @@ export const seedDefaults = internalMutation({
         value: 48,
         description:
           "How many hours back the singleton recluster pass should inspect recent small events.",
+      },
+      {
+        key: "vector_search_daily_budget_qgb",
+        value: 9,
+        description:
+          "Daily Convex vector-search read budget in qGB. Clustering workers use this to hard-stop expensive semantic search when spend spikes.",
+      },
+      {
+        key: "vector_search_budget_enabled",
+        value: true,
+        description:
+          "When true, clustering workers enforce the daily vector-search qGB budget before semantic matching work.",
+      },
+      {
+        key: "vector_search_fallback_mode_enabled",
+        value: true,
+        description:
+          "When true, clusterEnrichedArticles falls back to heuristic-only batch-local matching after the vector-search budget is exhausted.",
+      },
+      {
+        key: "vector_search_run_retention_days",
+        value: 30,
+        description:
+          "Number of days to retain detailed vector-search run rows before daily cleanup deletes them.",
+      },
+      {
+        key: "clustering_vector_search_limit",
+        value: 40,
+        description:
+          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
+      },
+      {
+        key: "merge_vector_search_limit",
+        value: 12,
+        description:
+          "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
+      },
+      {
+        key: "recluster_vector_search_limit",
+        value: 24,
+        description:
+          "Top-K limit used for event-to-event vector search during singleton recluster passes.",
       },
     ];
 

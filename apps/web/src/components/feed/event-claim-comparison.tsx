@@ -11,6 +11,7 @@ import {
   ChevronDownIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -39,54 +40,65 @@ const STATUS_ORDER: ClaimStatus[] = [
   "exclusive_center",
 ];
 
-const STATUS_COPY: Record<
-  ClaimStatus,
-  {
-    label: string;
-    heading: string;
-    description: string;
-    icon: typeof AlertTriangleIcon;
-  }
-> = {
-  agreement: {
-    label: "Agreement",
-    heading: "Agreements",
-    description: "Claims confirmed by multiple sources.",
-    icon: CheckCircle2Icon,
-  },
-  divergence: {
-    label: "Divergence",
-    heading: "Divergences",
-    description: "Claims where sources report materially different details.",
-    icon: AlertTriangleIcon,
-  },
-  framing: {
-    label: "Framing",
-    heading: "Framing Differences",
-    description: "Shared facts described with meaningfully different language.",
-    icon: MessageSquareTextIcon,
-  },
-  exclusive_left: {
-    label: "Left Exclusive",
-    heading: "Left-Side Exclusives",
-    description:
-      "Substantive claims only found in left or left-center coverage.",
-    icon: MinusCircleIcon,
-  },
-  exclusive_right: {
-    label: "Right Exclusive",
-    heading: "Right-Side Exclusives",
-    description:
-      "Substantive claims only found in right or right-center coverage.",
-    icon: MinusCircleIcon,
-  },
-  exclusive_center: {
-    label: "Center Exclusive",
-    heading: "Center Exclusives",
-    description: "Substantive claims only found in center coverage.",
-    icon: MinusCircleIcon,
-  },
+const STATUS_ICONS: Record<ClaimStatus, typeof AlertTriangleIcon> = {
+  agreement: CheckCircle2Icon,
+  divergence: AlertTriangleIcon,
+  framing: MessageSquareTextIcon,
+  exclusive_left: MinusCircleIcon,
+  exclusive_right: MinusCircleIcon,
+  exclusive_center: MinusCircleIcon,
 };
+
+function getStatusLabel(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreement");
+    case "divergence":
+      return t("claim.divergence");
+    case "framing":
+      return t("claim.framing");
+    case "exclusive_left":
+      return t("claim.leftExclusive");
+    case "exclusive_right":
+      return t("claim.rightExclusive");
+    case "exclusive_center":
+      return t("claim.centerExclusive");
+  }
+}
+
+function getStatusHeading(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreements");
+    case "divergence":
+      return t("claim.divergences");
+    case "framing":
+      return t("claim.framings");
+    case "exclusive_left":
+      return t("claim.leftExclusives");
+    case "exclusive_right":
+      return t("claim.rightExclusives");
+    case "exclusive_center":
+      return t("claim.centerExclusives");
+  }
+}
+
+function getStatusBody(t: ReturnType<typeof useT>, status: ClaimStatus) {
+  switch (status) {
+    case "agreement":
+      return t("claim.agreementBody");
+    case "divergence":
+      return t("claim.divergenceBody");
+    case "framing":
+      return t("claim.framingBody");
+    case "exclusive_left":
+      return t("claim.leftExclusiveBody");
+    case "exclusive_right":
+      return t("claim.rightExclusiveBody");
+    case "exclusive_center":
+      return t("claim.centerExclusiveBody");
+  }
+}
 
 function formatLean(value: string) {
   return value
@@ -116,6 +128,7 @@ function ClaimVariantRow({
   articlesById: Map<string, ClaimArticle>;
   sourcesById: Map<string, NonNullable<ClaimArticle["source"]>>;
 }) {
+  const t = useT();
   const article = articlesById.get(String(variant.articleId));
   const source = getVariantSource(variant, articlesById, sourcesById);
 
@@ -149,7 +162,7 @@ function ClaimVariantRow({
               </Link>
             ) : (
               <span className="text-sm font-semibold text-muted-foreground">
-                Unknown source
+                {t("claim.unknownSource")}
               </span>
             )}
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -173,7 +186,7 @@ function ClaimVariantRow({
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
             >
-              Read source article
+              {t("claim.readSourceArticle")}
               <ExternalLinkIcon className="size-3" />
             </a>
           )}
@@ -194,9 +207,9 @@ function ClaimCard({
   sourcesById: Map<string, NonNullable<ClaimArticle["source"]>>;
   status: ClaimStatus;
 }) {
+  const t = useT();
   const [isExpanded, setIsExpanded] = useState(false);
-  const statusConfig = STATUS_COPY[status];
-  const Icon = statusConfig.icon;
+  const Icon = STATUS_ICONS[status];
   const sourceCount = new Set(
     claim.variants.map((variant) => String(variant.sourceId)),
   ).size;
@@ -214,14 +227,16 @@ function ClaimCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
               <Icon className="size-3.5" />
-              {statusConfig.label}
+              {getStatusLabel(t, status)}
             </span>
             <span className="text-xs text-muted-foreground">
-              {claim.importance}/5 importance
+              {claim.importance}/5 {t("claim.importance")}
             </span>
           </div>
           <span className="shrink-0 text-xs text-muted-foreground">
-            {sourceCount} {sourceCount === 1 ? "source" : "sources"}
+            {sourceCount === 1
+              ? t("claim.source.one")
+              : t("claim.source.many").replace("{count}", String(sourceCount))}
           </span>
         </div>
 
@@ -250,10 +265,13 @@ function ClaimCard({
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             {isExpanded
-              ? "Show less"
-              : `Show ${remainingVariantCount} more ${
-                  remainingVariantCount === 1 ? "source" : "sources"
-                }`}
+              ? t("claim.showLess")
+              : remainingVariantCount === 1
+                ? t("claim.showMore.one")
+                : t("claim.showMore.many").replace(
+                    "{count}",
+                    String(remainingVariantCount),
+                  )}
             <ChevronDownIcon
               className={cn(
                 "size-3.5 transition-transform",
@@ -307,6 +325,7 @@ export default function EventClaimComparison({
   eventId: Id<"events">;
   articles: ClaimArticle[];
 }) {
+  const t = useT();
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   const claims = useQuery(api.claimDivergence.getEventClaims, {
@@ -329,14 +348,19 @@ export default function EventClaimComparison({
       <Card className="overflow-hidden border-border py-0">
         <CardHeader className="border-b border-border bg-muted/30 py-5">
           <CardTitle className="text-xl tracking-tight">
-            Claim Breakdown
+            {t("claim.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 py-6 sm:px-6">
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span className="text-sm text-muted-foreground">
-              Loading claim analysis...
+              {t("claim.loading")}
             </span>
           </div>
         </CardContent>
@@ -349,18 +373,16 @@ export default function EventClaimComparison({
       <Card className="overflow-hidden border-border py-0">
         <CardHeader className="border-b border-border bg-muted/30 py-5">
           <CardTitle className="text-xl tracking-tight">
-            Claim Breakdown
+            {t("claim.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 py-6 sm:px-6">
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
             <p className="text-sm font-medium text-card-foreground">
-              Claim analysis is not available yet
+              {t("claim.unavailable")}
             </p>
             <p className="mt-1.5 text-sm text-muted-foreground max-w-[55ch] mx-auto">
-              This view appears once enough articles have atomic facts and the
-              event-level claim worker has analyzed agreements, divergences, and
-              exclusives.
+              {t("claim.unavailableBody")}
             </p>
           </div>
         </CardContent>
@@ -421,10 +443,10 @@ export default function EventClaimComparison({
       <CardHeader className="border-b border-border bg-muted/30 py-5">
         <div className="flex flex-col gap-1">
           <CardTitle className="text-xl tracking-tight">
-            Claim Breakdown
+            {t("claim.title")}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Compare how different sources report this story
+            {t("claim.subtitle")}
           </p>
         </div>
       </CardHeader>
@@ -434,25 +456,25 @@ export default function EventClaimComparison({
         <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
             <StatCard
-              label="Agreements"
+              label={t("claim.agreements")}
               count={summaryCounts.agreements}
               isActive={activeFilter === "agreements"}
               onClick={() => toggleFilter("agreements")}
             />
             <StatCard
-              label="Divergences"
+              label={t("claim.divergences")}
               count={summaryCounts.divergences}
               isActive={activeFilter === "divergences"}
               onClick={() => toggleFilter("divergences")}
             />
             <StatCard
-              label="Framing"
+              label={t("claim.framings")}
               count={summaryCounts.framing}
               isActive={activeFilter === "framing"}
               onClick={() => toggleFilter("framing")}
             />
             <StatCard
-              label="Exclusives"
+              label={t("claim.centerExclusives")}
               count={summaryCounts.exclusives}
               isActive={activeFilter === "exclusives"}
               onClick={() => toggleFilter("exclusives")}
@@ -465,7 +487,7 @@ export default function EventClaimComparison({
               onClick={() => setActiveFilter(null)}
               className="mt-3 text-xs font-medium text-primary hover:underline"
             >
-              Clear filter
+              {t("claim.clearFilter")}
             </button>
           )}
         </div>
@@ -475,15 +497,14 @@ export default function EventClaimComparison({
           <div className="space-y-8">
             {visibleStatuses.map((status) => {
               const statusClaims = claimsByStatus.get(status) ?? [];
-              const copy = STATUS_COPY[status];
               return (
                 <section key={status} className="space-y-4">
                   <div className="border-l-2 border-primary pl-3">
                     <h3 className="text-base font-semibold tracking-tight text-card-foreground">
-                      {copy.heading}
+                      {getStatusHeading(t, status)}
                     </h3>
                     <p className="text-sm text-muted-foreground max-w-[55ch]">
-                      {copy.description}
+                      {getStatusBody(t, status)}
                     </p>
                   </div>
                   <div className="grid gap-4">

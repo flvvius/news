@@ -1,3 +1,5 @@
+import { getString, type Locale } from "@/lib/i18n/strings";
+
 /**
  * SEO constants used across all routes.
  *
@@ -7,8 +9,18 @@
 export const SITE = {
   name: "Biviant",
   url: "https://biviant.com",
-  title: "Biviant — Every news story, broken down fact by fact",
-  description:
-    "Biviant doesn't just show you different perspectives — it shows you exactly what each side claims, where they agree, and where they spin.",
+  title: getString("en", "seo.siteTitle"),
+  description: getString("en", "seo.siteDescription"),
   ogImage: "https://biviant.com/og-image.png",
 } as const;
+
+export function absoluteSiteUrl(pathname: string): string {
+  return new URL(pathname, SITE.url).toString();
+}
+
+export function getSiteSeo(locale: Locale) {
+  return {
+    title: getString(locale, "seo.siteTitle"),
+    description: getString(locale, "seo.siteDescription"),
+  };
+}

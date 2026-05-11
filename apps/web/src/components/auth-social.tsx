@@ -1,9 +1,12 @@
 import { authClient } from "@/lib/auth-client";
+import { useT } from "@/lib/i18n/LocaleContext";
 import { toast } from "sonner";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { Button } from "./ui/button";
 
 export function AuthDivider() {
+  const t = useT();
+
   return (
     <div className="relative my-6">
       <div className="absolute inset-0 flex items-center">
@@ -11,7 +14,7 @@ export function AuthDivider() {
       </div>
       <div className="relative flex justify-center text-xs uppercase">
         <span className="bg-card px-2 text-muted-foreground">
-          Or continue with
+          {t("auth.orContinueWith")}
         </span>
       </div>
     </div>
@@ -25,6 +28,8 @@ export function GoogleSignInButton({
   callbackURL: AuthRedirectPath;
   onBeforeSignIn?: () => void;
 }) {
+  const t = useT();
+
   return (
     <Button
       type="button"
@@ -39,7 +44,7 @@ export function GoogleSignInButton({
           });
         } catch (error) {
           console.error(error);
-          toast.error("Google sign-in failed. Please try again.");
+          toast.error(t("auth.googleError"));
         }
       }}
     >
@@ -66,7 +71,7 @@ export function GoogleSignInButton({
           fill="#EA4335"
         />
       </svg>
-      Continue with Google
+      {t("auth.continueGoogle")}
     </Button>
   );
 }

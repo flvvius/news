@@ -38,28 +38,38 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useIsMobile } from "@/components/ui/use-mobile";
+import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
+import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
+import { useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
-import { SITE } from "@/lib/seo";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/feed")({
-  head: () => ({
-    meta: [
-      { title: `News Feed — ${SITE.name}` },
-      {
-        name: "description",
-        content:
-          "Browse today's top stories from multiple political perspectives. Filter by topic and track the same story across sources.",
-      },
-      { property: "og:title", content: `News Feed — ${SITE.name}` },
-      {
-        property: "og:description",
-        content:
-          "Browse today's top stories from multiple political perspectives.",
-      },
-      { property: "og:url", content: `${SITE.url}/feed` },
-    ],
-    links: [{ rel: "canonical", href: `${SITE.url}/feed` }],
-  }),
+  head: ({ matches }) => {
+    const locale = getLocaleFromMatches(matches);
+    const title = getString(locale, "feed.meta.title");
+    const description = getString(locale, "feed.meta.description");
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:site_name", content: SITE.name },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { property: "og:image", content: SITE.ogImage },
+        { name: "twitter:image", content: SITE.ogImage },
+        { property: "og:url", content: absoluteSiteUrl("/feed") },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
+      ],
+      links: [{ rel: "canonical", href: absoluteSiteUrl("/feed") }],
+    };
+  },
   component: FeedComponent,
 });
 
@@ -72,18 +82,23 @@ function TopicFilterContent({
   selectedTopic: Id<"topics"> | "all";
   onSelect: (topic: Id<"topics"> | "all") => void;
 }) {
+  const t = useT();
+
   return (
     <Command className="w-full">
-      <CommandInput placeholder="Search topics..." />
+      <CommandInput
+        aria-label={t("feed.topic.search")}
+        placeholder={t("feed.topic.search")}
+      />
       <CommandList className="max-h-[300px]">
-        <CommandEmpty>No topics found.</CommandEmpty>
+        <CommandEmpty>{t("feed.topic.empty")}</CommandEmpty>
         <CommandGroup>
           <CommandItem
             value="all-topics"
             onSelect={() => onSelect("all")}
             className="flex items-center justify-between gap-2"
           >
-            <span>All Topics</span>
+            <span>{t("feed.topic.all")}</span>
             {selectedTopic === "all" && (
               <CheckIcon className="size-4 text-primary" />
             )}
@@ -116,13 +131,17 @@ function TopicFilter({
   selectedTopic: Id<"topics"> | "all";
   onSelect: (topic: Id<"topics"> | "all") => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
 
   const selectedLabel = useMemo(() => {
-    if (selectedTopic === "all") return "All Topics";
-    return topics?.find((t) => t._id === selectedTopic)?.displayName ?? "Topic";
-  }, [selectedTopic, topics]);
+    if (selectedTopic === "all") return t("feed.topic.all");
+    return (
+      topics?.find((topic) => topic._id === selectedTopic)?.displayName ??
+      t("feed.topic.single")
+    );
+  }, [selectedTopic, t, topics]);
 
   const handleSelect = (topic: Id<"topics"> | "all") => {
     onSelect(topic);
@@ -134,16 +153,16 @@ function TopicFilter({
       variant="outline"
       size="sm"
       className={cn(
-        "min-w-[140px] justify-between gap-2 rounded-full",
+        "w-full max-w-[13rem] min-w-0 justify-between gap-1.5 rounded-full px-3 sm:max-w-[15rem] md:min-w-[140px] md:max-w-[16rem] md:gap-2",
         selectedTopic !== "all" && "border-primary/50 bg-primary/5",
       )}
-      aria-label="Filter by topic"
+      aria-label={t("feed.topic.filter")}
     >
-      <span className="flex items-center gap-2">
-        <FilterIcon className="size-3.5" />
-        <span className="max-w-[120px] truncate">{selectedLabel}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <FilterIcon className="size-3.5 shrink-0" />
+        <span className="truncate">{selectedLabel}</span>
       </span>
-      <ChevronDownIcon className="size-3.5 opacity-50" />
+      <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
     </Button>
   );
 
@@ -156,9 +175,9 @@ function TopicFilter({
             <DrawerHeader className="border-b border-border pb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <DrawerTitle>Filter by Topic</DrawerTitle>
+                  <DrawerTitle>{t("feed.topic.drawerTitle")}</DrawerTitle>
                   <DrawerDescription>
-                    Select a topic to filter stories
+                    {t("feed.topic.drawerBody")}
                   </DrawerDescription>
                 </div>
                 <DrawerClose asChild>
@@ -166,9 +185,10 @@ function TopicFilter({
                     variant="ghost"
                     size="icon"
                     className="size-8 rounded-full"
+                    aria-label={t("feed.close")}
                   >
                     <XIcon className="size-4" />
-                    <span className="sr-only">Close</span>
+                    <span className="sr-only">{t("feed.close")}</span>
                   </Button>
                 </DrawerClose>
               </div>
@@ -189,7 +209,7 @@ function TopicFilter({
             size="icon"
             className="size-8 rounded-full"
             onClick={() => onSelect("all")}
-            aria-label="Clear filter"
+            aria-label={t("feed.filter.clear")}
           >
             <XIcon className="size-4" />
           </Button>
@@ -217,7 +237,7 @@ function TopicFilter({
           size="icon"
           className="size-8 rounded-full"
           onClick={() => onSelect("all")}
-          aria-label="Clear filter"
+          aria-label={t("feed.filter.clear")}
         >
           <XIcon className="size-4" />
         </Button>
@@ -231,6 +251,8 @@ function FeedComponent() {
 }
 
 function FeedContent() {
+  const t = useT();
+  const isMobile = useIsMobile();
   const { isAuthenticated } = useConvexAuth();
   const topics = useQuery(api.topics.getTopics);
   const currentUser = useQuery(
@@ -256,9 +278,16 @@ function FeedContent() {
   const [feedSort, setFeedSort] = useState<"recent" | "trending">("trending");
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const isSearching = debouncedSearch.length >= 2;
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const controlsRef = useRef<HTMLElement | null>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const isLoadingMoreRef = useRef(false);
+  const areControlsVisible = useScrollVisibility();
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const hiddenControlsOffset = controlsHeight + (isMobile ? 12 : 80);
 
   useEffect(() => {
     try {
@@ -267,7 +296,9 @@ function FeedContent() {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         setRecentSearches(
-          parsed.filter((value): value is string => typeof value === "string").slice(0, 5),
+          parsed
+            .filter((value): value is string => typeof value === "string")
+            .slice(0, 5),
         );
       }
     } catch {
@@ -307,6 +338,45 @@ function FeedContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    const element = controlsRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateHeight = () => {
+      const nextHeight = Math.round(element.getBoundingClientRect().height);
+      setControlsHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateHeight);
+      return () => {
+        window.removeEventListener("resize", updateHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    isSearchFocused,
+    recentSearches.length,
+    searchInput.length,
+    selectedTopic,
+    feedSort,
+    isSearching,
+  ]);
+
   const {
     results: events,
     status,
@@ -318,7 +388,6 @@ function FeedContent() {
       : { topicId: selectedTopic, sort: feedSort },
     { initialNumItems: pageSize },
   );
-  const isSearching = debouncedSearch.length >= 2;
   const searchResults = useQuery(
     api.events.searchPublishedEvents,
     isSearching
@@ -329,23 +398,27 @@ function FeedContent() {
         }
       : "skip",
   );
+  const canLoadMore = !isSearching && status === "CanLoadMore";
+  const isLoadingMore = !isSearching && status === "LoadingMore";
+  const loadMoreRef = useRef(loadMore);
 
   const preferredTopicIds = useMemo(() => {
     if (!topics || !currentUser?.privateContext?.interests?.length) {
       return [];
     }
 
-    const preferredNames = currentUser.privateContext.interests.map((interest) =>
-      interest.trim().toLowerCase(),
+    const preferredNames = currentUser.privateContext.interests.map(
+      (interest) => interest.trim().toLowerCase(),
     );
 
     return topics
       .filter((topic) => {
-        const candidates = [
-          topic.displayName,
-          ...(topic.aliases ?? []),
-        ].map((value) => value.trim().toLowerCase());
-        return candidates.some((candidate) => preferredNames.includes(candidate));
+        const candidates = [topic.displayName, ...(topic.aliases ?? [])].map(
+          (value) => value.trim().toLowerCase(),
+        );
+        return candidates.some((candidate) =>
+          preferredNames.includes(candidate),
+        );
       })
       .map((topic) => topic._id);
   }, [currentUser?.privateContext?.interests, topics]);
@@ -359,6 +432,46 @@ function FeedContent() {
       ? { topicIds: preferredTopicIds, limit: 5 }
       : "skip",
   );
+
+  useEffect(() => {
+    loadMoreRef.current = loadMore;
+  }, [loadMore]);
+
+  useEffect(() => {
+    if (status !== "LoadingMore") {
+      isLoadingMoreRef.current = false;
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (!canLoadMore) {
+      return;
+    }
+
+    const target = loadMoreTriggerRef.current;
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || isLoadingMoreRef.current) {
+          return;
+        }
+
+        isLoadingMoreRef.current = true;
+        loadMoreRef.current(pageSize);
+      },
+      {
+        rootMargin: "1200px 0px",
+      },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [canLoadMore, pageSize]);
 
   useEffect(() => {
     if (
@@ -402,138 +515,166 @@ function FeedContent() {
   const remainingSearchEvents = featuredSearchEvent
     ? searchResults.slice(1)
     : searchResults;
-  const shouldShowThresholdHint = isSearchFocused && searchInput.trim().length < 2;
+  const shouldShowThresholdHint =
+    isSearchFocused && searchInput.trim().length < 2;
   const shouldShowRecentSearches =
-    isSearchFocused && searchInput.trim().length === 0 && recentSearches.length > 0;
+    isSearchFocused &&
+    searchInput.trim().length === 0 &&
+    recentSearches.length > 0;
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-        <div className="flex flex-col gap-8">
-          <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
-            <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-4 sm:px-4 sm:py-5">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="relative flex-1">
-                    <Input
-                      ref={searchInputRef}
-                      type="search"
-                      value={searchInput}
-                      onChange={(event) => setSearchInput(event.target.value)}
-                      onFocus={() => setIsSearchFocused(true)}
-                      onBlur={() => {
-                        window.setTimeout(() => setIsSearchFocused(false), 100);
-                      }}
-                      placeholder="Search events by title..."
-                      className="h-11 rounded-full border-border/80 bg-background/75 pr-12"
-                      aria-label="Search events"
-                    />
-                    {searchInput.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1 size-9 rounded-full"
-                        onClick={() => {
-                          setSearchInput("");
-                          setDebouncedSearch("");
-                        }}
-                        aria-label="Clear search"
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: controlsHeight > 0 ? `${controlsHeight}px` : undefined }}
+          />
+
+          <div
+            className="fixed inset-x-0 top-0 z-40 px-4 pt-3 transition-transform duration-300 ease-out md:top-16 md:pt-4"
+            style={{
+              transform: areControlsVisible
+                ? "translateY(0)"
+                : `translateY(-${Math.max(hiddenControlsOffset, 0)}px)`,
+            }}
+          >
+            <div className="mx-auto max-w-4xl">
+              <header
+                ref={controlsRef}
+                className="overflow-hidden rounded-[1.35rem] border border-border/70 bg-card/88 shadow-lg shadow-foreground/5 backdrop-blur-xl sm:rounded-[1.6rem]"
+              >
+                <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-3 sm:px-4 sm:py-5">
+                  <div className="flex flex-col gap-2.5 sm:gap-3">
+                    <div className="flex flex-col gap-3">
+                      <div className="relative flex-1">
+                        <Input
+                          ref={searchInputRef}
+                          type="search"
+                          value={searchInput}
+                          onChange={(event) => setSearchInput(event.target.value)}
+                          onFocus={() => setIsSearchFocused(true)}
+                          onBlur={() => {
+                            window.setTimeout(() => setIsSearchFocused(false), 100);
+                          }}
+                          placeholder={t("feed.search.placeholder")}
+                          className="h-10 rounded-full border-border/80 bg-background/75 pr-11 text-base sm:h-11 sm:pr-12"
+                          aria-label={t("feed.search.label")}
+                        />
+                        {searchInput.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-1 top-1 size-8 rounded-full sm:size-9"
+                            onClick={() => {
+                              setSearchInput("");
+                              setDebouncedSearch("");
+                            }}
+                            aria-label={t("feed.search.clear")}
+                          >
+                            <XIcon className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-border/60 pt-2.5 sm:pt-3">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="min-w-0 w-full max-w-[13rem] sm:max-w-[15rem] md:max-w-[16rem]">
+                          <TopicFilter
+                            topics={topics}
+                            selectedTopic={selectedTopic}
+                            onSelect={setSelectedTopic}
+                          />
+                        </div>
+                        {!isSearching && (
+                          <div className="inline-grid h-8 shrink-0 grid-cols-2 rounded-full bg-muted/70 p-1 sm:h-9">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
+                                feedSort === "recent" &&
+                                  "bg-background text-foreground shadow-sm",
+                              )}
+                              onClick={() => setFeedSort("recent")}
+                              aria-pressed={feedSort === "recent"}
+                            >
+                              <ClockIcon className="size-3.5" />
+                              {t("feed.sort.recent")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
+                                feedSort === "trending" &&
+                                  "bg-background text-foreground shadow-sm",
+                              )}
+                              onClick={() => setFeedSort("trending")}
+                              aria-pressed={feedSort === "trending"}
+                            >
+                              <TrendingUpIcon className="size-3.5" />
+                              {t("feed.sort.trending")}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {shouldShowThresholdHint && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("feed.search.threshold")}
+                      </p>
+                    )}
+                    {shouldShowRecentSearches && (
+                      <div className="flex flex-wrap gap-2">
+                        {recentSearches.map((recentSearch) => (
+                          <Button
+                            key={recentSearch}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setSearchInput(recentSearch);
+                              setDebouncedSearch(recentSearch);
+                              searchInputRef.current?.focus();
+                            }}
+                          >
+                            {recentSearch}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    {isSearching && (
+                      <p
+                        className="text-xs text-muted-foreground"
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
                       >
-                        <XIcon className="size-4" />
-                      </Button>
+                        {t("feed.search.indexed").replace(
+                          "{query}",
+                          debouncedSearch,
+                        )}
+                      </p>
                     )}
                   </div>
-                  <div className="shrink-0">
-                    <TopicFilter
-                      topics={topics}
-                      selectedTopic={selectedTopic}
-                      onSelect={setSelectedTopic}
-                    />
-                  </div>
                 </div>
-                {!isSearching && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                    <div className="inline-grid h-9 grid-cols-2 rounded-full bg-muted/70 p-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "h-7 rounded-full px-3 text-xs",
-                          feedSort === "recent" &&
-                            "bg-background text-foreground shadow-sm",
-                        )}
-                        onClick={() => setFeedSort("recent")}
-                        aria-pressed={feedSort === "recent"}
-                      >
-                        <ClockIcon className="size-3.5" />
-                        Recent
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "h-7 rounded-full px-3 text-xs",
-                          feedSort === "trending" &&
-                            "bg-background text-foreground shadow-sm",
-                        )}
-                        onClick={() => setFeedSort("trending")}
-                        aria-pressed={feedSort === "trending"}
-                      >
-                        <TrendingUpIcon className="size-3.5" />
-                        Trending
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {feedSort === "recent"
-                        ? "Newest published events first."
-                        : "Ranked by source diversity, article volume, and recency."}
-                    </p>
-                  </div>
-                )}
-                {shouldShowThresholdHint && (
-                  <p className="text-xs text-muted-foreground">
-                    Type 2+ characters to search.
-                  </p>
-                )}
-                {shouldShowRecentSearches && (
-                  <div className="flex flex-wrap gap-2">
-                    {recentSearches.map((recentSearch) => (
-                      <Button
-                        key={recentSearch}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setSearchInput(recentSearch);
-                          setDebouncedSearch(recentSearch);
-                          searchInputRef.current?.focus();
-                        }}
-                      >
-                        {recentSearch}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                {isSearching && (
-                  <p className="text-xs text-muted-foreground">
-                    Showing indexed search results for “{debouncedSearch}”.
-                  </p>
-                )}
-              </div>
+              </header>
             </div>
-          </header>
+          </div>
 
           {!isAuthenticated && (
             <AuthPromptBanner
               redirectTo="/feed"
               compact
-              title="Free accounts unlock bookmarks and a personalized feed"
-              description="You can read everything anonymously. Sign in only when you want synced bookmarks, ranking tuned to your interests, and future alerts."
+              title={t("feed.authTitle")}
+              description={t("feed.authBody")}
             />
           )}
 
@@ -544,7 +685,7 @@ function FeedContent() {
                 aria-live="polite"
                 className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
               >
-                Searching events…
+                {t("feed.searching")}
               </div>
             )}
             {status === "LoadingFirstPage" && (
@@ -553,7 +694,7 @@ function FeedContent() {
                 aria-live="polite"
                 className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
               >
-                Loading…
+                {t("feed.loading")}
               </div>
             )}
 
@@ -561,11 +702,10 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {feedSort === "recent" ? "Lead Story" : "Trending Story"}
+                    {feedSort === "recent"
+                      ? t("feed.leadStory")
+                      : t("feed.trendingStory")}
                   </h2>
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {feedSort === "recent" ? "Featured" : "Ranked"}
-                  </p>
                 </div>
                 <EventCard
                   event={featuredEvent}
@@ -581,10 +721,10 @@ function FeedContent() {
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    Top Search Match
+                    {t("feed.topSearch")}
                   </h2>
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Search
+                    {t("feed.searchTag")}
                   </p>
                 </div>
                 <EventCard
@@ -598,32 +738,34 @@ function FeedContent() {
               </section>
             ) : null}
 
-            {((!isSearching && remainingEvents && remainingEvents.length > 0) ||
-              (isSearching && remainingSearchEvents && remainingSearchEvents.length > 0)) ? (
+            {(!isSearching && remainingEvents && remainingEvents.length > 0) ||
+            (isSearching &&
+              remainingSearchEvents &&
+              remainingSearchEvents.length > 0) ? (
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {isSearching ? "More Search Results" : "More Events"}
+                    {isSearching ? t("feed.moreSearch") : t("feed.moreEvents")}
                   </h2>
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {isSearching
-                      ? "Best matches"
-                      : feedSort === "recent"
-                        ? "Latest coverage"
-                        : "Ranked coverage"}
-                  </p>
+                  {isSearching ? (
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      {t("feed.bestMatches")}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="grid gap-5">
-                  {(isSearching ? remainingSearchEvents : remainingEvents)?.map((event) => (
-                    <EventCard
-                      key={event._id}
-                      event={event}
-                      topicNamesById={topicNamesById}
-                      maxSources={maxSources}
-                      searchQuery={isSearching ? debouncedSearch : undefined}
-                      returnToFeed
-                    />
-                  ))}
+                  {(isSearching ? remainingSearchEvents : remainingEvents)?.map(
+                    (event) => (
+                      <EventCard
+                        key={event._id}
+                        event={event}
+                        topicNamesById={topicNamesById}
+                        maxSources={maxSources}
+                        searchQuery={isSearching ? debouncedSearch : undefined}
+                        returnToFeed
+                      />
+                    ),
+                  )}
                 </div>
               </section>
             ) : null}
@@ -631,17 +773,17 @@ function FeedContent() {
             {isSearching && searchResults?.length === 0 && (
               <section className="flex flex-col gap-4">
                 <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
-                  <p>No events matched “{debouncedSearch}”.</p>
-                  <p className="mt-2">Try fewer keywords.</p>
+                  <p>{t("feed.noMatch").replace("{query}", debouncedSearch)}</p>
+                  <p className="mt-2">{t("feed.tryFewer")}</p>
                 </div>
                 {fallbackEvents && fallbackEvents.length > 0 && (
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between gap-4">
                       <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                        From your preferred topics
+                        {t("feed.preferredTopics")}
                       </h2>
                       <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        Latest 5
+                        {t("feed.latestFive")}
                       </p>
                     </div>
                     <div className="grid gap-5">
@@ -664,21 +806,27 @@ function FeedContent() {
               status !== "LoadingFirstPage" &&
               (!events || events.length === 0) && (
                 <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
-                  No events found.
+                  {t("feed.none")}
                 </div>
               )}
           </div>
 
-          {!isSearching && status === "CanLoadMore" && (
-            <div>
-              <Button
-                type="button"
-                onClick={() => loadMore(pageSize)}
-                variant="outline"
-                className="rounded-full"
-              >
-                Load more
-              </Button>
+          {!isSearching && (canLoadMore || isLoadingMore) && (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <div
+                ref={loadMoreTriggerRef}
+                aria-hidden="true"
+                className="h-px w-full"
+              />
+              {isLoadingMore && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="text-sm text-muted-foreground"
+                >
+                  {t("feed.loading")}
+                </div>
+              )}
             </div>
           )}
         </div>

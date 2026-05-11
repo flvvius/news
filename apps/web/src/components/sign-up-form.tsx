@@ -1,9 +1,11 @@
 import { authClient } from "@/lib/auth-client";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
+import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import { getString } from "@/lib/i18n/strings";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -20,14 +22,43 @@ function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
   return `/dashboard?${params.toString()}`;
 }
 
+function normalizeAuthError(value: string | undefined) {
+  return value?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function getLocalizedSignUpError(
+  t: ReturnType<typeof useT>,
+  error: {
+    error?: {
+      code?: string;
+      message?: string;
+      statusText?: string;
+    };
+  },
+) {
+  const code = normalizeAuthError(error.error?.code);
+  const message = normalizeAuthError(error.error?.message);
+  const emailInUseSignals = new Set([
+    "user_already_exists",
+    "email_already_exists",
+    "email_already_in_use",
+  ]);
+
+  if (emailInUseSignals.has(code) || emailInUseSignals.has(message)) {
+    return t("auth.emailInUse");
+  }
+
+  return t("auth.unexpectedError");
+}
+
 export default function SignUpForm({
   onSwitchToSignIn,
   initialEmail = "",
   emailLocked = false,
-  redirectTo = "/dashboard",
-  title = "Create Account",
-  subtitle = "Join Biviant and see the whole story",
-  submitLabel = "Create Account",
+  redirectTo = "/activitate",
+  title,
+  subtitle,
+  submitLabel,
   showGoogle = true,
 }: {
   onSwitchToSignIn?: () => void;
@@ -39,9 +70,23 @@ export default function SignUpForm({
   submitLabel?: string;
   showGoogle?: boolean;
 }) {
+  const t = useT();
+  const locale = useLocale();
   const verificationCallbackURL = getVerificationCallbackURL(redirectTo);
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const resolvedTitle = title ?? t("auth.signUpTitle");
+  const resolvedSubtitle = subtitle ?? t("auth.signUpSubtitle");
+  const resolvedSubmitLabel = submitLabel ?? t("auth.createAccount");
+  const signUpSchema = useMemo(
+    () =>
+      z.object({
+        name: z.string().min(2, getString(locale, "auth.nameMin")),
+        email: z.email(getString(locale, "auth.invalidEmail")),
+        password: z.string().min(8, getString(locale, "auth.passwordMin")),
+      }),
+    [locale],
+  );
 
   const form = useForm({
     defaultValues: {
@@ -65,24 +110,20 @@ export default function SignUpForm({
               ["localhost", "127.0.0.1"].includes(window.location.hostname);
             toast.success(
               isLocalDev
-                ? "Check your email to verify your account. If nothing arrives, use the verification link printed in the server logs."
-                : "Check your email to verify your account.",
+                ? t("auth.checkEmailVerifyDev")
+                : t("auth.checkEmailVerify"),
             );
             form.reset();
           },
           onError: (error) => {
             console.error(error);
-            toast.error(error.error.message || "An unexpected error occurred. Please try again.");
+            toast.error(getLocalizedSignUpError(t, error));
           },
         }
       );
     },
     validators: {
-      onSubmit: z.object({
-        name: z.string().min(2, "Name must be at least 2 characters"),
-        email: z.email("Invalid email address"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
-      }),
+      onSubmit: signUpSchema,
     },
   });
 
@@ -92,9 +133,9 @@ export default function SignUpForm({
         <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary mx-auto mb-4">
           <UserPlus className="size-6" />
         </div>
-        <CardTitle className="text-2xl font-bold">{title}</CardTitle>
+        <CardTitle className="text-2xl font-bold">{resolvedTitle}</CardTitle>
         <p className="text-muted-foreground text-sm mt-1">
-          {subtitle}
+          {resolvedSubtitle}
         </p>
       </CardHeader>
 
@@ -111,11 +152,12 @@ export default function SignUpForm({
             <form.Field name="name">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Name</Label>
+                  <Label htmlFor={field.name}>{t("auth.name")}</Label>
                   <Input
                     id={field.name}
                     name={field.name}
-                    placeholder="Your name"
+                    aria-label={t("auth.name")}
+                    placeholder={t("auth.namePlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -135,12 +177,13 @@ export default function SignUpForm({
             <form.Field name="email">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Email</Label>
+                  <Label htmlFor={field.name}>{t("auth.email")}</Label>
                   <Input
                     id={field.name}
                     name={field.name}
                     type="email"
-                    placeholder="you@example.com"
+                    aria-label={t("auth.email")}
+                    placeholder={t("auth.emailPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -161,12 +204,13 @@ export default function SignUpForm({
             <form.Field name="password">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Password</Label>
+                  <Label htmlFor={field.name}>{t("auth.password")}</Label>
                   <Input
                     id={field.name}
                     name={field.name}
                     type="password"
-                    placeholder="Create a password"
+                    aria-label={t("auth.password")}
+                    placeholder={t("auth.passwordCreatePlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -192,10 +236,10 @@ export default function SignUpForm({
                 {state.isSubmitting ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Creating account...
+                    {t("auth.creatingAccount")}
                   </>
                 ) : (
-                  submitLabel
+                  resolvedSubmitLabel
                 )}
               </Button>
             )}
@@ -219,8 +263,7 @@ export default function SignUpForm({
             aria-atomic="true"
           >
             <p className="text-sm text-muted-foreground">
-              Didn&apos;t receive the email? Check spam, then resend the
-              verification link to <span className="font-medium text-foreground">{submittedEmail}</span>.
+              {t("auth.verifyMissingEmail").replace("{email}", submittedEmail)}
             </p>
             <button
               type="button"
@@ -249,18 +292,16 @@ export default function SignUpForm({
                   if (!response.ok) {
                     throw new Error(
                       payload?.message ||
-                        "We couldn't resend the verification email. Please try again.",
+                        t("auth.verifyResendFailed"),
                     );
                   }
 
-                  toast.success(
-                    "Verification email sent. Check your inbox for the new link.",
-                  );
+                  toast.success(t("auth.verifyResent"));
                 } catch (error) {
                   toast.error(
                     error instanceof Error
                       ? error.message
-                      : "We couldn't resend the verification email. Please try again.",
+                      : t("auth.verifyResendFailed"),
                   );
                 } finally {
                   setIsResendingVerification(false);
@@ -268,8 +309,8 @@ export default function SignUpForm({
               }}
             >
               {isResendingVerification
-                ? "Sending verification email..."
-                : "Resend verification email"}
+                ? t("auth.verifyResending")
+                : t("auth.verifyResend")}
             </button>
           </div>
         )}
@@ -277,13 +318,13 @@ export default function SignUpForm({
         {onSwitchToSignIn && (
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Already have an account?{" "}
+              {t("auth.alreadyHaveAccount")}{" "}
               <button
                 type="button"
                 onClick={onSwitchToSignIn}
                 className="text-primary hover:underline font-medium"
               >
-                Sign In
+                {t("auth.signIn")}
               </button>
             </p>
           </div>

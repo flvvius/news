@@ -1,40 +1,48 @@
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 type BiasBalanceMeterProps = {
   value: number;
   className?: string;
 };
 
-function getBiasBalanceLabel(value: number) {
+function getBiasBalanceLabel(
+  value: number,
+  t: ReturnType<typeof useT>,
+) {
   const absolute = Math.abs(value);
   if (absolute < 15) {
-    return "Balanced";
+    return t("bias.label.balanced");
   }
   if (value < 0) {
-    return absolute >= 60 ? "Mostly left" : "Leaning left";
+    return absolute >= 60 ? t("bias.label.leftStrong") : t("bias.label.left");
   }
-  return absolute >= 60 ? "Mostly right" : "Leaning right";
+  return absolute >= 60 ? t("bias.label.rightStrong") : t("bias.label.right");
 }
 
-function getBiasBalanceCopy(value: number) {
+function getBiasBalanceCopy(
+  value: number,
+  t: ReturnType<typeof useT>,
+) {
   const absolute = Math.abs(value);
   if (absolute < 15) {
-    return "You’re reading a healthy mix of perspectives.";
+    return t("bias.copy.balanced");
   }
   if (value < 0) {
     return absolute >= 60
-      ? "Recent reading skews left-leaning."
-      : "Recent reading tilts left-leaning.";
+      ? t("bias.copy.leftStrong")
+      : t("bias.copy.left");
   }
   return absolute >= 60
-    ? "Recent reading skews right-leaning."
-    : "Recent reading tilts right-leaning.";
+    ? t("bias.copy.rightStrong")
+    : t("bias.copy.right");
 }
 
 export default function BiasBalanceMeter({
   value,
   className,
 }: BiasBalanceMeterProps) {
+  const t = useT();
   const clampedValue = Math.max(-100, Math.min(100, Math.round(value)));
   const indicatorPosition = ((clampedValue + 100) / 200) * 100;
   const indicatorStyle =
@@ -52,8 +60,8 @@ export default function BiasBalanceMeter({
             left: `${indicatorPosition}%`,
             transform: "translate(-50%, -50%)",
           };
-  const label = getBiasBalanceLabel(clampedValue);
-  const copy = getBiasBalanceCopy(clampedValue);
+  const label = getBiasBalanceLabel(clampedValue, t);
+  const copy = getBiasBalanceCopy(clampedValue, t);
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -68,7 +76,7 @@ export default function BiasBalanceMeter({
             {clampedValue}
           </p>
           <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Bias Balance
+            {t("bias.balance")}
           </p>
         </div>
       </div>
@@ -85,9 +93,9 @@ export default function BiasBalanceMeter({
           />
         </div>
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>Left-heavy</span>
-          <span>Balanced</span>
-          <span>Right-heavy</span>
+          <span>{t("bias.leftHeavy")}</span>
+          <span>{t("bias.center")}</span>
+          <span>{t("bias.rightHeavy")}</span>
         </div>
       </div>
     </div>
