@@ -339,6 +339,82 @@ export const set = mutation({
   },
 });
 
+export const setTopicInferenceSettings = mutation({
+  args: {
+    minScore: v.number(),
+    confidenceRatio: v.number(),
+    maxTopics: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+
+    if (!Number.isFinite(args.minScore) || args.minScore < 1 || args.minScore > 20) {
+      throw new ConvexError("Invalid topic inference minimum score");
+    }
+    if (
+      !Number.isFinite(args.confidenceRatio) ||
+      args.confidenceRatio < 0.1 ||
+      args.confidenceRatio > 1
+    ) {
+      throw new ConvexError("Invalid topic inference confidence ratio");
+    }
+    if (
+      !Number.isInteger(args.maxTopics) ||
+      args.maxTopics < 1 ||
+      args.maxTopics > 5
+    ) {
+      throw new ConvexError("Invalid topic inference max topics");
+    }
+
+    const now = Date.now();
+    const entries = [
+      {
+        key: "topic_inference_min_score",
+        value: args.minScore,
+        description:
+          "Minimum weighted lexical score required before a topic is attached to a clustered event.",
+      },
+      {
+        key: "topic_inference_confidence_ratio",
+        value: args.confidenceRatio,
+        description:
+          "Relative score threshold for keeping additional inferred topics alongside the top-scoring topic.",
+      },
+      {
+        key: "topic_inference_max_topics",
+        value: args.maxTopics,
+        description:
+          "Maximum number of inferred topics attached to an event during clustering.",
+      },
+    ];
+
+    for (const entry of entries) {
+      const existing = await ctx.db
+        .query("config")
+        .withIndex("by_key", (q) => q.eq("key", entry.key))
+        .unique();
+      const value = JSON.stringify(entry.value);
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          value,
+          description: entry.description,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("config", {
+          key: entry.key,
+          value,
+          description: entry.description,
+          updatedAt: now,
+        });
+      }
+    }
+
+    return { updated: true as const };
+  },
+});
+
 /** Remove a config key (falls back to hardcoded default). */
 export const remove = mutation({
   args: { key: v.string() },

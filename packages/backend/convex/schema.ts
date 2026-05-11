@@ -152,7 +152,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_event", ["eventId"])
-    .index("by_status_last_article_at", ["status", "lastArticleAt"]),
+    .index("by_status_last_article_at", ["status", "lastArticleAt"])
+    .index("by_status_updated_at", ["status", "updatedAt"]),
 
   // =========================================================================
   // 3d. PUBLIC EVENT PREVIEWS (Denormalized feed cards for anonymous traffic)
@@ -725,6 +726,28 @@ export default defineSchema({
     .index("by_date", ["date"])
     .index("by_job_createdAt", ["jobName", "createdAt"]),
 
+  vectorSearchReservations: defineTable({
+    jobName: v.string(),
+    runId: v.string(),
+    date: v.string(),
+    shard: v.number(),
+    qgbReserved: v.number(),
+    vectorSearchesReserved: v.number(),
+    qgbConsumed: v.optional(v.number()),
+    vectorSearchesConsumed: v.optional(v.number()),
+    status: v.union(
+      v.literal("reserved"),
+      v.literal("consumed"),
+      v.literal("released"),
+    ),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run_id", ["runId"])
+    .index("by_expiresAt", ["expiresAt"])
+    .index("by_status_expiresAt", ["status", "expiresAt"]),
+
   // =========================================================================
   // 12. PIPELINE LOCKS (Short-lived leases for scheduled jobs)
   // =========================================================================
@@ -739,6 +762,7 @@ export default defineSchema({
   clusteringJobState: defineTable({
     jobName: v.string(),
     lastProcessedAt: v.optional(v.number()),
+    lastProcessedCreationTime: v.optional(v.number()),
     lastProcessedDayBucket: v.optional(v.string()),
     lastRunAt: v.optional(v.number()),
     lastRunMetricsJson: v.optional(v.string()),

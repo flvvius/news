@@ -86,7 +86,10 @@ function TopicFilterContent({
 
   return (
     <Command className="w-full">
-      <CommandInput placeholder={t("feed.topic.search")} />
+      <CommandInput
+        aria-label={t("feed.topic.search")}
+        placeholder={t("feed.topic.search")}
+      />
       <CommandList className="max-h-[300px]">
         <CommandEmpty>{t("feed.topic.empty")}</CommandEmpty>
         <CommandGroup>
@@ -182,6 +185,7 @@ function TopicFilter({
                     variant="ghost"
                     size="icon"
                     className="size-8 rounded-full"
+                    aria-label={t("feed.close")}
                   >
                     <XIcon className="size-4" />
                     <span className="sr-only">{t("feed.close")}</span>

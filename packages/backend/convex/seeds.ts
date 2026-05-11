@@ -145,6 +145,7 @@ export const seedDB = internalMutation({
     // 3b. EVENT EMBEDDINGS (placeholder zeros — real embeddings come from AI)
     // =========================================================================
     const dummyEmbedding = new Array(512).fill(0);
+    const day = new Date().toISOString().slice(0, 10);
 
     await ctx.db.insert("eventEmbeddings", {
       eventId: eventFedRates,
@@ -153,9 +154,9 @@ export const seedDB = internalMutation({
       status: "published",
       recentWindowBucket: "recent_2d",
       singletonBucket: "multi",
-      updatedDayBucket: new Date().toISOString().slice(0, 10),
-      mergeSearchBucket: `published::recent_2d::${new Date().toISOString().slice(0, 10)}`,
-      singletonSearchBucket: `published::multi::${new Date().toISOString().slice(0, 10)}`,
+      updatedDayBucket: day,
+      mergeSearchBucket: `published::recent_2d::${day}`,
+      singletonSearchBucket: `published::multi::${day}`,
     });
     await ctx.db.insert("eventEmbeddings", {
       eventId: eventAIRegulations,
@@ -164,9 +165,9 @@ export const seedDB = internalMutation({
       status: "published",
       recentWindowBucket: "recent_2d",
       singletonBucket: "multi",
-      updatedDayBucket: new Date().toISOString().slice(0, 10),
-      mergeSearchBucket: `published::recent_2d::${new Date().toISOString().slice(0, 10)}`,
-      singletonSearchBucket: `published::multi::${new Date().toISOString().slice(0, 10)}`,
+      updatedDayBucket: day,
+      mergeSearchBucket: `published::recent_2d::${day}`,
+      singletonSearchBucket: `published::multi::${day}`,
     });
 
     console.log("✅ Created 2 eventEmbeddings");

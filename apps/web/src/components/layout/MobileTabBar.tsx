@@ -65,7 +65,7 @@ export function MobileTabBar() {
         "fixed inset-x-0 bottom-0 z-50 px-4 pb-4 transition-transform duration-300 ease-out md:hidden",
         isVisible ? "translate-y-0" : "translate-y-[calc(100%+1rem)]",
       )}
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="mx-auto max-w-md rounded-[1.4rem] border border-border bg-background/92 p-2 shadow-lg shadow-foreground/5 backdrop-blur-xl">
         <div className="grid grid-cols-4 gap-1">

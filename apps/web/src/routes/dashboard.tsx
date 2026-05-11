@@ -52,7 +52,7 @@ function DashboardAuthPage() {
 
   useEffect(() => {
     if (currentUser) {
-      void navigate({ to: "/activitate", replace: true });
+      void navigate({ to: redirectTo || "/activitate", replace: true });
     }
   }, [currentUser, navigate]);
 

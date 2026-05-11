@@ -120,9 +120,14 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           .split("; ")
           .find((entry) => entry.startsWith("bv_locale="))
           ?.split("=")[1] ?? null;
-      const decodedCookieLocale = cookieLocale
-        ? decodeURIComponent(cookieLocale)
-        : null;
+      let decodedCookieLocale: string | null = null;
+      if (cookieLocale) {
+        try {
+          decodedCookieLocale = decodeURIComponent(cookieLocale);
+        } catch {
+          decodedCookieLocale = null;
+        }
+      }
 
       if (
         existing.locale &&

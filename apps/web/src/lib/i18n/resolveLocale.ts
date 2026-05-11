@@ -43,7 +43,10 @@ function parseAcceptLanguage(header: string | null | undefined): Locale | null {
         weight: Number.isFinite(weight) ? weight : 1,
       };
     })
-    .filter((entry): entry is { code: string; weight: number } => Boolean(entry.code))
+    .filter(
+      (entry): entry is { code: string; weight: number } =>
+        Boolean(entry.code) && entry.weight > 0,
+    )
     .sort((a, b) => b.weight - a.weight);
 
   for (const { code } of weightedCodes) {

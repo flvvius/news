@@ -120,6 +120,7 @@ export default function SignUpForm({
                   <Input
                     id={field.name}
                     name={field.name}
+                    aria-label={t("auth.name")}
                     placeholder={t("auth.namePlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -145,6 +146,7 @@ export default function SignUpForm({
                     id={field.name}
                     name={field.name}
                     type="email"
+                    aria-label={t("auth.email")}
                     placeholder={t("auth.emailPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -171,6 +173,7 @@ export default function SignUpForm({
                     id={field.name}
                     name={field.name}
                     type="password"
+                    aria-label={t("auth.password")}
                     placeholder={t("auth.passwordCreatePlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}

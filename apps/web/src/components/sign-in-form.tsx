@@ -138,6 +138,7 @@ export default function SignInForm({
                     id={field.name}
                     name={field.name}
                     type="email"
+                    aria-label={t("auth.email")}
                     placeholder={t("auth.emailPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -242,6 +243,7 @@ export default function SignInForm({
                     id={field.name}
                     name={field.name}
                     type="password"
+                    aria-label={t("auth.password")}
                     placeholder={t("auth.passwordPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}

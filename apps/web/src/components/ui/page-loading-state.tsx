@@ -16,7 +16,10 @@ export function PageLoadingState({
   const resolvedTitle = title ?? t("feed.loading");
   const resolvedDescription = description ?? t("activity.loading.body");
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]">
+    <div
+      aria-busy="true"
+      className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]"
+    >
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-6">
           <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
@@ -31,7 +34,12 @@ export function PageLoadingState({
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-6">
+            <CardContent
+              className="space-y-3 pt-6"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <p className="text-sm font-medium text-foreground">
                 {resolvedTitle}
               </p>

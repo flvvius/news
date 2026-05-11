@@ -9,6 +9,7 @@ import { requireAdminUser } from "./lib/betaAccess";
 
 const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 0.25;
 const ESTIMATED_VECTOR_ROW_BYTES = 5 * 1024;
+const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
 
 function roundQgb(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -170,6 +171,32 @@ async function adjustDailyUsage(
   }
 }
 
+async function releaseExpiredReservations(
+  ctx: MutationCtx,
+  now: number,
+): Promise<void> {
+  const expired = await ctx.db
+    .query("vectorSearchReservations")
+    .withIndex("by_status_expiresAt", (q) =>
+      q.eq("status", "reserved").lte("expiresAt", now),
+    )
+    .take(100);
+
+  for (const reservation of expired) {
+    await adjustDailyUsage(ctx, {
+      date: reservation.date,
+      shard: reservation.shard,
+      deltaQgbRead: -reservation.qgbReserved,
+      deltaVectorSearches: -reservation.vectorSearchesReserved,
+      deltaRunCount: 0,
+    });
+    await ctx.db.patch(reservation._id, {
+      status: "released",
+      updatedAt: now,
+    });
+  }
+}
+
 export function estimateVectorSearchQgbRead(args: {
   vectorSearches: number;
   averageMatchesReturned: number;
@@ -218,6 +245,149 @@ export const checkBudget = internalQuery({
   },
 });
 
+export const reserveUsage = internalMutation({
+  args: {
+    jobName: v.string(),
+    runId: v.string(),
+    qgbRead: v.number(),
+    vectorSearches: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const enabled = await getConfigBoolean(
+      ctx,
+      "vector_search_budget_enabled",
+      true,
+    );
+    const dailyLimitQgb = await getConfigNumber(
+      ctx,
+      "vector_search_daily_budget_qgb",
+      DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB,
+    );
+    const now = Date.now();
+    const date = formatUtcDate(now);
+    const shard = getUtcShard(now);
+    await releaseExpiredReservations(ctx, now);
+    const totals = await getDailyTotals(ctx, date);
+    const qgbRead = roundQgb(Math.max(0, args.qgbRead));
+    const vectorSearches = Math.max(0, Math.floor(args.vectorSearches));
+    const allowed = !enabled || totals.qgbRead + qgbRead <= dailyLimitQgb;
+
+    if (!allowed) {
+      return {
+        allowed: false as const,
+        enabled,
+        usedQgb: totals.qgbRead,
+        remainingQgb: roundQgb(Math.max(0, dailyLimitQgb - totals.qgbRead)),
+        dailyLimitQgb,
+        fallbackModeEnabled: await getConfigBoolean(
+          ctx,
+          "vector_search_fallback_mode_enabled",
+          true,
+        ),
+      };
+    }
+
+    await adjustDailyUsage(ctx, {
+      date,
+      shard,
+      deltaQgbRead: qgbRead,
+      deltaVectorSearches: vectorSearches,
+      deltaRunCount: 0,
+    });
+
+    const reservationId = await ctx.db.insert("vectorSearchReservations", {
+      jobName: args.jobName,
+      runId: args.runId,
+      date,
+      shard,
+      qgbReserved: qgbRead,
+      vectorSearchesReserved: vectorSearches,
+      status: "reserved",
+      createdAt: now,
+      expiresAt: now + VECTOR_SEARCH_RESERVATION_TTL_MS,
+      updatedAt: now,
+    });
+
+    return {
+      allowed: true as const,
+      reservationId,
+      enabled,
+      usedQgb: roundQgb(totals.qgbRead + qgbRead),
+      remainingQgb: roundQgb(
+        Math.max(0, dailyLimitQgb - totals.qgbRead - qgbRead),
+      ),
+      dailyLimitQgb,
+      fallbackModeEnabled: await getConfigBoolean(
+        ctx,
+        "vector_search_fallback_mode_enabled",
+        true,
+      ),
+    };
+  },
+});
+
+export const consumeReservation = internalMutation({
+  args: {
+    reservationId: v.id("vectorSearchReservations"),
+    qgbRead: v.number(),
+    vectorSearches: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      return { consumed: false as const };
+    }
+
+    const qgbRead = roundQgb(Math.max(0, args.qgbRead));
+    const vectorSearches = Math.max(0, Math.floor(args.vectorSearches));
+
+    await adjustDailyUsage(ctx, {
+      date: reservation.date,
+      shard: reservation.shard,
+      deltaQgbRead: roundQgb(qgbRead - reservation.qgbReserved),
+      deltaVectorSearches:
+        vectorSearches - reservation.vectorSearchesReserved,
+      deltaRunCount: 0,
+    });
+
+    await ctx.db.patch(reservation._id, {
+      qgbConsumed: qgbRead,
+      vectorSearchesConsumed: vectorSearches,
+      status: "consumed",
+      updatedAt: Date.now(),
+    });
+
+    return { consumed: true as const };
+  },
+});
+
+export const releaseReservation = internalMutation({
+  args: {
+    reservationId: v.id("vectorSearchReservations"),
+  },
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      return { released: false as const };
+    }
+
+    await adjustDailyUsage(ctx, {
+      date: reservation.date,
+      shard: reservation.shard,
+      deltaQgbRead: -reservation.qgbReserved,
+      deltaVectorSearches: -reservation.vectorSearchesReserved,
+      deltaRunCount: 0,
+    });
+
+    await ctx.db.patch(reservation._id, {
+      status: "released",
+      updatedAt: Date.now(),
+    });
+
+    return { released: true as const };
+  },
+});
+
 export const recordUsage = internalMutation({
   args: {
     jobName: v.string(),
@@ -236,14 +406,35 @@ export const recordUsage = internalMutation({
     const now = Date.now();
     const date = formatUtcDate(now);
     const shard = getUtcShard(now);
+    const existingRun = await ctx.db
+      .query("vectorSearchRuns")
+      .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
+      .first();
+    if (existingRun) {
+      return { recorded: true as const };
+    }
+    const reservations = await ctx.db
+      .query("vectorSearchReservations")
+      .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
+      .collect();
 
-    await adjustDailyUsage(ctx, {
-      date,
-      shard,
-      deltaQgbRead: roundQgb(Math.max(0, args.qgbRead)),
-      deltaVectorSearches: Math.max(0, Math.floor(args.vectorSearches)),
-      deltaRunCount: 1,
-    });
+    if (reservations.length === 0) {
+      await adjustDailyUsage(ctx, {
+        date,
+        shard,
+        deltaQgbRead: roundQgb(Math.max(0, args.qgbRead)),
+        deltaVectorSearches: Math.max(0, Math.floor(args.vectorSearches)),
+        deltaRunCount: 1,
+      });
+    } else {
+      await adjustDailyUsage(ctx, {
+        date,
+        shard,
+        deltaQgbRead: 0,
+        deltaVectorSearches: 0,
+        deltaRunCount: 1,
+      });
+    }
 
     await ctx.db.insert("vectorSearchRuns", {
       jobName: args.jobName,

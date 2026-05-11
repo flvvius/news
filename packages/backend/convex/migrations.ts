@@ -18,6 +18,7 @@ import { buildEventShareRenderSignature } from "./shareAssets";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
+const EVENT_EMBEDDING_DIMENSIONS = 512;
 
 function articleHasAtomicFacts(article: {
   atomicFacts?: string[];
@@ -514,6 +515,62 @@ export const queueEventShareAssetsBackfill = mutation({
     return {
       processed: page.page.length,
       queued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
+    };
+  },
+});
+
+export const deleteInvalidEventEmbeddingsFor512dVectorIndex = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      250,
+    );
+    const page = await ctx.db.query("eventEmbeddings").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let deleted = 0;
+    let kept = 0;
+
+    for (const row of page.page) {
+      if (row.embedding.length === EVENT_EMBEDDING_DIMENSIONS) {
+        kept++;
+        continue;
+      }
+      await ctx.db.delete(row._id);
+      deleted++;
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const scheduledContinuation =
+      shouldAutoContinue && !page.isDone && Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        0,
+        api.migrations.deleteInvalidEventEmbeddingsFor512dVectorIndex,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+        },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      deleted,
+      kept,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       scheduledContinuation,

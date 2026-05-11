@@ -26,6 +26,21 @@ import {
   Sparkles,
 } from "lucide-react";
 
+const TOPIC_INFERENCE_DEFAULTS = {
+  minScore: 4.5,
+  confidenceRatio: 0.55,
+  maxTopics: 3,
+} as const;
+
+function getNumericConfigValue(
+  row: { value: unknown } | null | undefined,
+  fallback: number,
+) {
+  return typeof row?.value === "number" && Number.isFinite(row.value)
+    ? row.value
+    : fallback;
+}
+
 function formatReadDuration(
   t: ReturnType<typeof useT>,
   seconds?: number,
@@ -130,20 +145,50 @@ function AuthorizedDashboard({
     api.clustering.getRecentTopicInferenceDiagnosticsForAdmin,
     isAdmin ? { limit: 10 } : "skip",
   );
-  const setConfig = useConvexMutationHook(api.config.set);
+  const minScoreConfig = useQuery(
+    api.config.get,
+    isAdmin ? { key: "topic_inference_min_score" } : "skip",
+  );
+  const confidenceRatioConfig = useQuery(
+    api.config.get,
+    isAdmin ? { key: "topic_inference_confidence_ratio" } : "skip",
+  );
+  const maxTopicsConfig = useQuery(
+    api.config.get,
+    isAdmin ? { key: "topic_inference_max_topics" } : "skip",
+  );
+  const setTopicInferenceSettings = useConvexMutationHook(
+    api.config.setTopicInferenceSettings,
+  );
   const [minScoreInput, setMinScoreInput] = useState("");
   const [confidenceRatioInput, setConfidenceRatioInput] = useState("");
   const [maxTopicsInput, setMaxTopicsInput] = useState("");
   const [configMessage, setConfigMessage] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const currentSettings = topicDiagnostics?.[0]?.settings;
+  const currentSettings = {
+    minScore: getNumericConfigValue(
+      minScoreConfig,
+      TOPIC_INFERENCE_DEFAULTS.minScore,
+    ),
+    confidenceRatio: getNumericConfigValue(
+      confidenceRatioConfig,
+      TOPIC_INFERENCE_DEFAULTS.confidenceRatio,
+    ),
+    maxTopics: getNumericConfigValue(
+      maxTopicsConfig,
+      TOPIC_INFERENCE_DEFAULTS.maxTopics,
+    ),
+  };
 
   useEffect(() => {
-    if (!currentSettings) return;
     setMinScoreInput(String(currentSettings.minScore));
     setConfidenceRatioInput(String(currentSettings.confidenceRatio));
     setMaxTopicsInput(String(currentSettings.maxTopics));
-  }, [currentSettings]);
+  }, [
+    currentSettings.minScore,
+    currentSettings.confidenceRatio,
+    currentSettings.maxTopics,
+  ]);
 
   if (dashboardOverview === undefined || isAdmin === undefined) {
     return (
@@ -156,13 +201,11 @@ function AuthorizedDashboard({
   }
 
   const hasConfigChanges =
-    !!currentSettings &&
-    (minScoreInput !== String(currentSettings.minScore) ||
+    minScoreInput !== String(currentSettings.minScore) ||
       confidenceRatioInput !== String(currentSettings.confidenceRatio) ||
-      maxTopicsInput !== String(currentSettings.maxTopics));
+      maxTopicsInput !== String(currentSettings.maxTopics);
 
   const handleResetConfig = () => {
-    if (!currentSettings) return;
     setMinScoreInput(String(currentSettings.minScore));
     setConfidenceRatioInput(String(currentSettings.confidenceRatio));
     setMaxTopicsInput(String(currentSettings.maxTopics));
@@ -171,7 +214,7 @@ function AuthorizedDashboard({
 
   const handleSaveConfig = async (event: FormEvent) => {
     event.preventDefault();
-    if (!currentSettings || isSavingConfig) return;
+    if (isSavingConfig) return;
 
     const minScore = Number(minScoreInput);
     const confidenceRatio = Number(confidenceRatioInput);
@@ -198,26 +241,11 @@ function AuthorizedDashboard({
     setConfigMessage("");
 
     try {
-      await Promise.all([
-        setConfig({
-          key: "topic_inference_min_score",
-          value: JSON.stringify(minScore),
-          description:
-            "Minimum weighted lexical score required before a topic is attached to a clustered event.",
-        }),
-        setConfig({
-          key: "topic_inference_confidence_ratio",
-          value: JSON.stringify(confidenceRatio),
-          description:
-            "Relative score threshold for keeping additional inferred topics alongside the top-scoring topic.",
-        }),
-        setConfig({
-          key: "topic_inference_max_topics",
-          value: JSON.stringify(maxTopics),
-          description:
-            "Maximum number of inferred topics attached to an event during clustering.",
-        }),
-      ]);
+      await setTopicInferenceSettings({
+        minScore,
+        confidenceRatio,
+        maxTopics,
+      });
       setConfigMessage(t("activity.admin.saved"));
     } catch (error) {
       console.error("Failed to save topic inference settings:", error);
@@ -619,7 +647,7 @@ function AuthorizedDashboard({
           </div>
 
           {/* Admin: Topic Diagnostics */}
-          {isAdmin && topicDiagnostics && topicDiagnostics.length > 0 && (
+          {isAdmin && (
             <section className="space-y-4 rounded-xl border border-border bg-card p-6">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -633,105 +661,104 @@ function AuthorizedDashboard({
               <div className="grid gap-3 sm:grid-cols-3">
                 <MetricCard
                   label={t("activity.admin.minScore")}
-                  value={String(topicDiagnostics[0]?.settings.minScore ?? "-")}
+                  value={String(currentSettings.minScore)}
                 />
                 <MetricCard
                   label={t("activity.admin.confidence")}
-                  value={String(
-                    topicDiagnostics[0]?.settings.confidenceRatio ?? "-",
-                  )}
+                  value={String(currentSettings.confidenceRatio)}
                 />
                 <MetricCard
                   label={t("activity.admin.maxTopics")}
-                  value={String(topicDiagnostics[0]?.settings.maxTopics ?? "-")}
+                  value={String(currentSettings.maxTopics)}
                 />
               </div>
 
-              {currentSettings && (
-                <form onSubmit={handleSaveConfig} className="space-y-4 pt-2">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="space-y-1.5">
-                      <label
-                        htmlFor="topic-inference-min-score"
-                        className="text-xs font-medium text-muted-foreground"
-                      >
-                        {t("activity.admin.minScore")}
-                      </label>
-                      <Input
-                        id="topic-inference-min-score"
-                        inputMode="decimal"
-                        value={minScoreInput}
-                        onChange={(e) => setMinScoreInput(e.target.value)}
-                        disabled={isSavingConfig}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label
-                        htmlFor="topic-inference-confidence-ratio"
-                        className="text-xs font-medium text-muted-foreground"
-                      >
-                        {t("activity.admin.confidence")}
-                      </label>
-                      <Input
-                        id="topic-inference-confidence-ratio"
-                        inputMode="decimal"
-                        value={confidenceRatioInput}
-                        onChange={(e) =>
-                          setConfidenceRatioInput(e.target.value)
-                        }
-                        disabled={isSavingConfig}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label
-                        htmlFor="topic-inference-max-topics"
-                        className="text-xs font-medium text-muted-foreground"
-                      >
-                        {t("activity.admin.maxTopics")}
-                      </label>
-                      <Input
-                        id="topic-inference-max-topics"
-                        inputMode="numeric"
-                        value={maxTopicsInput}
-                        onChange={(e) => setMaxTopicsInput(e.target.value)}
-                        disabled={isSavingConfig}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={isSavingConfig || !hasConfigChanges}
+              <form onSubmit={handleSaveConfig} className="space-y-4 pt-2">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="topic-inference-min-score"
+                      className="text-xs font-medium text-muted-foreground"
                     >
-                      {isSavingConfig
-                        ? t("activity.admin.saving")
-                        : t("activity.admin.save")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleResetConfig}
-                      disabled={isSavingConfig || !hasConfigChanges}
-                    >
-                      {t("activity.admin.reset")}
-                    </Button>
-                    {configMessage && (
-                      <p
-                        className="text-sm text-muted-foreground"
-                        role="status"
-                        aria-live="polite"
-                      >
-                        {configMessage}
-                      </p>
-                    )}
+                      {t("activity.admin.minScore")}
+                    </label>
+                    <Input
+                      id="topic-inference-min-score"
+                      inputMode="decimal"
+                      aria-label={t("activity.admin.minScore")}
+                      value={minScoreInput}
+                      onChange={(e) => setMinScoreInput(e.target.value)}
+                      disabled={isSavingConfig}
+                    />
                   </div>
-                </form>
-              )}
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="topic-inference-confidence-ratio"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      {t("activity.admin.confidence")}
+                    </label>
+                    <Input
+                      id="topic-inference-confidence-ratio"
+                      inputMode="decimal"
+                      aria-label={t("activity.admin.confidence")}
+                      value={confidenceRatioInput}
+                      onChange={(e) =>
+                        setConfidenceRatioInput(e.target.value)
+                      }
+                      disabled={isSavingConfig}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="topic-inference-max-topics"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      {t("activity.admin.maxTopics")}
+                    </label>
+                    <Input
+                      id="topic-inference-max-topics"
+                      inputMode="numeric"
+                      aria-label={t("activity.admin.maxTopics")}
+                      value={maxTopicsInput}
+                      onChange={(e) => setMaxTopicsInput(e.target.value)}
+                      disabled={isSavingConfig}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSavingConfig || !hasConfigChanges}
+                  >
+                    {isSavingConfig
+                      ? t("activity.admin.saving")
+                      : t("activity.admin.save")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetConfig}
+                    disabled={isSavingConfig || !hasConfigChanges}
+                  >
+                    {t("activity.admin.reset")}
+                  </Button>
+                  {configMessage && (
+                    <p
+                      className="text-sm text-muted-foreground"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {configMessage}
+                    </p>
+                  )}
+                </div>
+              </form>
 
               <div className="space-y-3 pt-2">
-                {topicDiagnostics.map((event) => (
+                {(topicDiagnostics ?? []).map((event) => (
                   <article
                     key={event.eventId}
                     className="rounded-lg border border-border bg-background p-4"

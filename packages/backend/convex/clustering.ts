@@ -312,6 +312,57 @@ async function getVectorSearchBudgetState(
   return await ctx.runQuery(internal.vectorSearchBudget.checkBudget, {});
 }
 
+async function reserveVectorSearch(
+  ctx: any,
+  metrics: JobMetrics,
+  limit: number,
+) {
+  const reservation = await ctx.runMutation(
+    internal.vectorSearchBudget.reserveUsage,
+    {
+      jobName: metrics.jobName,
+      runId: metrics.runId,
+      qgbRead: estimateVectorSearchQgbRead({
+        vectorSearches: 1,
+        averageMatchesReturned: limit,
+      }),
+      vectorSearches: 1,
+    },
+  );
+
+  metrics.budgetAllowed = reservation.allowed;
+  if (!reservation.allowed) {
+    metrics.usedFallbackMode = reservation.fallbackModeEnabled;
+    console.log(
+      `[clustering] ${metrics.jobName} vector search skipped: budget exhausted (${reservation.usedQgb}/${reservation.dailyLimitQgb} qGB)`,
+    );
+    return null;
+  }
+
+  return reservation.reservationId;
+}
+
+async function consumeVectorSearchReservation(
+  ctx: any,
+  reservationId: any,
+  matchCount: number,
+) {
+  await ctx.runMutation(internal.vectorSearchBudget.consumeReservation, {
+    reservationId,
+    qgbRead: estimateVectorSearchQgbRead({
+      vectorSearches: 1,
+      averageMatchesReturned: matchCount,
+    }),
+    vectorSearches: 1,
+  });
+}
+
+async function releaseVectorSearchReservation(ctx: any, reservationId: any) {
+  await ctx.runMutation(internal.vectorSearchBudget.releaseReservation, {
+    reservationId,
+  });
+}
+
 function appendArticleEmbeddingToEventMean(
   existingEventEmbedding: number[],
   currentArticleCount: number,
@@ -2396,38 +2447,44 @@ export const getRecentClusterCandidates = internalQuery({
 export const getChangedClusterCandidates = internalQuery({
   args: {
     sinceTs: v.number(),
+    sinceCreationTime: v.optional(v.number()),
     recentSinceTs: v.number(),
     limit: v.number(),
     singletonOnly: v.optional(v.boolean()),
   },
-  handler: async (ctx, { sinceTs, recentSinceTs, limit, singletonOnly }) => {
+  handler: async (
+    ctx,
+    { sinceTs, sinceCreationTime, recentSinceTs, limit, singletonOnly },
+  ) => {
     const candidacies = await Promise.all([
       ctx.db
         .query("eventCandidacy")
-        .withIndex("by_status_last_article_at", (q) =>
-          q.eq("status", "published").gte("lastArticleAt", recentSinceTs),
+        .withIndex("by_status_updated_at", (q) =>
+          q.eq("status", "published").gte("updatedAt", sinceTs),
         )
         .order("desc")
-        .take(limit * 3),
+        .take(limit),
       ctx.db
         .query("eventCandidacy")
-        .withIndex("by_status_last_article_at", (q) =>
-          q.eq("status", "processing").gte("lastArticleAt", recentSinceTs),
+        .withIndex("by_status_updated_at", (q) =>
+          q.eq("status", "processing").gte("updatedAt", sinceTs),
         )
         .order("desc")
-        .take(limit * 3),
+        .take(limit),
     ]);
 
     return [...candidacies[0], ...candidacies[1]]
       .filter(
         (row) =>
-          row.updatedAt > sinceTs &&
+          row.lastArticleAt >= recentSinceTs &&
+          (row.updatedAt > sinceTs ||
+            (row.updatedAt === sinceTs &&
+              row._creationTime > (sinceCreationTime ?? 0))) &&
           (!singletonOnly || row.articleCount <= 2),
       )
       .sort(
         (a, b) =>
           b.updatedAt - a.updatedAt ||
-          b.lastArticleAt - a.lastArticleAt ||
           b._creationTime - a._creationTime,
       )
       .slice(0, limit);
@@ -2446,10 +2503,37 @@ export const getClusteringJobState = internalQuery({
   },
 });
 
+function advanceChangedCandidateCursor(
+  rows: Array<{ updatedAt: number; _creationTime: number }>,
+  sinceTs: number,
+  sinceCreationTime = 0,
+) {
+  return rows.reduce(
+    (cursor, row) => {
+      if (
+        row.updatedAt > cursor.lastProcessedAt ||
+        (row.updatedAt === cursor.lastProcessedAt &&
+          row._creationTime > cursor.lastProcessedCreationTime)
+      ) {
+        return {
+          lastProcessedAt: row.updatedAt,
+          lastProcessedCreationTime: row._creationTime,
+        };
+      }
+      return cursor;
+    },
+    {
+      lastProcessedAt: sinceTs,
+      lastProcessedCreationTime: sinceCreationTime,
+    },
+  );
+}
+
 export const upsertClusteringJobState = internalMutation({
   args: {
     jobName: v.string(),
     lastProcessedAt: v.optional(v.number()),
+    lastProcessedCreationTime: v.optional(v.number()),
     lastProcessedDayBucket: v.optional(v.string()),
     lastRunAt: v.number(),
     lastRunMetricsJson: v.optional(v.string()),
@@ -2462,6 +2546,7 @@ export const upsertClusteringJobState = internalMutation({
 
     const payload = {
       lastProcessedAt: args.lastProcessedAt,
+      lastProcessedCreationTime: args.lastProcessedCreationTime,
       lastProcessedDayBucket: args.lastProcessedDayBucket,
       lastRunAt: args.lastRunAt,
       lastRunMetricsJson: args.lastRunMetricsJson,
@@ -4448,6 +4533,7 @@ export const mergeNearDuplicateEvents = internalAction({
         jobName: "mergeNearDuplicateEvents",
       });
       const sinceTs = jobState?.lastProcessedAt ?? 0;
+      const sinceCreationTime = jobState?.lastProcessedCreationTime ?? 0;
 
       const candidateFetchStart = Date.now();
       const mergeConfig = await ctx.runQuery(internal.config.getBatch, {
@@ -4490,6 +4576,7 @@ export const mergeNearDuplicateEvents = internalAction({
         internal.clustering.getChangedClusterCandidates,
         {
           sinceTs,
+          sinceCreationTime,
           recentSinceTs,
           limit: MAX_CANDIDATE_EVENTS,
           singletonOnly: false,
@@ -4501,6 +4588,8 @@ export const mergeNearDuplicateEvents = internalAction({
         await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
           jobName: "mergeNearDuplicateEvents",
           lastProcessedAt: jobState?.lastProcessedAt ?? sinceTs,
+          lastProcessedCreationTime:
+            jobState?.lastProcessedCreationTime ?? sinceCreationTime,
           lastProcessedDayBucket:
             jobState?.lastProcessedDayBucket ?? formatUtcDayBucket(Date.now()),
           lastRunAt: Date.now(),
@@ -4533,27 +4622,41 @@ export const mergeNearDuplicateEvents = internalAction({
 
       for (const candidate of seeds) {
         if (!candidate.embeddingId) continue;
-        metrics.vectorSearches++;
-        const neighbors = await ctx.vectorSearch(
-          "eventEmbeddings",
-          "by_embedding",
-          {
-            vector: toEventEmbedding(candidate.embedding),
-            limit: vectorSearchLimit,
-            filter: (q) =>
-              mergeSearchBuckets.length <= 1
-                ? q.eq(
-                    "mergeSearchBucket",
-                    mergeSearchBuckets[0] ??
-                      `published::${MERGE_RECENT_BUCKET}::${formatUtcDayBucket(Date.now())}`,
-                  )
-                : q.or(
-                    ...mergeSearchBuckets.map((bucket) =>
-                      q.eq("mergeSearchBucket", bucket),
-                    ),
-                  ),
-          },
+        const reservationId = await reserveVectorSearch(
+          ctx,
+          metrics,
+          vectorSearchLimit,
         );
+        if (!reservationId) continue;
+
+        let neighbors: Array<{ _id: Id<"eventEmbeddings">; _score: number }>;
+        try {
+          neighbors = await ctx.vectorSearch(
+            "eventEmbeddings",
+            "by_embedding",
+            {
+              vector: toEventEmbedding(candidate.embedding),
+              limit: vectorSearchLimit,
+              filter: (q) =>
+                mergeSearchBuckets.length <= 1
+                  ? q.eq(
+                      "mergeSearchBucket",
+                      mergeSearchBuckets[0] ??
+                        `published::${MERGE_RECENT_BUCKET}::${formatUtcDayBucket(Date.now())}`,
+                    )
+                  : q.or(
+                      ...mergeSearchBuckets.map((bucket) =>
+                        q.eq("mergeSearchBucket", bucket),
+                      ),
+                    ),
+            },
+          );
+        } catch (error) {
+          await releaseVectorSearchReservation(ctx, reservationId);
+          throw error;
+        }
+        await consumeVectorSearchReservation(ctx, reservationId, neighbors.length);
+        metrics.vectorSearches++;
         metrics.vectorMatchesReturned += neighbors.length;
         if (neighbors.length === 0) continue;
 
@@ -4733,13 +4836,16 @@ export const mergeNearDuplicateEvents = internalAction({
         `[clustering] Merge pass complete: ${mergedPairs} merged, ${examinedPairs} pairs examined, ${skipped} skipped`,
       );
 
-      const lastProcessedAt = changedCandidateRows.reduce(
-        (max, row) => Math.max(max, row.updatedAt),
+      const advancedCursor = advanceChangedCandidateCursor(
+        changedCandidateRows,
         sinceTs,
+        sinceCreationTime,
       );
       await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
         jobName: "mergeNearDuplicateEvents",
-        lastProcessedAt,
+        lastProcessedAt: advancedCursor.lastProcessedAt,
+        lastProcessedCreationTime:
+          advancedCursor.lastProcessedCreationTime,
         lastProcessedDayBucket: formatUtcDayBucket(Date.now()),
         lastRunAt: Date.now(),
         lastRunMetricsJson: JSON.stringify(metrics),
@@ -4811,6 +4917,7 @@ export const reclusterRecentSingletonEvents = internalAction({
         jobName: "reclusterRecentSingletonEvents",
       });
       const sinceTs = jobState?.lastProcessedAt ?? 0;
+      const sinceCreationTime = jobState?.lastProcessedCreationTime ?? 0;
 
       const reclusterConfig = await ctx.runQuery(internal.config.getBatch, {
         keys: [
@@ -4845,6 +4952,7 @@ export const reclusterRecentSingletonEvents = internalAction({
         internal.clustering.getChangedClusterCandidates,
         {
           sinceTs,
+          sinceCreationTime,
           recentSinceTs: Date.now() - settings.windowHours * 60 * 60 * 1000,
           limit: MAX_CANDIDATE_EVENTS,
           singletonOnly: true,
@@ -4856,6 +4964,8 @@ export const reclusterRecentSingletonEvents = internalAction({
         await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
           jobName: "reclusterRecentSingletonEvents",
           lastProcessedAt: jobState?.lastProcessedAt ?? sinceTs,
+          lastProcessedCreationTime:
+            jobState?.lastProcessedCreationTime ?? sinceCreationTime,
           lastProcessedDayBucket:
             jobState?.lastProcessedDayBucket ?? formatUtcDayBucket(Date.now()),
           lastRunAt: Date.now(),
@@ -4890,27 +5000,41 @@ export const reclusterRecentSingletonEvents = internalAction({
 
       for (const candidate of candidates) {
         if (!candidate.embeddingId) continue;
-        metrics.vectorSearches++;
-        const neighbors = await ctx.vectorSearch(
-          "eventEmbeddings",
-          "by_embedding",
-          {
-            vector: toEventEmbedding(candidate.embedding),
-            limit: vectorSearchLimit,
-            filter: (q) =>
-              singletonSearchBuckets.length <= 1
-                ? q.eq(
-                    "singletonSearchBucket",
-                    singletonSearchBuckets[0] ??
-                      `published::${SINGLETON_BUCKET}::${formatUtcDayBucket(Date.now())}`,
-                  )
-                : q.or(
-                    ...singletonSearchBuckets.map((bucket) =>
-                      q.eq("singletonSearchBucket", bucket),
-                    ),
-                  ),
-          },
+        const reservationId = await reserveVectorSearch(
+          ctx,
+          metrics,
+          vectorSearchLimit,
         );
+        if (!reservationId) continue;
+
+        let neighbors: Array<{ _id: Id<"eventEmbeddings">; _score: number }>;
+        try {
+          neighbors = await ctx.vectorSearch(
+            "eventEmbeddings",
+            "by_embedding",
+            {
+              vector: toEventEmbedding(candidate.embedding),
+              limit: vectorSearchLimit,
+              filter: (q) =>
+                singletonSearchBuckets.length <= 1
+                  ? q.eq(
+                      "singletonSearchBucket",
+                      singletonSearchBuckets[0] ??
+                        `published::${SINGLETON_BUCKET}::${formatUtcDayBucket(Date.now())}`,
+                    )
+                  : q.or(
+                      ...singletonSearchBuckets.map((bucket) =>
+                        q.eq("singletonSearchBucket", bucket),
+                      ),
+                    ),
+            },
+          );
+        } catch (error) {
+          await releaseVectorSearchReservation(ctx, reservationId);
+          throw error;
+        }
+        await consumeVectorSearchReservation(ctx, reservationId, neighbors.length);
+        metrics.vectorSearches++;
         metrics.vectorMatchesReturned += neighbors.length;
         if (neighbors.length === 0) continue;
 
@@ -5083,13 +5207,16 @@ export const reclusterRecentSingletonEvents = internalAction({
         `[clustering] Singleton recluster complete: ${mergedPairs} merged, ${examinedPairs} pairs examined, ${skipped} skipped`,
       );
 
-      const lastProcessedAt = changedCandidateRows.reduce(
-        (max, row) => Math.max(max, row.updatedAt),
+      const advancedCursor = advanceChangedCandidateCursor(
+        changedCandidateRows,
         sinceTs,
+        sinceCreationTime,
       );
       await ctx.runMutation(internal.clustering.upsertClusteringJobState, {
         jobName: "reclusterRecentSingletonEvents",
-        lastProcessedAt,
+        lastProcessedAt: advancedCursor.lastProcessedAt,
+        lastProcessedCreationTime:
+          advancedCursor.lastProcessedCreationTime,
         lastProcessedDayBucket: formatUtcDayBucket(Date.now()),
         lastRunAt: Date.now(),
         lastRunMetricsJson: JSON.stringify(metrics),
@@ -5334,17 +5461,35 @@ export const clusterEnrichedArticles = internalAction({
         embedding: number[],
       ): Promise<ClusterCandidate[]> => {
         searchedArticleIds.add(String(articleId));
-        metrics.vectorSearches++;
-        const vectorResults = await ctx.vectorSearch(
-          "eventEmbeddings",
-          "by_embedding",
-          {
-            vector: toEventEmbedding(embedding),
-            limit: vectorSearchLimit,
-            filter: (q) =>
-              q.or(q.eq("status", "published"), q.eq("status", "processing")),
-          },
+        const reservationId = await reserveVectorSearch(
+          ctx,
+          metrics,
+          vectorSearchLimit,
         );
+        if (!reservationId) return [];
+
+        let vectorResults: Array<{ _id: Id<"eventEmbeddings">; _score: number }>;
+        try {
+          vectorResults = await ctx.vectorSearch(
+            "eventEmbeddings",
+            "by_embedding",
+            {
+              vector: toEventEmbedding(embedding),
+              limit: vectorSearchLimit,
+              filter: (q) =>
+                q.or(q.eq("status", "published"), q.eq("status", "processing")),
+            },
+          );
+        } catch (error) {
+          await releaseVectorSearchReservation(ctx, reservationId);
+          throw error;
+        }
+        await consumeVectorSearchReservation(
+          ctx,
+          reservationId,
+          vectorResults.length,
+        );
+        metrics.vectorSearches++;
 
         metrics.vectorMatchesReturned += vectorResults.length;
 
@@ -5489,7 +5634,7 @@ export const clusterEnrichedArticles = internalAction({
 
       const tryBatchLocalAttach = async (
         payload: AttachPayload,
-        heuristicOnly: boolean,
+        heuristicOnly = false,
       ): Promise<"attached" | "unmatched" | "skipped"> => {
         const { article, topicSlugs } = payload;
         const candidatePool = Array.from(candidateCache.values());
@@ -5537,7 +5682,7 @@ export const clusterEnrichedArticles = internalAction({
           topicSlugs,
         };
         const outcome = useFallbackMode
-          ? await tryBatchLocalAttach(payload, true)
+          ? await tryBatchLocalAttach(payload)
           : await tryVectorAttach(payload);
         if (outcome === "unmatched") {
           const entityTokenCount = extractEntityTokens(
@@ -5573,7 +5718,7 @@ export const clusterEnrichedArticles = internalAction({
       );
 
       for (const pending of pendingArticles) {
-        let outcome = await tryBatchLocalAttach(pending, useFallbackMode);
+        let outcome = await tryBatchLocalAttach(pending);
         if (outcome !== "unmatched") continue;
 
         const pendingKey = String(pending.article._id);
