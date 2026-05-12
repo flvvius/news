@@ -18,12 +18,12 @@ export function PageLoadingState({
   return (
     <div
       aria-busy="true"
-      className="bg-gradient-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]"
+      className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]"
     >
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-6">
           <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
-            <CardHeader className="gap-4 bg-gradient-to-br from-background via-card to-muted/40">
+            <CardHeader className="gap-4 bg-linear-to-br from-background via-card to-muted/40">
               <div className="flex items-center gap-3 text-primary">
                 <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                   <Loader2 className="size-5 animate-spin" />

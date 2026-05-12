@@ -16,6 +16,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SalvateRouteImport } from './routes/salvate'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as QuizRouteImport } from './routes/quiz'
 import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
@@ -64,6 +65,11 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuizRoute = QuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfilRoute = ProfilRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/quiz'
     | '/reset-password'
     | '/robots.txt'
     | '/salvate'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/quiz'
     | '/reset-password'
     | '/robots.txt'
     | '/salvate'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/quiz'
     | '/reset-password'
     | '/robots.txt'
     | '/salvate'
@@ -292,6 +304,7 @@ export interface RootRouteChildren {
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ProfilRoute: typeof ProfilRoute
+  QuizRoute: typeof QuizRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SalvateRoute: typeof SalvateRoute
@@ -353,6 +366,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quiz': {
+      id: '/quiz'
+      path: '/quiz'
+      fullPath: '/quiz'
+      preLoaderRoute: typeof QuizRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profil': {
@@ -468,6 +488,7 @@ const rootRouteChildren: RootRouteChildren = {
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ProfilRoute: ProfilRoute,
+  QuizRoute: QuizRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SalvateRoute: SalvateRoute,

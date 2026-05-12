@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import {
+  BrainCircuitIcon,
   CheckIcon,
   ChevronDownIcon,
   ClockIcon,
@@ -90,7 +91,7 @@ function TopicFilterContent({
         aria-label={t("feed.topic.search")}
         placeholder={t("feed.topic.search")}
       />
-      <CommandList className="max-h-[300px]">
+      <CommandList className="max-h-75">
         <CommandEmpty>{t("feed.topic.empty")}</CommandEmpty>
         <CommandGroup>
           <CommandItem
@@ -153,7 +154,7 @@ function TopicFilter({
       variant="outline"
       size="sm"
       className={cn(
-        "w-full max-w-[13rem] min-w-0 justify-between gap-1.5 rounded-full px-3 sm:max-w-[15rem] md:min-w-[140px] md:max-w-[16rem] md:gap-2",
+        "w-full max-w-52 min-w-0 justify-between gap-1.5 rounded-full px-3 sm:max-w-60 md:min-w-35 md:max-w-64 md:gap-2",
         selectedTopic !== "all" && "border-primary/50 bg-primary/5",
       )}
       aria-label={t("feed.topic.filter")}
@@ -222,7 +223,7 @@ function TopicFilter({
     <div className="flex items-center gap-2">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
-        <PopoverContent className="w-[240px] p-0" align="start">
+        <PopoverContent className="w-60 p-0" align="start">
           <TopicFilterContent
             topics={topics}
             selectedTopic={selectedTopic}
@@ -581,7 +582,7 @@ function FeedContent() {
                     </div>
                     <div className="border-t border-border/60 pt-2.5 sm:pt-3">
                       <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="min-w-0 w-full max-w-[13rem] sm:max-w-[15rem] md:max-w-[16rem]">
+                        <div className="min-w-0 w-full max-w-52 sm:max-w-60 md:max-w-64">
                           <TopicFilter
                             topics={topics}
                             selectedTopic={selectedTopic}
@@ -676,6 +677,27 @@ function FeedContent() {
               title={t("feed.authTitle")}
               description={t("feed.authBody")}
             />
+          )}
+
+          {!isSearching && (
+            <section className="flex flex-col gap-3 rounded-xl border border-border bg-card/90 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <BrainCircuitIcon className="size-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold">
+                    {t("quiz.cta.feedTitle")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("quiz.cta.feedBody")}
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="shrink-0">
+                <Link to="/quiz">{t("quiz.cta.action")}</Link>
+              </Button>
+            </section>
           )}
 
           <div className="grid gap-6">

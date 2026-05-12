@@ -52,7 +52,7 @@ export default function UserMenu() {
           <div className="flex items-center justify-center size-6 rounded-md bg-primary/10 text-primary text-xs font-semibold">
             {userInitial}
           </div>
-          <span className="hidden sm:inline max-w-[120px] truncate">
+          <span className="hidden sm:inline max-w-30 truncate">
             {userName}
           </span>
           <ChevronDown className="size-4 text-muted-foreground" />

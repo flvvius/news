@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "web build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"-C",
+				"apps/web",
+				"build"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

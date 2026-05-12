@@ -3,7 +3,7 @@ import { useT } from "@/lib/i18n/LocaleContext";
 
 type StreakDay = {
   timestamp: number;
-  readCount: number;
+  activityCount: number;
   isToday: boolean;
 };
 
@@ -20,10 +20,10 @@ function chunkWeeks(days: Array<StreakDay | null>) {
   return weeks;
 }
 
-function getCellClassName(readCount: number) {
-  if (readCount >= 3) return "bg-primary";
-  if (readCount === 2) return "bg-primary/55";
-  if (readCount === 1) return "bg-primary/25";
+function getCellClassName(activityCount: number) {
+  if (activityCount >= 3) return "bg-primary";
+  if (activityCount === 2) return "bg-primary/55";
+  if (activityCount === 1) return "bg-primary/25";
   return "bg-muted";
 }
 
@@ -94,30 +94,30 @@ export default function StreakActivityCalendar({
                       key={day.timestamp}
                       className={cn(
                         "h-3 w-3 rounded-[3px] border border-border/50",
-                        getCellClassName(day.readCount),
+                        getCellClassName(day.activityCount),
                         day.isToday &&
                           "ring-1 ring-primary ring-offset-1 ring-offset-background",
                       )}
                       title={`${fullDateFormatter.format(new Date(day.timestamp))}: ${
-                        day.readCount === 1
+                        day.activityCount === 1
                           ? t("calendar.eventsRead.one").replace(
                               "{count}",
-                              String(day.readCount),
+                              String(day.activityCount),
                             )
                           : t("calendar.eventsRead.many").replace(
                               "{count}",
-                              String(day.readCount),
+                              String(day.activityCount),
                             )
                       }`}
                       aria-label={`${fullDateFormatter.format(new Date(day.timestamp))}: ${
-                        day.readCount === 1
+                        day.activityCount === 1
                           ? t("calendar.eventsRead.one").replace(
                               "{count}",
-                              String(day.readCount),
+                              String(day.activityCount),
                             )
                           : t("calendar.eventsRead.many").replace(
                               "{count}",
-                              String(day.readCount),
+                              String(day.activityCount),
                             )
                       }`}
                     />

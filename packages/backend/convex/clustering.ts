@@ -2191,7 +2191,8 @@ export const backfillEventEmbeddingBuckets = internalAction({
         event.lastArticleAt ??
         (fallbackArticles && fallbackArticles.length > 0
           ? fallbackArticles.reduce(
-              (max, article) => Math.max(max, article.publishedAt),
+              (max: number, article: { publishedAt: number }) =>
+                Math.max(max, article.publishedAt),
               event.firstPublishedAt,
             )
           : event.firstPublishedAt);
@@ -4618,7 +4619,9 @@ export const mergeNearDuplicateEvents = internalAction({
       const seedCandidateResults = await ctx.runQuery(
         internal.clustering.getClusterCandidatesByEventIds,
         {
-          eventIds: changedCandidateRows.map((row) => row.eventId),
+          eventIds: changedCandidateRows.map(
+            (row: { eventId: Id<"events"> }) => row.eventId,
+          ),
         },
       );
       const seeds = (seedCandidateResults as ClusterCandidateQueryResult[]).map(
@@ -4995,7 +4998,9 @@ export const reclusterRecentSingletonEvents = internalAction({
       const seedCandidateResults = await ctx.runQuery(
         internal.clustering.getClusterCandidatesByEventIds,
         {
-          eventIds: changedCandidateRows.map((row) => row.eventId),
+          eventIds: changedCandidateRows.map(
+            (row: { eventId: Id<"events"> }) => row.eventId,
+          ),
         },
       );
       const candidates = (seedCandidateResults as ClusterCandidateQueryResult[]).map(

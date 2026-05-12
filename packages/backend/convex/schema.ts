@@ -298,7 +298,83 @@ export default defineSchema({
     .index("by_event_importance", ["eventId", "importance"]),
 
   // =========================================================================
-  // 3f. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
+  // 3f. DAILY QUIZZES (Appointment mechanic generated from grounded claims)
+  // =========================================================================
+  dailyQuizzes: defineTable({
+    dateKey: v.string(), // "YYYY-MM-DD" in UTC
+    status: v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    questions: v.array(
+      v.object({
+        id: v.string(),
+        type: v.union(
+          v.literal("claim_attribution"),
+          v.literal("fact_check"),
+          v.literal("perspective_match"),
+          v.literal("coverage_gap"),
+        ),
+        question: v.object({
+          en: v.string(),
+          ro: v.string(),
+        }),
+        choices: v.array(
+          v.object({
+            id: v.string(),
+            text: v.object({
+              en: v.string(),
+              ro: v.string(),
+            }),
+          }),
+        ),
+        correctChoiceId: v.string(),
+        explanation: v.object({
+          en: v.string(),
+          ro: v.string(),
+        }),
+        attribution: v.object({
+          eventTitle: v.string(),
+          eventSlug: v.string(),
+          sourceName: v.optional(v.string()),
+          sourceUrl: v.optional(v.string()),
+          claim: v.optional(v.string()),
+        }),
+        eventId: v.id("events"),
+        sourceIds: v.array(v.id("sources")),
+      }),
+    ),
+    sourceEventIds: v.array(v.id("events")),
+    inputSignature: v.string(),
+    model: v.string(),
+    generatedAt: v.number(),
+    publishedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_date", ["dateKey"])
+    .index("by_status_date", ["status", "dateKey"]),
+
+  quizAttempts: defineTable({
+    userId: v.id("users"),
+    quizId: v.id("dailyQuizzes"),
+    dateKey: v.string(),
+    answers: v.array(
+      v.object({
+        questionId: v.string(),
+        choiceId: v.string(),
+      }),
+    ),
+    score: v.number(),
+    maxScore: v.number(),
+    completedAt: v.number(),
+  })
+    .index("by_user_quiz", ["userId", "quizId"])
+    .index("by_user_date", ["userId", "dateKey"])
+    .index("by_quiz", ["quizId"]),
+
+  // =========================================================================
+  // 3g. CLUSTER PAIR LABELS (Ground-truth tuning set for clustering)
   // =========================================================================
   clusterPairLabels: defineTable({
     pairKey: v.string(),

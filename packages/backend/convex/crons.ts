@@ -108,6 +108,17 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
+// Daily News Quiz — Daily
+// ---------------------------------------------------------------------------
+// Generates one globally shared UTC-dated quiz from grounded claim/fact data.
+crons.daily(
+  "generate-daily-news-quiz",
+  { hourUTC: 6, minuteUTC: 0 },
+  internal.quizNode.generateDailyQuiz,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Article Bias Outlier Detection — Daily
 // ---------------------------------------------------------------------------
 // Computes rolling per-source article bias stats and flags articles that are

@@ -20,7 +20,7 @@ export function SignInPrompt({
   const t = useT();
 
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35">
+    <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center px-4 py-10 sm:py-14">
         <div className="mx-auto w-full max-w-xl rounded-[1.75rem] border border-border/70 bg-card/80 p-8 text-center shadow-sm sm:p-10">
           {illustration ? (

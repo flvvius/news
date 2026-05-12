@@ -1,4 +1,4 @@
-import { Bookmark, BarChart3, Newspaper, User } from "lucide-react";
+import { Bookmark, BarChart3, BrainCircuit, Newspaper, User } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ComponentType, MouseEvent } from "react";
 import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
@@ -13,6 +13,7 @@ type TabItem = {
 
 type TabKey =
   | "tabs.feed"
+  | "tabs.quiz"
   | "tabs.saved"
   | "tabs.activity"
   | "tabs.profile";
@@ -29,6 +30,7 @@ const tabDefinitions: readonly TabDefinition[] = [
       pathname.startsWith("/feed/") ||
       pathname.startsWith("/event/"),
   },
+  { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },
   { to: "/activitate", key: "tabs.activity", icon: BarChart3 },
   { to: "/profil", key: "tabs.profile", icon: User },
@@ -68,7 +70,7 @@ export function MobileTabBar() {
       style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="mx-auto max-w-md rounded-[1.4rem] border border-border bg-background/92 p-2 shadow-lg shadow-foreground/5 backdrop-blur-xl">
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
         {tabDefinitions.map(({ to, key, icon: Icon, isActive: customIsActive }) => {
           const isActive = customIsActive
             ? customIsActive(pathname)

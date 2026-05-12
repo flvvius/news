@@ -12,6 +12,7 @@ export type AICallType =
   | "event_summary"
   | "claim_divergence"
   | "topic_inference"
+  | "quiz_generation"
   | "embedding";
 
 type AICallContext = {
