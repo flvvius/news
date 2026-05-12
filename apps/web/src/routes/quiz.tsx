@@ -198,7 +198,8 @@ function QuizExperience({
     ? questionFeedback[currentQuestion.id]
     : undefined;
   const progress = Math.round((answeredCount / quiz.questions.length) * 100);
-  const activeResult = result ?? existingAttempt;
+  const activeResult =
+    result ?? (existingAttempt ? { ...existingAttempt, saved: true } : null);
 
   const reviewByQuestionId = useMemo(() => {
     const map = new Map<string, SubmitResult["review"][number]>();
