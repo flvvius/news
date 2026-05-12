@@ -424,8 +424,8 @@ function sanitizeQuizQuestions(
       event.articles.find((article) => article.sourceId === sourceIds[0]) ??
       event.articles[0];
 
-    const fallbackId = `q${sanitized.length + 1}`;
-    let questionId = candidateId ?? fallbackId;
+    const fallbackId: string = `q${sanitized.length + 1}`;
+    let questionId: string = candidateId ?? fallbackId;
     if (!candidateId && questionIds.has(questionId)) {
       let counter = sanitized.length + 1;
       while (questionIds.has(`q${counter}`)) counter += 1;

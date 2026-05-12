@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { SITE } from "@/lib/seo";
 import { Footer } from "@/components/layout/Footer";
@@ -15,7 +16,6 @@ import {
   createRootRouteWithContext,
   useRouteContext,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import Header from "../components/header";
 import appCss from "../index.css?url";
 import type { QueryClient } from "@tanstack/react-query";
@@ -31,6 +31,14 @@ const fetchAuth = createServerFn({ method: "GET" }).handler(async () => {
   const token = await getToken();
   return { token };
 });
+
+const TanStackRouterDevtools = import.meta.env.DEV
+  ? lazy(() =>
+      import("@tanstack/react-router-devtools").then((module) => ({
+        default: module.TanStackRouterDevtools,
+      })),
+    )
+  : null;
 
 function getExistingAuthContext(
   matches: Array<{ context: unknown }>,
@@ -215,8 +223,10 @@ function RootDocument() {
             <Footer />
             <MobileTabBar />
             <Toaster richColors />
-            {import.meta.env.DEV && (
-              <TanStackRouterDevtools position="bottom-left" />
+            {TanStackRouterDevtools && (
+              <Suspense fallback={null}>
+                <TanStackRouterDevtools position="bottom-left" />
+              </Suspense>
             )}
             <Scripts />
           </body>

@@ -67,8 +67,13 @@ export default function EarlyAccessApplyCard({
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             setMessage("");
+            const normalizedEmail = email.trim().toLowerCase();
+            if (!normalizedEmail) {
+              setMessage("Please enter a valid email");
+              return;
+            }
             addToWaitlist.mutate({
-              email: email.trim().toLowerCase(),
+              email: normalizedEmail,
               name: name.trim() || undefined,
             });
           }}
@@ -112,6 +117,7 @@ export default function EarlyAccessApplyCard({
                 : "text-muted-foreground"
             }`}
             role={addToWaitlist.isError ? "alert" : "status"}
+            aria-live={addToWaitlist.isError ? "assertive" : "polite"}
           >
             {message}
           </p>

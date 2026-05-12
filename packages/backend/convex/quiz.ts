@@ -14,6 +14,7 @@ import {
   getUserProfileByAuthUserId,
 } from "./lib/userProfile";
 const SOURCE_EVENT_LIMIT = 16;
+const SOURCE_EVENT_SCAN_LIMIT = 100;
 const SOURCE_CLAIM_LIMIT = 8;
 const SOURCE_ARTICLE_LIMIT = 8;
 const SOURCE_FACT_LIMIT = 6;
@@ -60,6 +61,17 @@ const QUIZ_QUESTION_VALIDATOR = v.object({
 
 function dateKeyForTimestamp(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function utcDayBoundsForDateKey(dateKey: string) {
+  const start = Date.parse(`${dateKey}T00:00:00.000Z`);
+  if (!Number.isFinite(start)) {
+    throw new ConvexError("Invalid quiz date");
+  }
+  return {
+    start,
+    end: start + 24 * 60 * 60 * 1000,
+  };
 }
 
 function stripCorrectAnswers(quiz: Doc<"dailyQuizzes">) {
@@ -222,16 +234,11 @@ export const submitQuizAttempt = mutation({
       );
     });
 
-    const result = buildReview(quiz, normalizedAnswers);
     if (normalizedAnswers.length !== quiz.questions.length) {
-      return {
-        saved: false,
-        completedAt: Date.now(),
-        quizId: quiz._id,
-        dateKey: quiz.dateKey,
-        ...result,
-      };
+      throw new ConvexError("Please answer every question before submitting");
     }
+
+    const result = buildReview(quiz, normalizedAnswers);
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) {
       return {
@@ -321,11 +328,26 @@ export const getQuizGenerationInput = internalQuery({
       .withIndex("by_date", (q) => q.eq("dateKey", args.dateKey))
       .unique();
 
-    const candidates = await ctx.db
-      .query("publicEventPreviews")
-      .withIndex("by_trending_score")
-      .order("desc")
-      .take(Math.min(Math.max(args.eventLimit ?? SOURCE_EVENT_LIMIT, 3), 30));
+    const requestedLimit = Math.min(
+      Math.max(args.eventLimit ?? SOURCE_EVENT_LIMIT, 3),
+      30,
+    );
+    const dayBounds = utcDayBoundsForDateKey(args.dateKey);
+    const candidates = (
+      await ctx.db
+        .query("publicEventPreviews")
+        .withIndex("by_trending_score")
+        .order("desc")
+        .take(SOURCE_EVENT_SCAN_LIMIT)
+    )
+      .filter(
+        (preview) =>
+          (preview.firstPublishedAt >= dayBounds.start &&
+            preview.firstPublishedAt < dayBounds.end) ||
+          (preview.lastUpdatedAt >= dayBounds.start &&
+            preview.lastUpdatedAt < dayBounds.end),
+      )
+      .slice(0, requestedLimit);
 
     const events = await Promise.all(
       candidates.map(async (preview) => {
