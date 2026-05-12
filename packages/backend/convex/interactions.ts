@@ -691,20 +691,26 @@ export const getDashboardOverview = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    const [viewInteractions, allBookmarkInteractions] = await Promise.all([
-      ctx.db
-        .query("interactions")
-        .withIndex("by_user_type", (q) =>
-          q.eq("userId", user._id).eq("type", "view"),
-        )
-        .order("desc")
-        .collect() as Promise<ViewInteraction[]>,
-      ctx.db
-        .query("interactions")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .order("desc")
-        .collect(),
-    ]);
+    const [viewInteractions, allBookmarkInteractions, quizAttempts] =
+      await Promise.all([
+        ctx.db
+          .query("interactions")
+          .withIndex("by_user_type", (q) =>
+            q.eq("userId", user._id).eq("type", "view"),
+          )
+          .order("desc")
+          .collect() as Promise<ViewInteraction[]>,
+        ctx.db
+          .query("interactions")
+          .withIndex("by_user", (q) => q.eq("userId", user._id))
+          .order("desc")
+          .collect(),
+        ctx.db
+          .query("quizAttempts")
+          .withIndex("by_user_date", (q) => q.eq("userId", user._id))
+          .order("desc")
+          .collect(),
+      ]);
 
     const latestViewByEvent = new Map<string, ViewInteraction>();
     const visitCountByEvent = new Map<string, number>();
@@ -732,6 +738,15 @@ export const getDashboardOverview = query({
         recentBiasTotal += interaction.context?.biasRating ?? 0;
         recentBiasReads += 1;
       }
+    }
+
+    const quizAttemptsByDay = new Map<number, number>();
+    for (const attempt of quizAttempts) {
+      const dayTimestamp = startOfUtcDay(attempt.completedAt);
+      quizAttemptsByDay.set(
+        dayTimestamp,
+        (quizAttemptsByDay.get(dayTimestamp) ?? 0) + 1,
+      );
     }
 
     const recentHistoryEntries = Array.from(latestViewByEvent.values()).slice(
@@ -793,10 +808,11 @@ export const getDashboardOverview = query({
     const streakDays = Array.from({ length: 84 }, (_, index) => {
       const timestamp = today - (83 - index) * DAY_MS;
       const activeSet = uniqueEventIdsByDay.get(timestamp);
+      const quizCount = quizAttemptsByDay.get(timestamp) ?? 0;
 
       return {
         timestamp,
-        readCount: activeSet?.size ?? 0,
+        readCount: (activeSet?.size ?? 0) + quizCount,
         isToday: timestamp === today,
       };
     });

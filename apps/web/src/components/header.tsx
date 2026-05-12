@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Newspaper, Bookmark, LayoutDashboard, User } from "lucide-react";
+import {
+  Menu,
+  Newspaper,
+  Bookmark,
+  LayoutDashboard,
+  User,
+  BrainCircuit,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
@@ -15,6 +22,7 @@ import {
 
 const links = [
   { to: "/feed", key: "tabs.feed", icon: Newspaper },
+  { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },
   { to: "/activitate", key: "tabs.activity", icon: LayoutDashboard },
   { to: "/profil", key: "tabs.profile", icon: User },

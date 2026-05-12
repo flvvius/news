@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import {
+  BrainCircuitIcon,
   CheckIcon,
   ChevronDownIcon,
   ClockIcon,
@@ -676,6 +677,27 @@ function FeedContent() {
               title={t("feed.authTitle")}
               description={t("feed.authBody")}
             />
+          )}
+
+          {!isSearching && (
+            <section className="flex flex-col gap-3 rounded-xl border border-border bg-card/90 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <BrainCircuitIcon className="size-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold">
+                    {t("quiz.cta.feedTitle")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("quiz.cta.feedBody")}
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="shrink-0">
+                <Link to="/quiz">{t("quiz.cta.action")}</Link>
+              </Button>
+            </section>
           )}
 
           <div className="grid gap-6">

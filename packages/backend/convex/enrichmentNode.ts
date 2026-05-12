@@ -1233,7 +1233,7 @@ export const backfillAtomicFacts = internalAction({
 
         if (articles.length === 0) break;
         const oldestPublishedAt = articles.reduce(
-          (oldest: number | undefined, article) =>
+          (oldest: number | undefined, article: { publishedAt: number }) =>
             oldest === undefined
               ? article.publishedAt
               : Math.min(oldest, article.publishedAt),

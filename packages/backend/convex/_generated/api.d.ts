@@ -38,6 +38,8 @@ import type * as migrations from "../migrations.js";
 import type * as pipelineDiagnostics from "../pipelineDiagnostics.js";
 import type * as privateData from "../privateData.js";
 import type * as prompts from "../prompts.js";
+import type * as quiz from "../quiz.js";
+import type * as quizNode from "../quizNode.js";
 import type * as seeds from "../seeds.js";
 import type * as shareAssets from "../shareAssets.js";
 import type * as shareAssetsNode from "../shareAssetsNode.js";
@@ -87,6 +89,8 @@ declare const fullApi: ApiFromModules<{
   pipelineDiagnostics: typeof pipelineDiagnostics;
   privateData: typeof privateData;
   prompts: typeof prompts;
+  quiz: typeof quiz;
+  quizNode: typeof quizNode;
   seeds: typeof seeds;
   shareAssets: typeof shareAssets;
   shareAssetsNode: typeof shareAssetsNode;
