@@ -4,11 +4,15 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
-import { normalizeEmail } from "./lib/betaAccess";
+import { computeStreakUpdate } from "./lib/streaks";
 import {
   getPublicPreviewByEventId,
   MAX_PREVIEW_SOURCES,
 } from "./lib/publicEventPreviews";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+} from "./lib/userProfile";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,50 +52,6 @@ const INTERACTION_METADATA_VALIDATOR = v.object({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-async function getUserProfileByAuthUserId(
-  ctx: QueryCtx | MutationCtx,
-  authUserId: string,
-) {
-  return await ctx.db
-    .query("users")
-    .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUserId))
-    .unique();
-}
-
-/** Recreate missing app-level user rows for legacy auth accounts on writes. */
-async function ensureUserProfileForAuthUser(
-  ctx: MutationCtx,
-  authUser: {
-    _id: string;
-    email: string;
-    name?: string | null;
-    image?: string | null;
-  },
-) {
-  const existingUser = await getUserProfileByAuthUserId(ctx, authUser._id);
-  if (existingUser) {
-    return existingUser;
-  }
-
-  const userId = await ctx.db.insert("users", {
-    authUserId: authUser._id,
-    email: normalizeEmail(authUser.email),
-    profile: {
-      name: authUser.name ?? undefined,
-      avatar: authUser.image ?? undefined,
-    },
-  });
-
-  await ctx.db.insert("userStats", {
-    userId,
-    currentStreak: 0,
-    longestStreak: 0,
-    articlesRead: 0,
-    biasBalance: 0,
-  });
-
-  return await ctx.db.get(userId);
-}
 
 async function requireUserId(ctx: MutationCtx) {
   const authUser = await authComponent.safeGetAuthUser(ctx);
@@ -187,21 +147,7 @@ async function updateUserStatsForView(
     }
   }
 
-  const previousActiveAt = stats.lastActiveAt;
-  const previousDay =
-    previousActiveAt !== undefined ? startOfUtcDay(previousActiveAt) : undefined;
-  const currentDay = startOfUtcDay(timestamp);
-
-  let currentStreak = stats.currentStreak;
-  if (previousDay === undefined) {
-    currentStreak = 1;
-  } else if (currentDay === previousDay) {
-    currentStreak = stats.currentStreak;
-  } else if (currentDay === previousDay + DAY_MS) {
-    currentStreak = stats.currentStreak + 1;
-  } else if (currentDay > previousDay) {
-    currentStreak = 1;
-  }
+  const streakUpdate = computeStreakUpdate(stats, timestamp);
 
   const clampedBias = Math.max(-5, Math.min(5, context.biasRating));
   const previousReads = stats.articlesRead;
@@ -215,14 +161,11 @@ async function updateUserStatsForView(
   );
 
   await ctx.db.patch(stats._id, {
-    currentStreak,
-    longestStreak: Math.max(stats.longestStreak, currentStreak),
+    currentStreak: streakUpdate.currentStreak,
+    longestStreak: streakUpdate.longestStreak,
     articlesRead: nextReads,
     biasBalance: nextBiasBalance,
-    lastActiveAt:
-      previousActiveAt === undefined
-        ? timestamp
-        : Math.max(previousActiveAt, timestamp),
+    lastActiveAt: streakUpdate.lastActiveAt,
   });
 }
 
@@ -691,6 +634,11 @@ export const getDashboardOverview = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
+    const today = startOfUtcDay(Date.now());
+    const streakWindowDays = 84;
+    const streakStart = today - (streakWindowDays - 1) * DAY_MS;
+    const streakStartKey = new Date(streakStart).toISOString().slice(0, 10);
+
     const [viewInteractions, allBookmarkInteractions, quizAttempts] =
       await Promise.all([
         ctx.db
@@ -707,7 +655,9 @@ export const getDashboardOverview = query({
           .collect(),
         ctx.db
           .query("quizAttempts")
-          .withIndex("by_user_date", (q) => q.eq("userId", user._id))
+          .withIndex("by_user_date", (q) =>
+            q.eq("userId", user._id).gte("dateKey", streakStartKey),
+          )
           .order("desc")
           .collect(),
       ]);
@@ -804,15 +754,14 @@ export const getDashboardOverview = query({
       })
       .filter((entry) => entry !== null);
 
-    const today = startOfUtcDay(Date.now());
-    const streakDays = Array.from({ length: 84 }, (_, index) => {
-      const timestamp = today - (83 - index) * DAY_MS;
+    const streakDays = Array.from({ length: streakWindowDays }, (_, index) => {
+      const timestamp = today - (streakWindowDays - 1 - index) * DAY_MS;
       const activeSet = uniqueEventIdsByDay.get(timestamp);
       const quizCount = quizAttemptsByDay.get(timestamp) ?? 0;
 
       return {
         timestamp,
-        readCount: (activeSet?.size ?? 0) + quizCount,
+        activityCount: (activeSet?.size ?? 0) + quizCount,
         isToday: timestamp === today,
       };
     });
@@ -828,7 +777,7 @@ export const getDashboardOverview = query({
         lastActiveAt: stats?.lastActiveAt,
       },
       streakCalendar: {
-        activeDays: streakDays.filter((day) => day.readCount > 0).length,
+        activeDays: streakDays.filter((day) => day.activityCount > 0).length,
         days: streakDays,
       },
       weeklyBiasSummary: {

@@ -6,11 +6,13 @@ import {
   query,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
-import { normalizeEmail } from "./lib/betaAccess";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { computeStreakUpdate } from "./lib/streaks";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+} from "./lib/userProfile";
 const SOURCE_EVENT_LIMIT = 16;
 const SOURCE_CLAIM_LIMIT = 8;
 const SOURCE_ARTICLE_LIMIT = 8;
@@ -58,10 +60,6 @@ const QUIZ_QUESTION_VALIDATOR = v.object({
 
 function dateKeyForTimestamp(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
-}
-
-function startOfUtcDay(timestamp: number): number {
-  return Math.floor(timestamp / DAY_MS) * DAY_MS;
 }
 
 function stripCorrectAnswers(quiz: Doc<"dailyQuizzes">) {
@@ -114,47 +112,6 @@ function buildReview(
   };
 }
 
-async function getUserProfileByAuthUserId(
-  ctx: QueryCtx | MutationCtx,
-  authUserId: string,
-) {
-  return await ctx.db
-    .query("users")
-    .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUserId))
-    .unique();
-}
-
-async function ensureUserProfileForAuthUser(
-  ctx: MutationCtx,
-  authUser: {
-    _id: string;
-    email: string;
-    name?: string | null;
-    image?: string | null;
-  },
-) {
-  const existingUser = await getUserProfileByAuthUserId(ctx, authUser._id);
-  if (existingUser) return existingUser;
-
-  const userId = await ctx.db.insert("users", {
-    authUserId: authUser._id,
-    email: normalizeEmail(authUser.email),
-    profile: {
-      name: authUser.name ?? undefined,
-      avatar: authUser.image ?? undefined,
-    },
-  });
-
-  await ctx.db.insert("userStats", {
-    userId,
-    currentStreak: 0,
-    longestStreak: 0,
-    articlesRead: 0,
-    biasBalance: 0,
-  });
-
-  return await ctx.db.get(userId);
-}
 
 async function updateUserStatsForDailyQuiz(
   ctx: MutationCtx,
@@ -178,29 +135,12 @@ async function updateUserStatsForDailyQuiz(
     if (!stats) return;
   }
 
-  const previousActiveAt = stats.lastActiveAt;
-  const previousDay =
-    previousActiveAt === undefined ? undefined : startOfUtcDay(previousActiveAt);
-  const currentDay = startOfUtcDay(completedAt);
-
-  let currentStreak = stats.currentStreak;
-  if (previousDay === undefined) {
-    currentStreak = 1;
-  } else if (currentDay === previousDay) {
-    currentStreak = stats.currentStreak;
-  } else if (currentDay === previousDay + DAY_MS) {
-    currentStreak = stats.currentStreak + 1;
-  } else if (currentDay > previousDay) {
-    currentStreak = 1;
-  }
+  const streakUpdate = computeStreakUpdate(stats, completedAt);
 
   await ctx.db.patch(stats._id, {
-    currentStreak,
-    longestStreak: Math.max(stats.longestStreak, currentStreak),
-    lastActiveAt:
-      previousActiveAt === undefined
-        ? completedAt
-        : Math.max(previousActiveAt, completedAt),
+    currentStreak: streakUpdate.currentStreak,
+    longestStreak: streakUpdate.longestStreak,
+    lastActiveAt: streakUpdate.lastActiveAt,
   });
 }
 
@@ -304,14 +244,7 @@ export const submitQuizAttempt = mutation({
       .unique();
 
     if (existingAttempt) {
-      return {
-        saved: true,
-        attemptId: existingAttempt._id,
-        completedAt: existingAttempt.completedAt,
-        quizId: quiz._id,
-        dateKey: quiz.dateKey,
-        ...buildReview(quiz, existingAttempt.answers),
-      };
+      throw new ConvexError("You have already completed this quiz");
     }
 
     const completedAt = Date.now();
@@ -388,8 +321,10 @@ export const getQuizGenerationInput = internalQuery({
 
     const events = await Promise.all(
       candidates.map(async (preview) => {
-        const [event, claims, articles] = await Promise.all([
-          ctx.db.get(preview.eventId),
+        const event = await ctx.db.get(preview.eventId);
+        if (!event || event.status !== "published") return null;
+
+        const [claims, articles] = await Promise.all([
           ctx.db
             .query("eventClaims")
             .withIndex("by_event_importance", (q) =>
@@ -402,8 +337,6 @@ export const getQuizGenerationInput = internalQuery({
             .withIndex("by_event", (q) => q.eq("eventId", preview.eventId))
             .take(SOURCE_ARTICLE_LIMIT),
         ]);
-
-        if (!event || event.status !== "published") return null;
 
         const sourceIds = Array.from(
           new Set([

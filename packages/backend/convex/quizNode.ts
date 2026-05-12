@@ -236,6 +236,9 @@ function safeInteger(
   return Math.min(maximum, Math.max(minimum, Math.floor(parsed)));
 }
 
+// Heuristic threshold for matching paraphrased claims without over-matching.
+const TOKEN_OVERLAP_THRESHOLD = 0.45;
+
 function normalizeText(value: string): string {
   return value
     .toLowerCase()
@@ -282,7 +285,7 @@ function hasGrounding(event: QuizGenerationInput["events"][number], claim: strin
     return (
       normalizedText.includes(normalizedClaim) ||
       normalizedClaim.includes(normalizedText) ||
-      tokenOverlap(normalizedClaim, normalizedText) >= 0.45
+      tokenOverlap(normalizedClaim, normalizedText) >= TOKEN_OVERLAP_THRESHOLD
     );
   });
 }

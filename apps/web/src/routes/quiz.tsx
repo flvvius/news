@@ -356,6 +356,9 @@ function QuizExperience({
 
               {currentFeedback && (
                 <div
+                  aria-live="polite"
+                  role="status"
+                  aria-atomic="true"
                   className={cn(
                     "rounded-xl border px-4 py-3 text-sm",
                     currentFeedback.isCorrect
