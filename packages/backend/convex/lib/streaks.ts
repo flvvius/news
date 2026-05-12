@@ -13,7 +13,9 @@ function startOfUtcDay(timestamp: number): number {
 export function computeStreakUpdate(stats: StreakStats, timestamp: number) {
   const previousActiveAt = stats.lastActiveAt;
   const previousDay =
-    previousActiveAt === undefined ? undefined : startOfUtcDay(previousActiveAt);
+    previousActiveAt === undefined
+      ? undefined
+      : startOfUtcDay(previousActiveAt);
   const currentDay = startOfUtcDay(timestamp);
 
   let currentStreak = stats.currentStreak;

@@ -112,7 +112,6 @@ function buildReview(
   };
 }
 
-
 async function updateUserStatsForDailyQuiz(
   ctx: MutationCtx,
   userId: Id<"users">,
@@ -218,10 +217,21 @@ export const submitQuizAttempt = mutation({
       if (!validQuestionIds.has(answer.questionId)) return false;
       const validChoices = validChoiceIdsByQuestion.get(answer.questionId);
       if (!validChoices?.has(answer.choiceId)) return false;
-      return all.findIndex((row) => row.questionId === answer.questionId) === index;
+      return (
+        all.findIndex((row) => row.questionId === answer.questionId) === index
+      );
     });
 
     const result = buildReview(quiz, normalizedAnswers);
+    if (normalizedAnswers.length !== quiz.questions.length) {
+      return {
+        saved: false,
+        completedAt: Date.now(),
+        quizId: quiz._id,
+        dateKey: quiz.dateKey,
+        ...result,
+      };
+    }
     const authUser = await authComponent.safeGetAuthUser(ctx);
     if (!authUser) {
       return {
@@ -293,8 +303,6 @@ export const gradeQuizQuestion = mutation({
     return {
       questionId: question.id,
       selectedChoiceId: args.choiceId,
-      correctChoiceId: question.correctChoiceId,
-      isCorrect: args.choiceId === question.correctChoiceId,
       explanation: question.explanation,
       attribution: question.attribution,
       eventId: question.eventId,
@@ -400,7 +408,10 @@ export const getQuizGenerationInput = internalQuery({
               sourceId: article.sourceId,
               sourceName:
                 sourcesById.get(String(article.sourceId))?.name ?? "Unknown",
-              atomicFacts: (article.atomicFacts ?? []).slice(0, SOURCE_FACT_LIMIT),
+              atomicFacts: (article.atomicFacts ?? []).slice(
+                0,
+                SOURCE_FACT_LIMIT,
+              ),
             })),
         };
       }),
@@ -436,6 +447,15 @@ export const replaceDailyQuiz = internalMutation({
       .withIndex("by_date", (q) => q.eq("dateKey", args.dateKey))
       .unique();
     const now = Date.now();
+    if (existing && existing.status === "ready" && args.status === "failed") {
+      if (args.lastError) {
+        await ctx.db.patch(existing._id, {
+          lastError: args.lastError,
+          generatedAt: now,
+        });
+      }
+      return { quizId: existing._id, replaced: false };
+    }
     const row = {
       dateKey: args.dateKey,
       status: args.status,

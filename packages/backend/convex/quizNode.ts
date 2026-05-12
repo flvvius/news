@@ -268,7 +268,10 @@ function tokenOverlap(left: string, right: string): number {
   return shared / Math.min(leftTokens.size, rightTokens.size);
 }
 
-function hasGrounding(event: QuizGenerationInput["events"][number], claim: string) {
+function hasGrounding(
+  event: QuizGenerationInput["events"][number],
+  claim: string,
+) {
   const normalizedClaim = normalizeText(claim);
   if (normalizedClaim.length < 12) return false;
 
@@ -371,8 +374,11 @@ function sanitizeQuizQuestions(
   input: QuizGenerationInput,
   targetQuestions: number,
 ) {
-  const eventsBySlug = new Map(input.events.map((event) => [event.event.slug, event]));
+  const eventsBySlug = new Map(
+    input.events.map((event) => [event.event.slug, event]),
+  );
   const usedQuestionText = new Set<string>();
+  const questionIds = new Set<string>();
   const sanitized = [];
 
   for (const raw of rawQuestions) {
@@ -383,11 +389,17 @@ function sanitizeQuizQuestions(
     if (questionKey.length < 12 || usedQuestionText.has(questionKey)) continue;
     usedQuestionText.add(questionKey);
 
+    const candidateId = raw.id?.trim() || undefined;
+    if (candidateId && questionIds.has(candidateId)) continue;
+
     const choiceIds = new Set(raw.choices.map((choice) => choice.id));
-    const choiceTextKeys = raw.choices.map((choice) => normalizeText(choice.text.en));
+    const choiceTextKeys = raw.choices.map((choice) =>
+      normalizeText(choice.text.en),
+    );
     if (
       raw.choices.length < 2 ||
       raw.choices.length > 4 ||
+      choiceIds.size !== raw.choices.length ||
       !choiceIds.has(raw.correctChoiceId) ||
       new Set(choiceTextKeys).size !== choiceTextKeys.length
     ) {
@@ -404,8 +416,25 @@ function sanitizeQuizQuestions(
       .filter((sourceId): sourceId is Id<"sources"> => Boolean(sourceId));
     if (sourceIds.length === 0) continue;
 
+    const sourcesById = new Map(
+      event.sources.map((source) => [String(source._id), source]),
+    );
+    const primarySource = sourcesById.get(String(sourceIds[0]));
+    const primaryArticle =
+      event.articles.find((article) => article.sourceId === sourceIds[0]) ??
+      event.articles[0];
+
+    const fallbackId = `q${sanitized.length + 1}`;
+    let questionId = candidateId ?? fallbackId;
+    if (!candidateId && questionIds.has(questionId)) {
+      let counter = sanitized.length + 1;
+      while (questionIds.has(`q${counter}`)) counter += 1;
+      questionId = `q${counter}`;
+    }
+    if (questionIds.has(questionId)) continue;
+
     sanitized.push({
-      id: raw.id || `q${sanitized.length + 1}`,
+      id: questionId,
       type: raw.type,
       question: {
         en: raw.question.en.trim(),
@@ -426,13 +455,15 @@ function sanitizeQuizQuestions(
       attribution: {
         eventTitle: event.event.title,
         eventSlug: event.event.slug,
-        sourceName: raw.sourceNames[0]?.trim() || undefined,
-        sourceUrl: raw.sourceUrl?.trim() || undefined,
+        sourceName: primarySource?.name?.trim() || undefined,
+        sourceUrl: primaryArticle?.canonicalUrl?.trim() || undefined,
         claim: raw.groundingClaim.trim(),
       },
       eventId: event.event._id,
       sourceIds,
     });
+
+    questionIds.add(questionId);
 
     if (sanitized.length >= targetQuestions) break;
   }
@@ -489,24 +520,39 @@ async function generateDailyQuizForDate(
     { ...input, events: usableEvents },
     settings.targetQuestions,
   );
-  const response = await callOpenAI<RawQuizResponse>({
-    kind: "chat",
-    model: settings.model,
-    temperature: 0.2,
-    maxTokens: 2800,
-    responseFormat: {
-      type: "json_schema",
-      json_schema: QUIZ_JSON_SCHEMA,
-    },
-    messages: [
-      { role: "system", content: prompt.system },
-      { role: "user", content: prompt.user },
-    ],
-    context: {
-      callType: "quiz_generation",
-    },
-    runtime: ctx,
-  });
+  let response: Awaited<ReturnType<typeof callOpenAI<RawQuizResponse>>>;
+  try {
+    response = await callOpenAI<RawQuizResponse>({
+      kind: "chat",
+      model: settings.model,
+      temperature: 0.2,
+      maxTokens: 2800,
+      responseFormat: {
+        type: "json_schema",
+        json_schema: QUIZ_JSON_SCHEMA,
+      },
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+      ],
+      context: {
+        callType: "quiz_generation",
+      },
+      runtime: ctx,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await ctx.runMutation(internal.quiz.replaceDailyQuiz, {
+      dateKey,
+      status: "failed",
+      questions: [],
+      sourceEventIds,
+      inputSignature,
+      model: settings.model,
+      lastError: errorMessage,
+    });
+    return { status: "failed" as const, reason: errorMessage, questionCount: 0 };
+  }
 
   if (!response.result) {
     const error = response.error ?? "empty_quiz_generation_response";
@@ -586,20 +632,21 @@ export const generateDailyQuiz = internalAction({
         ],
       },
     );
+    const targetQuestions = safeInteger(
+      cfg.quiz_generation_target_questions,
+      DEFAULT_TARGET_QUESTIONS,
+      3,
+      5,
+    );
     const settings: QuizGenerationSettings = {
       enabled: safeBoolean(cfg.quiz_generation_enabled, DEFAULT_ENABLED),
       model: safeString(cfg.quiz_generation_model, DEFAULT_MODEL),
-      targetQuestions: safeInteger(
-        cfg.quiz_generation_target_questions,
-        DEFAULT_TARGET_QUESTIONS,
-        3,
-        5,
-      ),
+      targetQuestions,
       minQuestions: safeInteger(
         cfg.quiz_generation_min_questions,
         DEFAULT_MIN_QUESTIONS,
         3,
-        5,
+        targetQuestions,
       ),
     };
 

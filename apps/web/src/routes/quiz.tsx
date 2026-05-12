@@ -54,7 +54,13 @@ type SubmitResult = {
   }>;
 };
 
-type QuestionFeedback = SubmitResult["review"][number];
+type QuestionFeedback = {
+  questionId: string;
+  selectedChoiceId: string;
+  explanation: { en: string; ro: string };
+  attribution: QuizQuestion["attribution"];
+  eventId: Id<"events">;
+};
 
 export const Route = createFileRoute("/quiz")({
   head: ({ matches }) => {
@@ -173,8 +179,20 @@ function QuizExperience({
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
+
+  if (isAuthenticated && existingAttempt === undefined) {
+    return (
+      <PageLoadingState
+        title={t("quiz.loading.title")}
+        description={t("quiz.loading.body")}
+        cardCount={2}
+      />
+    );
+  }
   const currentQuestion = quiz.questions[currentIndex];
-  const selectedChoiceId = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const selectedChoiceId = currentQuestion
+    ? answers[currentQuestion.id]
+    : undefined;
   const answeredCount = Object.keys(answers).length;
   const currentFeedback = currentQuestion
     ? questionFeedback[currentQuestion.id]
@@ -256,7 +274,8 @@ function QuizExperience({
     }
   };
 
-  const showResults = currentIndex >= quiz.questions.length || Boolean(activeResult);
+  const showResults =
+    currentIndex >= quiz.questions.length || Boolean(activeResult);
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -321,19 +340,19 @@ function QuizExperience({
                     <button
                       key={choice.id}
                       type="button"
-                      onClick={() => void handleSelect(currentQuestion.id, choice.id)}
+                      onClick={() =>
+                        void handleSelect(currentQuestion.id, choice.id)
+                      }
                       aria-pressed={isSelected}
                       disabled={Boolean(currentFeedback) || isGrading}
                       className={cn(
                         "flex min-h-14 items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all",
-                        currentFeedback?.correctChoiceId === choice.id
-                          ? "border-success/45 bg-success/10"
-                          : currentFeedback &&
-                              currentFeedback.selectedChoiceId === choice.id
-                            ? "border-destructive/40 bg-destructive/10"
-                            : isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                          : "border-border bg-background hover:border-primary/35 hover:bg-accent",
+                        currentFeedback &&
+                          currentFeedback.selectedChoiceId === choice.id
+                          ? "border-primary/45 bg-primary/10"
+                          : isSelected
+                              ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                              : "border-border bg-background hover:border-primary/35 hover:bg-accent",
                         (Boolean(currentFeedback) || isGrading) &&
                           "cursor-default",
                       )}
@@ -360,22 +379,9 @@ function QuizExperience({
                   role="status"
                   aria-atomic="true"
                   className={cn(
-                    "rounded-xl border px-4 py-3 text-sm",
-                    currentFeedback.isCorrect
-                      ? "border-success/35 bg-success/10 text-foreground"
-                      : "border-destructive/30 bg-destructive/10 text-foreground",
+                    "rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground",
                   )}
                 >
-                  <div className="mb-1 flex items-center gap-2 font-semibold">
-                    {currentFeedback.isCorrect ? (
-                      <CheckCircle2 className="size-4 text-success" />
-                    ) : (
-                      <XCircle className="size-4 text-destructive" />
-                    )}
-                    {currentFeedback.isCorrect
-                      ? t("quiz.correct")
-                      : t("quiz.incorrect")}
-                  </div>
                   <p className="leading-relaxed text-muted-foreground">
                     {localize(currentFeedback.explanation, locale)}
                   </p>
@@ -386,7 +392,9 @@ function QuizExperience({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+                  onClick={() =>
+                    setCurrentIndex((index) => Math.max(0, index - 1))
+                  }
                   disabled={currentIndex === 0}
                 >
                   <ChevronLeft className="size-4" />
@@ -431,7 +439,10 @@ function QuizExperience({
                   <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
                     {t("quiz.result.title")
                       .replace("{score}", String(activeResult?.score ?? 0))
-                      .replace("{max}", String(activeResult?.maxScore ?? quiz.questions.length))}
+                      .replace(
+                        "{max}",
+                        String(activeResult?.maxScore ?? quiz.questions.length),
+                      )}
                   </h2>
                   <p className="max-w-[55ch] text-sm text-muted-foreground">
                     {activeResult?.saved
@@ -497,8 +508,10 @@ function QuizExperience({
                       </h3>
                       <div className="grid gap-2">
                         {question.choices.map((choice) => {
-                          const isSelected = selectedChoiceIdForQuestion === choice.id;
-                          const isCorrect = review?.correctChoiceId === choice.id;
+                          const isSelected =
+                            selectedChoiceIdForQuestion === choice.id;
+                          const isCorrect =
+                            review?.correctChoiceId === choice.id;
                           return (
                             <div
                               key={choice.id}

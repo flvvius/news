@@ -35,11 +35,7 @@ const INTERACTION_METADATA_VALIDATOR = v.object({
   timeSpentSeconds: v.optional(v.number()),
   scrollDepthPercentage: v.optional(v.number()),
   deviceType: v.optional(
-    v.union(
-      v.literal("mobile"),
-      v.literal("tablet"),
-      v.literal("desktop"),
-    ),
+    v.union(v.literal("mobile"), v.literal("tablet"), v.literal("desktop")),
   ),
   extras: v.optional(
     v.object({
@@ -51,7 +47,6 @@ const INTERACTION_METADATA_VALIDATOR = v.object({
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
 
 async function requireUserId(ctx: MutationCtx) {
   const authUser = await authComponent.safeGetAuthUser(ctx);
@@ -81,25 +76,19 @@ function clampNumber(
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function normalizeInteractionMetadata(
-  metadata?: {
-    timeSpentSeconds?: number;
-    scrollDepthPercentage?: number;
-    deviceType?: "mobile" | "tablet" | "desktop";
-    extras?: {
-      feedbackText?: string;
-      errorMessage?: string;
-      experimentVariant?: string;
-    };
-  },
-) {
+function normalizeInteractionMetadata(metadata?: {
+  timeSpentSeconds?: number;
+  scrollDepthPercentage?: number;
+  deviceType?: "mobile" | "tablet" | "desktop";
+  extras?: {
+    feedbackText?: string;
+    errorMessage?: string;
+    experimentVariant?: string;
+  };
+}) {
   const normalized = {
     timeSpentSeconds: clampNumber(metadata?.timeSpentSeconds, 0, 86_400),
-    scrollDepthPercentage: clampNumber(
-      metadata?.scrollDepthPercentage,
-      0,
-      1,
-    ),
+    scrollDepthPercentage: clampNumber(metadata?.scrollDepthPercentage, 0, 1),
     deviceType: metadata?.deviceType,
     extras: metadata?.extras,
   };
@@ -680,7 +669,8 @@ export const getDashboardOverview = query({
       }
 
       const dayTimestamp = startOfUtcDay(interaction.timestamp);
-      const dayEvents = uniqueEventIdsByDay.get(dayTimestamp) ?? new Set<string>();
+      const dayEvents =
+        uniqueEventIdsByDay.get(dayTimestamp) ?? new Set<string>();
       dayEvents.add(interaction.eventId);
       uniqueEventIdsByDay.set(dayTimestamp, dayEvents);
 
@@ -738,7 +728,9 @@ export const getDashboardOverview = query({
     const bookmarkPreviews = await Promise.all(
       activeBookmarks
         .slice(0, 4)
-        .map((interaction) => buildDashboardEventPreview(ctx, interaction.eventId)),
+        .map((interaction) =>
+          buildDashboardEventPreview(ctx, interaction.eventId),
+        ),
     );
 
     const recentBookmarks = activeBookmarks
@@ -786,7 +778,10 @@ export const getDashboardOverview = query({
           recentBiasReads > 0
             ? Math.max(
                 -100,
-                Math.min(100, Math.round((recentBiasTotal / recentBiasReads) * 20)),
+                Math.min(
+                  100,
+                  Math.round((recentBiasTotal / recentBiasReads) * 20),
+                ),
               )
             : 0,
       },
@@ -815,10 +810,7 @@ export const logInteraction = mutation({
     }
     const interactionType = args.type as Doc<"interactions">["type"];
 
-    if (
-      interactionType === "bookmark" ||
-      interactionType === "unbookmark"
-    ) {
+    if (interactionType === "bookmark" || interactionType === "unbookmark") {
       throw new ConvexError(
         "Bookmark interactions must go through toggleBookmark",
       );
