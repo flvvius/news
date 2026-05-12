@@ -393,9 +393,9 @@ const ro = {
   "quiz.metaDescription":
     "Testează-ți atenția la știri cu 5 întrebări zilnice bazate pe afirmații și surse reale.",
   "quiz.kicker": "Quiz zilnic",
-  "quiz.title": "Daily 5",
+  "quiz.title": "Quizul de azi: {count} întrebări",
   "quiz.subtitle":
-    "Cinci întrebări scurte care verifică ce ai înțeles din afirmațiile, sursele și unghiurile zilei.",
+    "{count} întrebări scurte care verifică ce ai înțeles din afirmațiile, sursele și unghiurile zilei.",
   "quiz.loading.title": "Se încarcă quizul",
   "quiz.loading.body": "Pregătim întrebările de azi.",
   "quiz.empty.title": "Quizul de azi nu este gata",
@@ -437,7 +437,7 @@ const ro = {
   "quiz.cta.feedTitle": "Quizul de azi e momentul de revenire",
   "quiz.cta.feedBody":
     "Testează în 3 minute ce ai prins din afirmațiile și sursele zilei.",
-  "quiz.cta.activityTitle": "Păstrează streakul cu Daily 5",
+  "quiz.cta.activityTitle": "Păstrează streakul cu quizul zilnic",
   "quiz.cta.activityBody":
     "Quizul zilnic îți verifică atenția și contează ca activitate de azi.",
   "quiz.cta.action": "Joacă quizul",
@@ -948,9 +948,9 @@ const en: { [K in keyof BaseStrings]: string } = {
   "quiz.metaDescription":
     "Test your news literacy with a daily quiz based on real claims, sources, and coverage gaps.",
   "quiz.kicker": "Daily quiz",
-  "quiz.title": "Daily 5",
+  "quiz.title": "Today’s {count}-question quiz",
   "quiz.subtitle":
-    "Five quick questions that test what you noticed about today’s claims, sources, and framing.",
+    "{count} quick questions that test what you noticed about today’s claims, sources, and framing.",
   "quiz.loading.title": "Loading today’s quiz",
   "quiz.loading.body": "Preparing the latest questions.",
   "quiz.empty.title": "Today’s quiz is not ready",
@@ -992,7 +992,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "quiz.cta.feedTitle": "Today’s quiz is your return ritual",
   "quiz.cta.feedBody":
     "Spend three minutes testing what you caught about today’s claims and sources.",
-  "quiz.cta.activityTitle": "Keep your streak with Daily 5",
+  "quiz.cta.activityTitle": "Keep your streak with the daily quiz",
   "quiz.cta.activityBody":
     "The daily quiz checks your attention and counts as today’s activity.",
   "quiz.cta.action": "Play quiz",

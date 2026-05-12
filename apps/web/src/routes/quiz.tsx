@@ -191,6 +191,7 @@ function QuizExperience({
   const progress = Math.round((answeredCount / quiz.questions.length) * 100);
   const activeResult =
     result ?? (existingAttempt ? { ...existingAttempt, saved: true } : null);
+  const questionTotal = String(quiz.questionCount || quiz.questions.length);
 
   const reviewByQuestionId = useMemo(() => {
     const map = new Map<string, SubmitResult["review"][number]>();
@@ -288,10 +289,10 @@ function QuizExperience({
               {t("quiz.kicker")}
             </p>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              {t("quiz.title")}
+              {t("quiz.title").replace("{count}", questionTotal)}
             </h1>
             <p className="max-w-[55ch] text-sm text-muted-foreground">
-              {t("quiz.subtitle")}
+              {t("quiz.subtitle").replace("{count}", questionTotal)}
             </p>
           </div>
           <div className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
