@@ -180,15 +180,6 @@ function QuizExperience({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
 
-  if (isAuthenticated && existingAttempt === undefined) {
-    return (
-      <PageLoadingState
-        title={t("quiz.loading.title")}
-        description={t("quiz.loading.body")}
-        cardCount={2}
-      />
-    );
-  }
   const currentQuestion = quiz.questions[currentIndex];
   const selectedChoiceId = currentQuestion
     ? answers[currentQuestion.id]
@@ -206,6 +197,16 @@ function QuizExperience({
     activeResult?.review?.forEach((row) => map.set(row.questionId, row));
     return map;
   }, [activeResult]);
+
+  if (isAuthenticated && existingAttempt === undefined) {
+    return (
+      <PageLoadingState
+        title={t("quiz.loading.title")}
+        description={t("quiz.loading.body")}
+        cardCount={2}
+      />
+    );
+  }
 
   const handleSelect = async (questionId: string, choiceId: string) => {
     if (activeResult || questionFeedback[questionId] || isGrading) return;
