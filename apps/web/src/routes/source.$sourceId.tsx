@@ -361,7 +361,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                             <img
                               src={article.imageUrl}
                               alt={article.imageAlt ?? article.title}
-                              className="aspect-[16/9] w-full rounded-lg object-cover sm:w-40"
+                              className="aspect-video w-full rounded-lg object-cover sm:w-40"
                               loading="lazy"
                             />
                           )}

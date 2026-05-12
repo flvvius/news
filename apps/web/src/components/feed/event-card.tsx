@@ -159,8 +159,8 @@ const EventCard = ({
         className={cn(
           "relative overflow-hidden bg-muted/40",
           isFeature
-            ? "aspect-[16/10] sm:aspect-[16/10]"
-            : "aspect-[16/10] lg:aspect-[16/10]",
+            ? "aspect-16/10 sm:aspect-16/10"
+            : "aspect-16/10 lg:aspect-16/10",
         )}
       >
         <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">

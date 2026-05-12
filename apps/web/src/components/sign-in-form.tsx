@@ -93,7 +93,7 @@ export default function SignInForm({
             navigate({ to: redirectTo as never });
             toast.success(t("auth.signInSuccess"));
           },
-          onError: (error) => {
+          onError: (error: Parameters<typeof getLocalizedSignInError>[1]) => {
             toast.error(getLocalizedSignInError(t, error));
           },
         }

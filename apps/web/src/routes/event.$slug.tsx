@@ -179,7 +179,9 @@ function EventDetailPage() {
     const startedAt = Date.now();
     let maxScrollDepth = getScrollDepthPercentage();
     const interactionContext = buildInteractionContextFromSources(
-      eventData.articles.map((article) => article.source),
+      eventData.articles.map(
+        (article: (typeof eventData.articles)[number]) => article.source,
+      ),
     );
 
     const handleScroll = () => {
@@ -243,10 +245,12 @@ function EventDetailPage() {
   }
 
   const { event, articles } = eventData;
+  type Article = (typeof articles)[number];
+  type Source = Article["source"];
   const hasPerspectives =
     event.perspectiveSummaries?.left || event.perspectiveSummaries?.right;
   const sourceCount = new Set(
-    articles.map((article) => article.source?._id).filter(Boolean),
+    articles.map((article: Article) => article.source?._id).filter(Boolean),
   ).size;
   const tabCount = [
     event.perspectiveSummaries?.left ? "left" : null,
@@ -255,7 +259,7 @@ function EventDetailPage() {
   ].filter(Boolean).length;
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const interactionContext = buildInteractionContextFromSources(
-    articles.map((article) => article.source),
+    articles.map((article: Article) => article.source),
   );
 
   return (
@@ -271,7 +275,7 @@ function EventDetailPage() {
           </button>
 
           <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
-            <div className="aspect-[16/9] overflow-hidden border-b border-border/70 bg-muted/40">
+            <div className="aspect-video overflow-hidden border-b border-border/70 bg-muted/40">
               {event.imageUrl ? (
                 <img
                   src={event.imageUrl}
@@ -330,16 +334,17 @@ function EventDetailPage() {
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3 sm:border-0 sm:bg-transparent sm:p-0">
                   <div className="flex -space-x-3">
                     {articles
-                      .map((article) => article.source)
+                      .map((article: Article) => article.source)
                       .filter(
-                        (source, index, array) =>
+                        (source: Source, index: number, array: Source[]) =>
                           source &&
                           array.findIndex(
-                            (candidate) => candidate?._id === source._id,
+                            (candidate: Source) =>
+                              candidate?._id === source._id,
                           ) === index,
                       )
                       .slice(0, 5)
-                      .map((source) => (
+                      .map((source: Source) => (
                         <div
                           key={source!._id}
                           className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm sm:h-11 sm:w-11"
