@@ -910,6 +910,7 @@ export default defineSchema({
     acknowledgedAt: v.optional(v.number()),
   })
     .index("by_code", ["code"])
+    .index("by_code_resolved", ["code", "resolvedAt"])
     .index("by_created_at", ["createdAt"])
     .index("by_resolved_created_at", ["resolvedAt", "createdAt"]),
 });

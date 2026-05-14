@@ -204,15 +204,20 @@ export const getStaleSingletonCandidates = internalQuery({
   args: {
     staleBefore: v.number(),
     scanLimit: v.number(),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const pageSize = Math.max(1, Math.floor(args.scanLimit));
     return await ctx.db
       .query("events")
       .withIndex("by_status_last_article_at", (q) =>
         q.eq("status", "processing").lt("lastArticleAt", args.staleBefore),
       )
       .order("asc")
-      .take(args.scanLimit);
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: pageSize,
+      });
   },
 });
 
@@ -295,6 +300,7 @@ export const archiveSingletonEvent = internalMutation({
       } else {
         await ctx.db.patch(article._id, {
           status: "archived",
+          eventId: undefined,
           archivedAt: args.now,
           archivedReason: "stale_singleton",
         });
@@ -401,106 +407,133 @@ export const archiveStaleSingletonEvents = internalAction({
       deletedPreviews: 0,
       deletedChildren: 0,
     };
+    let hasMore = false;
 
     try {
-      const blocking: {
-        blocked: boolean;
-        locks: Array<{ key: string; owner: string; expiresAt: number }>;
-      } = await ctx.runQuery(
-        internal.singletonCleanup.hasBlockingCleanupLocks,
-        {},
-      );
-      if (blocking.blocked) {
+      try {
+        const blocking: {
+          blocked: boolean;
+          locks: Array<{ key: string; owner: string; expiresAt: number }>;
+        } = await ctx.runQuery(
+          internal.singletonCleanup.hasBlockingCleanupLocks,
+          {},
+        );
+        if (blocking.blocked) {
+          await logArchiveRun(ctx, {
+            runId,
+            startedAt,
+            status: "skipped",
+            reason: "blocking_pipeline_lock",
+            gauges: { locks: blocking.locks },
+            metadata: archiveSettingsMetadata(settings),
+          });
+          return {
+            status: "skipped" as const,
+            reason: "blocking_pipeline_lock",
+            locks: blocking.locks,
+          };
+        }
+
+        const now = Date.now();
+        const staleBefore = now - settings.staleHours * 60 * 60 * 1000;
+        const pageSize = Math.max(1, Math.floor(settings.batchSize * 2));
+        let cursor: string | null = null;
+
+        while (counters.eligible < settings.batchSize) {
+          const page = await ctx.runQuery(
+            internal.singletonCleanup.getStaleSingletonCandidates,
+            {
+              staleBefore,
+              scanLimit: pageSize,
+              cursor,
+            },
+          );
+          counters.scanned += page.page.length;
+          hasMore = !page.isDone;
+
+          for (const event of page.page) {
+            if (counters.eligible >= settings.batchSize) break;
+            if (
+              !selectStaleSingleton({
+                event,
+                now,
+                staleHours: settings.staleHours,
+                maxArticles: settings.maxArticles,
+                maxSources: settings.maxSources,
+                hasBlockingLock: false,
+              })
+            ) {
+              continue;
+            }
+            counters.eligible++;
+            const result = await ctx.runMutation(
+              internal.singletonCleanup.archiveSingletonEvent,
+              {
+                eventId: event._id,
+                settings: {
+                  staleHours: settings.staleHours,
+                  maxArticles: settings.maxArticles,
+                  maxSources: settings.maxSources,
+                  articleAction: settings.articleAction,
+                },
+                now,
+              },
+            );
+            counters.archivedArticles += result.archivedArticles;
+            counters.requeuedArticles += result.requeuedArticles;
+            counters.deletedEvents += result.deletedEvents;
+            counters.deletedEmbeddings += result.deletedEmbeddings;
+            counters.deletedCandidacies += result.deletedCandidacies;
+            counters.deletedPreviews += result.deletedPreviews;
+            counters.deletedChildren += result.deletedChildren;
+          }
+
+          if (page.isDone || counters.eligible >= settings.batchSize) break;
+          cursor = page.continueCursor;
+          if (!cursor) break;
+        }
+
+        if (hasMore && (args.autoContinue ?? true)) {
+          await ctx.scheduler.runAfter(
+            ARCHIVE_CONTINUATION_DELAY_MS,
+            internal.singletonCleanup.archiveStaleSingletonEvents,
+            { autoContinue: true },
+          );
+        }
+
+        const durationMs = Date.now() - startedAt;
         await logArchiveRun(ctx, {
           runId,
           startedAt,
-          status: "skipped",
-          reason: "blocking_pipeline_lock",
-          gauges: { locks: blocking.locks },
+          status: "ok",
+          counters,
+          gauges: {
+            hasMore,
+            articleAction: settings.articleAction,
+          },
           metadata: archiveSettingsMetadata(settings),
         });
         return {
-          status: "skipped" as const,
-          reason: "blocking_pipeline_lock",
-          locks: blocking.locks,
-        };
-      }
-
-      const now = Date.now();
-      const staleBefore = now - settings.staleHours * 60 * 60 * 1000;
-      const candidates = await ctx.runQuery(
-        internal.singletonCleanup.getStaleSingletonCandidates,
-        {
-          staleBefore,
-          scanLimit: settings.batchSize * 2,
-        },
-      );
-      counters.scanned = candidates.length;
-
-      for (const event of candidates) {
-        if (counters.eligible >= settings.batchSize) break;
-        if (
-          !selectStaleSingleton({
-            event,
-            now,
-            staleHours: settings.staleHours,
-            maxArticles: settings.maxArticles,
-            maxSources: settings.maxSources,
-            hasBlockingLock: false,
-          })
-        ) {
-          continue;
-        }
-        counters.eligible++;
-        const result = await ctx.runMutation(
-          internal.singletonCleanup.archiveSingletonEvent,
-          {
-            eventId: event._id,
-            settings: {
-              staleHours: settings.staleHours,
-              maxArticles: settings.maxArticles,
-              maxSources: settings.maxSources,
-              articleAction: settings.articleAction,
-            },
-            now,
-          },
-        );
-        counters.archivedArticles += result.archivedArticles;
-        counters.requeuedArticles += result.requeuedArticles;
-        counters.deletedEvents += result.deletedEvents;
-        counters.deletedEmbeddings += result.deletedEmbeddings;
-        counters.deletedCandidacies += result.deletedCandidacies;
-        counters.deletedPreviews += result.deletedPreviews;
-        counters.deletedChildren += result.deletedChildren;
-      }
-
-      const hasMore: boolean = counters.eligible === settings.batchSize;
-      if (hasMore && (args.autoContinue ?? true)) {
-        await ctx.scheduler.runAfter(
-          ARCHIVE_CONTINUATION_DELAY_MS,
-          internal.singletonCleanup.archiveStaleSingletonEvents,
-          { autoContinue: true },
-        );
-      }
-
-      const durationMs = Date.now() - startedAt;
-      await logArchiveRun(ctx, {
-        runId,
-        startedAt,
-        status: "ok",
-        counters,
-        gauges: {
+          status: "ok" as const,
+          ...counters,
           hasMore,
-          articleAction: settings.articleAction,
-        },
-        metadata: archiveSettingsMetadata(settings),
-      });
-      return {
-        status: "ok" as const,
-        ...counters,
-        hasMore,
-        durationMs,
-      };
+          durationMs,
+        };
+      } catch (error) {
+        await logArchiveRun(ctx, {
+          runId,
+          startedAt,
+          status: "error",
+          reason: error instanceof Error ? error.message : String(error),
+          counters,
+          gauges: {
+            hasMore,
+            articleAction: settings.articleAction,
+          },
+          metadata: archiveSettingsMetadata(settings),
+        });
+        throw error;
+      }
     } finally {
       await ctx.runMutation(internal.ingestion.releasePipelineLock, {
         key: ARCHIVE_LOCK_KEY,

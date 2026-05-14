@@ -20,6 +20,7 @@ const ARTICLE_QUEUE_STATUSES = [
   "processing",
   "archived",
 ] as const;
+const PAGINATION_PAGE_SIZE = 1000;
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -62,6 +63,57 @@ async function readConfigNumber(
   const value = await getConfig(ctx, key, fallback);
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+type PaginatedQuery<T> = {
+  paginate: (args: {
+    cursor: string | null;
+    numItems: number;
+  }) => Promise<{
+    page: T[];
+    isDone: boolean;
+    continueCursor: string | null;
+  }>;
+};
+
+async function paginatedCount<T>(
+  query: PaginatedQuery<T>,
+  pageSize = PAGINATION_PAGE_SIZE,
+): Promise<number> {
+  let cursor: string | null = null;
+  let total = 0;
+  while (true) {
+    const page = await query.paginate({
+      cursor,
+      numItems: pageSize,
+    });
+    total += page.page.length;
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  return total;
+}
+
+async function paginatedReduce<T, R>(
+  query: PaginatedQuery<T>,
+  initial: R,
+  reducer: (accumulator: R, row: T) => R,
+  pageSize = PAGINATION_PAGE_SIZE,
+): Promise<R> {
+  let cursor: string | null = null;
+  let accumulator = initial;
+  while (true) {
+    const page = await query.paginate({
+      cursor,
+      numItems: pageSize,
+    });
+    for (const row of page.page) {
+      accumulator = reducer(accumulator, row);
+    }
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  return accumulator;
 }
 
 export const insertRunLog = internalMutation({
@@ -123,59 +175,63 @@ export const getPipelineFunnelToday = query({
     await requireAdminUser(ctx);
     const today = dateKey(Date.now());
     const start = Date.parse(`${today}T00:00:00.000Z`);
-    const [articles, processingEvents, publishedEvents, previews] =
+    const [articleStats, processingCount, publishedCount, previewsCount] =
       await Promise.all([
-      ctx.db
-        .query("articles")
-        .withIndex("by_published", (q) => q.gte("publishedAt", start))
-        .take(5000),
-      ctx.db
-        .query("events")
-        .withIndex("by_status_recency", (q) =>
-          q.eq("status", "processing").gte("firstPublishedAt", start),
-        )
-        .take(5000),
-      ctx.db
-        .query("events")
-        .withIndex("by_status_recency", (q) =>
-          q.eq("status", "published").gte("firstPublishedAt", start),
-        )
-        .take(5000),
-      ctx.db
-        .query("publicEventPreviews")
-        .withIndex("by_first_published_at", (q) =>
-          q.gte("firstPublishedAt", start),
-        )
-        .take(5000),
-    ]);
-    const events = [...processingEvents, ...publishedEvents];
-
-    const statusCounts = articles.reduce<Record<string, number>>((acc, row) => {
-      acc[row.status] = (acc[row.status] ?? 0) + 1;
-      return acc;
-    }, {});
+        paginatedReduce(
+          ctx.db
+            .query("articles")
+            .withIndex("by_published", (q) => q.gte("publishedAt", start)),
+          { total: 0, statusCounts: {} as Record<string, number> },
+          (acc, row) => {
+            acc.total += 1;
+            acc.statusCounts[row.status] =
+              (acc.statusCounts[row.status] ?? 0) + 1;
+            return acc;
+          },
+        ),
+        paginatedCount(
+          ctx.db
+            .query("events")
+            .withIndex("by_status_recency", (q) =>
+              q.eq("status", "processing").gte("firstPublishedAt", start),
+            ),
+        ),
+        paginatedCount(
+          ctx.db
+            .query("events")
+            .withIndex("by_status_recency", (q) =>
+              q.eq("status", "published").gte("firstPublishedAt", start),
+            ),
+        ),
+        paginatedCount(
+          ctx.db
+            .query("publicEventPreviews")
+            .withIndex("by_first_published_at", (q) =>
+              q.gte("firstPublishedAt", start),
+            ),
+        ),
+      ]);
     const currentQueues = await Promise.all(
       ARTICLE_QUEUE_STATUSES.map(
         async (status) => ({
           status,
-          count: (
-            await ctx.db
+          count: await paginatedCount(
+            ctx.db
               .query("articles")
-              .withIndex("by_status", (q) => q.eq("status", status))
-              .take(5000)
-          ).length,
+              .withIndex("by_status", (q) => q.eq("status", status)),
+          ),
         }),
       ),
     );
 
     return {
       date: today,
-      ingested: articles.length,
-      enriched: statusCounts.enriched ?? 0,
-      clustered: statusCounts.clustered ?? 0,
-      archived: statusCounts.archived ?? 0,
-      created: events.length,
-      published: previews.length,
+      ingested: articleStats.total,
+      enriched: articleStats.statusCounts.enriched ?? 0,
+      clustered: articleStats.statusCounts.clustered ?? 0,
+      archived: articleStats.statusCounts.archived ?? 0,
+      created: processingCount + publishedCount,
+      published: previewsCount,
       queues: Object.fromEntries(
         currentQueues.map((row) => [row.status, row.count]),
       ),
@@ -334,20 +390,26 @@ export const getArchivedArticleStats = query({
   handler: async (ctx) => {
     await requireAdminUser(ctx);
     const now = Date.now();
-    const rows = await ctx.db
-      .query("articles")
-      .withIndex("by_archived_reason", (q) =>
-        q.eq("archivedReason", "stale_singleton"),
-      )
-      .take(5000);
+    const stats = await paginatedReduce(
+      ctx.db
+        .query("articles")
+        .withIndex("by_archived_reason", (q) =>
+          q.eq("archivedReason", "stale_singleton"),
+        ),
+      { total: 0, last24h: 0, last7d: 0 },
+      (acc, row) => {
+        acc.total += 1;
+        if ((row.archivedAt ?? 0) >= now - DAY_MS) acc.last24h += 1;
+        if ((row.archivedAt ?? 0) >= now - 7 * DAY_MS) acc.last7d += 1;
+        return acc;
+      },
+    );
     return {
       byReason: {
-        stale_singleton: rows.length,
+        stale_singleton: stats.total,
       },
-      last24h: rows.filter((row) => (row.archivedAt ?? 0) >= now - DAY_MS)
-        .length,
-      last7d: rows.filter((row) => (row.archivedAt ?? 0) >= now - 7 * DAY_MS)
-        .length,
+      last24h: stats.last24h,
+      last7d: stats.last7d,
     };
   },
 });
@@ -406,9 +468,11 @@ export const upsertPipelineAlert = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("pipelineAlerts")
-      .withIndex("by_code", (q) => q.eq("code", args.code))
+      .withIndex("by_code_resolved", (q) =>
+        q.eq("code", args.code).eq("resolvedAt", undefined),
+      )
       .first();
-    if (existing && existing.resolvedAt === undefined) return existing._id;
+    if (existing) return existing._id;
     return await ctx.db.insert("pipelineAlerts", {
       ...args,
       createdAt: Date.now(),
@@ -494,17 +558,17 @@ export const checkPipelineAlerts = internalAction({
         internal.pipeline.countProcessingEventsOlderThan,
         { ageMs: 72 * HOUR_MS },
       );
-      const oldestAlertGauge = (logs as Array<Doc<"pipelineRunLogs">>)
+      const recentAlertGauge = (logs as Array<Doc<"pipelineRunLogs">>)
         .filter(
           (log) =>
             log.jobName === "checkPipelineAlerts" &&
             typeof log.gauges.stuckProcessingOver72h === "number",
         )
-        .sort((a, b) => a.startedAt - b.startedAt)[0];
+        .sort((a, b) => b.startedAt - a.startedAt)[0];
       const previousStuckProcessingOver72h =
-        oldestAlertGauge === undefined
+        recentAlertGauge === undefined
           ? undefined
-          : oldestAlertGauge.gauges.stuckProcessingOver72h;
+          : recentAlertGauge.gauges.stuckProcessingOver72h;
       evaluatedRules++;
       if (
         typeof previousStuckProcessingOver72h === "number" &&
@@ -518,7 +582,7 @@ export const checkPipelineAlerts = internalAction({
           details: {
             current: stuckProcessingOver72h,
             previous: previousStuckProcessingOver72h,
-            previousStartedAt: oldestAlertGauge.startedAt,
+            previousStartedAt: recentAlertGauge.startedAt,
           },
         });
       }
@@ -643,14 +707,23 @@ export const countProcessingEventsOlderThan = internalQuery({
   args: { ageMs: v.number() },
   handler: async (ctx, args) => {
     const cutoff = Date.now() - Math.max(0, args.ageMs);
-    return (
-      await ctx.db
+    const withLastArticleAt = await paginatedCount(
+      ctx.db
         .query("events")
         .withIndex("by_status_last_article_at", (q) =>
           q.eq("status", "processing").lt("lastArticleAt", cutoff),
-        )
-        .take(5000)
-    ).length;
+        ),
+    );
+    const withoutLastArticleAt = await paginatedReduce(
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) =>
+          q.eq("status", "processing").lt("firstPublishedAt", cutoff),
+        ),
+      0,
+      (acc, row) => (row.lastArticleAt === undefined ? acc + 1 : acc),
+    );
+    return withLastArticleAt + withoutLastArticleAt;
   },
 });
 

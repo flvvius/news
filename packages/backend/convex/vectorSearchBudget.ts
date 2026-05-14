@@ -15,6 +15,7 @@ const MIN_CALIBRATED_PER_SEARCH_BYTES = 1 * 1024 * 1024;
 const MAX_CALIBRATED_PER_SEARCH_BYTES = 200 * 1024 * 1024;
 const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const VECTOR_SEARCH_RUN_PAGE_SIZE = 1000;
 const VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS = 500;
 
 function roundQgb(value: number): number {
@@ -112,6 +113,27 @@ async function getConfiguredDefaultPerSearchBytes(
   );
 }
 
+async function sumVectorSearchesSince(
+  ctx: QueryCtx | MutationCtx,
+  cutoff: number,
+): Promise<number> {
+  let cursor: string | null = null;
+  let total = 0;
+  while (true) {
+    const page = await ctx.db
+      .query("vectorSearchRuns")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", cutoff))
+      .paginate({
+        cursor,
+        numItems: VECTOR_SEARCH_RUN_PAGE_SIZE,
+      });
+    total += page.page.reduce((sum, run) => sum + run.vectorSearches, 0);
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  return total;
+}
+
 async function getCalibratedPerSearchBytes(ctx: QueryCtx | MutationCtx) {
   const now = Date.now();
 
@@ -131,14 +153,7 @@ async function getCalibratedPerSearchBytes(ctx: QueryCtx | MutationCtx) {
   }
 
   const cutoff = now - DAY_MS;
-  const runs = await ctx.db
-    .query("vectorSearchRuns")
-    .withIndex("by_createdAt", (q) => q.gte("createdAt", cutoff))
-    .take(5000);
-  const vectorSearches = runs.reduce(
-    (sum, run) => sum + run.vectorSearches,
-    0,
-  );
+  const vectorSearches = await sumVectorSearchesSince(ctx, cutoff);
   if (vectorSearches <= 0) {
     return {
       expiresAt: now,

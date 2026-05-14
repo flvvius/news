@@ -95,6 +95,7 @@ type JobMetrics = {
   candidateCacheSize: number;
   mergeSeedEvents: number;
   reclusterSeedEvents: number;
+  perSearchBytes: number;
   qgbRead: number;
   elapsedMs: number;
   stageMs: Record<string, number>;
@@ -243,7 +244,10 @@ function buildRunId(jobName: ClusteringJobName): string {
   return `${jobName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createJobMetrics(jobName: ClusteringJobName): JobMetrics {
+function createJobMetrics(
+  jobName: ClusteringJobName,
+  perSearchBytes: number,
+): JobMetrics {
   return {
     jobName,
     runId: buildRunId(jobName),
@@ -259,6 +263,7 @@ function createJobMetrics(jobName: ClusteringJobName): JobMetrics {
     candidateCacheSize: 0,
     mergeSeedEvents: 0,
     reclusterSeedEvents: 0,
+    perSearchBytes,
     qgbRead: 0,
     elapsedMs: 0,
     stageMs: {},
@@ -281,13 +286,9 @@ async function flushJobMetrics(
   startedAt: number,
 ): Promise<void> {
   metrics.elapsedMs = Date.now() - startedAt;
-  const calibration = await ctx.runQuery(
-    internal.vectorSearchBudget.calibratePerSearchBytes,
-    {},
-  );
   metrics.qgbRead = estimateVectorSearchQgbRead({
     vectorSearches: metrics.vectorSearches,
-    estimatedPerSearchBytes: calibration.perSearchBytes,
+    estimatedPerSearchBytes: metrics.perSearchBytes,
   });
 
   console.log(
@@ -357,10 +358,6 @@ async function reserveVectorSearch(
   ctx: ActionCtx,
   metrics: JobMetrics,
 ) {
-  const calibration = await ctx.runQuery(
-    internal.vectorSearchBudget.calibratePerSearchBytes,
-    {},
-  );
   const reservation = await ctx.runMutation(
     internal.vectorSearchBudget.reserveUsage,
     {
@@ -368,7 +365,7 @@ async function reserveVectorSearch(
       runId: metrics.runId,
       qgbRead: estimateVectorSearchQgbRead({
         vectorSearches: 1,
-        estimatedPerSearchBytes: calibration.perSearchBytes,
+        estimatedPerSearchBytes: metrics.perSearchBytes,
       }),
       vectorSearches: 1,
     },
@@ -388,17 +385,14 @@ async function reserveVectorSearch(
 
 async function consumeVectorSearchReservation(
   ctx: ActionCtx,
+  metrics: JobMetrics,
   reservationId: Id<"vectorSearchReservations">,
 ) {
-  const calibration = await ctx.runQuery(
-    internal.vectorSearchBudget.calibratePerSearchBytes,
-    {},
-  );
   await ctx.runMutation(internal.vectorSearchBudget.consumeReservation, {
     reservationId,
     qgbRead: estimateVectorSearchQgbRead({
       vectorSearches: 1,
-      estimatedPerSearchBytes: calibration.perSearchBytes,
+      estimatedPerSearchBytes: metrics.perSearchBytes,
     }),
     vectorSearches: 1,
   });
@@ -4582,7 +4576,14 @@ export const mergeNearDuplicateEvents = internalAction({
     }
 
     const startedAt = Date.now();
-    const metrics = createJobMetrics("mergeNearDuplicateEvents");
+    const mergeCalibration = await ctx.runQuery(
+      internal.vectorSearchBudget.calibratePerSearchBytes,
+      {},
+    );
+    const metrics = createJobMetrics(
+      "mergeNearDuplicateEvents",
+      mergeCalibration.perSearchBytes,
+    );
 
     try {
       const budget = await getVectorSearchBudgetState(ctx);
@@ -4739,7 +4740,7 @@ export const mergeNearDuplicateEvents = internalAction({
           await releaseVectorSearchReservation(ctx, reservationId);
           throw error;
         }
-        await consumeVectorSearchReservation(ctx, reservationId);
+        await consumeVectorSearchReservation(ctx, metrics, reservationId);
         metrics.vectorSearches++;
         metrics.vectorMatchesReturned += neighbors.length;
         if (neighbors.length === 0) continue;
@@ -4984,7 +4985,14 @@ export const reclusterRecentSingletonEvents = internalAction({
     }
 
     const startedAt = Date.now();
-    const metrics = createJobMetrics("reclusterRecentSingletonEvents");
+    const reclusterCalibration = await ctx.runQuery(
+      internal.vectorSearchBudget.calibratePerSearchBytes,
+      {},
+    );
+    const metrics = createJobMetrics(
+      "reclusterRecentSingletonEvents",
+      reclusterCalibration.perSearchBytes,
+    );
 
     try {
       const budget = await getVectorSearchBudgetState(ctx);
@@ -5135,7 +5143,7 @@ export const reclusterRecentSingletonEvents = internalAction({
           await releaseVectorSearchReservation(ctx, reservationId);
           throw error;
         }
-        await consumeVectorSearchReservation(ctx, reservationId);
+        await consumeVectorSearchReservation(ctx, metrics, reservationId);
         metrics.vectorSearches++;
         metrics.vectorMatchesReturned += neighbors.length;
         if (neighbors.length === 0) continue;
@@ -5379,7 +5387,14 @@ export const clusterEnrichedArticles = internalAction({
     }
 
     const startedAt = Date.now();
-    const metrics = createJobMetrics("clusterEnrichedArticles");
+    const clusterCalibration = await ctx.runQuery(
+      internal.vectorSearchBudget.calibratePerSearchBytes,
+      {},
+    );
+    const metrics = createJobMetrics(
+      "clusterEnrichedArticles",
+      clusterCalibration.perSearchBytes,
+    );
 
     try {
       const hasEnriched = await ctx.runQuery(
@@ -5582,7 +5597,7 @@ export const clusterEnrichedArticles = internalAction({
           await releaseVectorSearchReservation(ctx, reservationId);
           throw error;
         }
-        await consumeVectorSearchReservation(ctx, reservationId);
+        await consumeVectorSearchReservation(ctx, metrics, reservationId);
         metrics.vectorSearches++;
 
         metrics.vectorMatchesReturned += vectorResults.length;

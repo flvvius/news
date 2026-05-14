@@ -22,6 +22,8 @@ export const Route = createFileRoute("/admin/pipeline")({
   component: AdminPipelineRoute,
 });
 
+const STATUS_CLEAR_DELAY_MS = 4000;
+
 function formatNumber(value: number | undefined) {
   return new Intl.NumberFormat("en-US").format(value ?? 0);
 }
@@ -36,6 +38,23 @@ function formatTime(value: number | undefined) {
 
 function pct(value: number | undefined) {
   return `${Math.round((value ?? 0) * 100)}%`;
+}
+
+function formatCountersSummary(
+  counters: Record<string, number> | undefined,
+  limit = 3,
+) {
+  const entries = Object.entries(counters ?? {});
+  if (entries.length === 0) return "No counters";
+  const summary = entries
+    .slice(0, limit)
+    .map(([key, value]) => `${key}: ${formatNumber(value)}`)
+    .join(", ");
+  return entries.length > limit ? `${summary}, ...` : summary;
+}
+
+function scheduleStatusClear(setter: (value: string) => void) {
+  globalThis.setTimeout(() => setter(""), STATUS_CLEAR_DELAY_MS);
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -68,6 +87,8 @@ function AdminPipelineRoute() {
   const [jobFilter, setJobFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isBusy, setIsBusy] = useState<string | null>(null);
+  const [calibrationStatus, setCalibrationStatus] = useState("");
+  const [ackStatus, setAckStatus] = useState("");
 
   const isLoading =
     funnel === undefined ||
@@ -114,15 +135,21 @@ function AdminPipelineRoute() {
     const parsed = Number(observedQgb);
     if (!Number.isFinite(parsed) || parsed < 0) {
       toast.error("Enter a valid observed qGB value");
+      setCalibrationStatus("Enter a valid observed qGB value.");
+      scheduleStatusClear(setCalibrationStatus);
       return;
     }
     setIsBusy("calibration");
     try {
       await setObservedQgb({ observedQgb: parsed });
       toast.success("Calibration saved");
+      setCalibrationStatus("Calibration saved.");
+      scheduleStatusClear(setCalibrationStatus);
     } catch (error) {
       console.error(error);
       toast.error("Could not save calibration");
+      setCalibrationStatus("Could not save calibration.");
+      scheduleStatusClear(setCalibrationStatus);
     } finally {
       setIsBusy(null);
     }
@@ -307,7 +334,10 @@ function AdminPipelineRoute() {
                 <Input
                   aria-label="Observed qGB last 24 hours"
                   value={observedQgb}
-                  onChange={(event) => setObservedQgbInput(event.target.value)}
+                  onChange={(event) => {
+                    setObservedQgbInput(event.target.value);
+                    setCalibrationStatus("");
+                  }}
                   placeholder="Observed qGB last 24h"
                   inputMode="decimal"
                 />
@@ -318,6 +348,14 @@ function AdminPipelineRoute() {
                 >
                   Save
                 </Button>
+              </div>
+              <div
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {calibrationStatus}
               </div>
             </CardContent>
           </Card>
@@ -332,6 +370,14 @@ function AdminPipelineRoute() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {ackStatus}
+              </div>
               {alerts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No active alerts.</p>
               ) : (
@@ -354,11 +400,25 @@ function AdminPipelineRoute() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() =>
-                        void acknowledgeAlert({ alertId: alert._id }).then(() =>
-                          toast.success("Alert acknowledged"),
-                        )
-                      }
+                      onClick={() => {
+                        setAckStatus("");
+                        void acknowledgeAlert({ alertId: alert._id })
+                          .then(() => {
+                            toast.success("Alert acknowledged");
+                            setAckStatus(
+                              `Alert ${alert.code} acknowledged.`,
+                            );
+                            scheduleStatusClear(setAckStatus);
+                          })
+                          .catch((error) => {
+                            console.error(error);
+                            toast.error("Could not acknowledge alert");
+                            setAckStatus(
+                              `Failed to acknowledge alert ${alert.code}.`,
+                            );
+                            scheduleStatusClear(setAckStatus);
+                          });
+                      }}
                     >
                       <CheckCircle2 className="size-4" />
                     </Button>
@@ -445,19 +505,30 @@ function AdminPipelineRoute() {
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs.map((log) => (
-                  <tr key={log._id} className="border-t border-border">
-                    <td className="py-2 font-medium">{log.jobName}</td>
-                    <td className="py-2">
-                      <StatusChip status={log.status} />
-                    </td>
-                    <td className="py-2">{formatTime(log.startedAt)}</td>
-                    <td className="py-2">{formatNumber(log.durationMs)} ms</td>
-                    <td className="py-2 text-xs text-muted-foreground">
-                      {JSON.stringify(log.counters).slice(0, 160)}
-                    </td>
-                  </tr>
-                ))}
+                {filteredLogs.map((log) => {
+                  const countersSummary = formatCountersSummary(log.counters);
+                  const countersTitle = JSON.stringify(
+                    log.counters ?? {},
+                    null,
+                    2,
+                  );
+                  return (
+                    <tr key={log._id} className="border-t border-border">
+                      <td className="py-2 font-medium">{log.jobName}</td>
+                      <td className="py-2">
+                        <StatusChip status={log.status} />
+                      </td>
+                      <td className="py-2">{formatTime(log.startedAt)}</td>
+                      <td className="py-2">{formatNumber(log.durationMs)} ms</td>
+                      <td
+                        className="py-2 text-xs text-muted-foreground"
+                        title={countersTitle}
+                      >
+                        {countersSummary}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>

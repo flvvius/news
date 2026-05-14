@@ -184,11 +184,11 @@ crons.interval(
 // ---------------------------------------------------------------------------
 // Deletes pipelineRunLogs older than pipeline_run_log_retention_days
 // (default 14). Aggregate daily vector-search totals are stored elsewhere; this
-// job only trims detailed per-run rows. Runs at 04:55 UTC near other maintenance
-// jobs, so watch Convex load if retention batches grow.
+// job only trims detailed per-run rows. Runs at 05:10 UTC away from other
+// maintenance jobs to avoid concentrated load.
 crons.daily(
   "cleanup-pipeline-run-logs",
-  { hourUTC: 4, minuteUTC: 55 },
+  { hourUTC: 5, minuteUTC: 10 },
   internal.pipeline.cleanupPipelineRunLogs,
   {},
 );
