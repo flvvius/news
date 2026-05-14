@@ -8,9 +8,11 @@ import { internal } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
-const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 9;
+const DEFAULT_DAILY_VECTOR_SEARCH_BUDGET_QGB = 25;
 const DEFAULT_VECTOR_SEARCH_RUN_RETENTION_DAYS = 30;
-const ESTIMATED_PER_SEARCH_BYTES = 50 * 1024 * 1024;
+const ESTIMATED_PER_SEARCH_BYTES = 30 * 1024 * 1024;
+const MIN_CALIBRATED_PER_SEARCH_BYTES = 1 * 1024 * 1024;
+const MAX_CALIBRATED_PER_SEARCH_BYTES = 200 * 1024 * 1024;
 const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS = 500;
@@ -88,6 +90,69 @@ async function getDailyTotals(
     qgbRead: roundQgb(rows.reduce((sum, row) => sum + row.qgbRead, 0)),
     vectorSearches: rows.reduce((sum, row) => sum + row.vectorSearches, 0),
     runCount: rows.reduce((sum, row) => sum + row.runCount, 0),
+  };
+}
+
+function clampPerSearchBytes(value: number): number {
+  return Math.min(
+    Math.max(value, MIN_CALIBRATED_PER_SEARCH_BYTES),
+    MAX_CALIBRATED_PER_SEARCH_BYTES,
+  );
+}
+
+async function getConfiguredDefaultPerSearchBytes(
+  ctx: QueryCtx | MutationCtx,
+) {
+  return clampPerSearchBytes(
+    await getConfigNumber(
+      ctx,
+      "vector_search_per_search_bytes_default",
+      ESTIMATED_PER_SEARCH_BYTES,
+    ),
+  );
+}
+
+async function getCalibratedPerSearchBytes(ctx: QueryCtx | MutationCtx) {
+  const now = Date.now();
+
+  const fallback = await getConfiguredDefaultPerSearchBytes(ctx);
+  const observedQgb = await getConfigNumber(
+    ctx,
+    "vector_search_observed_qgb_last_24h",
+    0,
+  );
+
+  if (observedQgb <= 0) {
+    return {
+      expiresAt: now,
+      perSearchBytes: fallback,
+      source: "default",
+    };
+  }
+
+  const cutoff = now - DAY_MS;
+  const runs = await ctx.db
+    .query("vectorSearchRuns")
+    .withIndex("by_createdAt", (q) => q.gte("createdAt", cutoff))
+    .take(5000);
+  const vectorSearches = runs.reduce(
+    (sum, run) => sum + run.vectorSearches,
+    0,
+  );
+  if (vectorSearches <= 0) {
+    return {
+      expiresAt: now,
+      perSearchBytes: fallback,
+      source: "default_no_recent_runs",
+    };
+  }
+
+  return {
+    expiresAt: now,
+    perSearchBytes: clampPerSearchBytes(
+      (observedQgb * 1_000_000_000) / vectorSearches,
+    ),
+    source: "observed_qgb_last_24h",
   };
 }
 
@@ -266,6 +331,22 @@ export function estimateVectorSearchQgbRead(args: {
   return roundQgb(bytesRead / 1_000_000_000);
 }
 
+export const calibratePerSearchBytes = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const calibration = await getCalibratedPerSearchBytes(ctx);
+    return {
+      perSearchBytes: calibration.perSearchBytes,
+      source: calibration.source,
+      expiresAt: calibration.expiresAt,
+      estimatedQgbPerSearch: estimateVectorSearchQgbRead({
+        vectorSearches: 1,
+        estimatedPerSearchBytes: calibration.perSearchBytes,
+      }),
+    };
+  },
+});
+
 export const checkBudget = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -323,8 +404,12 @@ export const reserveUsage = internalMutation({
     const shard = getUtcShard(now);
     await releaseExpiredReservations(ctx, now);
     const totals = await getDailyTotals(ctx, date);
-    const qgbRead = roundQgb(Math.max(0, args.qgbRead));
     const vectorSearches = Math.max(0, Math.floor(args.vectorSearches));
+    const calibration = await getCalibratedPerSearchBytes(ctx);
+    const qgbRead = estimateVectorSearchQgbRead({
+      vectorSearches,
+      estimatedPerSearchBytes: calibration.perSearchBytes,
+    });
     const allowed = !enabled || totals.qgbRead + qgbRead <= dailyLimitQgb;
 
     if (!allowed) {
@@ -393,8 +478,12 @@ export const consumeReservation = internalMutation({
       return { consumed: false as const };
     }
 
-    const qgbRead = roundQgb(Math.max(0, args.qgbRead));
     const vectorSearches = Math.max(0, Math.floor(args.vectorSearches));
+    const calibration = await getCalibratedPerSearchBytes(ctx);
+    const qgbRead = estimateVectorSearchQgbRead({
+      vectorSearches,
+      estimatedPerSearchBytes: calibration.perSearchBytes,
+    });
 
     await adjustDailyUsage(ctx, {
       date: reservation.date,
