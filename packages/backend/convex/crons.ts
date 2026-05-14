@@ -49,25 +49,39 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Event Merge Pass — Every 1 hour
+// Event Merge Pass — Every 10 minutes
 // ---------------------------------------------------------------------------
 // Collapses near-duplicate recently published events created across separate
-// clustering runs.
+// clustering runs. The action uses a DB-backed lease plus seed/top-K caps, so
+// the tighter cadence should skip overlapping work instead of piling up load.
 crons.interval(
   "merge-near-duplicate-events",
-  { hours: 1 },
+  { minutes: 10 },
   internal.clustering.mergeNearDuplicateEvents,
 );
 
 // ---------------------------------------------------------------------------
-// Singleton Recluster Pass — Every 12 hours
+// Singleton Recluster Pass — Every 15 minutes
 // ---------------------------------------------------------------------------
 // Re-examines recent singleton / tiny events after more articles have landed,
 // improving recall for stories that were under-clustered during the online pass.
+// This cadence is paired with a DB-backed lease, no-candidate short-circuit,
+// seed caps, and reduced vector top-K so fallback recovery stays bounded.
 crons.interval(
   "recluster-recent-singletons",
-  { hours: 12 },
+  { minutes: 15 },
   internal.clustering.reclusterRecentSingletonEvents,
+);
+
+// ---------------------------------------------------------------------------
+// Stale Singleton Archive — Hourly
+// ---------------------------------------------------------------------------
+// Archives stale processing singletons so they stop inflating the vector index.
+crons.interval(
+  "archive-stale-singleton-events",
+  { hours: 1 },
+  internal.singletonCleanup.archiveStaleSingletonEvents,
+  {},
 );
 
 // ---------------------------------------------------------------------------
@@ -149,6 +163,33 @@ crons.daily(
   "cleanup-vector-search-runs",
   { hourUTC: 4, minuteUTC: 45 },
   internal.vectorSearchBudget.cleanupVectorSearchRuns,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Pipeline Alert Checks — Every 15 minutes
+// ---------------------------------------------------------------------------
+// Writes pipelineAlerts rows for persistent fallback mode, publish droughts,
+// stuck processing growth, vector-budget burn rate, job error rates, and absent
+// archive runs. Alerts stay in Convex and are surfaced in /admin/pipeline.
+crons.interval(
+  "check-pipeline-alerts",
+  { minutes: 15 },
+  internal.pipeline.checkPipelineAlerts,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Pipeline Run Log Retention — Daily
+// ---------------------------------------------------------------------------
+// Deletes pipelineRunLogs older than pipeline_run_log_retention_days
+// (default 14). Aggregate daily vector-search totals are stored elsewhere; this
+// job only trims detailed per-run rows. Runs at 05:10 UTC away from other
+// maintenance jobs to avoid concentrated load.
+crons.daily(
+  "cleanup-pipeline-run-logs",
+  { hourUTC: 5, minuteUTC: 10 },
+  internal.pipeline.cleanupPipelineRunLogs,
   {},
 );
 

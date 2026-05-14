@@ -235,6 +235,29 @@ export const setPipelinePausedInternal = internalMutation({
   },
 });
 
+function parseAndValidateConfigValue(key: string, value: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new ConvexError(
+      `Invalid config value for key "${key}": value must be valid JSON`,
+    );
+  }
+
+  if (
+    key === "singleton_cleanup_article_action" &&
+    parsed !== "archive" &&
+    parsed !== "requeue"
+  ) {
+    throw new ConvexError(
+      'Invalid singleton_cleanup_article_action: expected "archive" or "requeue"',
+    );
+  }
+
+  return parsed;
+}
+
 export const setInternal = internalMutation({
   args: {
     key: v.string(),
@@ -242,13 +265,7 @@ export const setInternal = internalMutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    try {
-      JSON.parse(args.value);
-    } catch {
-      throw new ConvexError(
-        `Invalid config value for key "${args.key}": value must be valid JSON`,
-      );
-    }
+    parseAndValidateConfigValue(args.key, args.value);
 
     const existing = await ctx.db
       .query("config")
@@ -317,14 +334,8 @@ export const set = mutation({
   handler: async (ctx, args) => {
     await requireAdminUser(ctx);
 
-    // Validate that the value is parseable JSON before storing
-    try {
-      JSON.parse(args.value);
-    } catch {
-      throw new ConvexError(
-        `Invalid config value for key "${args.key}": value must be valid JSON`,
-      );
-    }
+    // Validate that the value is parseable JSON and satisfies key-specific contracts.
+    parseAndValidateConfigValue(args.key, args.value);
 
     const existing = await ctx.db
       .query("config")
@@ -830,9 +841,21 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "vector_search_daily_budget_qgb",
-        value: 9,
+        value: 25,
         description:
           "Daily Convex vector-search read budget in qGB. Clustering workers use this to hard-stop expensive semantic search when spend spikes.",
+      },
+      {
+        key: "vector_search_per_search_bytes_default",
+        value: 31457280,
+        description:
+          "Default estimated bytes scanned per vector search when no observed qGB calibration is available. Set to 30 MiB on 2026-05-14 after the stale-singleton index cleanup plan reduced expected bytes scanned.",
+      },
+      {
+        key: "vector_search_observed_qgb_last_24h",
+        value: 0,
+        description:
+          "Optional operator-provided observed Convex vector qGB for the last 24 hours, used to calibrate per-search cost estimates.",
       },
       {
         key: "vector_search_budget_enabled",
@@ -854,7 +877,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_vector_search_limit",
-        value: 40,
+        value: 24,
         description:
           "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
       },
@@ -866,9 +889,69 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "recluster_vector_search_limit",
-        value: 24,
+        value: 12,
         description:
           "Top-K limit used for event-to-event vector search during singleton recluster passes.",
+      },
+      {
+        key: "merge_changed_seed_limit",
+        value: 10,
+        description:
+          "Maximum changed event seeds inspected by one duplicate-merge pass.",
+      },
+      {
+        key: "recluster_changed_seed_limit",
+        value: 10,
+        description:
+          "Maximum changed singleton event seeds inspected by one singleton recluster pass.",
+      },
+      {
+        key: "singleton_cleanup_enabled",
+        value: true,
+        description:
+          "When true, stale processing singleton events are archived and removed from vector clustering indexes.",
+      },
+      {
+        key: "singleton_cleanup_stale_hours",
+        value: 48,
+        description:
+          "Minimum age since lastArticleAt before a processing singleton can be archived.",
+      },
+      {
+        key: "singleton_cleanup_batch_size",
+        value: 100,
+        description:
+          "Maximum stale singleton events archived in one cleanup invocation.",
+      },
+      {
+        key: "singleton_cleanup_max_articles",
+        value: 2,
+        description:
+          "Maximum articleCount eligible for stale singleton cleanup.",
+      },
+      {
+        key: "singleton_cleanup_max_sources",
+        value: 1,
+        description:
+          "Maximum sourceCount eligible for stale singleton cleanup.",
+      },
+      {
+        key: "singleton_cleanup_article_action",
+        value: "archive",
+        description:
+          'How stale singleton articles are handled during cleanup. Valid values: "archive" or "requeue"; default archive keeps historical eventId references.',
+      },
+      {
+        key: "pipeline_run_log_retention_days",
+        value: 14,
+        description:
+          "Number of days to retain detailed pipeline run log rows.",
+      },
+      {
+        key: "pipeline_alert_check_interval_minutes",
+        value: 15,
+        description:
+          "Nominal interval for pipeline alert checks.",
       },
     ];
 
@@ -886,6 +969,12 @@ export const seedDefaults = internalMutation({
       "merge_min_title_jaccard",
       "merge_max_time_delta_hours",
       "singleton_recluster_min_similarity",
+      "vector_search_daily_budget_qgb",
+      "vector_search_per_search_bytes_default",
+      "clustering_vector_search_limit",
+      "recluster_vector_search_limit",
+      "merge_changed_seed_limit",
+      "recluster_changed_seed_limit",
     ]);
 
     let created = 0;

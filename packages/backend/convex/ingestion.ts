@@ -705,6 +705,7 @@ export const insertArticles = internalMutation({
           v.literal("enriched"),
           v.literal("clustered"),
           v.literal("discarded"),
+          v.literal("archived"),
         ),
         publishedAt: v.number(), // Epoch ms
       }),
