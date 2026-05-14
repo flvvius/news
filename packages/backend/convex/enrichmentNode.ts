@@ -194,7 +194,13 @@ type PreparedArticle = {
   resolvedUrl?: string;
   sourceLean: string;
   sourceReliability: number;
-  previousStatus: "unprocessed" | "processing" | "enriched" | "clustered" | "discarded";
+  previousStatus:
+    | "unprocessed"
+    | "processing"
+    | "enriched"
+    | "clustered"
+    | "discarded"
+    | "archived";
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -749,7 +755,13 @@ async function runEnrichmentBatch(
     sourceName?: string;
     sourceLean: string;
     sourceReliability: number;
-    previousStatus: "unprocessed" | "processing" | "enriched" | "clustered" | "discarded";
+    previousStatus:
+      | "unprocessed"
+      | "processing"
+      | "enriched"
+      | "clustered"
+      | "discarded"
+      | "archived";
   }>,
   runId: string,
 ): Promise<{

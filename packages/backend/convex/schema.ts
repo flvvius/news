@@ -1,6 +1,29 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const pipelineMetricValue = v.union(
+  v.string(),
+  v.number(),
+  v.boolean(),
+  v.null(),
+);
+
+const pipelineGaugeValue = v.union(
+  pipelineMetricValue,
+  v.array(
+    v.object({
+      key: v.string(),
+      owner: v.string(),
+      expiresAt: v.number(),
+    }),
+  ),
+);
+
+const pipelineMetadataValue = v.union(
+  pipelineMetricValue,
+  v.record(v.string(), v.number()),
+);
+
 export default defineSchema({
   // =========================================================================
   // 1. TOPICS (Normalized Taxonomy)
@@ -472,7 +495,10 @@ export default defineSchema({
       v.literal("enriched"),
       v.literal("clustered"),
       v.literal("discarded"),
+      v.literal("archived"),
     ),
+    archivedAt: v.optional(v.number()),
+    archivedReason: v.optional(v.literal("stale_singleton")),
     latestEmbeddingVersion: v.optional(v.number()),
     needsReenrichment: v.optional(v.boolean()),
     enrichmentRunId: v.optional(v.string()),
@@ -504,6 +530,7 @@ export default defineSchema({
       "publishedAt",
     ])
     .index("by_status_enrichment_lease", ["status", "enrichmentLeaseExpiresAt"])
+    .index("by_archived_reason", ["archivedReason", "archivedAt"])
     .index("by_source", ["sourceId"])
     .index("by_source_publishedAt", ["sourceId", "publishedAt"])
     .index("by_source_analyzed", ["sourceId", "biasAnalyzedAt"])
@@ -845,4 +872,45 @@ export default defineSchema({
     lastRunMetricsJson: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_job_name", ["jobName"]),
+
+  pipelineRunLogs: defineTable({
+    jobName: v.string(),
+    runId: v.string(),
+    startedAt: v.number(),
+    finishedAt: v.number(),
+    durationMs: v.number(),
+    status: v.union(
+      v.literal("ok"),
+      v.literal("skipped"),
+      v.literal("degraded"),
+      v.literal("error"),
+    ),
+    errorMessage: v.optional(v.string()),
+    counters: v.record(v.string(), v.number()),
+    gauges: v.record(v.string(), pipelineGaugeValue),
+    metadata: v.record(v.string(), pipelineMetadataValue),
+    createdAt: v.number(),
+  })
+    .index("by_job_started_at", ["jobName", "startedAt"])
+    .index("by_status_started_at", ["status", "startedAt"])
+    .index("by_created_at", ["createdAt"]),
+
+  pipelineAlerts: defineTable({
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warning"),
+      v.literal("error"),
+    ),
+    code: v.string(),
+    message: v.string(),
+    details: v.record(v.string(), pipelineMetricValue),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    acknowledgedBy: v.optional(v.string()),
+    acknowledgedAt: v.optional(v.number()),
+  })
+    .index("by_code", ["code"])
+    .index("by_code_resolved", ["code", "resolvedAt"])
+    .index("by_created_at", ["createdAt"])
+    .index("by_resolved_created_at", ["resolvedAt", "createdAt"]),
 });

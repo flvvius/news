@@ -115,7 +115,7 @@ export const claimUnprocessedArticles = internalMutation({
 });
 
 function hasAtomicFacts(article: Pick<Doc<"articles">, "atomicFacts" | "status">) {
-  if (article.status === "discarded") return false;
+  if (article.status === "discarded" || article.status === "archived") return false;
   return (article.atomicFacts ?? []).some((fact) => fact.trim().length > 0);
 }
 
@@ -128,7 +128,7 @@ function needsFactExtraction(
     | "factExtractionAttempts"
   >,
 ): boolean {
-  if (article.status === "discarded") return false;
+  if (article.status === "discarded" || article.status === "archived") return false;
   if (hasAtomicFacts(article)) return false;
   if (article.factExtractionStatus === "skipped") return false;
   if (article.factExtractionStatus === "deferred") return true;
@@ -413,7 +413,7 @@ export const claimArticlesNeedingFactExtraction = internalMutation({
     const claimed = [];
     for (const article of candidateMap.values()) {
       if (claimed.length >= batchSize) break;
-      if (article.status === "discarded") continue;
+      if (article.status === "discarded" || article.status === "archived") continue;
       if (
         article.status === "processing" &&
         (article.enrichmentLeaseExpiresAt ?? 0) > now
@@ -467,6 +467,7 @@ export const deferArticleFactExtraction = internalMutation({
       v.literal("enriched"),
       v.literal("clustered"),
       v.literal("discarded"),
+      v.literal("archived"),
     ),
     reason: v.string(),
     attemptedAt: v.number(),
@@ -516,6 +517,7 @@ export const deferArticleBiasDetection = internalMutation({
       v.literal("enriched"),
       v.literal("clustered"),
       v.literal("discarded"),
+      v.literal("archived"),
     ),
     reason: v.string(),
   },
@@ -570,7 +572,11 @@ export const claimEventArticlesForReenrichment = internalMutation({
     const claimed = [];
     for (const article of articles) {
       if (claimed.length >= batchSize) break;
-      if (article.status === "processing" || article.status === "discarded") {
+      if (
+        article.status === "processing" ||
+        article.status === "discarded" ||
+        article.status === "archived"
+      ) {
         continue;
       }
 
