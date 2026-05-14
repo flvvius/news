@@ -437,10 +437,14 @@ export const archiveStaleSingletonEvents = internalAction({
         const now = Date.now();
         const staleBefore = now - settings.staleHours * 60 * 60 * 1000;
         const pageSize = Math.max(1, Math.floor(settings.batchSize * 2));
-        let cursor: string | null = null;
+        let cursor: string | undefined;
 
         while (counters.eligible < settings.batchSize) {
-          const page = await ctx.runQuery(
+          const page: {
+            page: Doc<"events">[];
+            isDone: boolean;
+            continueCursor: string | null;
+          } = await ctx.runQuery(
             internal.singletonCleanup.getStaleSingletonCandidates,
             {
               staleBefore,
@@ -489,7 +493,7 @@ export const archiveStaleSingletonEvents = internalAction({
           }
 
           if (page.isDone || counters.eligible >= settings.batchSize) break;
-          cursor = page.continueCursor;
+          cursor = page.continueCursor ?? undefined;
           if (!cursor) break;
         }
 
