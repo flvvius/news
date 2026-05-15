@@ -20,7 +20,7 @@ const ARTICLE_QUEUE_STATUSES = [
   "processing",
   "archived",
 ] as const;
-const PAGINATION_PAGE_SIZE = 1000;
+const DIAGNOSTIC_COUNT_LIMIT = 5000;
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -65,55 +65,29 @@ async function readConfigNumber(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-type PaginatedQuery<T> = {
-  paginate: (args: {
-    cursor: string | null;
-    numItems: number;
-  }) => Promise<{
-    page: T[];
-    isDone: boolean;
-    continueCursor: string | null;
-  }>;
+type LimitedQuery<T> = {
+  take: (limit: number) => Promise<T[]>;
 };
 
-type PaginatedQueryFactory<T> = () => PaginatedQuery<T>;
+type LimitedQueryFactory<T> = () => LimitedQuery<T>;
 
-async function paginatedCount<T>(
-  queryFactory: PaginatedQueryFactory<T>,
-  pageSize = PAGINATION_PAGE_SIZE,
+async function limitedCount<T>(
+  queryFactory: LimitedQueryFactory<T>,
+  limit = DIAGNOSTIC_COUNT_LIMIT,
 ): Promise<number> {
-  let cursor: string | null = null;
-  let total = 0;
-  while (true) {
-    const page = await queryFactory().paginate({
-      cursor,
-      numItems: pageSize,
-    });
-    total += page.page.length;
-    if (page.isDone) break;
-    cursor = page.continueCursor;
-  }
-  return total;
+  return (await queryFactory().take(limit)).length;
 }
 
-async function paginatedReduce<T, R>(
-  queryFactory: PaginatedQueryFactory<T>,
+async function limitedReduce<T, R>(
+  queryFactory: LimitedQueryFactory<T>,
   initial: R,
   reducer: (accumulator: R, row: T) => R,
-  pageSize = PAGINATION_PAGE_SIZE,
+  limit = DIAGNOSTIC_COUNT_LIMIT,
 ): Promise<R> {
-  let cursor: string | null = null;
   let accumulator = initial;
-  while (true) {
-    const page = await queryFactory().paginate({
-      cursor,
-      numItems: pageSize,
-    });
-    for (const row of page.page) {
-      accumulator = reducer(accumulator, row);
-    }
-    if (page.isDone) break;
-    cursor = page.continueCursor;
+  const rows = await queryFactory().take(limit);
+  for (const row of rows) {
+    accumulator = reducer(accumulator, row);
   }
   return accumulator;
 }
@@ -179,7 +153,7 @@ export const getPipelineFunnelToday = query({
     const start = Date.parse(`${today}T00:00:00.000Z`);
     const [articleStats, processingCount, publishedCount, previewsCount] =
       await Promise.all([
-        paginatedReduce(
+        limitedReduce(
           () =>
             ctx.db
               .query("articles")
@@ -192,21 +166,21 @@ export const getPipelineFunnelToday = query({
             return acc;
           },
         ),
-        paginatedCount(() =>
+        limitedCount(() =>
           ctx.db
             .query("events")
             .withIndex("by_status_recency", (q) =>
               q.eq("status", "processing").gte("firstPublishedAt", start),
             ),
         ),
-        paginatedCount(() =>
+        limitedCount(() =>
           ctx.db
             .query("events")
             .withIndex("by_status_recency", (q) =>
               q.eq("status", "published").gte("firstPublishedAt", start),
             ),
         ),
-        paginatedCount(() =>
+        limitedCount(() =>
           ctx.db
             .query("publicEventPreviews")
             .withIndex("by_first_published_at", (q) =>
@@ -218,7 +192,7 @@ export const getPipelineFunnelToday = query({
       ARTICLE_QUEUE_STATUSES.map(
         async (status) => ({
           status,
-          count: await paginatedCount(() =>
+          count: await limitedCount(() =>
             ctx.db
               .query("articles")
               .withIndex("by_status", (q) => q.eq("status", status)),
@@ -393,7 +367,7 @@ export const getArchivedArticleStats = query({
   handler: async (ctx) => {
     await requireAdminUser(ctx);
     const now = Date.now();
-    const stats = await paginatedReduce(
+    const stats = await limitedReduce(
       () =>
         ctx.db
           .query("articles")
@@ -711,14 +685,14 @@ export const countProcessingEventsOlderThan = internalQuery({
   args: { ageMs: v.number() },
   handler: async (ctx, args) => {
     const cutoff = Date.now() - Math.max(0, args.ageMs);
-    const withLastArticleAt = await paginatedCount(() =>
+    const withLastArticleAt = await limitedCount(() =>
       ctx.db
         .query("events")
         .withIndex("by_status_last_article_at", (q) =>
           q.eq("status", "processing").lt("lastArticleAt", cutoff),
         ),
     );
-    const withoutLastArticleAt = await paginatedReduce(
+    const withoutLastArticleAt = await limitedReduce(
       () =>
         ctx.db
           .query("events")
