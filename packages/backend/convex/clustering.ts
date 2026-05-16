@@ -39,13 +39,15 @@ import { estimateVectorSearchQgbRead } from "./vectorSearchBudget";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
 const CLUSTER_LOCK_TTL_MS = 20 * 60 * 1000;
+const MERGE_NEAR_DUPLICATES_DELAY_MS = 5 * 60_000;
+const RECLUSTER_RECENT_SINGLETONS_DELAY_MS = 10 * 60_000;
 const MERGE_LOCK_KEY = "mergeNearDuplicateEvents";
 const RECLUSTER_SINGLETONS_LOCK_KEY = "reclusterRecentSingletonEvents";
 const MERGE_LOCK_TTL_MS = 20 * 60 * 1000;
-const CLUSTER_BATCH_SIZE = 40;
+const CLUSTER_BATCH_SIZE = 32;
 const RECENT_EVENT_WINDOW_MS = 48 * 60 * 60 * 1000;
-const MAX_CANDIDATE_EVENTS = 250;
-const VECTOR_SEARCH_LIMIT = 24;
+const MAX_CANDIDATE_EVENTS = 220;
+const VECTOR_SEARCH_LIMIT = 20;
 const EVENT_PRESENTATION_ARTICLE_LIMIT = 10;
 const CANDIDACY_TOKEN_CAP = 200;
 const EVENT_EMBEDDING_DIMENSIONS = 512;
@@ -66,10 +68,10 @@ const DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES = 2;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 48;
-const MERGE_VECTOR_SEARCH_LIMIT = 12;
-const MERGE_CHANGED_SEED_LIMIT = 10;
-const RECLUSTER_VECTOR_SEARCH_LIMIT = 12;
-const RECLUSTER_CHANGED_SEED_LIMIT = 10;
+const MERGE_VECTOR_SEARCH_LIMIT = 10;
+const MERGE_CHANGED_SEED_LIMIT = 8;
+const RECLUSTER_VECTOR_SEARCH_LIMIT = 10;
+const RECLUSTER_CHANGED_SEED_LIMIT = 8;
 const MERGE_RECENT_BUCKET = "recent_2d";
 const MERGE_STALE_BUCKET = "stale";
 const SINGLETON_BUCKET = "singleton";
@@ -5951,6 +5953,20 @@ export const clusterEnrichedArticles = internalAction({
         `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, publishMin=${publishSettings.minArticles} articles/${publishSettings.minSources} sources, topicMinScore=${topicSettings.minScore})`,
       );
       await flushJobMetrics(ctx, metrics, startedAt);
+      if (clusteredIntoExisting + createdEvents > 0) {
+        await ctx.scheduler.runAfter(
+          MERGE_NEAR_DUPLICATES_DELAY_MS,
+          internal.clustering.mergeNearDuplicateEvents,
+          {},
+        );
+      }
+      if (createdEvents > 0) {
+        await ctx.scheduler.runAfter(
+          RECLUSTER_RECENT_SINGLETONS_DELAY_MS,
+          internal.clustering.reclusterRecentSingletonEvents,
+          {},
+        );
+      }
 
       return {
         clusteredIntoExisting,

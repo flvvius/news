@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { getConfig } from "./config";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -7,6 +8,8 @@ import { internalMutation, internalQuery } from "./_generated/server";
 export const SHARE_IMAGE_WIDTH = 1080;
 export const SHARE_IMAGE_HEIGHT = 566;
 const SHARE_RENDER_VERSION = "v8-resvg-js-inter-ttf-jpeg-1080";
+const EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY =
+  "event_share_asset_generation_enabled";
 
 export type EventShareRenderData = {
   title: string;
@@ -136,6 +139,18 @@ export const ensureEventShareAssetQueued = internalMutation({
     renderSignature: v.string(),
   },
   handler: async (ctx, { eventId, renderSignature }) => {
+    const enabled = await getConfig(
+      ctx,
+      EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY,
+      false,
+    );
+    if (!enabled) {
+      console.log(
+        `[shareAssets] Enqueue skipped for event ${String(eventId)}: ${EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY}=false`,
+      );
+      return { queued: false as const, reason: "disabled" as const };
+    }
+
     const existing = await dedupeEventShareAssets(ctx, eventId);
 
     if (
@@ -143,7 +158,7 @@ export const ensureEventShareAssetQueued = internalMutation({
       existing.renderSignature === renderSignature &&
       (existing.status === "pending" || existing.status === "ready")
     ) {
-      return { queued: false as const };
+      return { queued: false as const, reason: "already_queued" as const };
     }
 
     if (existing) {
@@ -176,6 +191,30 @@ export const ensureEventShareAssetQueued = internalMutation({
     );
 
     return { queued: true as const };
+  },
+});
+
+export const markEventShareAssetDisabled = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    renderSignature: v.string(),
+  },
+  handler: async (ctx, { eventId, renderSignature }) => {
+    const existing = await getLatestEventShareAsset(ctx, eventId);
+    if (
+      !existing ||
+      existing.renderSignature !== renderSignature ||
+      existing.status !== "pending"
+    ) {
+      return { marked: false as const };
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: "failed",
+      error: "event_share_asset_generation_enabled=false",
+      updatedAt: Date.now(),
+    });
+    return { marked: true as const };
   },
 });
 

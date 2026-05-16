@@ -11,6 +11,8 @@ import {
   GitMerge,
   Play,
   RefreshCcw,
+  Rss,
+  Stethoscope,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -80,6 +82,7 @@ function AdminPipelineRoute() {
   const budget = useQuery(api.pipeline.getVectorBudgetStatus, {});
   const archived = useQuery(api.pipeline.getArchivedArticleStats, {});
   const alerts = useQuery(api.pipeline.getActiveAlerts, {});
+  const doctor = useQuery(api.pipeline.getPipelineDoctor, {});
   const triggerJob = useMutation(api.pipeline.triggerPipelineJob);
   const acknowledgeAlert = useMutation(api.pipeline.acknowledgeAlert);
   const setObservedQgb = useMutation(api.pipeline.setVectorObservedQgb);
@@ -96,7 +99,8 @@ function AdminPipelineRoute() {
     health === undefined ||
     budget === undefined ||
     archived === undefined ||
-    alerts === undefined;
+    alerts === undefined ||
+    doctor === undefined;
 
   const filteredLogs = useMemo(() => {
     const rows = health?.latest ?? [];
@@ -117,7 +121,11 @@ function AdminPipelineRoute() {
       | "archiveStaleSingletonEvents"
       | "mergeNearDuplicateEvents"
       | "reclusterRecentSingletonEvents"
-      | "clusterEnrichedArticles",
+      | "clusterEnrichedArticles"
+      | "ingestAllFeeds"
+      | "enrichUnprocessedArticles"
+      | "deleteStaleProcessingEvents"
+      | "checkPipelineAlerts",
   ) {
     setIsBusy(jobName);
     try {
@@ -188,6 +196,24 @@ function AdminPipelineRoute() {
             <Button
               type="button"
               variant="outline"
+              onClick={() => void runJob("ingestAllFeeds")}
+              disabled={Boolean(isBusy)}
+            >
+              <Rss className="size-4" />
+              Ingest
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void runJob("enrichUnprocessedArticles")}
+              disabled={Boolean(isBusy)}
+            >
+              <Stethoscope className="size-4" />
+              Enrich
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => void runJob("clusterEnrichedArticles")}
               disabled={Boolean(isBusy)}
             >
@@ -220,13 +246,31 @@ function AdminPipelineRoute() {
               <Archive className="size-4" />
               Archive
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void runJob("deleteStaleProcessingEvents")}
+              disabled={Boolean(isBusy)}
+            >
+              <Archive className="size-4" />
+              Prune
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void runJob("checkPipelineAlerts")}
+              disabled={Boolean(isBusy)}
+            >
+              <AlertTriangle className="size-4" />
+              Check
+            </Button>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Published Today</CardTitle>
+              <CardTitle className="text-sm">First Published Today</CardTitle>
             </CardHeader>
             <CardContent className="text-3xl font-bold">
               {formatNumber(funnel.published)}
@@ -254,6 +298,19 @@ function AdminPipelineRoute() {
             </CardHeader>
             <CardContent className="text-3xl font-bold">
               {formatNumber(archived.last24h)}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Freshness SLO</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">
+                {funnel.freshness.isFresh ? "OK" : "Late"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Latest {formatTime(funnel.freshness.latestFeedVisibleAt)}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -294,6 +351,58 @@ function AdminPipelineRoute() {
                     </p>
                   </div>
                 ))}
+              </div>
+              <div className="grid gap-3 border-t border-border pt-3 text-sm sm:grid-cols-5">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    First published
+                  </p>
+                  <p className="font-semibold">
+                    {formatNumber(
+                      funnel.publishedBreakdown.firstPublishedToday,
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Preview rows
+                  </p>
+                  <p className="font-semibold">
+                    {formatNumber(
+                      funnel.publishedBreakdown.previewRowsCreatedToday,
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Updated
+                  </p>
+                  <p className="font-semibold">
+                    {formatNumber(
+                      funnel.publishedBreakdown.previewRowsUpdatedToday,
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Latest visible
+                  </p>
+                  <p className="font-semibold">
+                    {formatNumber(
+                      funnel.publishedBreakdown.visibleInLatestToday,
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Trending top 100
+                  </p>
+                  <p className="font-semibold">
+                    {formatNumber(
+                      funnel.publishedBreakdown.visibleInTrendingTop100Today,
+                    )}
+                  </p>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
                 Updated {formatTime(funnel.updatedAt)}
@@ -360,6 +469,83 @@ function AdminPipelineRoute() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Stethoscope className="size-5" />
+              Pipeline Doctor
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 lg:grid-cols-3">
+            <div>
+              <p className="text-sm font-medium">Queue Ages</p>
+              <div className="mt-2 space-y-2 text-sm">
+                {doctor.queues.map((row) => (
+                  <div
+                    key={row.status}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <span>{row.status}</span>
+                    <span className="text-muted-foreground">
+                      {formatNumber(row.count)} · oldest{" "}
+                      {row.oldestAgeMs === null
+                        ? "n/a"
+                        : `${Math.round(row.oldestAgeMs / 60 / 60 / 1000)}h`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Expired processing leases:{" "}
+                {formatNumber(doctor.expiredProcessingArticles)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Almost Publishable</p>
+              <div className="mt-2 max-h-52 overflow-auto text-sm">
+                {doctor.processingEvents.oneShortOfPublish.length === 0 ? (
+                  <p className="text-muted-foreground">No near-threshold rows.</p>
+                ) : (
+                  doctor.processingEvents.oneShortOfPublish.map((event) => (
+                    <div
+                      key={event._id}
+                      className="border-b border-border py-2 last:border-b-0"
+                    >
+                      <p className="font-medium">{event.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {event.articleCount} articles / {event.sourceCount}{" "}
+                        sources
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Why Feed Looks Quiet</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Latest visible:{" "}
+                {formatTime(doctor.feedVisibility.latestVisibleAt)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Fresh stories outside trending top 100:{" "}
+                {formatNumber(doctor.feedVisibility.latestHiddenTotal)}
+              </p>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {doctor.recentFailures.length === 0 ? (
+                  <p>No recent structured failures.</p>
+                ) : (
+                  doctor.recentFailures.map((failure) => (
+                    <p key={failure.reason}>
+                      {failure.reason}: {formatNumber(failure.count)}
+                    </p>
+                  ))
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Card>

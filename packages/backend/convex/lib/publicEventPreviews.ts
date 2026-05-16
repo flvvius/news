@@ -124,6 +124,7 @@ export async function syncPublicEventPreview(
           : {}),
       }
     : undefined;
+  const now = Date.now();
   const payload = {
     eventId,
     slug: event.slug,
@@ -154,13 +155,19 @@ export async function syncPublicEventPreview(
       mbfcFactual: source.mbfcFactual,
       mbfcCredibility: source.mbfcCredibility,
     })),
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
 
   if (existing) {
-    await ctx.db.patch(existing._id, payload);
+    await ctx.db.patch(existing._id, {
+      ...payload,
+      createdAt: existing.createdAt ?? now,
+    });
   } else {
-    await ctx.db.insert("publicEventPreviews", payload);
+    await ctx.db.insert("publicEventPreviews", {
+      ...payload,
+      createdAt: now,
+    });
   }
 
   return { synced: true as const };

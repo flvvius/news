@@ -79,7 +79,8 @@ export const claimUnprocessedArticles = internalMutation({
 
     const freshArticles = await ctx.db
       .query("articles")
-      .withIndex("by_status", (q) => q.eq("status", "unprocessed"))
+      .withIndex("by_status_published", (q) => q.eq("status", "unprocessed"))
+      .order("desc")
       .take(batchSize);
 
     const remaining = batchSize - freshArticles.length;

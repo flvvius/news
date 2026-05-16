@@ -5,7 +5,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
 export const TOPIC_INFERENCE_BOUNDS = {
@@ -25,7 +25,7 @@ export const TOPIC_INFERENCE_BOUNDS = {
  * The value is stored as JSON; `T` is the expected parsed type.
  */
 export async function getConfig<T>(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   key: string,
   fallback: T,
 ): Promise<T> {
@@ -560,7 +560,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_batch_size",
-        value: 4,
+        value: 3,
         description:
           "Maximum number of queued event summary jobs processed per summarization run.",
       },
@@ -589,6 +589,12 @@ export const seedDefaults = internalMutation({
           "Maximum number of recent articles included in one event summarization prompt.",
       },
       {
+        key: "event_share_asset_generation_enabled",
+        value: false,
+        description:
+          "When true, published events automatically generate custom social preview images in Convex file storage.",
+      },
+      {
         key: "article_fact_extraction_enabled",
         value: true,
         description:
@@ -602,7 +608,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_max_articles_per_run",
-        value: 20,
+        value: 16,
         description:
           "Maximum number of articles in one enrichment run that receive atomic fact extraction.",
       },
@@ -631,7 +637,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_bias_detection_max_articles_per_run",
-        value: 20,
+        value: 16,
         description:
           "Maximum number of articles in one enrichment run that receive AI bias component scoring.",
       },
@@ -685,7 +691,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "claim_analysis_batch_size",
-        value: 4,
+        value: 3,
         description:
           "Maximum number of stale events analyzed for claim divergence in one cron run.",
       },
@@ -877,31 +883,31 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_vector_search_limit",
-        value: 24,
+        value: 20,
         description:
           "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
       },
       {
         key: "merge_vector_search_limit",
-        value: 12,
+        value: 10,
         description:
           "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
       },
       {
         key: "recluster_vector_search_limit",
-        value: 12,
+        value: 10,
         description:
           "Top-K limit used for event-to-event vector search during singleton recluster passes.",
       },
       {
         key: "merge_changed_seed_limit",
-        value: 10,
+        value: 8,
         description:
           "Maximum changed event seeds inspected by one duplicate-merge pass.",
       },
       {
         key: "recluster_changed_seed_limit",
-        value: 10,
+        value: 8,
         description:
           "Maximum changed singleton event seeds inspected by one singleton recluster pass.",
       },
@@ -919,7 +925,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "singleton_cleanup_batch_size",
-        value: 100,
+        value: 75,
         description:
           "Maximum stale singleton events archived in one cleanup invocation.",
       },
@@ -949,7 +955,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "pipeline_alert_check_interval_minutes",
-        value: 15,
+        value: 20,
         description:
           "Nominal interval for pipeline alert checks.",
       },
@@ -972,9 +978,16 @@ export const seedDefaults = internalMutation({
       "vector_search_daily_budget_qgb",
       "vector_search_per_search_bytes_default",
       "clustering_vector_search_limit",
+      "merge_vector_search_limit",
       "recluster_vector_search_limit",
       "merge_changed_seed_limit",
       "recluster_changed_seed_limit",
+      "event_summary_batch_size",
+      "article_fact_extraction_max_articles_per_run",
+      "article_bias_detection_max_articles_per_run",
+      "claim_analysis_batch_size",
+      "singleton_cleanup_batch_size",
+      "pipeline_alert_check_interval_minutes",
     ]);
 
     let created = 0;

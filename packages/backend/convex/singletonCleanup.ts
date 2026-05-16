@@ -12,6 +12,7 @@ import { getConfig } from "./config";
 import { requireAdminUser } from "./lib/betaAccess";
 
 const ARCHIVE_LOCK_KEY = "archiveStaleSingletonEvents";
+const STALE_PROCESSING_LOCK_KEY = "deleteStaleProcessingEvents";
 const ARCHIVE_LOCK_TTL_MS = 20 * 60 * 1000;
 const ARCHIVE_CONTINUATION_DELAY_MS = 500;
 const BLOCKING_LOCK_KEYS = new Set([
@@ -159,10 +160,10 @@ export const getArchiveSettings = internalQuery({
         168,
       ),
       batchSize: clampInteger(
-        await getConfig(ctx, "singleton_cleanup_batch_size", 100),
-        100,
+        await getConfig(ctx, "singleton_cleanup_batch_size", 75),
+        75,
         10,
-        500,
+        300,
       ),
       maxArticles: clampInteger(
         await getConfig(ctx, "singleton_cleanup_max_articles", 2),
@@ -218,6 +219,39 @@ export const getStaleSingletonCandidates = internalQuery({
         cursor: args.cursor ?? null,
         numItems: pageSize,
       });
+  },
+});
+
+export const getStaleProcessingCandidates = internalQuery({
+  args: {
+    staleBefore: v.number(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(Math.floor(args.limit), 1), 500);
+    const byLastArticleAt = await ctx.db
+      .query("events")
+      .withIndex("by_status_last_article_at", (q) =>
+        q.eq("status", "processing").lt("lastArticleAt", args.staleBefore),
+      )
+      .order("asc")
+      .take(limit);
+    const byFirstPublishedAt = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) =>
+        q.eq("status", "processing").lt("firstPublishedAt", args.staleBefore),
+      )
+      .order("asc")
+      .take(limit);
+
+    const rows = new Map<Id<"events">, Doc<"events">>();
+    for (const event of [...byLastArticleAt, ...byFirstPublishedAt]) {
+      const ageAnchor = event.lastArticleAt ?? event.firstPublishedAt;
+      if (event.status === "processing" && ageAnchor < args.staleBefore) {
+        rows.set(event._id, event);
+      }
+    }
+    return Array.from(rows.values()).slice(0, limit);
   },
 });
 
@@ -343,6 +377,248 @@ export const archiveSingletonEvent = internalMutation({
       deletedPreviews,
       deletedChildren,
     };
+  },
+});
+
+export const archiveStaleProcessingEvent = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    staleHours: v.number(),
+    now: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const event = await ctx.db.get(args.eventId);
+    const staleBefore = args.now - args.staleHours * 60 * 60 * 1000;
+    const ageAnchor = event?.lastArticleAt ?? event?.firstPublishedAt ?? 0;
+    if (!event || event.status !== "processing" || ageAnchor >= staleBefore) {
+      return {
+        archived: false as const,
+        archivedArticles: 0,
+        deletedEvents: 0,
+        deletedEmbeddings: 0,
+        deletedCandidacies: 0,
+        deletedPreviews: 0,
+        deletedChildren: 0,
+      };
+    }
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .collect();
+
+    for (const article of articles) {
+      await ctx.db.patch(article._id, {
+        status: "archived",
+        eventId: undefined,
+        archivedAt: args.now,
+        archivedReason: "stale_processing",
+      });
+    }
+
+    const deletedEmbeddings = await deleteByEventIndex(
+      ctx,
+      "eventEmbeddings",
+      args.eventId,
+    );
+    const deletedCandidacies = await deleteByEventIndex(
+      ctx,
+      "eventCandidacy",
+      args.eventId,
+    );
+    const deletedPreviews = await deleteByEventIndex(
+      ctx,
+      "publicEventPreviews",
+      args.eventId,
+    );
+    const deletedChildren =
+      (await deleteByEventIndex(ctx, "eventTopics", args.eventId)) +
+      (await deleteByEventIndex(ctx, "eventShareAssets", args.eventId)) +
+      (await deleteByEventIndex(ctx, "eventSummaryJobs", args.eventId)) +
+      (await deleteByEventIndex(ctx, "eventClaims", args.eventId)) +
+      (await deleteByEventIndex(ctx, "userInsights", args.eventId)) +
+      (await deleteByEventIndex(ctx, "interactions", args.eventId));
+
+    await ctx.db.delete(args.eventId);
+
+    return {
+      archived: true as const,
+      archivedArticles: articles.length,
+      deletedEvents: 1,
+      deletedEmbeddings,
+      deletedCandidacies,
+      deletedPreviews,
+      deletedChildren,
+    };
+  },
+});
+
+export const deleteStaleProcessingEvents = internalAction({
+  args: {
+    olderThanHours: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const startedAt = Date.now();
+    const runId = `deleteStaleProcessingEvents-${startedAt}`;
+    const olderThanHours = clampInteger(args.olderThanHours, 72, 24, 24 * 30);
+    const batchSize = clampInteger(args.batchSize, 75, 1, 200);
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: { reason: "pipeline_paused" },
+        metadata: { olderThanHours, batchSize },
+      });
+      return { status: "skipped" as const, reason: "pipeline_paused" };
+    }
+
+    const owner = runId;
+    const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
+      key: STALE_PROCESSING_LOCK_KEY,
+      owner,
+      expiresAt: startedAt + ARCHIVE_LOCK_TTL_MS,
+    });
+    if (!lock.acquired) {
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: { reason: "lock_held" },
+        metadata: { olderThanHours, batchSize },
+      });
+      return { status: "skipped" as const, reason: "lock_held" };
+    }
+
+    const counters = {
+      scanned: 0,
+      eligible: 0,
+      archivedArticles: 0,
+      deletedEvents: 0,
+      deletedEmbeddings: 0,
+      deletedCandidacies: 0,
+      deletedPreviews: 0,
+      deletedChildren: 0,
+    };
+    try {
+      const blocking: {
+        blocked: boolean;
+        locks: Array<{ key: string; owner: string; expiresAt: number }>;
+      } = await ctx.runQuery(
+        internal.singletonCleanup.hasBlockingCleanupLocks,
+        {},
+      );
+      if (blocking.blocked) {
+        await ctx.runMutation(internal.pipeline.insertRunLog, {
+          jobName: "deleteStaleProcessingEvents",
+          runId,
+          startedAt,
+          finishedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          status: "skipped",
+          counters,
+          gauges: { reason: "blocking_pipeline_lock", locks: blocking.locks },
+          metadata: { olderThanHours, batchSize },
+        });
+        return {
+          status: "skipped" as const,
+          reason: "blocking_pipeline_lock",
+          locks: blocking.locks,
+        };
+      }
+
+      const now = Date.now();
+      const candidates: Doc<"events">[] = await ctx.runQuery(
+        internal.singletonCleanup.getStaleProcessingCandidates,
+        {
+          staleBefore: now - olderThanHours * 60 * 60 * 1000,
+          limit: batchSize,
+        },
+      );
+      counters.scanned = candidates.length;
+
+      for (const event of candidates) {
+        counters.eligible++;
+        const result = await ctx.runMutation(
+          internal.singletonCleanup.archiveStaleProcessingEvent,
+          {
+            eventId: event._id,
+            staleHours: olderThanHours,
+            now,
+          },
+        );
+        counters.archivedArticles += result.archivedArticles;
+        counters.deletedEvents += result.deletedEvents;
+        counters.deletedEmbeddings += result.deletedEmbeddings;
+        counters.deletedCandidacies += result.deletedCandidacies;
+        counters.deletedPreviews += result.deletedPreviews;
+        counters.deletedChildren += result.deletedChildren;
+      }
+
+      const hasMore = candidates.length >= batchSize;
+      if (hasMore && (args.autoContinue ?? true)) {
+        await ctx.scheduler.runAfter(
+          ARCHIVE_CONTINUATION_DELAY_MS,
+          internal.singletonCleanup.deleteStaleProcessingEvents,
+          { olderThanHours, batchSize, autoContinue: true },
+        );
+      }
+
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: "ok",
+        counters,
+        gauges: { hasMore },
+        metadata: { olderThanHours, batchSize },
+      });
+      return { status: "ok" as const, ...counters, hasMore };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(
+        JSON.stringify({
+          scope: "deleteStaleProcessingEvents",
+          event: "error",
+          runId,
+          errorMessage,
+          counters,
+        }),
+      );
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: "error",
+        errorMessage,
+        counters,
+        gauges: {},
+        metadata: { olderThanHours, batchSize },
+      });
+      throw error;
+    } finally {
+      await ctx.runMutation(internal.ingestion.releasePipelineLock, {
+        key: STALE_PROCESSING_LOCK_KEY,
+        owner,
+      });
+    }
   },
 });
 

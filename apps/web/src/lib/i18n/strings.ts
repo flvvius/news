@@ -837,7 +837,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.search.placeholder": "Search events by title...",
   "feed.search.label": "Search events",
   "feed.search.clear": "Clear search",
-  "feed.sort.recent": "Recent",
+  "feed.sort.recent": "Latest",
   "feed.sort.trending": "Trending",
   "feed.search.threshold": "Type at least 2 characters to search.",
   "feed.search.indexed": "Showing indexed results for “{query}”.",

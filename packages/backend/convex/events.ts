@@ -50,7 +50,7 @@ function rankedPayload(
 ): RankedCursorPayload {
   return {
     eventId: event.eventId,
-    score: sort === "trending" ? event.trendingScore : event.firstPublishedAt,
+    score: sort === "trending" ? event.trendingScore : event.lastUpdatedAt,
     updatedAt: updatedAtForSort(event),
     firstPublishedAt: event.firstPublishedAt,
   };
@@ -170,7 +170,7 @@ async function getFeedCandidates(
 
   return await ctx.db
     .query("publicEventPreviews")
-    .withIndex("by_first_published_at")
+    .withIndex("by_last_updated_at")
     .order("desc")
     .take(scanLimit);
 }
@@ -223,7 +223,7 @@ export const getPublishedEvents = query({
 
       events = await ctx.db
         .query("publicEventPreviews")
-        .withIndex("by_first_published_at")
+        .withIndex("by_last_updated_at")
         .order("desc")
         .paginate(paginationOpts);
     }
