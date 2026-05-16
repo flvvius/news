@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
 import { computeStreakUpdate } from "./lib/streaks";
+import { reorderChoicesForQuestion } from "./lib/quizHelpers";
 import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
@@ -82,11 +83,16 @@ function stripCorrectAnswers(quiz: Doc<"dailyQuizzes">) {
     questionCount: quiz.questions.length,
     sourceEventIds: quiz.sourceEventIds,
     publishedAt: quiz.publishedAt,
-    questions: quiz.questions.map((question) => ({
+    questions: quiz.questions.map((question, index) => ({
       id: question.id,
       type: question.type,
       question: question.question,
-      choices: question.choices,
+      choices: reorderChoicesForQuestion(
+        question.choices,
+        question.correctChoiceId,
+        index,
+      ),
+      explanation: question.explanation,
       attribution: question.attribution,
       eventId: question.eventId,
       sourceIds: question.sourceIds,
@@ -101,13 +107,17 @@ function buildReview(
   const answersByQuestion = new Map(
     answers.map((answer) => [answer.questionId, answer.choiceId]),
   );
-  const review = quiz.questions.map((question) => {
+  const review = quiz.questions.map((question, index) => {
     const selectedChoiceId = answersByQuestion.get(question.id);
     return {
       questionId: question.id,
       type: question.type,
       question: question.question,
-      choices: question.choices,
+      choices: reorderChoicesForQuestion(
+        question.choices,
+        question.correctChoiceId,
+        index,
+      ),
       selectedChoiceId,
       correctChoiceId: question.correctChoiceId,
       isCorrect: selectedChoiceId === question.correctChoiceId,
@@ -287,7 +297,7 @@ export const submitQuizAttempt = mutation({
   },
 });
 
-export const gradeQuizQuestion = mutation({
+export const gradeQuizQuestion = query({
   args: {
     quizId: v.id("dailyQuizzes"),
     questionId: v.string(),
