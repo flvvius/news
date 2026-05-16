@@ -223,7 +223,7 @@ export const getPublishedEvents = query({
 
       events = await ctx.db
         .query("publicEventPreviews")
-        .withIndex("by_first_published_at")
+        .withIndex("by_last_updated_at")
         .order("desc")
         .paginate(paginationOpts);
     }

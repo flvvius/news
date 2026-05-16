@@ -33,7 +33,7 @@ Actions:
 - Preserve P0 feed work first: ingestion, enrichment, clustering, and preview creation.
 - Temporarily reduce or pause P2/P3 work: summarization, claim divergence, share assets, aggressive reclustering.
 - Lower `merge_changed_seed_limit` or `recluster_changed_seed_limit` before reducing core clustering.
-- Enter observed last-24h qGB only when the Convex dashboard materially differs from the estimate.
+- Enter observed last-24h qGB (query gigabytes, the Convex dashboard vector/query budget metric) only when the Convex dashboard materially differs from the estimate.
 
 ## Too Many Processing Singletons
 

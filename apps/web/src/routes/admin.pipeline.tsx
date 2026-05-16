@@ -530,9 +530,7 @@ function AdminPipelineRoute() {
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Fresh stories outside trending top 100:{" "}
-                {formatNumber(
-                  doctor.feedVisibility.latestHiddenByTrending.length,
-                )}
+                {formatNumber(doctor.feedVisibility.latestHiddenTotal)}
               </p>
               <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                 {doctor.recentFailures.length === 0 ? (

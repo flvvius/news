@@ -531,8 +531,11 @@ export const getPipelineDoctor = query({
         .take(200),
     ]);
     const trendingIds = new Set(trendingRows.map((row) => row.eventId));
-    const latestHiddenByTrending = latestRows
-      .filter((row) => !trendingIds.has(row.eventId))
+    const latestHiddenRows = latestRows.filter(
+      (row) => !trendingIds.has(row.eventId),
+    );
+    const latestHiddenTotal = latestHiddenRows.length;
+    const latestHiddenByTrending = latestHiddenRows
       .slice(0, 10)
       .map((row) => ({
         eventId: row.eventId,
@@ -564,6 +567,7 @@ export const getPipelineDoctor = query({
         latestVisibleAgeMs: latestRows[0]
           ? now - latestRows[0].lastUpdatedAt
           : null,
+        latestHiddenTotal,
         latestHiddenByTrending,
       },
       recentFailures: Array.from(failureReasons.entries())

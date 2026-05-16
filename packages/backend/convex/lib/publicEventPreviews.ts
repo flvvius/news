@@ -159,7 +159,10 @@ export async function syncPublicEventPreview(
   };
 
   if (existing) {
-    await ctx.db.patch(existing._id, payload);
+    await ctx.db.patch(existing._id, {
+      ...payload,
+      createdAt: existing.createdAt ?? now,
+    });
   } else {
     await ctx.db.insert("publicEventPreviews", {
       ...payload,

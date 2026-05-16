@@ -427,6 +427,10 @@ export const generateEventShareAsset = internalAction({
       console.log(
         `[shareAssets] Generation skipped for event ${String(eventId)}: event_share_asset_generation_enabled=${String(config.event_share_asset_generation_enabled)}`,
       );
+      await ctx.runMutation(internal.shareAssets.markEventShareAssetDisabled, {
+        eventId,
+        renderSignature,
+      });
       return { generated: false as const, reason: "disabled" };
     }
 

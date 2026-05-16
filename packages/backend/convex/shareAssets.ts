@@ -194,6 +194,30 @@ export const ensureEventShareAssetQueued = internalMutation({
   },
 });
 
+export const markEventShareAssetDisabled = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    renderSignature: v.string(),
+  },
+  handler: async (ctx, { eventId, renderSignature }) => {
+    const existing = await getLatestEventShareAsset(ctx, eventId);
+    if (
+      !existing ||
+      existing.renderSignature !== renderSignature ||
+      existing.status !== "pending"
+    ) {
+      return { marked: false as const };
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: "failed",
+      error: "event_share_asset_generation_enabled=false",
+      updatedAt: Date.now(),
+    });
+    return { marked: true as const };
+  },
+});
+
 export const markEventShareAssetReady = internalMutation({
   args: {
     eventId: v.id("events"),
