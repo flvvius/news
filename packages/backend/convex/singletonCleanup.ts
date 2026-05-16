@@ -160,10 +160,10 @@ export const getArchiveSettings = internalQuery({
         168,
       ),
       batchSize: clampInteger(
-        await getConfig(ctx, "singleton_cleanup_batch_size", 100),
-        100,
+        await getConfig(ctx, "singleton_cleanup_batch_size", 75),
+        75,
         10,
-        500,
+        300,
       ),
       maxArticles: clampInteger(
         await getConfig(ctx, "singleton_cleanup_max_articles", 2),
@@ -463,7 +463,23 @@ export const deleteStaleProcessingEvents = internalAction({
     const startedAt = Date.now();
     const runId = `deleteStaleProcessingEvents-${startedAt}`;
     const olderThanHours = clampInteger(args.olderThanHours, 72, 24, 24 * 30);
-    const batchSize = clampInteger(args.batchSize, 100, 1, 250);
+    const batchSize = clampInteger(args.batchSize, 75, 1, 200);
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: { reason: "pipeline_paused" },
+        metadata: { olderThanHours, batchSize },
+      });
+      return { status: "skipped" as const, reason: "pipeline_paused" };
+    }
+
     const owner = runId;
     const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
       key: STALE_PROCESSING_LOCK_KEY,
@@ -496,6 +512,32 @@ export const deleteStaleProcessingEvents = internalAction({
       deletedChildren: 0,
     };
     try {
+      const blocking: {
+        blocked: boolean;
+        locks: Array<{ key: string; owner: string; expiresAt: number }>;
+      } = await ctx.runQuery(
+        internal.singletonCleanup.hasBlockingCleanupLocks,
+        {},
+      );
+      if (blocking.blocked) {
+        await ctx.runMutation(internal.pipeline.insertRunLog, {
+          jobName: "deleteStaleProcessingEvents",
+          runId,
+          startedAt,
+          finishedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          status: "skipped",
+          counters,
+          gauges: { reason: "blocking_pipeline_lock", locks: blocking.locks },
+          metadata: { olderThanHours, batchSize },
+        });
+        return {
+          status: "skipped" as const,
+          reason: "blocking_pipeline_lock",
+          locks: blocking.locks,
+        };
+      }
+
       const now = Date.now();
       const candidates: Doc<"events">[] = await ctx.runQuery(
         internal.singletonCleanup.getStaleProcessingCandidates,
@@ -546,6 +588,31 @@ export const deleteStaleProcessingEvents = internalAction({
         metadata: { olderThanHours, batchSize },
       });
       return { status: "ok" as const, ...counters, hasMore };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(
+        JSON.stringify({
+          scope: "deleteStaleProcessingEvents",
+          event: "error",
+          runId,
+          errorMessage,
+          counters,
+        }),
+      );
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "deleteStaleProcessingEvents",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: "error",
+        errorMessage,
+        counters,
+        gauges: {},
+        metadata: { olderThanHours, batchSize },
+      });
+      throw error;
     } finally {
       await ctx.runMutation(internal.ingestion.releasePipelineLock, {
         key: STALE_PROCESSING_LOCK_KEY,

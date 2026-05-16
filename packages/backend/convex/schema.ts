@@ -203,6 +203,7 @@ export default defineSchema({
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
     trendingScore: v.number(),
+    createdAt: v.optional(v.number()),
     sourceBiasCounts: v.object({
       left: v.number(),
       center: v.number(),
@@ -223,6 +224,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_event", ["eventId"])
+    .index("by_created_at", ["createdAt"])
     .index("by_first_published_at", ["firstPublishedAt"])
     .index("by_last_updated_at", ["lastUpdatedAt"])
     .index("by_trending_score", ["trendingScore"])

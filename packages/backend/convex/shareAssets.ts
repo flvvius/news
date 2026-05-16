@@ -145,6 +145,9 @@ export const ensureEventShareAssetQueued = internalMutation({
       false,
     );
     if (!enabled) {
+      console.log(
+        `[shareAssets] Enqueue skipped for event ${String(eventId)}: ${EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY}=false`,
+      );
       return { queued: false as const, reason: "disabled" as const };
     }
 
@@ -155,7 +158,7 @@ export const ensureEventShareAssetQueued = internalMutation({
       existing.renderSignature === renderSignature &&
       (existing.status === "pending" || existing.status === "ready")
     ) {
-      return { queued: false as const };
+      return { queued: false as const, reason: "already_queued" as const };
     }
 
     if (existing) {

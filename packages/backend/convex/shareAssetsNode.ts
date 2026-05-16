@@ -424,6 +424,9 @@ export const generateEventShareAsset = internalAction({
       keys: ["event_share_asset_generation_enabled"],
     });
     if (config.event_share_asset_generation_enabled !== true) {
+      console.log(
+        `[shareAssets] Generation skipped for event ${String(eventId)}: event_share_asset_generation_enabled=${String(config.event_share_asset_generation_enabled)}`,
+      );
       return { generated: false as const, reason: "disabled" };
     }
 

@@ -14,6 +14,7 @@ import type { Doc } from "./_generated/dataModel";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const FRESHNESS_SLO_MS = 60 * 60 * 1000;
 const ARTICLE_QUEUE_STATUSES = [
   "unprocessed",
   "enriched",
@@ -151,8 +152,16 @@ export const getPipelineFunnelToday = query({
     await requireAdminUser(ctx);
     const today = dateKey(Date.now());
     const start = Date.parse(`${today}T00:00:00.000Z`);
-    const [articleStats, processingCount, publishedCount, previewsCount] =
-      await Promise.all([
+    const [
+      articleStats,
+      processingCount,
+      publishedCount,
+      previewsFirstPublishedCount,
+      previewsCreatedCount,
+      previewsUpdatedCount,
+      latestPreview,
+      trendingRows,
+    ] = await Promise.all([
         limitedReduce(
           () =>
             ctx.db
@@ -187,6 +196,28 @@ export const getPipelineFunnelToday = query({
               q.gte("firstPublishedAt", start),
             ),
         ),
+        limitedCount(() =>
+          ctx.db
+            .query("publicEventPreviews")
+            .withIndex("by_created_at", (q) => q.gte("createdAt", start)),
+        ),
+        limitedCount(() =>
+          ctx.db
+            .query("publicEventPreviews")
+            .withIndex("by_last_updated_at", (q) =>
+              q.gte("lastUpdatedAt", start),
+            ),
+        ),
+        ctx.db
+          .query("publicEventPreviews")
+          .withIndex("by_last_updated_at")
+          .order("desc")
+          .first(),
+        ctx.db
+          .query("publicEventPreviews")
+          .withIndex("by_trending_score")
+          .order("desc")
+          .take(100),
       ]);
     const currentQueues = await Promise.all(
       ARTICLE_QUEUE_STATUSES.map(
@@ -208,7 +239,26 @@ export const getPipelineFunnelToday = query({
       clustered: articleStats.statusCounts.clustered ?? 0,
       archived: articleStats.statusCounts.archived ?? 0,
       created: processingCount + publishedCount,
-      published: previewsCount,
+      published: previewsFirstPublishedCount,
+      publishedBreakdown: {
+        firstPublishedToday: previewsFirstPublishedCount,
+        previewRowsCreatedToday: previewsCreatedCount,
+        previewRowsUpdatedToday: previewsUpdatedCount,
+        visibleInLatestToday: previewsUpdatedCount,
+        visibleInTrendingTop100Today: trendingRows.filter(
+          (row) => row.lastUpdatedAt >= start,
+        ).length,
+      },
+      freshness: {
+        sloMinutes: Math.round(FRESHNESS_SLO_MS / 60_000),
+        latestFeedVisibleAt: latestPreview?.lastUpdatedAt,
+        latestFeedVisibleAgeMs: latestPreview
+          ? Date.now() - latestPreview.lastUpdatedAt
+          : null,
+        isFresh:
+          latestPreview !== null &&
+          Date.now() - latestPreview.lastUpdatedAt <= FRESHNESS_SLO_MS,
+      },
       queues: Object.fromEntries(
         currentQueues.map((row) => [row.status, row.count]),
       ),
@@ -392,6 +442,138 @@ export const getArchivedArticleStats = query({
   },
 });
 
+export const getPipelineDoctor = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminUser(ctx);
+    const now = Date.now();
+    const staleLeaseCutoff = now;
+    const queueRows = await Promise.all(
+      ARTICLE_QUEUE_STATUSES.map(async (status) => {
+        const [oldest, newest, count] = await Promise.all([
+          ctx.db
+            .query("articles")
+            .withIndex("by_status_published", (q) => q.eq("status", status))
+            .order("asc")
+            .first(),
+          ctx.db
+            .query("articles")
+            .withIndex("by_status_published", (q) => q.eq("status", status))
+            .order("desc")
+            .first(),
+          limitedCount(() =>
+            ctx.db
+              .query("articles")
+              .withIndex("by_status", (q) => q.eq("status", status)),
+          ),
+        ]);
+        return {
+          status,
+          count,
+          oldestPublishedAt: oldest?.publishedAt,
+          oldestAgeMs: oldest ? now - oldest.publishedAt : null,
+          newestPublishedAt: newest?.publishedAt,
+          newestAgeMs: newest ? now - newest.publishedAt : null,
+        };
+      }),
+    );
+
+    const expiredProcessingArticles = await limitedCount(() =>
+      ctx.db
+        .query("articles")
+        .withIndex("by_status_enrichment_lease", (q) =>
+          q
+            .eq("status", "processing")
+            .lt("enrichmentLeaseExpiresAt", staleLeaseCutoff),
+        ),
+    );
+    const recentProcessingEvents = await ctx.db
+      .query("events")
+      .withIndex("by_status_last_article_at", (q) =>
+        q.eq("status", "processing"),
+      )
+      .order("desc")
+      .take(500);
+    const oneShortOfPublish = recentProcessingEvents
+      .filter((event) => {
+        const articleCount = event.articleCount ?? 1;
+        const sourceCount = event.sourceCount ?? 1;
+        return (
+          (articleCount >= 2 && sourceCount === 1) ||
+          (articleCount === 1 && sourceCount >= 2)
+        );
+      })
+      .slice(0, 20)
+      .map((event) => ({
+        _id: event._id,
+        title: event.title,
+        articleCount: event.articleCount ?? 1,
+        sourceCount: event.sourceCount ?? 1,
+        lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+        ageMs: now - (event.lastArticleAt ?? event.firstPublishedAt),
+      }));
+
+    const [latestRows, trendingRows, recentLogs] = await Promise.all([
+      ctx.db
+        .query("publicEventPreviews")
+        .withIndex("by_last_updated_at")
+        .order("desc")
+        .take(20),
+      ctx.db
+        .query("publicEventPreviews")
+        .withIndex("by_trending_score")
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("pipelineRunLogs")
+        .withIndex("by_created_at", (q) => q.gte("createdAt", now - DAY_MS))
+        .order("desc")
+        .take(200),
+    ]);
+    const trendingIds = new Set(trendingRows.map((row) => row.eventId));
+    const latestHiddenByTrending = latestRows
+      .filter((row) => !trendingIds.has(row.eventId))
+      .slice(0, 10)
+      .map((row) => ({
+        eventId: row.eventId,
+        title: row.title,
+        lastUpdatedAt: row.lastUpdatedAt,
+        firstPublishedAt: row.firstPublishedAt,
+        ageMs: now - row.lastUpdatedAt,
+      }));
+    const failureReasons = new Map<string, number>();
+    for (const log of recentLogs) {
+      if (log.status !== "error" && log.status !== "degraded") continue;
+      const key =
+        log.errorMessage ??
+        (typeof log.gauges.reason === "string" ? log.gauges.reason : log.status);
+      failureReasons.set(key, (failureReasons.get(key) ?? 0) + 1);
+    }
+
+    return {
+      generatedAt: now,
+      freshnessSloMinutes: Math.round(FRESHNESS_SLO_MS / 60_000),
+      queues: queueRows,
+      expiredProcessingArticles,
+      processingEvents: {
+        scannedRecent: recentProcessingEvents.length,
+        oneShortOfPublish,
+      },
+      feedVisibility: {
+        latestVisibleAt: latestRows[0]?.lastUpdatedAt,
+        latestVisibleAgeMs: latestRows[0]
+          ? now - latestRows[0].lastUpdatedAt
+          : null,
+        latestHiddenByTrending,
+      },
+      recentFailures: Array.from(failureReasons.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([reason, count]) => ({ reason, count })),
+    };
+  },
+});
+
 export const getActiveAlerts = query({
   args: {},
   handler: async (ctx) => {
@@ -500,17 +682,18 @@ export const checkPipelineAlerts = internalAction({
         });
       }
 
-      const published = await ctx.runQuery(
-        internal.pipeline.countPublishedPreviewsSince,
-        { since: now - 6 * HOUR_MS },
+      const visible = await ctx.runQuery(
+        internal.pipeline.countVisiblePreviewsSince,
+        { since: now - FRESHNESS_SLO_MS },
       );
       evaluatedRules++;
-      if (published === 0) {
+      if (visible === 0) {
         await upsertAlert(ctx, {
           severity: "warning",
-          code: "publish_drought",
-          message: "No events have been published in the last 6 hours.",
-          details: { since: now - 6 * HOUR_MS },
+          code: "feed_visibility_drought",
+          message:
+            "No public feed previews became visible or refreshed within the 60-minute freshness SLO.",
+          details: { since: now - FRESHNESS_SLO_MS },
         });
       }
 
@@ -528,6 +711,23 @@ export const checkPipelineAlerts = internalAction({
             usedQgb: budget.usedQgb,
             limitQgb: budget.limitQgb,
             ratio: budget.ratio,
+          },
+        });
+      }
+      const utcHour = new Date(now).getUTCHours();
+      const expectedDailyProgress = (utcHour + 1) / 24;
+      evaluatedRules++;
+      if (budget.ratio >= Math.min(0.9, expectedDailyProgress + 0.25)) {
+        await upsertAlert(ctx, {
+          severity: "warning",
+          code: "p0_budget_projected_exhaustion",
+          message:
+            "Vector budget burn rate is ahead of UTC-day progress; throttle non-core pipeline work before feed creation is affected.",
+          details: {
+            usedQgb: budget.usedQgb,
+            limitQgb: budget.limitQgb,
+            ratio: budget.ratio,
+            expectedDailyProgress,
           },
         });
       }
@@ -582,6 +782,36 @@ export const checkPipelineAlerts = internalAction({
             details: { total: row.total, ok: row.ok },
           });
         }
+      }
+      const enrichmentWindow = (logs as Array<Doc<"pipelineRunLogs">>).filter(
+        (log) =>
+          log.jobName === "enrichUnprocessedArticles" &&
+          log.startedAt >= now - 30 * 60 * 1000,
+      );
+      const enrichmentAttempts = enrichmentWindow.reduce(
+        (sum, log) => sum + (log.counters.claimedArticles ?? 0),
+        0,
+      );
+      const enrichmentFailures = enrichmentWindow.reduce(
+        (sum, log) => sum + (log.counters.failedArticles ?? 0),
+        0,
+      );
+      evaluatedRules++;
+      if (
+        enrichmentAttempts >= 10 &&
+        enrichmentFailures / enrichmentAttempts > 0.2
+      ) {
+        await upsertAlert(ctx, {
+          severity: "warning",
+          code: "enrichment_failure_rate",
+          message:
+            "More than 20% of claimed enrichment articles failed in the last 30 minutes.",
+          details: {
+            attempts: enrichmentAttempts,
+            failures: enrichmentFailures,
+            ratio: enrichmentFailures / enrichmentAttempts,
+          },
+        });
       }
 
       const archiveOk = (logs as Array<Doc<"pipelineRunLogs">>).some(
@@ -681,6 +911,19 @@ export const countPublishedPreviewsSince = internalQuery({
   },
 });
 
+export const countVisiblePreviewsSince = internalQuery({
+  args: { since: v.number() },
+  handler: async (ctx, args) => {
+    return await limitedCount(() =>
+      ctx.db
+        .query("publicEventPreviews")
+        .withIndex("by_last_updated_at", (q) =>
+          q.gte("lastUpdatedAt", args.since),
+        ),
+    );
+  },
+});
+
 export const countProcessingEventsOlderThan = internalQuery({
   args: { ageMs: v.number() },
   handler: async (ctx, args) => {
@@ -730,15 +973,27 @@ export const getVectorBudgetForAlerts = internalQuery({
 export const triggerPipelineJob = mutation({
   args: {
     jobName: v.union(
+      v.literal("ingestAllFeeds"),
+      v.literal("enrichUnprocessedArticles"),
       v.literal("archiveStaleSingletonEvents"),
       v.literal("mergeNearDuplicateEvents"),
       v.literal("reclusterRecentSingletonEvents"),
       v.literal("clusterEnrichedArticles"),
+      v.literal("deleteStaleProcessingEvents"),
+      v.literal("checkPipelineAlerts"),
     ),
   },
   handler: async (ctx, args) => {
     await requireAdminUser(ctx);
-    if (args.jobName === "archiveStaleSingletonEvents") {
+    if (args.jobName === "ingestAllFeeds") {
+      await ctx.scheduler.runAfter(0, internal.ingestion.ingestAllFeeds, {});
+    } else if (args.jobName === "enrichUnprocessedArticles") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.enrichmentNode.enrichUnprocessedArticles,
+        {},
+      );
+    } else if (args.jobName === "archiveStaleSingletonEvents") {
       await ctx.scheduler.runAfter(
         0,
         internal.singletonCleanup.archiveStaleSingletonEvents,
@@ -752,8 +1007,16 @@ export const triggerPipelineJob = mutation({
         internal.clustering.reclusterRecentSingletonEvents,
         {},
       );
-    } else {
+    } else if (args.jobName === "clusterEnrichedArticles") {
       await ctx.scheduler.runAfter(0, internal.clustering.clusterEnrichedArticles, {});
+    } else if (args.jobName === "deleteStaleProcessingEvents") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.singletonCleanup.deleteStaleProcessingEvents,
+        { autoContinue: true },
+      );
+    } else {
+      await ctx.scheduler.runAfter(0, internal.pipeline.checkPipelineAlerts, {});
     }
     return { scheduled: true };
   },

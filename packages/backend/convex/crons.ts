@@ -27,41 +27,41 @@ crons.interval(
 // );
 
 // ---------------------------------------------------------------------------
-// Article Enrichment (Embeddings) — Every 30 minutes
+// Article Enrichment (Embeddings) — Every 40 minutes
 // ---------------------------------------------------------------------------
 // Generates embeddings for unprocessed articles.
 // Runs more frequently than ingestion to keep the pipeline flowing.
 crons.interval(
   "enrich-articles",
-  { minutes: 30 },
+  { minutes: 40 },
   internal.enrichmentNode.enrichUnprocessedArticles,
 );
 
 // ---------------------------------------------------------------------------
-// Article Clustering — Every 30 minutes
+// Article Clustering — Every 40 minutes
 // ---------------------------------------------------------------------------
 // Clusters enriched articles into published events so the feed can render
 // real ingested data even before AI summarization exists.
 crons.interval(
   "cluster-enriched-articles",
-  { minutes: 30 },
+  { minutes: 40 },
   internal.clustering.clusterEnrichedArticles,
 );
 
 // ---------------------------------------------------------------------------
-// Event Merge Pass — Every 10 minutes
+// Event Merge Pass — Every 20 minutes
 // ---------------------------------------------------------------------------
 // Collapses near-duplicate recently published events created across separate
 // clustering runs. The action uses a DB-backed lease plus seed/top-K caps, so
 // the tighter cadence should skip overlapping work instead of piling up load.
 crons.interval(
   "merge-near-duplicate-events",
-  { minutes: 10 },
+  { minutes: 20 },
   internal.clustering.mergeNearDuplicateEvents,
 );
 
 // ---------------------------------------------------------------------------
-// Singleton Recluster Pass — Every 15 minutes
+// Singleton Recluster Pass — Every 30 minutes
 // ---------------------------------------------------------------------------
 // Re-examines recent singleton / tiny events after more articles have landed,
 // improving recall for stories that were under-clustered during the online pass.
@@ -69,7 +69,7 @@ crons.interval(
 // seed caps, and reduced vector top-K so fallback recovery stays bounded.
 crons.interval(
   "recluster-recent-singletons",
-  { minutes: 15 },
+  { minutes: 30 },
   internal.clustering.reclusterRecentSingletonEvents,
 );
 
@@ -85,14 +85,14 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Event Summarization — Every 30 minutes
+// Event Summarization — Every 45 minutes
 // ---------------------------------------------------------------------------
 // Generates GPT-backed perspective summaries for published events that have
 // enough source diversity. Runs independently so clustering is never blocked on
 // model latency or budget state.
 crons.interval(
   "summarize-published-events",
-  { minutes: 30 },
+  { minutes: 45 },
   internal.summarizationNode.summarizeQueuedEvents,
   {},
 );
@@ -110,13 +110,13 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Claim Divergence Detection — Every 30 minutes
+// Claim Divergence Detection — Every 45 minutes
 // ---------------------------------------------------------------------------
 // Builds the eventClaims graph from atomic facts so the product can show
 // agreements, conflicts, framing differences, and lean-specific exclusives.
 crons.interval(
   "detect-event-claims",
-  { minutes: 30 },
+  { minutes: 45 },
   internal.claimDivergenceNode.processStaleEventClaims,
   {},
 );
@@ -167,14 +167,14 @@ crons.daily(
 );
 
 // ---------------------------------------------------------------------------
-// Pipeline Alert Checks — Every 15 minutes
+// Pipeline Alert Checks — Every 20 minutes
 // ---------------------------------------------------------------------------
 // Writes pipelineAlerts rows for persistent fallback mode, publish droughts,
 // stuck processing growth, vector-budget burn rate, job error rates, and absent
 // archive runs. Alerts stay in Convex and are surfaced in /admin/pipeline.
 crons.interval(
   "check-pipeline-alerts",
-  { minutes: 15 },
+  { minutes: 20 },
   internal.pipeline.checkPipelineAlerts,
   {},
 );

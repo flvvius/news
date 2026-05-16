@@ -1336,17 +1336,30 @@ export const ingestAllFeeds = internalAction({
     feedsProcessed: number;
     failedFeeds: number;
   }> => {
+    const startedAt = Date.now();
+    const runId = `ingestAllFeeds-${startedAt}`;
     const lockOwner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const lock = await ctx.runMutation(internal.ingestion.acquirePipelineLock, {
       key: INGEST_ALL_FEEDS_LOCK_KEY,
       owner: lockOwner,
-      expiresAt: Date.now() + INGEST_ALL_FEEDS_LOCK_TTL_MS,
+      expiresAt: startedAt + INGEST_ALL_FEEDS_LOCK_TTL_MS,
     });
 
     if (!lock.acquired) {
       console.log(
         `[ingestion] ingestAllFeeds already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
       );
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestAllFeeds",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: { reason: "lock_held" },
+        metadata: {},
+      });
       return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
     }
 
@@ -1355,6 +1368,17 @@ export const ingestAllFeeds = internalAction({
       const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
       if (paused) {
         console.log("[ingestion] Pipeline paused — skipping ingestAllFeeds");
+        await ctx.runMutation(internal.pipeline.insertRunLog, {
+          jobName: "ingestAllFeeds",
+          runId,
+          startedAt,
+          finishedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          status: "skipped",
+          counters: {},
+          gauges: { reason: "pipeline_paused" },
+          metadata: {},
+        });
         return { totalInserted: 0, feedsProcessed: 0, failedFeeds: 0 };
       }
 
@@ -1441,11 +1465,56 @@ export const ingestAllFeeds = internalAction({
         );
       }
 
+      const insertedTotal = totalInserted + retryInserted;
+      if (insertedTotal > 0) {
+        await ctx.scheduler.runAfter(
+          60_000,
+          internal.enrichmentNode.enrichUnprocessedArticles,
+          {},
+        );
+      }
+
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestAllFeeds",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: failedFeeds.length > 0 ? "degraded" : "ok",
+        counters: {
+          feedsProcessed: results.length,
+          failedFeeds: failedFeeds.length,
+          insertedArticles: insertedTotal,
+          retryInsertedArticles: retryInserted,
+        },
+        gauges: {
+          scheduledEnrichment: insertedTotal > 0,
+        },
+        metadata: {},
+      });
+
       return {
-        totalInserted: totalInserted + retryInserted,
+        totalInserted: insertedTotal,
         feedsProcessed: results.length,
         failedFeeds: failedFeeds.length,
       };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestAllFeeds",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        errorMessage,
+        counters: {},
+        gauges: {},
+        metadata: {},
+      });
+      throw error;
     } finally {
       try {
         await ctx.runMutation(internal.ingestion.releasePipelineLock, {

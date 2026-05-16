@@ -31,8 +31,8 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** How many articles to enrich per cron run (cost control) */
-const BATCH_SIZE = 50;
+/** How many articles to enrich per cron run (cost control). */
+const BATCH_SIZE = 40;
 
 /** How long a claimed article can remain processing before another run retries it. */
 const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
@@ -1065,10 +1065,23 @@ export const enrichUnprocessedArticles = internalAction({
     error?: string;
     skipped: boolean;
   }> => {
+    const startedAt = Date.now();
+    const runId = randomUUID();
     // Kill-switch: skip entire run when pipeline is paused
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
       console.log("[enrichment] Pipeline paused — skipping enrichment");
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "enrichUnprocessedArticles",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: { reason: "pipeline_paused" },
+        metadata: {},
+      });
       return { enriched: 0, failed: 0, skipped: true };
     }
 
@@ -1078,10 +1091,23 @@ export const enrichUnprocessedArticles = internalAction({
       console.warn(
         `[enrichment] AI budget exhausted ($${budget.spentUsd}/$${budget.dailyLimitUsd}). Skipping.`,
       );
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "enrichUnprocessedArticles",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "skipped",
+        counters: {},
+        gauges: {
+          reason: "ai_budget_exhausted",
+          spentUsd: budget.spentUsd,
+          dailyLimitUsd: budget.dailyLimitUsd,
+        },
+        metadata: {},
+      });
       return { enriched: 0, failed: 0, skipped: true };
     }
-
-    const runId = randomUUID();
 
     // 1. Atomically claim unprocessed or expired-lease articles for this run.
     const articles = await ctx.runMutation(
@@ -1095,15 +1121,76 @@ export const enrichUnprocessedArticles = internalAction({
 
     if (articles.length === 0) {
       console.log("[enrichment] No unprocessed articles to enrich");
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "enrichUnprocessedArticles",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "ok",
+        counters: { claimedArticles: 0, enrichedArticles: 0, failedArticles: 0 },
+        gauges: { scheduledClustering: false },
+        metadata: {},
+      });
       return { enriched: 0, failed: 0, skipped: false };
     }
 
     try {
       const result = await runEnrichmentBatch(ctx, articles, runId);
+      if (result.enriched > 0) {
+        await ctx.scheduler.runAfter(
+          90_000,
+          internal.clustering.clusterEnrichedArticles,
+          {},
+        );
+      }
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "enrichUnprocessedArticles",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status:
+          result.error !== undefined
+            ? "error"
+            : result.failed > 0
+              ? "degraded"
+              : "ok",
+        errorMessage: result.error,
+        counters: {
+          claimedArticles: articles.length,
+          enrichedArticles: result.enriched,
+          failedArticles: result.failed,
+          tokensUsed: result.tokensUsed ?? 0,
+        },
+        gauges: {
+          scheduledClustering: result.enriched > 0,
+          failureRatio:
+            articles.length > 0 ? result.failed / articles.length : 0,
+        },
+        metadata: {},
+      });
       return { ...result, skipped: false };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error(`[enrichment] Batch embedding failed: ${message}`);
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "enrichUnprocessedArticles",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        errorMessage: message,
+        counters: {
+          claimedArticles: articles.length,
+          enrichedArticles: 0,
+          failedArticles: articles.length,
+        },
+        gauges: { scheduledClustering: false },
+        metadata: {},
+      });
 
       // Don't discard articles on transient API errors — they'll be retried next run
       return {
