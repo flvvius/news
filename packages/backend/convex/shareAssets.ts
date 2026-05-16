@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { getConfig } from "./config";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -7,6 +8,8 @@ import { internalMutation, internalQuery } from "./_generated/server";
 export const SHARE_IMAGE_WIDTH = 1080;
 export const SHARE_IMAGE_HEIGHT = 566;
 const SHARE_RENDER_VERSION = "v8-resvg-js-inter-ttf-jpeg-1080";
+const EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY =
+  "event_share_asset_generation_enabled";
 
 export type EventShareRenderData = {
   title: string;
@@ -136,6 +139,15 @@ export const ensureEventShareAssetQueued = internalMutation({
     renderSignature: v.string(),
   },
   handler: async (ctx, { eventId, renderSignature }) => {
+    const enabled = await getConfig(
+      ctx,
+      EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY,
+      false,
+    );
+    if (!enabled) {
+      return { queued: false as const, reason: "disabled" as const };
+    }
+
     const existing = await dedupeEventShareAssets(ctx, eventId);
 
     if (

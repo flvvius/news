@@ -409,7 +409,10 @@ export const generateEventShareAsset = internalAction({
     ctx,
     { eventId, renderSignature },
   ): Promise<
-    | { generated: false; reason: "stale_or_missing" | "render_failed" }
+    | {
+        generated: false;
+        reason: "disabled" | "stale_or_missing" | "render_failed";
+      }
     | {
         generated: true;
       storageId: Id<"_storage">;
@@ -417,6 +420,13 @@ export const generateEventShareAsset = internalAction({
         bytes: number;
       }
   > => {
+    const config = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["event_share_asset_generation_enabled"],
+    });
+    if (config.event_share_asset_generation_enabled !== true) {
+      return { generated: false as const, reason: "disabled" };
+    }
+
     const [data, asset]: [
       EventShareRenderData | null,
       Doc<"eventShareAssets"> | null,

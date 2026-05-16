@@ -498,7 +498,9 @@ export default defineSchema({
       v.literal("archived"),
     ),
     archivedAt: v.optional(v.number()),
-    archivedReason: v.optional(v.literal("stale_singleton")),
+    archivedReason: v.optional(
+      v.union(v.literal("stale_singleton"), v.literal("stale_processing")),
+    ),
     latestEmbeddingVersion: v.optional(v.number()),
     needsReenrichment: v.optional(v.boolean()),
     enrichmentRunId: v.optional(v.string()),

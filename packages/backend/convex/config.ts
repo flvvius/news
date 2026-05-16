@@ -5,7 +5,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 
 export const TOPIC_INFERENCE_BOUNDS = {
@@ -25,7 +25,7 @@ export const TOPIC_INFERENCE_BOUNDS = {
  * The value is stored as JSON; `T` is the expected parsed type.
  */
 export async function getConfig<T>(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   key: string,
   fallback: T,
 ): Promise<T> {
@@ -587,6 +587,12 @@ export const seedDefaults = internalMutation({
         value: 12,
         description:
           "Maximum number of recent articles included in one event summarization prompt.",
+      },
+      {
+        key: "event_share_asset_generation_enabled",
+        value: false,
+        description:
+          "When true, published events automatically generate custom social preview images in Convex file storage.",
       },
       {
         key: "article_fact_extraction_enabled",
