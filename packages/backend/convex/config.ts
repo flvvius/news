@@ -744,6 +744,12 @@ export const seedDefaults = internalMutation({
           "Minimum model confidence required before a detected event claim is stored.",
       },
       {
+        key: "claim_analysis_backfill_enabled",
+        value: false,
+        description:
+          "One-time maintenance guard for claim coverage backfills. Keep false in production unless an operator explicitly enables a bounded backfill.",
+      },
+      {
         key: "clustering_min_similarity",
         value: 0.74,
         description:
@@ -880,6 +886,12 @@ export const seedDefaults = internalMutation({
         value: 30,
         description:
           "Number of days to retain detailed vector-search run rows before daily cleanup deletes them.",
+      },
+      {
+        key: "backfill_enabled",
+        value: false,
+        description:
+          "Global one-time maintenance guard. Backfill actions should remain disabled in production unless explicitly enabled with a short-lived operator reason.",
       },
       {
         key: "clustering_vector_search_limit",

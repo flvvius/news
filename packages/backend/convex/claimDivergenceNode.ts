@@ -751,6 +751,7 @@ export const processStaleEventClaims = internalAction({
         "claim_analysis_min_articles",
         "claim_analysis_min_sources",
         "claim_analysis_stale_after_ms",
+        "claim_analysis_backfill_enabled",
       ],
     });
 
@@ -798,10 +799,12 @@ export const processStaleEventClaims = internalAction({
       };
     }
 
-    await ctx.runMutation(internal.claimDivergence.backfillEventClaimCoverage, {
-      limit: settings.scanLimit,
-      includeExisting: false,
-    });
+    if (safeBoolean(cfg.claim_analysis_backfill_enabled, false)) {
+      await ctx.runMutation(internal.claimDivergence.backfillEventClaimCoverage, {
+        limit: settings.scanLimit,
+        includeExisting: false,
+      });
+    }
 
     const candidateScan = await ctx.runQuery(
       internal.claimDivergence.getStaleEventsForClaimAnalysis,

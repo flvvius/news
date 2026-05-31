@@ -2107,7 +2107,22 @@ export const backfillEventCandidacy = internalAction({
     processed: number;
     continueCursor: string | null;
     isDone: boolean;
+    reason?: string;
   }> => {
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["backfill_enabled"],
+    });
+    if (cfg.backfill_enabled !== true) {
+      console.log(
+        "[clustering] backfillEventCandidacy skipped: backfill_enabled is false",
+      );
+      return {
+        processed: 0,
+        continueCursor: cursor ?? null,
+        isDone: true,
+        reason: "backfill_disabled",
+      };
+    }
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 100), 1), 200);
     const page: PaginationResult<Doc<"events">> = await ctx.runQuery(
       internal.clustering.getEventsForCandidacyBackfill,
@@ -2167,6 +2182,8 @@ export const backfillEventCandidacy = internalAction({
         internal.clustering.upsertEventCandidacyForBackfill,
         {
           eventId: event._id,
+          title: event.title,
+          slug: event.slug,
           status: event.status,
           firstPublishedAt: event.firstPublishedAt,
           lastArticleAt,
@@ -2219,7 +2236,22 @@ export const backfillEventEmbeddingBuckets = internalAction({
     processed: number;
     continueCursor: string | null;
     isDone: boolean;
+    reason?: string;
   }> => {
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["backfill_enabled"],
+    });
+    if (cfg.backfill_enabled !== true) {
+      console.log(
+        "[clustering] backfillEventEmbeddingBuckets skipped: backfill_enabled is false",
+      );
+      return {
+        processed: 0,
+        continueCursor: cursor ?? null,
+        isDone: true,
+        reason: "backfill_disabled",
+      };
+    }
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 100), 1), 200);
     const page: PaginationResult<Doc<"events">> = await ctx.runQuery(
       internal.clustering.getEventsForCandidacyBackfill,
@@ -2315,6 +2347,8 @@ export const patchEventCountsForBackfill = internalMutation({
 export const upsertEventCandidacyForBackfill = internalMutation({
   args: {
     eventId: v.id("events"),
+    title: v.string(),
+    slug: v.string(),
     status: v.union(v.literal("processing"), v.literal("published")),
     firstPublishedAt: v.number(),
     lastArticleAt: v.number(),
@@ -2336,6 +2370,8 @@ export const upsertEventCandidacyForBackfill = internalMutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...buildCandidacySnapshotFields(args),
+        title: args.title,
+        slug: args.slug,
         titleTokens: args.titleTokens,
         evidenceTokens: args.evidenceTokens,
         factTokens: args.factTokens,
@@ -2348,6 +2384,8 @@ export const upsertEventCandidacyForBackfill = internalMutation({
 
     await ctx.db.insert("eventCandidacy", {
       eventId: args.eventId,
+      title: args.title,
+      slug: args.slug,
       ...buildCandidacySnapshotFields(args),
       titleTokens: args.titleTokens,
       evidenceTokens: args.evidenceTokens,
@@ -2393,16 +2431,22 @@ export const syncEmbeddingStatusForBackfill = internalMutation({
   },
 });
 
-function buildCandidateQueryResult(args: {
-  event: Doc<"events">;
+type CandidacyWithProjection = Doc<"eventCandidacy"> & {
+  title?: string;
+  slug?: string;
+};
+
+function projectClusterCandidate(args: {
+  title: string;
+  slug: string;
   embeddingRow: Doc<"eventEmbeddings">;
-  candidacy: Doc<"eventCandidacy">;
+  candidacy: CandidacyWithProjection;
 }): ClusterCandidateQueryResult {
   return {
-    eventId: args.event._id,
+    eventId: args.candidacy.eventId,
     embeddingId: args.embeddingRow._id,
-    title: args.event.title,
-    slug: args.event.slug,
+    title: args.title,
+    slug: args.slug,
     firstPublishedAt: args.candidacy.firstPublishedAt,
     lastArticleAt: args.candidacy.lastArticleAt,
     articleCount: args.candidacy.articleCount,
@@ -2413,13 +2457,7 @@ function buildCandidateQueryResult(args: {
     factTokens: args.candidacy.factTokens,
     entityTokens: args.candidacy.entityTokens,
     topicSlugs: args.candidacy.topicSlugs,
-    perspectiveSummaries: args.event.perspectiveSummaries,
-    globalImpact: args.event.globalImpact,
-    imageUrl: args.event.imageUrl,
-    perspectiveSource: args.event.perspectiveSource,
-    lastSummarizedAt: args.event.lastSummarizedAt,
-    lastSummarySignature: args.event.lastSummarySignature,
-    creationTime: args.event._creationTime,
+    creationTime: args.candidacy._creationTime,
   };
 }
 
@@ -2460,15 +2498,20 @@ export const getRecentClusterCandidates = internalQuery({
     const candidates = (
       await Promise.all(
         rows.map(async (candidacy) => {
+          const projected = candidacy as CandidacyWithProjection;
           const [event, embeddingRow] = await Promise.all([
-            ctx.db.get(candidacy.eventId),
+            projected.title && projected.slug
+              ? Promise.resolve(null)
+              : ctx.db.get(candidacy.eventId),
             ctx.db
               .query("eventEmbeddings")
               .withIndex("by_event", (q) => q.eq("eventId", candidacy.eventId))
               .first(),
           ]);
 
-          if (!event) {
+          const title = projected.title ?? event?.title;
+          const slug = projected.slug ?? event?.slug;
+          if (!title || !slug) {
             missingEvents++;
             return null;
           }
@@ -2477,10 +2520,11 @@ export const getRecentClusterCandidates = internalQuery({
             return null;
           }
 
-          return buildCandidateQueryResult({
-            event,
+          return projectClusterCandidate({
+            title,
+            slug,
             embeddingRow,
-            candidacy,
+            candidacy: projected,
           });
         }),
       )
@@ -2662,14 +2706,6 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
           .map((row) => String(row.eventId)),
       ),
     );
-    const eventRows = await Promise.all(
-      uniqueEventIds.map((eventId) => ctx.db.get(eventId as Id<"events">)),
-    );
-    const eventsById = new Map<string, Doc<"events">>();
-    for (const row of eventRows) {
-      if (row) eventsById.set(String(row._id), row);
-    }
-
     const candidacyRows = await Promise.all(
       uniqueEventIds.map((eventId) =>
         ctx.db
@@ -2694,25 +2730,33 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
       const embeddingRow = embeddingsById.get(String(match.embeddingId));
       if (!embeddingRow) continue;
 
-      const event = eventsById.get(String(embeddingRow.eventId));
-      if (!event) {
-        missingEvents++;
-        continue;
-      }
-
-      const eventKey = String(event._id);
+      const eventKey = String(embeddingRow.eventId);
       if (seenEventIds.has(eventKey)) continue;
       seenEventIds.add(eventKey);
 
-      const candidacy = candidaciesByEventId.get(eventKey);
+      const candidacy = candidaciesByEventId.get(eventKey) as
+        | CandidacyWithProjection
+        | undefined;
       if (!candidacy) {
         missingCandidacy++;
         continue;
       }
 
+      const fallbackEvent =
+        candidacy.title && candidacy.slug
+          ? null
+          : await ctx.db.get(embeddingRow.eventId);
+      const title = candidacy.title ?? fallbackEvent?.title;
+      const slug = candidacy.slug ?? fallbackEvent?.slug;
+      if (!title || !slug) {
+        missingEvents++;
+        continue;
+      }
+
       candidates.push({
-        ...buildCandidateQueryResult({
-          event,
+        ...projectClusterCandidate({
+          title,
+          slug,
           embeddingRow,
           candidacy,
         }),
@@ -2755,10 +2799,11 @@ export const getClusterCandidatesByEventIds = internalQuery({
 
         if (!event || !candidacy || !embeddingRow) return null;
 
-        return buildCandidateQueryResult({
-          event,
+        return projectClusterCandidate({
+          title: (candidacy as CandidacyWithProjection).title ?? event.title,
+          slug: (candidacy as CandidacyWithProjection).slug ?? event.slug,
           embeddingRow,
-          candidacy,
+          candidacy: candidacy as CandidacyWithProjection,
         });
       }),
     );
@@ -2836,6 +2881,8 @@ export const createEventFromArticle = internalMutation({
     );
     await ctx.db.insert("eventCandidacy", {
       eventId,
+      title,
+      slug,
       ...buildCandidacySnapshotFields({
         status: initialStatus,
         firstPublishedAt: publishedAt,
@@ -3063,6 +3110,8 @@ export const attachArticleToEvent = internalMutation({
           sourceCount: nextSourceCount,
           sourceIds: Array.from(nextSourceIds),
         }),
+        title: event.title,
+        slug: event.slug,
         titleTokens:
           candidacy.titleTokens.length > 0
             ? candidacy.titleTokens
@@ -3091,6 +3140,8 @@ export const attachArticleToEvent = internalMutation({
       );
       await ctx.db.insert("eventCandidacy", {
         eventId,
+        title: event.title,
+        slug: event.slug,
         ...buildCandidacySnapshotFields({
           status: nextStatus,
           firstPublishedAt: nextFirstPublishedAt,
@@ -4423,6 +4474,8 @@ export const mergeEvents = internalMutation({
           sourceCount: mergedSourceCount,
           sourceIds: Array.from(mergedSourceIds),
         }),
+        title: mergedTitle,
+        slug: keepEvent.slug,
         titleTokens: [...mergedTitleTokens],
         evidenceTokens: mergedEvidenceTokens,
         factTokens: mergedFactTokens,
@@ -4433,6 +4486,8 @@ export const mergeEvents = internalMutation({
     } else {
       await ctx.db.insert("eventCandidacy", {
         eventId: keepEventId,
+        title: mergedTitle,
+        slug: keepEvent.slug,
         ...buildCandidacySnapshotFields({
           status: mergedStatus,
           firstPublishedAt: mergedFirstPublishedAt,
@@ -4515,15 +4570,73 @@ export const mergeEvents = internalMutation({
       await ctx.db.delete(row._id);
     }
 
+    const keepHasAiPerspective =
+      keepEvent.perspectiveSource === "ai" || Boolean(keepEvent.lastSummarizedAt);
+    const removeHasAiPerspective =
+      removeEvent.perspectiveSource === "ai" ||
+      Boolean(removeEvent.lastSummarizedAt);
+    const resolvedMergedPerspectiveSummaries =
+      mergedPerspectiveSummaries ??
+      (keepHasAiPerspective && !removeHasAiPerspective
+        ? keepEvent.perspectiveSummaries
+        : removeHasAiPerspective && !keepHasAiPerspective
+          ? removeEvent.perspectiveSummaries
+          : {
+              center: preferLongerString(
+                keepEvent.perspectiveSummaries?.center,
+                removeEvent.perspectiveSummaries?.center,
+              ),
+              left: preferLongerString(
+                keepEvent.perspectiveSummaries?.left,
+                removeEvent.perspectiveSummaries?.left,
+              ),
+              right: preferLongerString(
+                keepEvent.perspectiveSummaries?.right,
+                removeEvent.perspectiveSummaries?.right,
+              ),
+            });
+    const normalizedMergedPerspectiveSummaries =
+      resolvedMergedPerspectiveSummaries?.center ||
+      resolvedMergedPerspectiveSummaries?.left ||
+      resolvedMergedPerspectiveSummaries?.right
+        ? resolvedMergedPerspectiveSummaries
+        : undefined;
+    const resolvedMergedPerspectiveSource =
+      mergedPerspectiveSource ??
+      (keepHasAiPerspective || removeHasAiPerspective
+        ? "ai"
+        : normalizedMergedPerspectiveSummaries
+          ? "heuristic"
+          : undefined);
+    const resolvedMergedGlobalImpact =
+      mergedGlobalImpact ??
+      (keepHasAiPerspective && !removeHasAiPerspective
+        ? keepEvent.globalImpact
+        : removeHasAiPerspective && !keepHasAiPerspective
+          ? removeEvent.globalImpact
+          : preferLongerString(keepEvent.globalImpact, removeEvent.globalImpact));
+    const resolvedMergedImageUrl =
+      mergedImageUrl ?? keepEvent.imageUrl ?? removeEvent.imageUrl;
+    const resolvedMergedLastSummarizedAt =
+      mergedLastSummarizedAt ??
+      ((keepEvent.lastSummarizedAt ?? 0) >= (removeEvent.lastSummarizedAt ?? 0)
+        ? keepEvent.lastSummarizedAt
+        : removeEvent.lastSummarizedAt);
+    const resolvedMergedLastSummarySignature =
+      mergedLastSummarySignature ??
+      ((keepEvent.lastSummarizedAt ?? 0) >= (removeEvent.lastSummarizedAt ?? 0)
+        ? keepEvent.lastSummarySignature ?? removeEvent.lastSummarySignature
+        : removeEvent.lastSummarySignature ?? keepEvent.lastSummarySignature);
+
     const summaryMetadata =
-      mergedPerspectiveSource === "ai"
+      resolvedMergedPerspectiveSource === "ai"
         ? {
             lastSummarizedAt:
-              mergedLastSummarizedAt ??
+              resolvedMergedLastSummarizedAt ??
               keepEvent.lastSummarizedAt ??
               removeEvent.lastSummarizedAt,
             lastSummarySignature:
-              mergedLastSummarySignature ??
+              resolvedMergedLastSummarySignature ??
               keepEvent.lastSummarySignature ??
               removeEvent.lastSummarySignature,
           }
@@ -4537,10 +4650,10 @@ export const mergeEvents = internalMutation({
       articleCount: mergedArticleCount,
       sourceCount: mergedSourceCount,
       sourceIds: Array.from(mergedSourceIds),
-      perspectiveSummaries: mergedPerspectiveSummaries,
-      perspectiveSource: mergedPerspectiveSource,
-      globalImpact: mergedGlobalImpact,
-      imageUrl: mergedImageUrl,
+      perspectiveSummaries: normalizedMergedPerspectiveSummaries,
+      perspectiveSource: resolvedMergedPerspectiveSource,
+      globalImpact: resolvedMergedGlobalImpact,
+      imageUrl: resolvedMergedImageUrl,
       ...(summaryMetadata?.lastSummarizedAt !== undefined && {
         lastSummarizedAt: summaryMetadata.lastSummarizedAt,
       }),
@@ -4582,7 +4695,8 @@ export const mergeNearDuplicateEvents = internalAction({
 
     if (!lock.acquired) {
       console.log(
-        `[clustering] mergeNearDuplicateEvents already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
+        `[clustering] mergeNearDuplicateEvents already running
+         (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
       );
       return { mergedPairs: 0, examinedPairs: 0, skipped: 0 };
     }

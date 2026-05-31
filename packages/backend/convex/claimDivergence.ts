@@ -8,6 +8,7 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
+import { getConfig } from "./config";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { sourceBiasLabel } from "./lib/sourceBias";
 
@@ -80,7 +81,12 @@ function eventClaimCoverageLooksStale(event: Doc<"events">): boolean {
 async function backfillClaimCoverage(
   ctx: MutationCtx,
   args: { limit?: number; includeExisting?: boolean },
-) {
+): Promise<{
+  inspected: number;
+  refreshed: number;
+  skipped: number;
+  reason: string | null;
+}> {
   const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
   const scanLimit = Math.min(1000, Math.max(limit * 5, limit));
   const events = await ctx.db
@@ -106,7 +112,7 @@ async function backfillClaimCoverage(
     refreshed++;
   }
 
-  return { inspected, refreshed, skipped };
+  return { inspected, refreshed, skipped, reason: null };
 }
 
 export const getStaleEventsForClaimAnalysis = internalQuery({
@@ -192,6 +198,19 @@ export const backfillEventClaimCoverage = internalMutation({
     includeExisting: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const enabled = await getConfig(
+      ctx,
+      "claim_analysis_backfill_enabled",
+      false,
+    );
+    if (!enabled) {
+      return {
+        inspected: 0,
+        refreshed: 0,
+        skipped: 0,
+        reason: "claim_analysis_backfill_disabled",
+      };
+    }
     return await backfillClaimCoverage(ctx, args);
   },
 });

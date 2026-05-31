@@ -1,5 +1,5 @@
-import { ConvexHttpClient } from "convex/browser";
 import { createFileRoute } from "@tanstack/react-router";
+import { ConvexHttpClient } from "convex/browser";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { absoluteSiteUrl } from "@/lib/seo";
 
@@ -25,8 +25,18 @@ function toSitemapUrl(pathname: string, lastModifiedAt?: number) {
 function buildSitemapHeaders() {
   return {
     "content-type": "application/xml; charset=utf-8",
-    "cache-control": "public, max-age=900",
+    "cache-control": "public, max-age=3600, s-maxage=86400",
   };
+}
+
+function buildFallbackSitemapXml() {
+  const entries = [toSitemapUrl("/"), toSitemapUrl("/feed")];
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...entries,
+    "</urlset>",
+  ].join("");
 }
 
 export const Route = createFileRoute("/sitemap.xml")({
@@ -39,28 +49,8 @@ export const Route = createFileRoute("/sitemap.xml")({
         }),
       GET: async () => {
         const client = new ConvexHttpClient(convexUrl);
-        const [events, sources] = await Promise.all([
-          client.query(api.events.getSitemapPublishedEvents, { limit: 5000 }),
-          client.query(api.sources.getSitemapSources, { limit: 5000 }),
-        ]);
-
-        const entries = [
-          toSitemapUrl("/"),
-          toSitemapUrl("/feed"),
-          ...events.map((event) =>
-            toSitemapUrl(`/event/${event.slug}`, event.lastModifiedAt),
-          ),
-          ...sources.map((source) =>
-            toSitemapUrl(`/source/${source.sourceId}`, source.lastModifiedAt),
-          ),
-        ];
-
-        const xml = [
-          '<?xml version="1.0" encoding="UTF-8"?>',
-          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-          ...entries,
-          "</urlset>",
-        ].join("");
+        const snapshot = await client.query(api.sitemap.getPublicSitemapXml, {});
+        const xml = snapshot?.xml ?? buildFallbackSitemapXml();
 
         return new Response(xml, {
           status: 200,

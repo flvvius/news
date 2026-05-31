@@ -156,6 +156,18 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
+// Vector Search Reservation Cleanup — Hourly
+// ---------------------------------------------------------------------------
+// Releases expired vector-search reservations outside the reservation hot path
+// so every semantic lookup no longer scans stale reservations first.
+crons.interval(
+  "cleanup-vector-search-reservations",
+  { hours: 1 },
+  internal.vectorSearchBudget.cleanupExpiredVectorSearchReservations,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Vector Search Run Retention — Daily
 // ---------------------------------------------------------------------------
 // Keeps detailed vector-search telemetry bounded; daily totals remain intact.
@@ -163,6 +175,18 @@ crons.daily(
   "cleanup-vector-search-runs",
   { hourUTC: 4, minuteUTC: 45 },
   internal.vectorSearchBudget.cleanupVectorSearchRuns,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Static Sitemap Snapshot — Daily
+// ---------------------------------------------------------------------------
+// Precomputes sitemap XML so crawler hits do not perform live 5k event/source
+// queries through the web route.
+crons.daily(
+  "rebuild-public-sitemap-snapshot",
+  { hourUTC: 3, minuteUTC: 20 },
+  internal.sitemap.rebuildPublicSitemapSnapshot,
   {},
 );
 

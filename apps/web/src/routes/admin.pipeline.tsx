@@ -83,6 +83,10 @@ function AdminPipelineRoute() {
   const archived = useQuery(api.pipeline.getArchivedArticleStats, {});
   const alerts = useQuery(api.pipeline.getActiveAlerts, {});
   const doctor = useQuery(api.pipeline.getPipelineDoctor, {});
+  const ioRollups = useQuery(api.pipeline.getPipelineIoRollups, {
+    sinceHours: 168,
+    limit: 50,
+  });
   const triggerJob = useMutation(api.pipeline.triggerPipelineJob);
   const acknowledgeAlert = useMutation(api.pipeline.acknowledgeAlert);
   const setObservedQgb = useMutation(api.pipeline.setVectorObservedQgb);
@@ -100,7 +104,8 @@ function AdminPipelineRoute() {
     budget === undefined ||
     archived === undefined ||
     alerts === undefined ||
-    doctor === undefined;
+    doctor === undefined ||
+    ioRollups === undefined;
 
   const filteredLogs = useMemo(() => {
     const rows = health?.latest ?? [];
@@ -469,6 +474,47 @@ function AdminPipelineRoute() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Pipeline I/O Rollups</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="py-2">Job</th>
+                  <th className="py-2">Bucket</th>
+                  <th className="py-2">Reads</th>
+                  <th className="py-2">Writes</th>
+                  <th className="py-2">Vector</th>
+                  <th className="py-2">Runs</th>
+                  <th className="py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ioRollups.map((row) => (
+                  <tr
+                    key={`${row.jobName}-${row.bucketStart}`}
+                    className="border-t border-border"
+                  >
+                    <td className="py-2 font-medium">{row.jobName}</td>
+                    <td className="py-2">{formatTime(row.bucketStart)}</td>
+                    <td className="py-2">{formatNumber(row.readRows)}</td>
+                    <td className="py-2">{formatNumber(row.writeRows)}</td>
+                    <td className="py-2">
+                      {formatNumber(row.vectorSearches)}
+                    </td>
+                    <td className="py-2">{formatNumber(row.runCount)}</td>
+                    <td className="py-2">
+                      <StatusChip status={row.lastStatus} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
 
         <Card className="mt-4">
           <CardHeader>

@@ -48,6 +48,7 @@ import type * as seeds from "../seeds.js";
 import type * as shareAssets from "../shareAssets.js";
 import type * as shareAssetsNode from "../shareAssetsNode.js";
 import type * as singletonCleanup from "../singletonCleanup.js";
+import type * as sitemap from "../sitemap.js";
 import type * as sources from "../sources.js";
 import type * as summarization from "../summarization.js";
 import type * as summarizationNode from "../summarizationNode.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   shareAssets: typeof shareAssets;
   shareAssetsNode: typeof shareAssetsNode;
   singletonCleanup: typeof singletonCleanup;
+  sitemap: typeof sitemap;
   sources: typeof sources;
   summarization: typeof summarization;
   summarizationNode: typeof summarizationNode;

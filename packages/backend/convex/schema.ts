@@ -61,7 +61,8 @@ export default defineSchema({
     rollingBiasUpdatedAt: v.optional(v.number()),
   })
     .index("by_domain", ["domain"])
-    .index("by_mbfc_last_checked", ["mbfcLastChecked"]),
+    .index("by_mbfc_last_checked", ["mbfcLastChecked"])
+    .index("by_rolling_bias_updated_at", ["rollingBiasUpdatedAt"]),
 
   // =========================================================================
   // 3. EVENTS (The Clusters/Stories)
@@ -161,6 +162,8 @@ export default defineSchema({
   // =========================================================================
   eventCandidacy: defineTable({
     eventId: v.id("events"),
+    title: v.optional(v.string()),
+    slug: v.optional(v.string()),
     status: v.union(v.literal("processing"), v.literal("published")),
     firstPublishedAt: v.number(),
     lastArticleAt: v.number(),
@@ -231,6 +234,17 @@ export default defineSchema({
     .searchIndex("by_title", {
       searchField: "title",
     }),
+
+  // =========================================================================
+  // 3d.1. PUBLIC SNAPSHOTS (Static artifacts for crawler/anonymous hot paths)
+  // =========================================================================
+  publicSitemapSnapshots: defineTable({
+    key: v.string(),
+    xml: v.string(),
+    urlCount: v.number(),
+    generatedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 
   // =========================================================================
   // 3e. EVENT SHARE ASSETS (Cold path — social images stored outside hot reads)
@@ -713,6 +727,7 @@ export default defineSchema({
   ingestionMeta: defineTable({
     feedUrl: v.string(),
     sourceId: v.id("sources"), // Every feed belongs to a source
+    lastFeedFingerprint: v.optional(v.string()),
     lastIngestedAt: v.optional(v.number()),
     lastSuccessAt: v.optional(v.number()),
     consecutiveFailures: v.number(),
@@ -898,6 +913,15 @@ export default defineSchema({
     .index("by_job_started_at", ["jobName", "startedAt"])
     .index("by_status_started_at", ["status", "startedAt"])
     .index("by_created_at", ["createdAt"]),
+
+  pipelineAdminRollups: defineTable({
+    key: v.string(),
+    payloadJson: v.string(),
+    generatedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_generated_at", ["generatedAt"]),
 
   pipelineAlerts: defineTable({
     severity: v.union(

@@ -7,13 +7,11 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { callOpenAI } from "./lib/aiCall";
-import { reorderChoicesForQuestion } from "./lib/quizHelpers";
 
 const DEFAULT_ENABLED = true;
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TARGET_QUESTIONS = 5;
 const DEFAULT_MIN_QUESTIONS = 3;
-const QUIZ_PROMPT_VERSION = "v2-quality-ux";
 
 const QUIZ_JSON_SCHEMA = {
   name: "daily_news_quiz",
@@ -24,7 +22,7 @@ const QUIZ_JSON_SCHEMA = {
     properties: {
       questions: {
         type: "array",
-        minItems: 0,
+        minItems: 3,
         maxItems: 5,
         items: {
           type: "object",
@@ -41,7 +39,6 @@ const QUIZ_JSON_SCHEMA = {
               ],
             },
             eventSlug: { type: "string" },
-            eventTitle: { type: "string" },
             sourceNames: {
               type: "array",
               items: { type: "string" },
@@ -94,7 +91,6 @@ const QUIZ_JSON_SCHEMA = {
             "id",
             "type",
             "eventSlug",
-            "eventTitle",
             "sourceNames",
             "sourceUrl",
             "groundingClaim",
@@ -175,7 +171,6 @@ type RawQuizQuestion = {
     | "perspective_match"
     | "coverage_gap";
   eventSlug: string;
-  eventTitle: string;
   sourceNames: string[];
   sourceUrl: string;
   groundingClaim: string;
@@ -243,8 +238,6 @@ function safeInteger(
 
 // Heuristic threshold for matching paraphrased claims without over-matching.
 const TOKEN_OVERLAP_THRESHOLD = 0.45;
-const SENSITIVE_QUIZ_PATTERN =
-  /\b(accused|arrest|arrested|assault|attack|attacked|casualties|casualty|charged|charges|conflict|court|criminal|dead|death|deaths|died|indictment|killed|lawsuit|legal|murder|suspect|trial|victim|victims|war|wounded)\b/i;
 
 function normalizeText(value: string): string {
   return value
@@ -275,60 +268,6 @@ function tokenOverlap(left: string, right: string): number {
   return shared / Math.min(leftTokens.size, rightTokens.size);
 }
 
-function ensureQuestionMentionsEvent(
-  question: { en: string; ro: string },
-  eventTitle: string,
-) {
-  const normalizedTitle = normalizeText(eventTitle);
-  const titleMentioned =
-    normalizeText(question.en).includes(normalizedTitle) ||
-    normalizeText(question.ro).includes(normalizedTitle);
-  if (titleMentioned) {
-    return {
-      en: question.en.trim(),
-      ro: question.ro.trim(),
-    };
-  }
-
-  return {
-    en: `About "${eventTitle}": ${question.en.trim()}`,
-    ro: `Despre „${eventTitle}”: ${question.ro.trim()}`,
-  };
-}
-
-function addExplanationContext(args: {
-  explanation: { en: string; ro: string };
-  eventTitle: string;
-  sourceName?: string;
-}) {
-  const sourceClauseEn = args.sourceName
-    ? ` and reporting from ${args.sourceName}`
-    : "";
-  const sourceClauseRo = args.sourceName
-    ? ` și relatările de la ${args.sourceName}`
-    : "";
-
-  return {
-    en: `${args.explanation.en.trim()} This refers to the event "${args.eventTitle}"${sourceClauseEn}.`,
-    ro: `${args.explanation.ro.trim()} Se referă la evenimentul „${args.eventTitle}”${sourceClauseRo}.`,
-  };
-}
-
-function hasSensitiveQuizMaterial(event: QuizGenerationInput["events"][number]) {
-  const text = [
-    event.event.title,
-    event.event.globalImpact ?? "",
-    event.claims.map((claim) => claim.canonicalStatement).join(" "),
-    event.claims
-      .flatMap((claim) => claim.variants.map((variant) => variant.statement))
-      .join(" "),
-    event.articles
-      .flatMap((article) => [article.title, ...article.atomicFacts])
-      .join(" "),
-  ].join(" ");
-  return SENSITIVE_QUIZ_PATTERN.test(text);
-}
-
 function hasGrounding(
   event: QuizGenerationInput["events"][number],
   claim: string,
@@ -355,27 +294,24 @@ function hasGrounding(
 }
 
 function buildInputSignature(input: QuizGenerationInput): string {
-  const payload = {
-    promptVersion: QUIZ_PROMPT_VERSION,
-    events: input.events.map((event) => ({
-      eventId: event.event._id,
-      title: event.event.title,
-      sourceCount: event.event.sourceCount,
-      articleCount: event.event.articleCount,
-      claims: event.claims.map((claim) => ({
-        canonicalStatement: claim.canonicalStatement,
-        status: claim.status,
-        variants: claim.variants.map((variant) => [
-          variant.sourceName,
-          variant.statement,
-        ]),
-      })),
-      facts: event.articles.map((article) => [
-        article.sourceName,
-        article.atomicFacts,
+  const payload = input.events.map((event) => ({
+    eventId: event.event._id,
+    title: event.event.title,
+    sourceCount: event.event.sourceCount,
+    articleCount: event.event.articleCount,
+    claims: event.claims.map((claim) => ({
+      canonicalStatement: claim.canonicalStatement,
+      status: claim.status,
+      variants: claim.variants.map((variant) => [
+        variant.sourceName,
+        variant.statement,
       ]),
     })),
-  };
+    facts: event.articles.map((article) => [
+      article.sourceName,
+      article.atomicFacts,
+    ]),
+  }));
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
@@ -415,32 +351,19 @@ function buildPrompt(input: QuizGenerationInput, targetQuestions: number) {
     system: [
       "You create Biviant's Daily News Quiz from structured, source-attributed news facts.",
       "Every question must be grounded in the provided claims or atomic facts. Do not invent facts, sources, events, or URLs.",
-      "Write calm, neutral, media-literacy questions. Avoid loaded language, sensational framing, and color-coded political labels.",
-      "Produce both English and Romanian for every question. They must be semantic translations of the same stem, choices, explanation, and correct answer.",
-      "Avoid sensitive content: no death tolls, named victims, specific criminal accusations against individuals, ongoing legal cases, or casualty-focused questions.",
+      "Write concise, neutral, media-literacy questions in both English and Romanian.",
+      "Use a calm, nonpartisan tone. Avoid blue/red political language.",
       "Prefer source-attributed facts and claim divergences over trivia.",
-      "Return JSON only, matching the provided schema exactly.",
+      "Return JSON only.",
     ].join("\n"),
     user: [
-      `Create up to ${targetQuestions} quiz questions for UTC date ${input.dateKey}.`,
-      "Question types, use a mix only when supported by the data:",
-      "- claim_attribution: ask which source reported or emphasized a supplied claim, framed neutrally.",
-      "- fact_check: ask whether the supplied source confirms, denies, partially addresses, or does not address a claim. Avoid vague true/false unless the fact is unambiguous.",
-      "- perspective_match: test source framing or source-lean awareness without shaming the reader.",
-      "- coverage_gap: only ask about a fact or claim that is clearly present in one coverage group and absent from others in the supplied data.",
-      "Source selection rules:",
-      "- Prefer atomic facts repeated or confirmed across multiple sources for fact_check.",
-      "- Prefer recent, concrete, source-attributed material from the supplied event data.",
-      "- Skip sensitive events or claims involving conflict, casualties, named victims, specific criminal accusations, or ongoing legal cases.",
-      "Content rules:",
-      "- Each question must clearly name the event title in the stem. No vague pronouns like 'this event'.",
-      "- Each question must include: exact eventSlug, exact eventTitle, at least one sourceName from the event, best sourceUrl from an article, and a groundingClaim copied or tightly paraphrased from the supplied claims/facts.",
-      "- No two questions may reference the same event.",
-      "- Use stable choice ids a, b, c, d. Use 2 choices only for binary fact checks; use 3-4 choices otherwise.",
-      "- Distribute correct answers across choice positions. Do not put the correct answer first by habit.",
-      "- Stems should be 8 to 30 words. Choices should be 2 to 12 words. Explanations should be 1 to 3 sentences.",
-      "- Explanations must reference the supplied source and explain why the correct choice follows from the supplied fact.",
-      "- If the data does not support the requested number of high-quality questions, return fewer. Do not stretch.",
+      `Create ${targetQuestions} quiz questions for UTC date ${input.dateKey}.`,
+      "Use a mix of these types when the data supports them: claim_attribution, fact_check, perspective_match, coverage_gap.",
+      "For fact_check questions, choices should usually be True/False in both languages.",
+      "For perspective_match, test framing or source-lean awareness without shaming the reader.",
+      "For coverage_gap, ask about what appears only in one coverage side when sourceBiasCounts and claim status support it.",
+      "Each question must include: the exact eventSlug, one or more sourceNames from the event, the best sourceUrl from an article, and a groundingClaim copied or tightly paraphrased from the supplied claims/facts.",
+      "Use stable choice ids like a, b, c, d. Make wrong choices plausible but clearly false based on the supplied data.",
       JSON.stringify({ events: compactEvents }),
     ].join("\n\n"),
   };
@@ -455,24 +378,12 @@ function sanitizeQuizQuestions(
     input.events.map((event) => [event.event.slug, event]),
   );
   const usedQuestionText = new Set<string>();
-  const usedEventSlugs = new Set<string>();
   const questionIds = new Set<string>();
   const sanitized = [];
 
   for (const raw of rawQuestions) {
     const event = eventsBySlug.get(raw.eventSlug);
     if (!event) continue;
-    if (usedEventSlugs.has(event.event.slug)) continue;
-    const rawEventTitle = normalizeText(raw.eventTitle);
-    const expectedEventTitle = normalizeText(event.event.title);
-    if (
-      rawEventTitle !== expectedEventTitle &&
-      !rawEventTitle.includes(expectedEventTitle) &&
-      !expectedEventTitle.includes(rawEventTitle)
-    ) {
-      continue;
-    }
-    if (hasSensitiveQuizMaterial(event)) continue;
 
     const questionKey = normalizeText(raw.question.en);
     if (questionKey.length < 12 || usedQuestionText.has(questionKey)) continue;
@@ -512,20 +423,6 @@ function sanitizeQuizQuestions(
     const primaryArticle =
       event.articles.find((article) => article.sourceId === sourceIds[0]) ??
       event.articles[0];
-    const choices: RawQuizQuestion["choices"] = reorderChoicesForQuestion(
-      raw.choices,
-      raw.correctChoiceId,
-      sanitized.length,
-    );
-    const question = ensureQuestionMentionsEvent(
-      raw.question,
-      event.event.title,
-    );
-    const explanation = addExplanationContext({
-      explanation: raw.explanation,
-      eventTitle: event.event.title,
-      sourceName: primarySource?.name?.trim() || undefined,
-    });
 
     const fallbackId: string = `q${sanitized.length + 1}`;
     let questionId: string = candidateId ?? fallbackId;
@@ -539,8 +436,11 @@ function sanitizeQuizQuestions(
     sanitized.push({
       id: questionId,
       type: raw.type,
-      question,
-      choices: choices.map((choice: RawQuizQuestion["choices"][number]) => ({
+      question: {
+        en: raw.question.en.trim(),
+        ro: raw.question.ro.trim(),
+      },
+      choices: raw.choices.map((choice) => ({
         id: choice.id,
         text: {
           en: choice.text.en.trim(),
@@ -548,7 +448,10 @@ function sanitizeQuizQuestions(
         },
       })),
       correctChoiceId: raw.correctChoiceId,
-      explanation,
+      explanation: {
+        en: raw.explanation.en.trim(),
+        ro: raw.explanation.ro.trim(),
+      },
       attribution: {
         eventTitle: event.event.title,
         eventSlug: event.event.slug,
@@ -561,7 +464,6 @@ function sanitizeQuizQuestions(
     });
 
     questionIds.add(questionId);
-    usedEventSlugs.add(event.event.slug);
 
     if (sanitized.length >= targetQuestions) break;
   }
@@ -593,9 +495,8 @@ async function generateDailyQuizForDate(
   const sourceEventIds = input.events.map((event) => event.event._id);
   const usableEvents = input.events.filter(
     (event) =>
-      !hasSensitiveQuizMaterial(event) &&
-      (event.claims.length > 0 ||
-        event.articles.some((article) => article.atomicFacts.length > 0)),
+      event.claims.length > 0 ||
+      event.articles.some((article) => article.atomicFacts.length > 0),
   );
 
   if (usableEvents.length < 2) {
