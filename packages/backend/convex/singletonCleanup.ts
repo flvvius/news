@@ -260,6 +260,7 @@ async function deleteByEventIndex(
   tableName:
     | "eventTopics"
     | "eventEmbeddings"
+    | "eventEmbeddingHot"
     | "eventCandidacy"
     | "publicEventPreviews"
     | "eventShareAssets"
@@ -347,6 +348,7 @@ export const archiveSingletonEvent = internalMutation({
       "eventEmbeddings",
       args.eventId,
     );
+    await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId);
     const deletedCandidacies = await deleteByEventIndex(
       ctx,
       "eventCandidacy",
@@ -421,6 +423,7 @@ export const archiveStaleProcessingEvent = internalMutation({
       "eventEmbeddings",
       args.eventId,
     );
+    await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId);
     const deletedCandidacies = await deleteByEventIndex(
       ctx,
       "eventCandidacy",

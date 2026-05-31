@@ -520,6 +520,53 @@ function buildEventEmbeddingFilterFields(args: {
   };
 }
 
+async function syncHotEventEmbedding(
+  ctx: MutationCtx,
+  args: {
+    eventId: Id<"events">;
+    embeddingId: Id<"eventEmbeddings">;
+    embedding: number[];
+    version: number;
+    status: "processing" | "published";
+    lastArticleAt: number;
+    articleCount: number;
+  },
+) {
+  const filterFields = buildEventEmbeddingFilterFields({
+    status: args.status,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+  });
+  const existingHot = await ctx.db
+    .query("eventEmbeddingHot")
+    .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+    .first();
+  if (filterFields.recentWindowBucket !== "recent_2d") {
+    if (existingHot) await ctx.db.delete(existingHot._id);
+    return undefined;
+  }
+
+  const payload = {
+    embeddingId: args.embeddingId,
+    embedding: args.embedding,
+    version: args.version,
+    status: args.status,
+    recentWindowBucket: filterFields.recentWindowBucket,
+    updatedDayBucket: filterFields.updatedDayBucket,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+    updatedAt: Date.now(),
+  };
+  if (existingHot) {
+    await ctx.db.patch(existingHot._id, payload);
+    return existingHot._id;
+  }
+  return await ctx.db.insert("eventEmbeddingHot", {
+    eventId: args.eventId,
+    ...payload,
+  });
+}
+
 /** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
 function extractDomain(url: string): string {
   try {
@@ -768,6 +815,11 @@ async function recomputeEventEmbeddingForEvent(
     .collect();
 
   if (articles.length === 0) {
+    const hotRows = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of hotRows) await ctx.db.delete(row._id);
     const existingRows = await ctx.db
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -779,8 +831,11 @@ async function recomputeEventEmbeddingForEvent(
       .query("eventCandidacy")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .first();
-    if (candidacy?.embeddingId) {
-      await ctx.db.patch(candidacy._id, { embeddingId: undefined });
+    if (candidacy?.embeddingId || candidacy?.hotEmbeddingId) {
+      await ctx.db.patch(candidacy._id, {
+        embeddingId: undefined,
+        hotEmbeddingId: undefined,
+      });
     }
     return;
   }
@@ -804,6 +859,11 @@ async function recomputeEventEmbeddingForEvent(
     .map((row) => row.embedding);
 
   if (embeddings.length === 0) {
+    const hotRows = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of hotRows) await ctx.db.delete(row._id);
     const existingRows = await ctx.db
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -815,8 +875,11 @@ async function recomputeEventEmbeddingForEvent(
       .query("eventCandidacy")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .first();
-    if (candidacy?.embeddingId) {
-      await ctx.db.patch(candidacy._id, { embeddingId: undefined });
+    if (candidacy?.embeddingId || candidacy?.hotEmbeddingId) {
+      await ctx.db.patch(candidacy._id, {
+        embeddingId: undefined,
+        hotEmbeddingId: undefined,
+      });
     }
     return;
   }
@@ -866,6 +929,15 @@ async function recomputeEventEmbeddingForEvent(
       }),
     });
   }
+  const hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+    eventId,
+    embeddingId,
+    embedding: averagedEmbedding,
+    version: latestVersion,
+    status: event.status,
+    lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+    articleCount: event.articleCount ?? articles.length,
+  });
 
   const candidacy = await ctx.db
     .query("eventCandidacy")
@@ -874,10 +946,12 @@ async function recomputeEventEmbeddingForEvent(
   if (
     candidacy &&
     (candidacy.embeddingId !== embeddingId ||
+      candidacy.hotEmbeddingId !== hotEmbeddingId ||
       candidacy.eventCreationTime !== event._creationTime)
   ) {
     await ctx.db.patch(candidacy._id, {
       embeddingId,
+      hotEmbeddingId,
       eventCreationTime: event._creationTime,
     });
   }

@@ -1,7 +1,9 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { encodeRankedCursor, toFeedEvent } from "./feedSerialization";
 
 export const MAX_PREVIEW_SOURCES = 5;
+const FEED_SNAPSHOT_PAGE_SIZE = 24;
 
 type PublicPreviewCtx = MutationCtx | QueryCtx;
 
@@ -50,7 +52,100 @@ export async function deletePublicEventPreview(
 ) {
   const existing = await getPublicPreviewByEventId(ctx, eventId);
   if (existing) {
+    await deletePreviewTopicRows(ctx, eventId);
     await ctx.db.delete(existing._id);
+  }
+}
+
+async function deletePreviewTopicRows(ctx: MutationCtx, eventId: Id<"events">) {
+  const rows = await ctx.db
+    .query("publicEventPreviewTopics")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  for (const row of rows) await ctx.db.delete(row._id);
+}
+
+async function syncPreviewTopicRows(
+  ctx: MutationCtx,
+  preview: Doc<"publicEventPreviews">,
+) {
+  const existingRows = await ctx.db
+    .query("publicEventPreviewTopics")
+    .withIndex("by_event", (q) => q.eq("eventId", preview.eventId))
+    .collect();
+  const existingByTopic = new Map(
+    existingRows.map((row) => [String(row.topicId), row]),
+  );
+  const nextTopicIds = new Set(preview.topicIds.map((topicId) => String(topicId)));
+
+  for (const topicId of preview.topicIds) {
+    const key = String(topicId);
+    const existing = existingByTopic.get(key);
+    const payload = {
+      previewId: preview._id,
+      lastUpdatedAt: preview.lastUpdatedAt,
+      firstPublishedAt: preview.firstPublishedAt,
+      trendingScore: preview.trendingScore,
+      updatedAt: Date.now(),
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+    } else {
+      await ctx.db.insert("publicEventPreviewTopics", {
+        topicId,
+        eventId: preview.eventId,
+        ...payload,
+      });
+    }
+  }
+
+  for (const row of existingRows) {
+    if (!nextTopicIds.has(String(row.topicId))) {
+      await ctx.db.delete(row._id);
+    }
+  }
+}
+
+function snapshotKey(sort: "recent" | "trending") {
+  return `anonymous:first-page:${sort}`;
+}
+
+// Rebuilds the anonymous trending first-page snapshot. Only the trending feed
+// is snapshotted: it needs an expensive ranked scan on every cold load, whereas
+// the recent feed is a cheap indexed pagination. The payload stores the
+// serialized first page plus the live `ranked:` cursors so the feed query can
+// hand pagination back to the live ranked query instead of dead-ending at the
+// snapshot size. Called from a cron (not on every preview write) to avoid write
+// amplification and contention on this single document.
+export async function rebuildPublicFeedSnapshots(ctx: MutationCtx) {
+  const trending = await ctx.db
+    .query("publicEventPreviews")
+    .withIndex("by_trending_score")
+    .order("desc")
+    .take(FEED_SNAPSHOT_PAGE_SIZE);
+
+  const payloadJson = JSON.stringify({
+    items: trending.map(toFeedEvent),
+    cursors: trending.map((row) => encodeRankedCursor(row, "trending")),
+  });
+
+  const now = Date.now();
+  const key = snapshotKey("trending");
+  const existing = await ctx.db
+    .query("publicFeedSnapshots")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  const row = {
+    sort: "trending" as const,
+    payloadJson,
+    itemCount: trending.length,
+    generatedAt: now,
+    updatedAt: now,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, row);
+  } else {
+    await ctx.db.insert("publicFeedSnapshots", { key, ...row });
   }
 }
 
@@ -163,11 +258,15 @@ export async function syncPublicEventPreview(
       ...payload,
       createdAt: existing.createdAt ?? now,
     });
+    const updated = await ctx.db.get(existing._id);
+    if (updated) await syncPreviewTopicRows(ctx, updated);
   } else {
-    await ctx.db.insert("publicEventPreviews", {
+    const previewId = await ctx.db.insert("publicEventPreviews", {
       ...payload,
       createdAt: now,
     });
+    const inserted = await ctx.db.get(previewId);
+    if (inserted) await syncPreviewTopicRows(ctx, inserted);
   }
 
   return { synced: true as const };

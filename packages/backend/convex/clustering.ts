@@ -219,6 +219,59 @@ function buildEventEmbeddingFilterFields(args: {
   };
 }
 
+async function syncHotEventEmbedding(
+  ctx: MutationCtx,
+  args: {
+    eventId: Id<"events">;
+    embeddingId: Id<"eventEmbeddings">;
+    embedding: number[];
+    version: number;
+    status: "processing" | "published";
+    lastArticleAt: number;
+    articleCount: number;
+  },
+) {
+  const filterFields = buildEventEmbeddingFilterFields({
+    status: args.status,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+  });
+  if (filterFields.recentWindowBucket !== MERGE_RECENT_BUCKET) {
+    const existingHot = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .first();
+    if (existingHot) await ctx.db.delete(existingHot._id);
+    return undefined;
+  }
+
+  const existingHot = await ctx.db
+    .query("eventEmbeddingHot")
+    .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+    .first();
+  const payload = {
+    embeddingId: args.embeddingId,
+    embedding: args.embedding,
+    version: args.version,
+    status: args.status,
+    recentWindowBucket: filterFields.recentWindowBucket,
+    updatedDayBucket: filterFields.updatedDayBucket,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+    updatedAt: Date.now(),
+  };
+
+  if (existingHot) {
+    await ctx.db.patch(existingHot._id, payload);
+    return existingHot._id;
+  }
+
+  return await ctx.db.insert("eventEmbeddingHot", {
+    eventId: args.eventId,
+    ...payload,
+  });
+}
+
 function collectRecentDayBuckets(
   windowHours: number,
   now: number = Date.now(),
@@ -381,6 +434,52 @@ async function reserveVectorSearch(ctx: ActionCtx, metrics: JobMetrics) {
   }
 
   return reservation.reservationId;
+}
+
+async function reserveVectorSearchBatch(
+  ctx: ActionCtx,
+  metrics: JobMetrics,
+  vectorSearches: number,
+) {
+  const reservedSearches = Math.max(1, Math.floor(vectorSearches));
+  const reservation = await ctx.runMutation(
+    internal.vectorSearchBudget.reserveUsage,
+    {
+      jobName: metrics.jobName,
+      runId: metrics.runId,
+      qgbRead: estimateVectorSearchQgbRead({
+        vectorSearches: reservedSearches,
+        estimatedPerSearchBytes: metrics.perSearchBytes,
+      }),
+      vectorSearches: reservedSearches,
+    },
+  );
+
+  metrics.budgetAllowed = reservation.allowed;
+  if (!reservation.allowed) {
+    metrics.usedFallbackMode = reservation.fallbackModeEnabled;
+    console.log(
+      `[clustering] ${metrics.jobName} vector search batch skipped: budget exhausted (${reservation.usedQgb}/${reservation.dailyLimitQgb} qGB)`,
+    );
+    return null;
+  }
+
+  return reservation.reservationId;
+}
+
+async function consumeVectorSearchBatchReservation(
+  ctx: ActionCtx,
+  metrics: JobMetrics,
+  reservationId: Id<"vectorSearchReservations">,
+) {
+  await ctx.runMutation(internal.vectorSearchBudget.consumeReservation, {
+    reservationId,
+    qgbRead: estimateVectorSearchQgbRead({
+      vectorSearches: metrics.vectorSearches,
+      estimatedPerSearchBytes: metrics.perSearchBytes,
+    }),
+    vectorSearches: metrics.vectorSearches,
+  });
 }
 
 async function consumeVectorSearchReservation(
@@ -736,6 +835,7 @@ function buildEventPairKey(
 type ClusterCandidate = {
   eventId: Id<"events">;
   embeddingId?: Id<"eventEmbeddings">;
+  hotEmbeddingId?: Id<"eventEmbeddingHot">;
   title: string;
   slug: string;
   firstPublishedAt: number;
@@ -766,6 +866,7 @@ type ClusterCandidate = {
 type ClusterCandidateQueryResult = {
   eventId: Id<"events">;
   embeddingId: Id<"eventEmbeddings">;
+  hotEmbeddingId?: Id<"eventEmbeddingHot">;
   title: string;
   slug: string;
   firstPublishedAt: number;
@@ -2378,11 +2479,24 @@ export const upsertEventCandidacyForBackfill = internalMutation({
       .query("eventCandidacy")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .first();
+    const hotEmbeddingId =
+      embeddingRow === null || embeddingRow === undefined
+        ? undefined
+        : await syncHotEventEmbedding(ctx, {
+            eventId: args.eventId,
+            embeddingId: embeddingRow._id,
+            embedding: embeddingRow.embedding,
+            version: embeddingRow.version,
+            status: args.status,
+            lastArticleAt: args.lastArticleAt,
+            articleCount: args.articleCount,
+          });
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...buildCandidacySnapshotFields(args),
         embeddingId: embeddingRow?._id,
+        hotEmbeddingId,
         eventCreationTime: event?._creationTime,
         title: args.title,
         slug: args.slug,
@@ -2399,6 +2513,7 @@ export const upsertEventCandidacyForBackfill = internalMutation({
     await ctx.db.insert("eventCandidacy", {
       eventId: args.eventId,
       embeddingId: embeddingRow?._id,
+      hotEmbeddingId,
       eventCreationTime: event?._creationTime,
       title: args.title,
       slug: args.slug,
@@ -2443,12 +2558,28 @@ export const syncEmbeddingStatusForBackfill = internalMutation({
           articleCount,
         }),
       });
+      const hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+        eventId,
+        embeddingId: embeddingRow._id,
+        embedding: embeddingRow.embedding,
+        version: embeddingRow.version,
+        status,
+        lastArticleAt,
+        articleCount,
+      });
       const candidacy = await ctx.db
         .query("eventCandidacy")
         .withIndex("by_event", (q) => q.eq("eventId", eventId))
         .first();
-      if (candidacy && candidacy.embeddingId !== embeddingRow._id) {
-        await ctx.db.patch(candidacy._id, { embeddingId: embeddingRow._id });
+      if (
+        candidacy &&
+        (candidacy.embeddingId !== embeddingRow._id ||
+          candidacy.hotEmbeddingId !== hotEmbeddingId)
+      ) {
+        await ctx.db.patch(candidacy._id, {
+          embeddingId: embeddingRow._id,
+          hotEmbeddingId,
+        });
       }
     }
   },
@@ -2492,9 +2623,21 @@ export const backfillEventCandidacyEmbeddingIds = internalMutation({
       }
       const patch: {
         embeddingId?: Id<"eventEmbeddings">;
+        hotEmbeddingId?: Id<"eventEmbeddingHot">;
         eventCreationTime?: number;
       } = {};
-      if (embeddingRow) patch.embeddingId = embeddingRow._id;
+      if (embeddingRow) {
+        patch.embeddingId = embeddingRow._id;
+        patch.hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+          eventId: candidacy.eventId,
+          embeddingId: embeddingRow._id,
+          embedding: embeddingRow.embedding,
+          version: embeddingRow.version,
+          status: candidacy.status,
+          lastArticleAt: candidacy.lastArticleAt,
+          articleCount: candidacy.articleCount,
+        });
+      }
       if (event) patch.eventCreationTime = event._creationTime;
       if (Object.keys(patch).length > 0) {
         await ctx.db.patch(candidacy._id, patch);
@@ -2529,6 +2672,7 @@ function projectClusterCandidate(args: {
   return {
     eventId: args.candidacy.eventId,
     embeddingId: args.embeddingId,
+    hotEmbeddingId: args.candidacy.hotEmbeddingId,
     title: args.title,
     slug: args.slug,
     firstPublishedAt: args.candidacy.firstPublishedAt,
@@ -2907,6 +3051,106 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
   },
 });
 
+// Sweeper for the hot vector table. syncHotEventEmbedding only deletes a row
+// when it is re-invoked for an event that has aged out of the recent window, so
+// events that simply go quiet (no new articles, not archived) would keep their
+// hot rows forever and bloat the "small" table. This prunes rows whose last
+// sync is older than the recent window plus a buffer; if such an event becomes
+// active again, the write path re-inserts it.
+export const pruneHotEventEmbeddings = internalMutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 500), 1), 2000);
+    const cutoff = Date.now() - (RECENT_EVENT_WINDOW_MS + 6 * 60 * 60 * 1000);
+    const stale = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_updated_at", (q) => q.lt("updatedAt", cutoff))
+      .take(limit);
+    for (const row of stale) {
+      await ctx.db.delete(row._id);
+    }
+    return { deleted: stale.length, isDone: stale.length < limit };
+  },
+});
+
+export const getClusterCandidatesByHotEmbeddingMatches = internalQuery({
+  args: {
+    embeddingMatches: v.array(
+      v.object({
+        hotEmbeddingId: v.id("eventEmbeddingHot"),
+        similarity: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, { embeddingMatches }) => {
+    const uniqueHotIds = Array.from(
+      new Set(embeddingMatches.map((match) => String(match.hotEmbeddingId))),
+    ) as string[];
+    const candidacyRows = await Promise.all(
+      uniqueHotIds.map((hotEmbeddingId) =>
+        ctx.db
+          .query("eventCandidacy")
+          .withIndex("by_hot_embedding", (q) =>
+            q.eq("hotEmbeddingId", hotEmbeddingId as Id<"eventEmbeddingHot">),
+          )
+          .first(),
+      ),
+    );
+    const candidaciesByHotId = new Map<string, Doc<"eventCandidacy">>();
+    for (const row of candidacyRows) {
+      if (row?.hotEmbeddingId && row.embeddingId) {
+        candidaciesByHotId.set(String(row.hotEmbeddingId), row);
+      }
+    }
+
+    const fallbackEventRows = await Promise.all(
+      Array.from(candidaciesByHotId.values()).map((candidacy) =>
+        candidacy.title &&
+        candidacy.slug &&
+        candidacy.eventCreationTime !== undefined
+          ? Promise.resolve(null)
+          : ctx.db.get(candidacy.eventId),
+      ),
+    );
+    const fallbackEventsById = new Map<string, Doc<"events">>();
+    for (const event of fallbackEventRows) {
+      if (event) fallbackEventsById.set(String(event._id), event);
+    }
+
+    const seenEventIds = new Set<string>();
+    const candidates: ClusterCandidateVectorResult[] = [];
+    for (const match of embeddingMatches) {
+      const candidacy = candidaciesByHotId.get(String(match.hotEmbeddingId)) as
+        | CandidacyWithProjection
+        | undefined;
+      if (!candidacy?.embeddingId) continue;
+      const eventKey = String(candidacy.eventId);
+      if (seenEventIds.has(eventKey)) continue;
+      seenEventIds.add(eventKey);
+      const fallbackEvent = fallbackEventsById.get(eventKey);
+      const title = candidacy.title ?? fallbackEvent?.title;
+      const slug = candidacy.slug ?? fallbackEvent?.slug;
+      if (!title || !slug) continue;
+      candidates.push({
+        ...projectClusterCandidate({
+          title,
+          slug,
+          creationTime:
+            fallbackEvent?._creationTime ??
+            candidacy.eventCreationTime ??
+            candidacy._creationTime,
+          embeddingId: candidacy.embeddingId,
+          embedding: undefined,
+          candidacy,
+        }),
+        hotEmbeddingId: match.hotEmbeddingId,
+        similarity: match.similarity,
+      });
+    }
+    return candidates;
+  },
+});
+
 export const getClusterCandidatesByEventIds = internalQuery({
   args: {
     eventIds: v.array(v.id("events")),
@@ -3009,6 +3253,15 @@ export const createEventFromArticle = internalMutation({
         articleCount: 1,
       }),
     });
+    const hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+      eventId,
+      embeddingId,
+      embedding: toEventEmbedding(eventEmbedding),
+      version,
+      status: initialStatus,
+      lastArticleAt: publishedAt,
+      articleCount: 1,
+    });
 
     const candidacyTokens = buildCandidacyFromArticle(
       title,
@@ -3018,6 +3271,7 @@ export const createEventFromArticle = internalMutation({
     await ctx.db.insert("eventCandidacy", {
       eventId,
       embeddingId,
+      hotEmbeddingId,
       eventCreationTime: createdEvent?._creationTime ?? Date.now(),
       title,
       slug,
@@ -3070,6 +3324,7 @@ export const createEventFromArticle = internalMutation({
       firstPublishedAt: publishedAt,
       articleCount: 1,
       embeddingId,
+      hotEmbeddingId,
       embedding: eventEmbedding,
       status: initialStatus,
     };
@@ -3210,6 +3465,15 @@ export const attachArticleToEvent = internalMutation({
         }),
       });
     }
+    const hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+      eventId,
+      embeddingId,
+      embedding: nextEmbedding,
+      version,
+      status: nextStatus,
+      lastArticleAt: nextLastArticleAt,
+      articleCount: nextArticleCount,
+    });
 
     for (const topicSlug of topicSlugs) {
       const topic = await ctx.db
@@ -3252,6 +3516,7 @@ export const attachArticleToEvent = internalMutation({
           sourceIds: Array.from(nextSourceIds),
         }),
         embeddingId,
+        hotEmbeddingId,
         eventCreationTime: event._creationTime,
         title: event.title,
         slug: event.slug,
@@ -3284,6 +3549,7 @@ export const attachArticleToEvent = internalMutation({
       await ctx.db.insert("eventCandidacy", {
         eventId,
         embeddingId,
+        hotEmbeddingId,
         eventCreationTime: event._creationTime,
         title: event.title,
         slug: event.slug,
@@ -3311,6 +3577,7 @@ export const attachArticleToEvent = internalMutation({
       firstPublishedAt: nextFirstPublishedAt,
       articleCount: nextArticleCount,
       embeddingId,
+      hotEmbeddingId,
       embedding: nextEmbedding,
       status: nextStatus,
     };
@@ -4687,11 +4954,29 @@ export const mergeEvents = internalMutation({
         }),
       });
     }
+    const keepHotEmbeddingId = await syncHotEventEmbedding(ctx, {
+      eventId: keepEventId,
+      embeddingId: keepEmbeddingId,
+      embedding: mergedEmbedding,
+      version,
+      status: mergedStatus,
+      lastArticleAt: mergedLastArticleAt,
+      articleCount: mergedArticleCount,
+    });
     if (keepCandidacyId) {
       await ctx.db.patch(keepCandidacyId, {
         embeddingId: keepEmbeddingId,
+        hotEmbeddingId: keepHotEmbeddingId,
         eventCreationTime: keepEvent._creationTime,
       });
+    }
+
+    const removeHotRows = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", removeEventId))
+      .collect();
+    for (const row of removeHotRows) {
+      await ctx.db.delete(row._id);
     }
 
     const removeEmbeddingRows = await ctx.db
@@ -5708,6 +5993,8 @@ export const clusterEnrichedArticles = internalAction({
       "clusterEnrichedArticles",
       clusterCalibration.perSearchBytes,
     );
+    let clusterRunReservationId: Id<"vectorSearchReservations"> | null = null;
+    let clusterRunReservationSettled = false;
 
     try {
       const hasEnriched = await ctx.runQuery(
@@ -5744,23 +6031,10 @@ export const clusterEnrichedArticles = internalAction({
         {},
       );
 
-      const clusteringConfig = await ctx.runQuery(internal.config.getBatch, {
-        keys: [
-          "clustering_min_similarity",
-          "clustering_strong_similarity",
-          "clustering_min_title_overlap",
-          "clustering_min_title_jaccard",
-          "clustering_same_source_min_similarity",
-          "clustering_weak_extraction_min_similarity",
-          "clustering_weak_extraction_strong_similarity",
-          "cluster_publish_min_articles",
-          "cluster_publish_min_sources",
-          "topic_inference_min_score",
-          "topic_inference_confidence_ratio",
-          "topic_inference_max_topics",
-          "clustering_vector_search_limit",
-        ],
-      });
+      const clusteringConfig = await ctx.runQuery(
+        internal.config.getPipelineRuntimeConfig,
+        {},
+      );
 
       const settings: ClusterSettings = {
         minSimilarity: clampNumber(
@@ -5850,7 +6124,7 @@ export const clusterEnrichedArticles = internalAction({
       const budget = await getVectorSearchBudgetState(ctx);
       metrics.budgetAllowed = budget.allowed;
       metrics.batchArticles = articles.length;
-      const useFallbackMode = !budget.allowed && budget.fallbackModeEnabled;
+      let useFallbackMode = !budget.allowed && budget.fallbackModeEnabled;
       metrics.usedFallbackMode = useFallbackMode;
 
       if (!budget.allowed && !budget.fallbackModeEnabled) {
@@ -5869,7 +6143,22 @@ export const clusterEnrichedArticles = internalAction({
       const candidateCache = new Map<string, ClusterCandidate>();
       let batchStateVersion = 0;
       const searchedArticleIds = new Set<string>();
+      const representativeSearchCache = new Map<
+        string,
+        { embedding: number[]; candidates: ClusterCandidate[] }
+      >();
       const articleBatchVersionSeen = new Map<string, number>();
+      if (!useFallbackMode) {
+        clusterRunReservationId = await reserveVectorSearchBatch(
+          ctx,
+          metrics,
+          articles.length,
+        );
+        if (!clusterRunReservationId) {
+          useFallbackMode = true;
+          metrics.usedFallbackMode = true;
+        }
+      }
       if (useFallbackMode) {
         const fallbackCandidates = await ctx.runQuery(
           internal.clustering.getRecentClusterCandidates,
@@ -5891,29 +6180,19 @@ export const clusterEnrichedArticles = internalAction({
         embedding: number[],
       ): Promise<ClusterCandidate[]> => {
         searchedArticleIds.add(String(articleId));
-        const reservationId = await reserveVectorSearch(ctx, metrics);
-        if (!reservationId) return [];
 
         let vectorResults: Array<{
-          _id: Id<"eventEmbeddings">;
+          _id: Id<"eventEmbeddingHot">;
           _score: number;
         }>;
-        try {
-          vectorResults = await ctx.vectorSearch(
-            "eventEmbeddings",
-            "by_embedding",
-            {
-              vector: toEventEmbedding(embedding),
-              limit: vectorSearchLimit,
-              filter: (q) =>
-                q.or(q.eq("status", "published"), q.eq("status", "processing")),
-            },
-          );
-        } catch (error) {
-          await releaseVectorSearchReservation(ctx, reservationId);
-          throw error;
-        }
-        await consumeVectorSearchReservation(ctx, metrics, reservationId);
+        vectorResults = await ctx.vectorSearch(
+          "eventEmbeddingHot",
+          "by_embedding",
+          {
+            vector: toEventEmbedding(embedding),
+            limit: vectorSearchLimit,
+          },
+        );
         metrics.vectorSearches++;
 
         metrics.vectorMatchesReturned += vectorResults.length;
@@ -5921,10 +6200,10 @@ export const clusterEnrichedArticles = internalAction({
         if (vectorResults.length === 0) return [];
 
         const vectorCandidates = await ctx.runQuery(
-          internal.clustering.getClusterCandidatesByEmbeddingMatches,
+          internal.clustering.getClusterCandidatesByHotEmbeddingMatches,
           {
             embeddingMatches: vectorResults.map((result) => ({
-              embeddingId: result._id,
+              hotEmbeddingId: result._id,
               similarity: result._score,
             })),
           },
@@ -5945,6 +6224,41 @@ export const clusterEnrichedArticles = internalAction({
           matches.push(candidate);
         }
 
+        return matches;
+      };
+
+      const loadCandidatesForRepresentative = async (
+        payload: AttachPayload,
+      ): Promise<ClusterCandidate[]> => {
+        // Reuse a prior article's vector-search results when this article is a
+        // near-duplicate of an already-searched "representative". We pick the
+        // single best (highest-similarity) representative above the strong
+        // threshold so reuse is deterministic regardless of insertion order,
+        // and we store the representative's embedding alongside its candidates
+        // to avoid an O(n) lookup per comparison. Missing in-batch-created
+        // events are still recovered by the pending-phase local matching below,
+        // so this only trades a vector search for near-identical inputs.
+        const queryEmbedding = toEventEmbedding(payload.article.embedding);
+        let bestCandidates: ClusterCandidate[] | null = null;
+        let bestSimilarity = settings.strongSimilarity;
+        for (const cached of representativeSearchCache.values()) {
+          const similarity = cosineSimilarity(queryEmbedding, cached.embedding);
+          if (similarity >= bestSimilarity) {
+            bestSimilarity = similarity;
+            bestCandidates = cached.candidates;
+          }
+        }
+        if (bestCandidates) {
+          return bestCandidates;
+        }
+        const matches = await loadCandidatesForEmbedding(
+          payload.article._id,
+          payload.paddedEmbedding,
+        );
+        representativeSearchCache.set(String(payload.article._id), {
+          embedding: queryEmbedding,
+          candidates: matches,
+        });
         return matches;
       };
 
@@ -6076,11 +6390,8 @@ export const clusterEnrichedArticles = internalAction({
       const tryVectorAttach = async (
         payload: AttachPayload,
       ): Promise<"attached" | "unmatched" | "skipped"> => {
-        const { article, paddedEmbedding, topicSlugs } = payload;
-        const candidates = await loadCandidatesForEmbedding(
-          article._id,
-          paddedEmbedding,
-        );
+        const { article, topicSlugs } = payload;
+        const candidates = await loadCandidatesForRepresentative(payload);
         const match = findBestCandidate(
           resolveArticle(article, topicSlugs),
           candidates,
@@ -6205,6 +6516,7 @@ export const clusterEnrichedArticles = internalAction({
         const newCandidate: ClusterCandidate = {
           eventId: result.eventId,
           embeddingId: result.embeddingId,
+          hotEmbeddingId: result.hotEmbeddingId,
           title: result.title,
           slug: result.slug,
           firstPublishedAt: result.firstPublishedAt,
@@ -6249,6 +6561,14 @@ export const clusterEnrichedArticles = internalAction({
       console.log(
         `[clustering] Done: ${clusteredIntoExisting} attached, ${createdEvents} new events, ${skipped} skipped (minSim=${settings.minSimilarity}, strongSim=${settings.strongSimilarity}, sameSourceMinSim=${settings.sameSourceMinSimilarity}, publishMin=${publishSettings.minArticles} articles/${publishSettings.minSources} sources, topicMinScore=${topicSettings.minScore})`,
       );
+      if (clusterRunReservationId) {
+        await consumeVectorSearchBatchReservation(
+          ctx,
+          metrics,
+          clusterRunReservationId,
+        );
+        clusterRunReservationSettled = true;
+      }
       await flushJobMetrics(ctx, metrics, startedAt);
       if (clusteredIntoExisting + createdEvents > 0) {
         await ctx.scheduler.runAfter(
@@ -6271,6 +6591,15 @@ export const clusterEnrichedArticles = internalAction({
         skipped,
       };
     } finally {
+      if (clusterRunReservationId && !clusterRunReservationSettled) {
+        try {
+          await releaseVectorSearchReservation(ctx, clusterRunReservationId);
+        } catch (error) {
+          console.error(
+            `[clustering] Failed to release cluster vector reservation: ${error instanceof Error ? error.message : "Unknown error"}`,
+          );
+        }
+      }
       try {
         await ctx.runMutation(internal.ingestion.releasePipelineLock, {
           key: CLUSTER_LOCK_KEY,

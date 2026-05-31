@@ -6,6 +6,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAdminUser } from "./lib/betaAccess";
 
 export const TOPIC_INFERENCE_BOUNDS = {
@@ -288,6 +289,14 @@ export const setInternal = internalMutation({
         updatedAt: Date.now(),
       });
     }
+
+    // Keep the compact pipeline runtime-config snapshot in sync so admin edits
+    // propagate to pipeline jobs immediately instead of waiting for the cron.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.config.refreshPipelineRuntimeConfig,
+      {},
+    );
   },
 });
 
@@ -317,6 +326,107 @@ export const getBatch = internalQuery({
       }
     }
     return result;
+  },
+});
+
+const PIPELINE_RUNTIME_CONFIG_KEY = "default";
+const PIPELINE_RUNTIME_CONFIG_KEYS = [
+  "clustering_min_similarity",
+  "clustering_strong_similarity",
+  "clustering_min_title_overlap",
+  "clustering_min_title_jaccard",
+  "clustering_same_source_min_similarity",
+  "clustering_weak_extraction_min_similarity",
+  "clustering_weak_extraction_strong_similarity",
+  "cluster_publish_min_articles",
+  "cluster_publish_min_sources",
+  "topic_inference_min_score",
+  "topic_inference_confidence_ratio",
+  "topic_inference_max_topics",
+  "clustering_vector_search_limit",
+  "feed_page_size",
+] as const;
+
+async function readPipelineRuntimePayload(ctx: QueryCtx | MutationCtx) {
+  const payload: Record<string, unknown> = {};
+  for (const key of PIPELINE_RUNTIME_CONFIG_KEYS) {
+    payload[key] = await getConfig(ctx, key, undefined);
+  }
+  return payload;
+}
+
+export const refreshPipelineRuntimeConfig = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const payload = await readPipelineRuntimePayload(ctx);
+    const existing = await ctx.db
+      .query("pipelineRuntimeConfig")
+      .withIndex("by_key", (q) => q.eq("key", PIPELINE_RUNTIME_CONFIG_KEY))
+      .unique();
+    const row = {
+      payloadJson: JSON.stringify(payload),
+      generatedAt: now,
+      updatedAt: now,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, row);
+      return { refreshed: true as const, configId: existing._id };
+    }
+    const configId = await ctx.db.insert("pipelineRuntimeConfig", {
+      key: PIPELINE_RUNTIME_CONFIG_KEY,
+      ...row,
+    });
+    return { refreshed: true as const, configId };
+  },
+});
+
+export const refreshPipelineRuntimeConfigForAdmin = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminUser(ctx);
+    const now = Date.now();
+    const payload = await readPipelineRuntimePayload(ctx);
+    const existing = await ctx.db
+      .query("pipelineRuntimeConfig")
+      .withIndex("by_key", (q) => q.eq("key", PIPELINE_RUNTIME_CONFIG_KEY))
+      .unique();
+    const row = {
+      payloadJson: JSON.stringify(payload),
+      generatedAt: now,
+      updatedAt: now,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, row);
+      return { refreshed: true as const, configId: existing._id };
+    }
+    const configId = await ctx.db.insert("pipelineRuntimeConfig", {
+      key: PIPELINE_RUNTIME_CONFIG_KEY,
+      ...row,
+    });
+    return { refreshed: true as const, configId };
+  },
+});
+
+export const getPipelineRuntimeConfig = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const snapshot = await ctx.db
+      .query("pipelineRuntimeConfig")
+      .withIndex("by_key", (q) => q.eq("key", PIPELINE_RUNTIME_CONFIG_KEY))
+      .unique();
+    if (snapshot) {
+      try {
+        return JSON.parse(snapshot.payloadJson) as Record<string, unknown>;
+      } catch (error) {
+        console.error("[config] Failed to parse pipeline runtime config:", error);
+      }
+    } else {
+      console.warn(
+        "[config] pipelineRuntimeConfig snapshot missing; using per-key fallback reads (is the refresh-pipeline-runtime-config cron wired and running?)",
+      );
+    }
+    return await readPipelineRuntimePayload(ctx);
   },
 });
 
@@ -358,6 +468,14 @@ export const set = mutation({
         updatedAt: Date.now(),
       });
     }
+
+    // Keep the compact pipeline runtime-config snapshot in sync so admin edits
+    // propagate to pipeline jobs immediately instead of waiting for the cron.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.config.refreshPipelineRuntimeConfig,
+      {},
+    );
   },
 });
 
@@ -436,6 +554,12 @@ export const setTopicInferenceSettings = mutation({
         });
       }
     }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.config.refreshPipelineRuntimeConfig,
+      {},
+    );
 
     return { updated: true as const };
   },

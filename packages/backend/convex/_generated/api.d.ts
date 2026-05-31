@@ -30,6 +30,7 @@ import type * as lib_aiCall from "../lib/aiCall.js";
 import type * as lib_articleExtraction from "../lib/articleExtraction.js";
 import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
+import type * as lib_feedSerialization from "../lib/feedSerialization.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as lib_publicEventPreviews from "../lib/publicEventPreviews.js";
 import type * as lib_quizHelpers from "../lib/quizHelpers.js";
@@ -87,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   "lib/articleExtraction": typeof lib_articleExtraction;
   "lib/betaAccess": typeof lib_betaAccess;
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;
+  "lib/feedSerialization": typeof lib_feedSerialization;
   "lib/openai": typeof lib_openai;
   "lib/publicEventPreviews": typeof lib_publicEventPreviews;
   "lib/quizHelpers": typeof lib_quizHelpers;

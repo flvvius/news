@@ -158,11 +158,39 @@ export default defineSchema({
     }),
 
   // =========================================================================
+  // 3b.1. EVENT EMBEDDINGS HOT (small physical vector index for fresh clustering)
+  // =========================================================================
+  eventEmbeddingHot: defineTable({
+    eventId: v.id("events"),
+    embeddingId: v.id("eventEmbeddings"),
+    embedding: v.array(v.number()),
+    version: v.number(),
+    status: v.union(v.literal("processing"), v.literal("published")),
+    recentWindowBucket: v.string(),
+    updatedDayBucket: v.string(),
+    lastArticleAt: v.number(),
+    articleCount: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_embedding_ref", ["embeddingId"])
+    .index("by_updated_at", ["updatedAt"])
+    // No filterFields: the hot table only ever holds recent_2d events, and the
+    // clustering search wants both processing + published, so every filter we
+    // tried here matched the entire table. Keeping the index lean avoids paying
+    // for filter dimensions we never constrain on.
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 512,
+    }),
+
+  // =========================================================================
   // 3c. EVENT CANDIDACY (Clustering read model)
   // =========================================================================
   eventCandidacy: defineTable({
     eventId: v.id("events"),
     embeddingId: v.optional(v.id("eventEmbeddings")),
+    hotEmbeddingId: v.optional(v.id("eventEmbeddingHot")),
     eventCreationTime: v.optional(v.number()),
     title: v.optional(v.string()),
     slug: v.optional(v.string()),
@@ -181,6 +209,7 @@ export default defineSchema({
   })
     .index("by_event", ["eventId"])
     .index("by_embedding", ["embeddingId"])
+    .index("by_hot_embedding", ["hotEmbeddingId"])
     .index("by_status_last_article_at", ["status", "lastArticleAt"])
     .index("by_status_updated_at", ["status", "updatedAt"]),
 
@@ -238,6 +267,20 @@ export default defineSchema({
       searchField: "title",
     }),
 
+  publicEventPreviewTopics: defineTable({
+    topicId: v.id("topics"),
+    eventId: v.id("events"),
+    previewId: v.id("publicEventPreviews"),
+    lastUpdatedAt: v.number(),
+    firstPublishedAt: v.number(),
+    trendingScore: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_topic_updated", ["topicId", "lastUpdatedAt"])
+    .index("by_topic_trending", ["topicId", "trendingScore"])
+    .index("by_event", ["eventId"])
+    .index("by_preview", ["previewId"]),
+
   // =========================================================================
   // 3d.1. PUBLIC SNAPSHOTS (Static artifacts for crawler/anonymous hot paths)
   // =========================================================================
@@ -245,6 +288,15 @@ export default defineSchema({
     key: v.string(),
     xml: v.string(),
     urlCount: v.number(),
+    generatedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  publicFeedSnapshots: defineTable({
+    key: v.string(),
+    sort: v.union(v.literal("recent"), v.literal("trending")),
+    payloadJson: v.string(),
+    itemCount: v.number(),
     generatedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
@@ -747,6 +799,13 @@ export default defineSchema({
     key: v.string(),
     value: v.string(), // JSON-encoded for flexibility
     description: v.string(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  pipelineRuntimeConfig: defineTable({
+    key: v.string(),
+    payloadJson: v.string(),
+    generatedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
