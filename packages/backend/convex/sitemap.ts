@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
 const SITEMAP_KEY = "public";
 const DEFAULT_SITE_URL = "https://biviant.com";
 const DEFAULT_LIMIT = 5000;
+const SITEMAP_PAGE_SIZE = 1000;
 
 function escapeXml(value: string) {
   return value
@@ -74,22 +76,41 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
     siteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? DEFAULT_LIMIT), 1), 10000);
+    const limit = Math.min(
+      Math.max(Math.floor(args.limit ?? DEFAULT_LIMIT), 1),
+      45000,
+    );
     const siteUrl = args.siteUrl?.trim() || DEFAULT_SITE_URL;
     const now = Date.now();
 
-    const [events, sources] = await Promise.all([
-      ctx.db
+    const events: Array<Doc<"publicEventPreviews">> = [];
+    let eventCursor: string | null = null;
+    while (events.length < limit) {
+      const pageSize = Math.min(SITEMAP_PAGE_SIZE, limit - events.length);
+      const page = await ctx.db
         .query("publicEventPreviews")
         .withIndex("by_last_updated_at")
         .order("desc")
-        .take(limit),
-      ctx.db
+        .paginate({ cursor: eventCursor, numItems: pageSize });
+      events.push(...page.page);
+      if (page.isDone) break;
+      eventCursor = page.continueCursor;
+    }
+
+    const sourceLimit = Math.max(0, limit - events.length);
+    const sources: Array<Doc<"sources">> = [];
+    let sourceCursor: string | null = null;
+    while (sources.length < sourceLimit) {
+      const pageSize = Math.min(SITEMAP_PAGE_SIZE, sourceLimit - sources.length);
+      const page = await ctx.db
         .query("sources")
         .withIndex("by_rolling_bias_updated_at")
         .order("desc")
-        .take(limit),
-    ]);
+        .paginate({ cursor: sourceCursor, numItems: pageSize });
+      sources.push(...page.page);
+      if (page.isDone) break;
+      sourceCursor = page.continueCursor;
+    }
 
     const entries = [
       toSitemapUrl(siteUrl, "/"),

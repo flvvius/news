@@ -287,7 +287,7 @@ export const submitQuizAttempt = mutation({
   },
 });
 
-export const gradeQuizQuestion = mutation({
+export const gradeQuizQuestion = query({
   args: {
     quizId: v.id("dailyQuizzes"),
     questionId: v.string(),

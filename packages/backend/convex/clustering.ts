@@ -444,8 +444,8 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 function maxCrossEventSimilarity(
-  a: Pick<ClusterCandidate, "embedding">,
-  b: Pick<ClusterCandidate, "embedding">,
+  a: { embedding: number[] },
+  b: { embedding: number[] },
 ): number {
   return cosineSimilarity(a.embedding, b.embedding);
 }
@@ -742,7 +742,7 @@ type ClusterCandidate = {
   lastArticleAt: number;
   articleCount: number;
   sourceCount: number;
-  embedding: number[];
+  embedding?: number[];
   similarity?: number;
   titleTokens: Set<string>;
   evidenceTokens: Set<string>;
@@ -772,7 +772,7 @@ type ClusterCandidateQueryResult = {
   lastArticleAt: number;
   articleCount: number;
   sourceCount: number;
-  embedding: number[];
+  embedding?: number[];
   sourceIds: Id<"sources">[];
   evidenceTokens: string[];
   factTokens: string[];
@@ -1858,13 +1858,18 @@ function findBatchLocalCandidate(
   candidates: ClusterCandidate[],
   settings: ClusterSettings,
 ): ClusterCandidate | null {
-  const enrichedCandidates = candidates.map((candidate) => ({
-    ...candidate,
-    similarity: cosineSimilarity(
-      toEventEmbedding(article.embedding),
-      toEventEmbedding(candidate.embedding),
-    ),
-  }));
+  const enrichedCandidates = candidates
+    .filter(
+      (candidate): candidate is ClusterCandidate & { embedding: number[] } =>
+        candidate.embedding !== undefined,
+    )
+    .map((candidate) => ({
+      ...candidate,
+      similarity: cosineSimilarity(
+        toEventEmbedding(article.embedding),
+        toEventEmbedding(candidate.embedding),
+      ),
+    }));
 
   return findBestCandidate(article, enrichedCandidates, settings);
 }
@@ -2362,6 +2367,13 @@ export const upsertEventCandidacyForBackfill = internalMutation({
     topicSlugs: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    const [event, embeddingRow] = await Promise.all([
+      ctx.db.get(args.eventId),
+      ctx.db
+        .query("eventEmbeddings")
+        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+        .first(),
+    ]);
     const existing = await ctx.db
       .query("eventCandidacy")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
@@ -2370,6 +2382,8 @@ export const upsertEventCandidacyForBackfill = internalMutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...buildCandidacySnapshotFields(args),
+        embeddingId: embeddingRow?._id,
+        eventCreationTime: event?._creationTime,
         title: args.title,
         slug: args.slug,
         titleTokens: args.titleTokens,
@@ -2384,6 +2398,8 @@ export const upsertEventCandidacyForBackfill = internalMutation({
 
     await ctx.db.insert("eventCandidacy", {
       eventId: args.eventId,
+      embeddingId: embeddingRow?._id,
+      eventCreationTime: event?._creationTime,
       title: args.title,
       slug: args.slug,
       ...buildCandidacySnapshotFields(args),
@@ -2427,7 +2443,73 @@ export const syncEmbeddingStatusForBackfill = internalMutation({
           articleCount,
         }),
       });
+      const candidacy = await ctx.db
+        .query("eventCandidacy")
+        .withIndex("by_event", (q) => q.eq("eventId", eventId))
+        .first();
+      if (candidacy && candidacy.embeddingId !== embeddingRow._id) {
+        await ctx.db.patch(candidacy._id, { embeddingId: embeddingRow._id });
+      }
     }
+  },
+});
+
+export const backfillEventCandidacyEmbeddingIds = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const pageSize = Math.min(Math.max(Math.floor(args.pageSize ?? 100), 1), 500);
+    const page = await ctx.db.query("eventCandidacy").paginate({
+      cursor: args.cursor ?? null,
+      numItems: pageSize,
+    });
+
+    let updated = 0;
+    let missingEmbedding = 0;
+    let missingEvent = 0;
+    for (const candidacy of page.page) {
+      if (candidacy.embeddingId && candidacy.eventCreationTime !== undefined) {
+        continue;
+      }
+      const [event, embeddingRow] = await Promise.all([
+        candidacy.eventCreationTime === undefined
+          ? ctx.db.get(candidacy.eventId)
+          : Promise.resolve(null),
+        candidacy.embeddingId
+          ? Promise.resolve(null)
+          : ctx.db
+              .query("eventEmbeddings")
+              .withIndex("by_event", (q) => q.eq("eventId", candidacy.eventId))
+              .first(),
+      ]);
+      if (!event && candidacy.eventCreationTime === undefined) {
+        missingEvent++;
+      }
+      if (!embeddingRow) {
+        if (!candidacy.embeddingId) missingEmbedding++;
+      }
+      const patch: {
+        embeddingId?: Id<"eventEmbeddings">;
+        eventCreationTime?: number;
+      } = {};
+      if (embeddingRow) patch.embeddingId = embeddingRow._id;
+      if (event) patch.eventCreationTime = event._creationTime;
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(candidacy._id, patch);
+        updated++;
+      }
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      missingEmbedding,
+      missingEvent,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
   },
 });
 
@@ -2439,25 +2521,27 @@ type CandidacyWithProjection = Doc<"eventCandidacy"> & {
 function projectClusterCandidate(args: {
   title: string;
   slug: string;
-  embeddingRow: Doc<"eventEmbeddings">;
+  creationTime: number;
+  embeddingId: Id<"eventEmbeddings">;
+  embedding?: number[];
   candidacy: CandidacyWithProjection;
 }): ClusterCandidateQueryResult {
   return {
     eventId: args.candidacy.eventId,
-    embeddingId: args.embeddingRow._id,
+    embeddingId: args.embeddingId,
     title: args.title,
     slug: args.slug,
     firstPublishedAt: args.candidacy.firstPublishedAt,
     lastArticleAt: args.candidacy.lastArticleAt,
     articleCount: args.candidacy.articleCount,
     sourceCount: args.candidacy.sourceCount,
-    embedding: args.embeddingRow.embedding,
+    embedding: args.embedding,
     sourceIds: args.candidacy.sourceIds,
     evidenceTokens: args.candidacy.evidenceTokens,
     factTokens: args.candidacy.factTokens,
     entityTokens: args.candidacy.entityTokens,
     topicSlugs: args.candidacy.topicSlugs,
-    creationTime: args.candidacy._creationTime,
+    creationTime: args.creationTime,
   };
 }
 
@@ -2523,7 +2607,9 @@ export const getRecentClusterCandidates = internalQuery({
           return projectClusterCandidate({
             title,
             slug,
-            embeddingRow,
+            creationTime: event?._creationTime ?? projected.eventCreationTime ?? projected._creationTime,
+            embeddingId: embeddingRow._id,
+            embedding: embeddingRow.embedding,
             candidacy: projected,
           });
         }),
@@ -2684,57 +2770,92 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
         similarity: v.number(),
       }),
     ),
+    includeEmbedding: v.optional(v.boolean()),
   },
-  handler: async (ctx, { embeddingMatches }) => {
+  handler: async (ctx, { embeddingMatches, includeEmbedding }) => {
     const uniqueEmbeddingIds = Array.from(
       new Set(embeddingMatches.map((match) => String(match.embeddingId))),
-    );
-    const embeddingRows = await Promise.all(
-      uniqueEmbeddingIds.map((embeddingId) =>
-        ctx.db.get(embeddingId as Id<"eventEmbeddings">),
-      ),
-    );
-    const embeddingsById = new Map<string, Doc<"eventEmbeddings">>();
-    for (const row of embeddingRows) {
-      if (row) embeddingsById.set(String(row._id), row);
-    }
+    ) as string[];
 
-    const uniqueEventIds = Array.from(
-      new Set(
-        embeddingRows
-          .filter((row): row is Doc<"eventEmbeddings"> => row !== null)
-          .map((row) => String(row.eventId)),
-      ),
-    );
-    const candidacyRows = await Promise.all(
-      uniqueEventIds.map((eventId) =>
+    const candidacyRowsByEmbedding = await Promise.all(
+      uniqueEmbeddingIds.map((embeddingId) =>
         ctx.db
           .query("eventCandidacy")
-          .withIndex("by_event", (q) =>
-            q.eq("eventId", eventId as Id<"events">),
+          .withIndex("by_embedding", (q) =>
+            q.eq("embeddingId", embeddingId as Id<"eventEmbeddings">),
           )
           .first(),
       ),
     );
-    const candidaciesByEventId = new Map<string, Doc<"eventCandidacy">>();
-    for (const row of candidacyRows) {
-      if (row) candidaciesByEventId.set(String(row.eventId), row);
+    const candidaciesByEmbeddingId = new Map<string, Doc<"eventCandidacy">>();
+    for (const row of candidacyRowsByEmbedding) {
+      if (row?.embeddingId) {
+        candidaciesByEmbeddingId.set(String(row.embeddingId), row);
+      }
+    }
+
+    const fallbackEmbeddingRows = await Promise.all(
+      uniqueEmbeddingIds
+        .filter((embeddingId) => !candidaciesByEmbeddingId.has(embeddingId))
+        .map((embeddingId) => ctx.db.get(embeddingId as Id<"eventEmbeddings">)),
+    );
+    const fallbackCandidacyRows = await Promise.all(
+      fallbackEmbeddingRows.map((embeddingRow) =>
+        embeddingRow
+          ? ctx.db
+              .query("eventCandidacy")
+              .withIndex("by_event", (q) => q.eq("eventId", embeddingRow.eventId))
+              .first()
+          : Promise.resolve(null),
+      ),
+    );
+    for (let i = 0; i < fallbackEmbeddingRows.length; i++) {
+      const embeddingRow = fallbackEmbeddingRows[i];
+      const candidacy = fallbackCandidacyRows[i];
+      if (embeddingRow && candidacy) {
+        candidaciesByEmbeddingId.set(String(embeddingRow._id), candidacy);
+      }
+    }
+
+    const embeddingRowsById = new Map<string, Doc<"eventEmbeddings">>();
+    if (includeEmbedding) {
+      const rows = await Promise.all(
+        uniqueEmbeddingIds.map((embeddingId) =>
+          ctx.db.get(embeddingId as Id<"eventEmbeddings">),
+        ),
+      );
+      for (const row of rows) {
+        if (row) embeddingRowsById.set(String(row._id), row);
+      }
+    } else {
+      for (const row of fallbackEmbeddingRows) {
+        if (row) embeddingRowsById.set(String(row._id), row);
+      }
+    }
+
+    const fallbackEventRows = await Promise.all(
+      Array.from(candidaciesByEmbeddingId.values()).map((candidacy) =>
+        candidacy.title &&
+        candidacy.slug &&
+        candidacy.eventCreationTime !== undefined
+          ? Promise.resolve(null)
+          : ctx.db.get(candidacy.eventId),
+      ),
+    );
+    const fallbackEventsById = new Map<string, Doc<"events">>();
+    for (const event of fallbackEventRows) {
+      if (event) fallbackEventsById.set(String(event._id), event);
     }
 
     const seenEventIds = new Set<string>();
     const candidates: ClusterCandidateVectorResult[] = [];
     let missingCandidacy = 0;
     let missingEvents = 0;
+    let missingEmbeddings = 0;
 
     for (const match of embeddingMatches) {
-      const embeddingRow = embeddingsById.get(String(match.embeddingId));
-      if (!embeddingRow) continue;
-
-      const eventKey = String(embeddingRow.eventId);
-      if (seenEventIds.has(eventKey)) continue;
-      seenEventIds.add(eventKey);
-
-      const candidacy = candidaciesByEventId.get(eventKey) as
+      const embeddingKey = String(match.embeddingId);
+      const candidacy = candidaciesByEmbeddingId.get(embeddingKey) as
         | CandidacyWithProjection
         | undefined;
       if (!candidacy) {
@@ -2742,10 +2863,11 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
         continue;
       }
 
-      const fallbackEvent =
-        candidacy.title && candidacy.slug
-          ? null
-          : await ctx.db.get(embeddingRow.eventId);
+      const eventKey = String(candidacy.eventId);
+      if (seenEventIds.has(eventKey)) continue;
+      seenEventIds.add(eventKey);
+
+      const fallbackEvent = fallbackEventsById.get(eventKey);
       const title = candidacy.title ?? fallbackEvent?.title;
       const slug = candidacy.slug ?? fallbackEvent?.slug;
       if (!title || !slug) {
@@ -2753,20 +2875,31 @@ export const getClusterCandidatesByEmbeddingMatches = internalQuery({
         continue;
       }
 
+      const embeddingRow = embeddingRowsById.get(embeddingKey);
+      if (includeEmbedding && !embeddingRow) {
+        missingEmbeddings++;
+        continue;
+      }
+
       candidates.push({
         ...projectClusterCandidate({
           title,
           slug,
-          embeddingRow,
+          creationTime:
+            fallbackEvent?._creationTime ??
+            candidacy.eventCreationTime ??
+            candidacy._creationTime,
+          embeddingId: match.embeddingId,
+          embedding: embeddingRow?.embedding,
           candidacy,
         }),
         similarity: match.similarity,
       });
     }
 
-    if (missingCandidacy > 0 || missingEvents > 0) {
+    if (missingCandidacy > 0 || missingEvents > 0 || missingEmbeddings > 0) {
       console.log(
-        `[clustering] Vector candidate hydration skipped ${missingCandidacy} missing candidacy rows and ${missingEvents} missing events`,
+        `[clustering] Vector candidate hydration skipped ${missingCandidacy} missing candidacy rows, ${missingEvents} missing events, and ${missingEmbeddings} missing embeddings`,
       );
     }
 
@@ -2802,7 +2935,9 @@ export const getClusterCandidatesByEventIds = internalQuery({
         return projectClusterCandidate({
           title: (candidacy as CandidacyWithProjection).title ?? event.title,
           slug: (candidacy as CandidacyWithProjection).slug ?? event.slug,
-          embeddingRow,
+          creationTime: event._creationTime,
+          embeddingId: embeddingRow._id,
+          embedding: embeddingRow.embedding,
           candidacy: candidacy as CandidacyWithProjection,
         });
       }),
@@ -2861,8 +2996,9 @@ export const createEventFromArticle = internalMutation({
       sourceCount: 1,
       sourceIds: [article.sourceId],
     });
+    const createdEvent = await ctx.db.get(eventId);
 
-    await ctx.db.insert("eventEmbeddings", {
+    const embeddingId = await ctx.db.insert("eventEmbeddings", {
       eventId,
       embedding: toEventEmbedding(eventEmbedding),
       version,
@@ -2881,6 +3017,8 @@ export const createEventFromArticle = internalMutation({
     );
     await ctx.db.insert("eventCandidacy", {
       eventId,
+      embeddingId,
+      eventCreationTime: createdEvent?._creationTime ?? Date.now(),
       title,
       slug,
       ...buildCandidacySnapshotFields({
@@ -2931,6 +3069,7 @@ export const createEventFromArticle = internalMutation({
       slug,
       firstPublishedAt: publishedAt,
       articleCount: 1,
+      embeddingId,
       embedding: eventEmbedding,
       status: initialStatus,
     };
@@ -3045,20 +3184,22 @@ export const attachArticleToEvent = internalMutation({
       });
     }
 
+    const embeddingId = existingEmbeddingRow
+      ? existingEmbeddingRow._id
+      : await ctx.db.insert("eventEmbeddings", {
+          eventId,
+          embedding: nextEmbedding,
+          version,
+          status: nextStatus,
+          ...buildEventEmbeddingFilterFields({
+            status: nextStatus,
+            lastArticleAt: nextLastArticleAt,
+            articleCount: nextArticleCount,
+          }),
+        });
+
     if (existingEmbeddingRow) {
       await ctx.db.patch(existingEmbeddingRow._id, {
-        embedding: nextEmbedding,
-        version,
-        status: nextStatus,
-        ...buildEventEmbeddingFilterFields({
-          status: nextStatus,
-          lastArticleAt: nextLastArticleAt,
-          articleCount: nextArticleCount,
-        }),
-      });
-    } else {
-      await ctx.db.insert("eventEmbeddings", {
-        eventId,
         embedding: nextEmbedding,
         version,
         status: nextStatus,
@@ -3110,6 +3251,8 @@ export const attachArticleToEvent = internalMutation({
           sourceCount: nextSourceCount,
           sourceIds: Array.from(nextSourceIds),
         }),
+        embeddingId,
+        eventCreationTime: event._creationTime,
         title: event.title,
         slug: event.slug,
         titleTokens:
@@ -3140,6 +3283,8 @@ export const attachArticleToEvent = internalMutation({
       );
       await ctx.db.insert("eventCandidacy", {
         eventId,
+        embeddingId,
+        eventCreationTime: event._creationTime,
         title: event.title,
         slug: event.slug,
         ...buildCandidacySnapshotFields({
@@ -3165,6 +3310,7 @@ export const attachArticleToEvent = internalMutation({
       slug: event.slug,
       firstPublishedAt: nextFirstPublishedAt,
       articleCount: nextArticleCount,
+      embeddingId,
       embedding: nextEmbedding,
       status: nextStatus,
     };
@@ -4464,6 +4610,7 @@ export const mergeEvents = internalMutation({
         ? "published"
         : keepEvent.status;
 
+    let keepCandidacyId = keepCandidacy?._id;
     if (keepCandidacy) {
       await ctx.db.patch(keepCandidacy._id, {
         ...buildCandidacySnapshotFields({
@@ -4474,6 +4621,7 @@ export const mergeEvents = internalMutation({
           sourceCount: mergedSourceCount,
           sourceIds: Array.from(mergedSourceIds),
         }),
+        eventCreationTime: keepEvent._creationTime,
         title: mergedTitle,
         slug: keepEvent.slug,
         titleTokens: [...mergedTitleTokens],
@@ -4484,8 +4632,9 @@ export const mergeEvents = internalMutation({
         updatedAt: Date.now(),
       });
     } else {
-      await ctx.db.insert("eventCandidacy", {
+      keepCandidacyId = await ctx.db.insert("eventCandidacy", {
         eventId: keepEventId,
+        eventCreationTime: keepEvent._creationTime,
         title: mergedTitle,
         slug: keepEvent.slug,
         ...buildCandidacySnapshotFields({
@@ -4513,6 +4662,19 @@ export const mergeEvents = internalMutation({
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", keepEventId))
       .first();
+    const keepEmbeddingId = keepEmbeddingRow
+      ? keepEmbeddingRow._id
+      : await ctx.db.insert("eventEmbeddings", {
+          eventId: keepEventId,
+          embedding: mergedEmbedding,
+          version,
+          status: mergedStatus,
+          ...buildEventEmbeddingFilterFields({
+            status: mergedStatus,
+            lastArticleAt: mergedLastArticleAt,
+            articleCount: mergedArticleCount,
+          }),
+        });
     if (keepEmbeddingRow) {
       await ctx.db.patch(keepEmbeddingRow._id, {
         embedding: mergedEmbedding,
@@ -4524,17 +4686,11 @@ export const mergeEvents = internalMutation({
           articleCount: mergedArticleCount,
         }),
       });
-    } else {
-      await ctx.db.insert("eventEmbeddings", {
-        eventId: keepEventId,
-        embedding: mergedEmbedding,
-        version,
-        status: mergedStatus,
-        ...buildEventEmbeddingFilterFields({
-          status: mergedStatus,
-          lastArticleAt: mergedLastArticleAt,
-          articleCount: mergedArticleCount,
-        }),
+    }
+    if (keepCandidacyId) {
+      await ctx.db.patch(keepCandidacyId, {
+        embeddingId: keepEmbeddingId,
+        eventCreationTime: keepEvent._creationTime,
       });
     }
 
@@ -4840,7 +4996,7 @@ export const mergeNearDuplicateEvents = internalAction({
       const candidatePairs: Array<[ClusterCandidate, ClusterCandidate]> = [];
 
       for (const candidate of seeds) {
-        if (!candidate.embeddingId) continue;
+        if (!candidate.embeddingId || !candidate.embedding) continue;
         const reservationId = await reserveVectorSearch(ctx, metrics);
         if (!reservationId) continue;
 
@@ -4882,6 +5038,7 @@ export const mergeNearDuplicateEvents = internalAction({
               embeddingId: result._id,
               similarity: result._score,
             })),
+            includeEmbedding: true,
           },
         );
         metrics.vectorMatchesHydrated += hydratedResults.length;
@@ -4918,6 +5075,12 @@ export const mergeNearDuplicateEvents = internalAction({
       for (const [a, b] of candidatePairs) {
         if (removedIds.has(String(a.eventId))) continue;
         if (removedIds.has(String(b.eventId))) continue;
+        const aEmbedding = a.embedding;
+        const bEmbedding = b.embedding;
+        if (!aEmbedding || !bEmbedding) {
+          skipped++;
+          continue;
+        }
 
         examinedPairs++;
 
@@ -4927,7 +5090,7 @@ export const mergeNearDuplicateEvents = internalAction({
           continue;
         }
 
-        const similarity = maxCrossEventSimilarity(a, b);
+        const similarity = cosineSimilarity(aEmbedding, bEmbedding);
         const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
         const entityOverlap = countTokenOverlap(a.entityTokens, b.entityTokens);
         const topicOverlap = countTokenOverlap(a.topicSlugs, b.topicSlugs);
@@ -4941,11 +5104,17 @@ export const mergeNearDuplicateEvents = internalAction({
         }
 
         const { keep, remove } = chooseCanonicalEvent(a, b);
+        if (!keep.embedding || !remove.embedding) {
+          skipped++;
+          continue;
+        }
+        const keepEmbedding = keep.embedding;
+        const removeEmbedding = remove.embedding;
         const totalArticles = keep.articleCount + remove.articleCount;
-        const mergedEmbedding = keep.embedding.map(
+        const mergedEmbedding = keepEmbedding.map(
           (value, index) =>
             (value * keep.articleCount +
-              (remove.embedding[index] ?? 0) * remove.articleCount) /
+              (removeEmbedding[index] ?? 0) * remove.articleCount) /
             Math.max(totalArticles, 1),
         );
         const keepHasAiPerspective =
@@ -5235,7 +5404,7 @@ export const reclusterRecentSingletonEvents = internalAction({
       const neighborSearchStart = Date.now();
       const candidatesByEventId = new Map<string, ClusterCandidate>();
       for (const candidate of candidates) {
-        if (!candidate.embeddingId) continue;
+        if (!candidate.embeddingId || !candidate.embedding) continue;
         candidatesByEventId.set(String(candidate.eventId), candidate);
       }
 
@@ -5245,7 +5414,7 @@ export const reclusterRecentSingletonEvents = internalAction({
       const singletonSearchBuckets = buildSingletonSearchBuckets(dayBuckets);
 
       for (const candidate of candidates) {
-        if (!candidate.embeddingId) continue;
+        if (!candidate.embeddingId || !candidate.embedding) continue;
         const reservationId = await reserveVectorSearch(ctx, metrics);
         if (!reservationId) continue;
 
@@ -5287,6 +5456,7 @@ export const reclusterRecentSingletonEvents = internalAction({
               embeddingId: result._id,
               similarity: result._score,
             })),
+            includeEmbedding: true,
           },
         );
         metrics.vectorMatchesHydrated += hydratedResults.length;
@@ -5323,13 +5493,19 @@ export const reclusterRecentSingletonEvents = internalAction({
       for (const [a, b] of candidatePairs) {
         if (removedIds.has(String(a.eventId))) continue;
         if (removedIds.has(String(b.eventId))) continue;
+        const aEmbedding = a.embedding;
+        const bEmbedding = b.embedding;
+        if (!aEmbedding || !bEmbedding) {
+          skipped++;
+          continue;
+        }
         examinedPairs++;
 
         const hoursApart =
           Math.abs(a.firstPublishedAt - b.firstPublishedAt) / (60 * 60 * 1000);
         if (hoursApart > settings.windowHours) continue;
 
-        const similarity = maxCrossEventSimilarity(a, b);
+        const similarity = cosineSimilarity(aEmbedding, bEmbedding);
         const entityOverlap = countTokenOverlap(a.entityTokens, b.entityTokens);
         const topicOverlap = countTokenOverlap(a.topicSlugs, b.topicSlugs);
         const titleJaccard = jaccardSimilarity(a.titleTokens, b.titleTokens);
@@ -5349,11 +5525,17 @@ export const reclusterRecentSingletonEvents = internalAction({
         }
 
         const { keep, remove } = chooseCanonicalEvent(a, b);
+        if (!keep.embedding || !remove.embedding) {
+          skipped++;
+          continue;
+        }
+        const keepEmbedding = keep.embedding;
+        const removeEmbedding = remove.embedding;
         const totalArticles = keep.articleCount + remove.articleCount;
-        const mergedEmbedding = keep.embedding.map(
+        const mergedEmbedding = keepEmbedding.map(
           (value, index) =>
             (value * keep.articleCount +
-              (remove.embedding[index] ?? 0) * remove.articleCount) /
+              (removeEmbedding[index] ?? 0) * remove.articleCount) /
             Math.max(totalArticles, 1),
         );
         const keepHasAiPerspective =
@@ -6022,6 +6204,7 @@ export const clusterEnrichedArticles = internalAction({
         createdEvents++;
         const newCandidate: ClusterCandidate = {
           eventId: result.eventId,
+          embeddingId: result.embeddingId,
           title: result.title,
           slug: result.slug,
           firstPublishedAt: result.firstPublishedAt,

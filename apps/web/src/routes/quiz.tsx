@@ -4,7 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useQuery } from "convex/react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -62,6 +62,17 @@ type QuestionFeedback = {
   explanation: { en: string; ro: string };
   attribution: QuizQuestion["attribution"];
   eventId: Id<"events">;
+};
+
+type SubmitQuizVariables = {
+  quizId: Id<"dailyQuizzes">;
+  answers: Array<{ questionId: string; choiceId: string }>;
+};
+
+type GradeQuestionVariables = {
+  quizId: Id<"dailyQuizzes">;
+  questionId: string;
+  choiceId: string;
 };
 
 export const Route = createFileRoute("/quiz")({
@@ -166,16 +177,22 @@ function QuizExperience({
 }) {
   const locale = useLocale();
   const t = useT();
+  const convex = useConvex();
   const { isAuthenticated } = useConvexAuth();
   const existingAttempt = useQuery(
     api.quiz.getMyTodayAttempt,
     isAuthenticated ? { dateKey: quiz.dateKey } : "skip",
   );
-  const submitQuiz = useMutation({
-    mutationFn: useConvexMutation(api.quiz.submitQuizAttempt),
+  const submitQuizMutation = useConvexMutation(api.quiz.submitQuizAttempt);
+  const submitQuiz = useMutation<SubmitResult, Error, SubmitQuizVariables>({
+    mutationFn: submitQuizMutation,
   });
-  const gradeQuestion = useMutation({
-    mutationFn: useConvexMutation(api.quiz.gradeQuizQuestion),
+  const gradeQuestion = useMutation<
+    QuestionFeedback,
+    Error,
+    GradeQuestionVariables
+  >({
+    mutationFn: (args) => convex.query(api.quiz.gradeQuizQuestion, args),
   });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -184,6 +201,8 @@ function QuizExperience({
   >({});
   const [result, setResult] = useState<SubmitResult | null>(null);
   const gradingLockRef = useRef(false);
+  const pendingGradePromiseRef = useRef<Promise<void> | null>(null);
+  const answersRef = useRef<Record<string, string>>({});
 
   const currentQuestion = quiz.questions[currentIndex];
   const selectedChoiceId = currentQuestion
@@ -221,41 +240,55 @@ function QuizExperience({
       return;
     }
     gradingLockRef.current = true;
-    setAnswers((current) => ({ ...current, [questionId]: choiceId }));
-    try {
-      const feedback = await gradeQuestion.mutateAsync({
-        quizId: quiz._id,
-        questionId,
-        choiceId,
-      });
-      setQuestionFeedback((current) => ({
-        ...current,
-        [questionId]: feedback as QuestionFeedback,
-      }));
-    } catch (error) {
-      console.error("Failed to grade quiz answer:", error);
-      toast.error(t("quiz.submit.error"));
-      setAnswers((current) => {
-        const next = { ...current };
-        delete next[questionId];
-        return next;
-      });
-    } finally {
-      gradingLockRef.current = false;
-    }
+    setAnswers((current) => {
+      const next = { ...current, [questionId]: choiceId };
+      answersRef.current = next;
+      return next;
+    });
+    const gradePromise = (async () => {
+      try {
+        const feedback = await gradeQuestion.mutateAsync({
+          quizId: quiz._id,
+          questionId,
+          choiceId,
+        });
+        setQuestionFeedback((current) => ({
+          ...current,
+          [questionId]: feedback,
+        }));
+      } catch (error) {
+        console.error("Failed to grade quiz answer:", error);
+        toast.error(t("quiz.submit.error"));
+        setAnswers((current) => {
+          const next = { ...current };
+          delete next[questionId];
+          answersRef.current = next;
+          return next;
+        });
+      } finally {
+        gradingLockRef.current = false;
+        pendingGradePromiseRef.current = null;
+      }
+    })();
+    pendingGradePromiseRef.current = gradePromise;
+    await gradePromise;
   };
 
   const handleSubmit = async () => {
     if (isSubmitting || activeResult) return;
     try {
+      await pendingGradePromiseRef.current;
+      const settledAnswers = answersRef.current;
       const response = await submitQuiz.mutateAsync({
         quizId: quiz._id,
-        answers: Object.entries(answers).map(([questionId, choiceId]) => ({
-          questionId,
-          choiceId,
-        })),
+        answers: Object.entries(settledAnswers).map(
+          ([questionId, choiceId]) => ({
+            questionId,
+            choiceId,
+          }),
+        ),
       });
-      setResult(response as SubmitResult);
+      setResult(response);
       setCurrentIndex(quiz.questions.length);
     } catch (error) {
       console.error("Failed to submit quiz:", error);

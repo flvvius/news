@@ -162,6 +162,8 @@ export default defineSchema({
   // =========================================================================
   eventCandidacy: defineTable({
     eventId: v.id("events"),
+    embeddingId: v.optional(v.id("eventEmbeddings")),
+    eventCreationTime: v.optional(v.number()),
     title: v.optional(v.string()),
     slug: v.optional(v.string()),
     status: v.union(v.literal("processing"), v.literal("published")),
@@ -178,6 +180,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_event", ["eventId"])
+    .index("by_embedding", ["embeddingId"])
     .index("by_status_last_article_at", ["status", "lastArticleAt"])
     .index("by_status_updated_at", ["status", "updatedAt"]),
 
@@ -862,6 +865,7 @@ export default defineSchema({
       v.literal("reserved"),
       v.literal("consumed"),
       v.literal("released"),
+      v.literal("expired"),
     ),
     createdAt: v.number(),
     expiresAt: v.number(),

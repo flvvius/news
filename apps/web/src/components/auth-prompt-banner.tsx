@@ -6,7 +6,6 @@ import { useT } from "@/lib/i18n/LocaleContext";
 type AuthPromptBannerProps = {
   redirectTo: AuthRedirectPath;
   title?: string;
-  description?: string;
   compact?: boolean;
 };
 

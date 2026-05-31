@@ -775,6 +775,13 @@ async function recomputeEventEmbeddingForEvent(
     for (const row of existingRows) {
       await ctx.db.delete(row._id);
     }
+    const candidacy = await ctx.db
+      .query("eventCandidacy")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .first();
+    if (candidacy?.embeddingId) {
+      await ctx.db.patch(candidacy._id, { embeddingId: undefined });
+    }
     return;
   }
 
@@ -804,6 +811,13 @@ async function recomputeEventEmbeddingForEvent(
     for (const row of existingRows) {
       await ctx.db.delete(row._id);
     }
+    const candidacy = await ctx.db
+      .query("eventCandidacy")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .first();
+    if (candidacy?.embeddingId) {
+      await ctx.db.patch(candidacy._id, { embeddingId: undefined });
+    }
     return;
   }
 
@@ -826,6 +840,20 @@ async function recomputeEventEmbeddingForEvent(
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
     .first();
 
+  const embeddingId = existingRow
+    ? existingRow._id
+    : await ctx.db.insert("eventEmbeddings", {
+        eventId,
+        embedding: averagedEmbedding,
+        version: latestVersion,
+        status: event.status,
+        ...buildEventEmbeddingFilterFields({
+          status: event.status,
+          lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+          articleCount: event.articleCount ?? articles.length,
+        }),
+      });
+
   if (existingRow) {
     await ctx.db.patch(existingRow._id, {
       embedding: averagedEmbedding,
@@ -837,17 +865,20 @@ async function recomputeEventEmbeddingForEvent(
         articleCount: event.articleCount ?? articles.length,
       }),
     });
-  } else {
-    await ctx.db.insert("eventEmbeddings", {
-      eventId,
-      embedding: averagedEmbedding,
-      version: latestVersion,
-      status: event.status,
-      ...buildEventEmbeddingFilterFields({
-        status: event.status,
-        lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
-        articleCount: event.articleCount ?? articles.length,
-      }),
+  }
+
+  const candidacy = await ctx.db
+    .query("eventCandidacy")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .first();
+  if (
+    candidacy &&
+    (candidacy.embeddingId !== embeddingId ||
+      candidacy.eventCreationTime !== event._creationTime)
+  ) {
+    await ctx.db.patch(candidacy._id, {
+      embeddingId,
+      eventCreationTime: event._creationTime,
     });
   }
 }

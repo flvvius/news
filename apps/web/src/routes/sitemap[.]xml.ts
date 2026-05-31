@@ -49,8 +49,13 @@ export const Route = createFileRoute("/sitemap.xml")({
         }),
       GET: async () => {
         const client = new ConvexHttpClient(convexUrl);
-        const snapshot = await client.query(api.sitemap.getPublicSitemapXml, {});
-        const xml = snapshot?.xml ?? buildFallbackSitemapXml();
+        let xml = buildFallbackSitemapXml();
+        try {
+          const snapshot = await client.query(api.sitemap.getPublicSitemapXml, {});
+          xml = snapshot?.xml ?? xml;
+        } catch (error) {
+          console.error("Failed to load sitemap snapshot from Convex:", error);
+        }
 
         return new Response(xml, {
           status: 200,

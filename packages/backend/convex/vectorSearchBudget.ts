@@ -311,6 +311,35 @@ async function adjustDailyUsage(
   }
 }
 
+async function releaseExpiredReservations(
+  ctx: MutationCtx,
+  now: number,
+  limit = 100,
+) {
+  const expiredReservations = await ctx.db
+    .query("vectorSearchReservations")
+    .withIndex("by_status_expiresAt", (q) =>
+      q.eq("status", "reserved").lte("expiresAt", now),
+    )
+    .take(limit);
+
+  for (const reservation of expiredReservations) {
+    await adjustDailyUsage(ctx, {
+      date: reservation.date,
+      shard: reservation.shard,
+      deltaQgbRead: -reservation.qgbReserved,
+      deltaVectorSearches: -reservation.vectorSearchesReserved,
+      deltaRunCount: 0,
+    });
+    await ctx.db.patch(reservation._id, {
+      status: "expired",
+      updatedAt: now,
+    });
+  }
+
+  return expiredReservations.length;
+}
+
 export function estimateVectorSearchQgbRead(args: {
   vectorSearches: number;
   estimatedPerSearchBytes?: number;
@@ -393,6 +422,7 @@ export const reserveUsage = internalMutation({
     const now = Date.now();
     const date = formatUtcDate(now);
     const shard = getUtcShard(now);
+    await releaseExpiredReservations(ctx, now);
     const totals = await getDailyTotals(ctx, date);
     const vectorSearches = Math.max(0, Math.floor(args.vectorSearches));
     const calibration = await getCalibratedPerSearchBytes(ctx);

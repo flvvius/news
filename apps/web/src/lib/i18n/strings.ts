@@ -287,8 +287,6 @@ const ro = {
   "feed.search.indexed": "Afișăm rezultatele indexate pentru „{query}”.",
   "feed.authTitle":
     "Conturile gratuite deblochează salvările și un feed personalizat",
-  "feed.authBody":
-    "Poți citi totul anonim. Autentifică-te doar când vrei salvări sincronizate, clasare adaptată intereselor tale și alerte viitoare.",
   "feed.searching": "Căutăm evenimente...",
   "feed.loading": "Se încarcă…",
   "feed.leadStory": "Subiect principal",
@@ -840,8 +838,6 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.search.threshold": "Type at least 2 characters to search.",
   "feed.search.indexed": "Showing indexed results for “{query}”.",
   "feed.authTitle": "Free accounts unlock bookmarks and a personalized feed",
-  "feed.authBody":
-    "You can read everything anonymously. Sign in only when you want synced bookmarks, ranking tuned to your interests, and future alerts.",
   "feed.searching": "Searching events...",
   "feed.loading": "Loading...",
   "feed.leadStory": "Lead story",

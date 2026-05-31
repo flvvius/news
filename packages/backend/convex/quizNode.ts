@@ -12,6 +12,8 @@ const DEFAULT_ENABLED = true;
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TARGET_QUESTIONS = 5;
 const DEFAULT_MIN_QUESTIONS = 3;
+const QUIZ_PROMPT_VERSION = "2026-05-31";
+const QUIZ_SCHEMA_VERSION = "daily_news_quiz.v1";
 
 const QUIZ_JSON_SCHEMA = {
   name: "daily_news_quiz",
@@ -293,25 +295,37 @@ function hasGrounding(
   });
 }
 
-function buildInputSignature(input: QuizGenerationInput): string {
-  const payload = input.events.map((event) => ({
-    eventId: event.event._id,
-    title: event.event.title,
-    sourceCount: event.event.sourceCount,
-    articleCount: event.event.articleCount,
-    claims: event.claims.map((claim) => ({
-      canonicalStatement: claim.canonicalStatement,
-      status: claim.status,
-      variants: claim.variants.map((variant) => [
-        variant.sourceName,
-        variant.statement,
+function buildInputSignature(
+  input: QuizGenerationInput,
+  settings: QuizGenerationSettings,
+): string {
+  const payload = {
+    generation: {
+      model: settings.model,
+      targetQuestions: settings.targetQuestions,
+      minQuestions: settings.minQuestions,
+      promptVersion: QUIZ_PROMPT_VERSION,
+      schemaVersion: QUIZ_SCHEMA_VERSION,
+    },
+    events: input.events.map((event) => ({
+      eventId: event.event._id,
+      title: event.event.title,
+      sourceCount: event.event.sourceCount,
+      articleCount: event.event.articleCount,
+      claims: event.claims.map((claim) => ({
+        canonicalStatement: claim.canonicalStatement,
+        status: claim.status,
+        variants: claim.variants.map((variant) => [
+          variant.sourceName,
+          variant.statement,
+        ]),
+      })),
+      facts: event.articles.map((article) => [
+        article.sourceName,
+        article.atomicFacts,
       ]),
     })),
-    facts: event.articles.map((article) => [
-      article.sourceName,
-      article.atomicFacts,
-    ]),
-  }));
+  };
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
@@ -479,7 +493,7 @@ async function generateDailyQuizForDate(
   const input = (await ctx.runQuery(internal.quiz.getQuizGenerationInput, {
     dateKey,
   })) as QuizGenerationInput;
-  const inputSignature = buildInputSignature(input);
+  const inputSignature = buildInputSignature(input, settings);
 
   if (
     input.existing?.status === "ready" &&
