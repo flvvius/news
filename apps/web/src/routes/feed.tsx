@@ -530,7 +530,9 @@ function FeedContent() {
           <div
             aria-hidden="true"
             className="shrink-0"
-            style={{ height: controlsHeight > 0 ? `${controlsHeight}px` : undefined }}
+            style={{
+              height: controlsHeight > 0 ? `${controlsHeight}px` : undefined,
+            }}
           />
 
           <div
@@ -554,10 +556,15 @@ function FeedContent() {
                           ref={searchInputRef}
                           type="search"
                           value={searchInput}
-                          onChange={(event) => setSearchInput(event.target.value)}
+                          onChange={(event) =>
+                            setSearchInput(event.target.value)
+                          }
                           onFocus={() => setIsSearchFocused(true)}
                           onBlur={() => {
-                            window.setTimeout(() => setIsSearchFocused(false), 100);
+                            window.setTimeout(
+                              () => setIsSearchFocused(false),
+                              100,
+                            );
                           }}
                           placeholder={t("feed.search.placeholder")}
                           className="h-10 rounded-full border-border/80 bg-background/75 pr-11 text-base sm:h-11 sm:pr-12"
@@ -675,7 +682,6 @@ function FeedContent() {
               redirectTo="/feed"
               compact
               title={t("feed.authTitle")}
-              description={t("feed.authBody")}
             />
           )}
 

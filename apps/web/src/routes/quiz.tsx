@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useQuery } from "convex/react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -29,7 +31,6 @@ type QuizQuestion = {
   type: string;
   question: { en: string; ro: string };
   choices: Array<{ id: string; text: { en: string; ro: string } }>;
-  explanation: { en: string; ro: string };
   attribution: {
     eventTitle: string;
     eventSlug: string;
@@ -61,6 +62,17 @@ type QuestionFeedback = {
   explanation: { en: string; ro: string };
   attribution: QuizQuestion["attribution"];
   eventId: Id<"events">;
+};
+
+type SubmitQuizVariables = {
+  quizId: Id<"dailyQuizzes">;
+  answers: Array<{ questionId: string; choiceId: string }>;
+};
+
+type GradeQuestionVariables = {
+  quizId: Id<"dailyQuizzes">;
+  questionId: string;
+  choiceId: string;
 };
 
 export const Route = createFileRoute("/quiz")({
@@ -165,20 +177,32 @@ function QuizExperience({
 }) {
   const locale = useLocale();
   const t = useT();
+  const convex = useConvex();
   const { isAuthenticated } = useConvexAuth();
   const existingAttempt = useQuery(
     api.quiz.getMyTodayAttempt,
     isAuthenticated ? { dateKey: quiz.dateKey } : "skip",
   );
-  const submitQuiz = useMutation(api.quiz.submitQuizAttempt);
+  const submitQuizMutation = useConvexMutation(api.quiz.submitQuizAttempt);
+  const submitQuiz = useMutation<SubmitResult, Error, SubmitQuizVariables>({
+    mutationFn: submitQuizMutation,
+  });
+  const gradeQuestion = useMutation<
+    QuestionFeedback,
+    Error,
+    GradeQuestionVariables
+  >({
+    mutationFn: (args) => convex.query(api.quiz.gradeQuizQuestion, args),
+  });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [questionFeedback, setQuestionFeedback] = useState<
     Record<string, QuestionFeedback>
   >({});
   const [result, setResult] = useState<SubmitResult | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGrading, setIsGrading] = useState(false);
+  const gradingLockRef = useRef(false);
+  const pendingGradePromiseRef = useRef<Promise<void> | null>(null);
+  const answersRef = useRef<Record<string, string>>({});
 
   const currentQuestion = quiz.questions[currentIndex];
   const selectedChoiceId = currentQuestion
@@ -189,6 +213,8 @@ function QuizExperience({
     ? questionFeedback[currentQuestion.id]
     : undefined;
   const progress = Math.round((answeredCount / quiz.questions.length) * 100);
+  const isSubmitting = submitQuiz.isPending;
+  const isGrading = gradeQuestion.isPending || gradingLockRef.current;
   const activeResult =
     result ?? (existingAttempt ? { ...existingAttempt, saved: true } : null);
   const questionTotal = String(quiz.questionCount || quiz.questions.length);
@@ -209,64 +235,64 @@ function QuizExperience({
     );
   }
 
-  const handleSelect = (questionId: string, choiceId: string) => {
-    if (activeResult || questionFeedback[questionId] || isGrading) return;
-    setAnswers((current) => ({ ...current, [questionId]: choiceId }));
-  };
-
-  const handleRevealCurrentAnswer = () => {
-    if (!currentQuestion || currentFeedback || isGrading) return false;
-    const choiceId = answers[currentQuestion.id];
-    if (!choiceId) return false;
-
-    setQuestionFeedback((current) => ({
-      ...current,
-      [currentQuestion.id]: {
-        questionId: currentQuestion.id,
-        selectedChoiceId: choiceId,
-        explanation: currentQuestion.explanation,
-        attribution: currentQuestion.attribution,
-        eventId: currentQuestion.eventId,
-      },
-    }));
-    return true;
-  };
-
-  const handleNextQuestion = () => {
-    if (!currentQuestion) return;
-    if (!currentFeedback) {
-      handleRevealCurrentAnswer();
+  const handleSelect = async (questionId: string, choiceId: string) => {
+    if (gradingLockRef.current || activeResult || questionFeedback[questionId]) {
       return;
     }
-    setCurrentIndex((index) => Math.min(quiz.questions.length - 1, index + 1));
-  };
-
-  const handleFinish = async () => {
-    if (!currentFeedback) {
-      handleRevealCurrentAnswer();
-      return;
-    }
-    await handleSubmit();
+    gradingLockRef.current = true;
+    setAnswers((current) => {
+      const next = { ...current, [questionId]: choiceId };
+      answersRef.current = next;
+      return next;
+    });
+    const gradePromise = (async () => {
+      try {
+        const feedback = await gradeQuestion.mutateAsync({
+          quizId: quiz._id,
+          questionId,
+          choiceId,
+        });
+        setQuestionFeedback((current) => ({
+          ...current,
+          [questionId]: feedback,
+        }));
+      } catch (error) {
+        console.error("Failed to grade quiz answer:", error);
+        toast.error(t("quiz.submit.error"));
+        setAnswers((current) => {
+          const next = { ...current };
+          delete next[questionId];
+          answersRef.current = next;
+          return next;
+        });
+      } finally {
+        gradingLockRef.current = false;
+        pendingGradePromiseRef.current = null;
+      }
+    })();
+    pendingGradePromiseRef.current = gradePromise;
+    await gradePromise;
   };
 
   const handleSubmit = async () => {
     if (isSubmitting || activeResult) return;
-    setIsSubmitting(true);
     try {
-      const response = await submitQuiz({
+      await pendingGradePromiseRef.current;
+      const settledAnswers = answersRef.current;
+      const response = await submitQuiz.mutateAsync({
         quizId: quiz._id,
-        answers: Object.entries(answers).map(([questionId, choiceId]) => ({
-          questionId,
-          choiceId,
-        })),
+        answers: Object.entries(settledAnswers).map(
+          ([questionId, choiceId]) => ({
+            questionId,
+            choiceId,
+          }),
+        ),
       });
-      setResult(response as SubmitResult);
+      setResult(response);
       setCurrentIndex(quiz.questions.length);
     } catch (error) {
       console.error("Failed to submit quiz:", error);
       toast.error(t("quiz.submit.error"));
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -339,12 +365,6 @@ function QuizExperience({
                 <h2 className="max-w-[65ch] text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
                   {localize(currentQuestion.question, locale)}
                 </h2>
-                <p className="text-sm font-medium text-foreground">
-                  {t("quiz.eventLine").replace(
-                    "{event}",
-                    currentQuestion.attribution.eventTitle,
-                  )}
-                </p>
                 <p className="text-sm text-muted-foreground">
                   {currentQuestion.attribution.sourceName
                     ? t("quiz.sourceLine").replace(
@@ -356,14 +376,15 @@ function QuizExperience({
               </div>
 
               <div className="grid gap-3">
-                {currentQuestion.choices.map((choice, choiceIndex) => {
+                {currentQuestion.choices.map((choice) => {
                   const isSelected = selectedChoiceId === choice.id;
-                  const choiceLabel = String.fromCharCode(65 + choiceIndex);
                   return (
                     <button
                       key={choice.id}
                       type="button"
-                      onClick={() => handleSelect(currentQuestion.id, choice.id)}
+                      onClick={() =>
+                        void handleSelect(currentQuestion.id, choice.id)
+                      }
                       aria-pressed={isSelected}
                       disabled={Boolean(currentFeedback) || isGrading}
                       className={cn(
@@ -386,7 +407,7 @@ function QuizExperience({
                             : "border-border text-muted-foreground",
                         )}
                       >
-                        {choiceLabel}
+                        {choice.id}
                       </span>
                       <span>{localize(choice.text, locale)}</span>
                     </button>
@@ -406,29 +427,6 @@ function QuizExperience({
                   <p className="leading-relaxed text-muted-foreground">
                     {localize(currentFeedback.explanation, locale)}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button asChild variant="outline" size="sm">
-                      <Link
-                        to="/event/$slug"
-                        params={{ slug: currentFeedback.attribution.eventSlug }}
-                      >
-                        {t("quiz.review.openEvent")}
-                        <ChevronRight className="size-3.5" />
-                      </Link>
-                    </Button>
-                    {currentFeedback.attribution.sourceUrl && (
-                      <Button asChild variant="ghost" size="sm">
-                        <a
-                          href={currentFeedback.attribution.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {t("quiz.review.source")}
-                          <ExternalLink className="size-3.5" />
-                        </a>
-                      </Button>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -447,27 +445,25 @@ function QuizExperience({
                 {currentIndex === quiz.questions.length - 1 ? (
                   <Button
                     type="button"
-                    onClick={() => void handleFinish()}
+                    onClick={handleSubmit}
                     disabled={
-                      currentFeedback
-                        ? answeredCount < quiz.questions.length || isSubmitting
-                        : !selectedChoiceId || isGrading
+                      answeredCount < quiz.questions.length || isSubmitting
                     }
                   >
                     <Trophy className="size-4" />
-                    {isSubmitting
-                      ? t("quiz.submitting")
-                      : currentFeedback
-                        ? t("quiz.finish")
-                        : t("quiz.checkAnswer")}
+                    {isSubmitting ? t("quiz.submitting") : t("quiz.finish")}
                   </Button>
                 ) : (
                   <Button
                     type="button"
-                    onClick={handleNextQuestion}
-                    disabled={!selectedChoiceId || isGrading}
+                    onClick={() =>
+                      setCurrentIndex((index) =>
+                        Math.min(quiz.questions.length - 1, index + 1),
+                      )
+                    }
+                    disabled={!currentFeedback}
                   >
-                    {currentFeedback ? t("quiz.next") : t("quiz.checkAnswer")}
+                    {t("quiz.next")}
                     <ChevronRight className="size-4" />
                   </Button>
                 )}
@@ -552,21 +548,12 @@ function QuizExperience({
                       <h3 className="text-lg font-semibold leading-snug">
                         {localize(question.question, locale)}
                       </h3>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {t("quiz.eventLine").replace(
-                          "{event}",
-                          question.attribution.eventTitle,
-                        )}
-                      </p>
                       <div className="grid gap-2">
-                        {question.choices.map((choice, choiceIndex) => {
+                        {question.choices.map((choice) => {
                           const isSelected =
                             selectedChoiceIdForQuestion === choice.id;
                           const isCorrect =
                             review?.correctChoiceId === choice.id;
-                          const choiceLabel = String.fromCharCode(
-                            65 + choiceIndex,
-                          );
                           return (
                             <div
                               key={choice.id}
@@ -576,12 +563,9 @@ function QuizExperience({
                                   ? "border-success/40 bg-success/10"
                                   : isSelected
                                     ? "border-destructive/35 bg-destructive/10"
-                                : "border-border bg-background",
+                                    : "border-border bg-background",
                               )}
                             >
-                              <span className="mr-2 font-semibold">
-                                {choiceLabel}.
-                              </span>
                               {localize(choice.text, locale)}
                             </div>
                           );

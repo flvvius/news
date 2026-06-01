@@ -1292,6 +1292,21 @@ export const backfillAtomicFacts = internalAction({
         budgetExhausted: false,
       };
     }
+    const backfillCfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["backfill_enabled"],
+    });
+    if (backfillCfg.backfill_enabled !== true && !force) {
+      console.log(
+        "[enrichment] Atomic facts backfill skipped: backfill_enabled is false",
+      );
+      return {
+        processed: 0,
+        enriched: 0,
+        failed: 0,
+        skipped: true,
+        budgetExhausted: false,
+      };
+    }
 
     const totalLimit = safeInteger(limit, 100, 1, 500);
     const perBatch = safeInteger(batchSize, 20, 1, BATCH_SIZE);

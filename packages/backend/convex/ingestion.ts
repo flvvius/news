@@ -467,6 +467,17 @@ function articleContentFingerprint(article: Pick<ParsedArticle, "title" | "snipp
   return stableStringHash(fingerprintText);
 }
 
+function feedFingerprint(
+  articles: Array<{ canonicalUrl: string; contentFingerprint: string }>,
+) {
+  return stableStringHash(
+    articles
+      .map((article) => `${article.canonicalUrl}:${article.contentFingerprint}`)
+      .sort()
+      .join("|"),
+  );
+}
+
 function parsePublishedAt(raw: string): number | undefined {
   if (!raw.trim()) return undefined;
   const parsed = new Date(raw).getTime();
@@ -507,6 +518,53 @@ function buildEventEmbeddingFilterFields(args: {
     mergeSearchBucket: `${status}::${recentWindowBucket}::${updatedDayBucket}`,
     singletonSearchBucket: `${status}::${singletonBucket}::${updatedDayBucket}`,
   };
+}
+
+async function syncHotEventEmbedding(
+  ctx: MutationCtx,
+  args: {
+    eventId: Id<"events">;
+    embeddingId: Id<"eventEmbeddings">;
+    embedding: number[];
+    version: number;
+    status: "processing" | "published";
+    lastArticleAt: number;
+    articleCount: number;
+  },
+) {
+  const filterFields = buildEventEmbeddingFilterFields({
+    status: args.status,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+  });
+  const existingHot = await ctx.db
+    .query("eventEmbeddingHot")
+    .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+    .first();
+  if (filterFields.recentWindowBucket !== "recent_2d") {
+    if (existingHot) await ctx.db.delete(existingHot._id);
+    return undefined;
+  }
+
+  const payload = {
+    embeddingId: args.embeddingId,
+    embedding: args.embedding,
+    version: args.version,
+    status: args.status,
+    recentWindowBucket: filterFields.recentWindowBucket,
+    updatedDayBucket: filterFields.updatedDayBucket,
+    lastArticleAt: args.lastArticleAt,
+    articleCount: args.articleCount,
+    updatedAt: Date.now(),
+  };
+  if (existingHot) {
+    await ctx.db.patch(existingHot._id, payload);
+    return existingHot._id;
+  }
+  return await ctx.db.insert("eventEmbeddingHot", {
+    eventId: args.eventId,
+    ...payload,
+  });
 }
 
 /** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
@@ -687,6 +745,7 @@ export const getOrCreateSource = internalMutation({
 /** Insert a batch of articles. */
 export const insertArticles = internalMutation({
   args: {
+    skipDuplicateChecks: v.optional(v.boolean()),
     articles: v.array(
       v.object({
         sourceId: v.id("sources"),
@@ -711,27 +770,29 @@ export const insertArticles = internalMutation({
       }),
     ),
   },
-  handler: async (ctx, { articles }) => {
+  handler: async (ctx, { articles, skipDuplicateChecks }) => {
     const ids: Id<"articles">[] = [];
     for (const article of articles) {
-      const existingCanonical = await ctx.db
-        .query("articles")
-        .withIndex("by_canonical_url", (q) =>
-          q.eq("canonicalUrl", article.canonicalUrl),
-        )
-        .first();
-      if (existingCanonical) continue;
-
-      if (article.contentFingerprint) {
-        const existingFingerprint = await ctx.db
+      if (!skipDuplicateChecks) {
+        const existingCanonical = await ctx.db
           .query("articles")
-          .withIndex("by_source_content_fingerprint", (q) =>
-            q
-              .eq("sourceId", article.sourceId)
-              .eq("contentFingerprint", article.contentFingerprint),
+          .withIndex("by_canonical_url", (q) =>
+            q.eq("canonicalUrl", article.canonicalUrl),
           )
           .first();
-        if (existingFingerprint) continue;
+        if (existingCanonical) continue;
+
+        if (article.contentFingerprint) {
+          const existingFingerprint = await ctx.db
+            .query("articles")
+            .withIndex("by_source_content_fingerprint", (q) =>
+              q
+                .eq("sourceId", article.sourceId)
+                .eq("contentFingerprint", article.contentFingerprint),
+            )
+            .first();
+          if (existingFingerprint) continue;
+        }
       }
 
       const id = await ctx.db.insert("articles", article);
@@ -754,12 +815,27 @@ async function recomputeEventEmbeddingForEvent(
     .collect();
 
   if (articles.length === 0) {
+    const hotRows = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of hotRows) await ctx.db.delete(row._id);
     const existingRows = await ctx.db
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .collect();
     for (const row of existingRows) {
       await ctx.db.delete(row._id);
+    }
+    const candidacy = await ctx.db
+      .query("eventCandidacy")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .first();
+    if (candidacy?.embeddingId || candidacy?.hotEmbeddingId) {
+      await ctx.db.patch(candidacy._id, {
+        embeddingId: undefined,
+        hotEmbeddingId: undefined,
+      });
     }
     return;
   }
@@ -783,12 +859,27 @@ async function recomputeEventEmbeddingForEvent(
     .map((row) => row.embedding);
 
   if (embeddings.length === 0) {
+    const hotRows = await ctx.db
+      .query("eventEmbeddingHot")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const row of hotRows) await ctx.db.delete(row._id);
     const existingRows = await ctx.db
       .query("eventEmbeddings")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .collect();
     for (const row of existingRows) {
       await ctx.db.delete(row._id);
+    }
+    const candidacy = await ctx.db
+      .query("eventCandidacy")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .first();
+    if (candidacy?.embeddingId || candidacy?.hotEmbeddingId) {
+      await ctx.db.patch(candidacy._id, {
+        embeddingId: undefined,
+        hotEmbeddingId: undefined,
+      });
     }
     return;
   }
@@ -812,6 +903,20 @@ async function recomputeEventEmbeddingForEvent(
     .withIndex("by_event", (q) => q.eq("eventId", eventId))
     .first();
 
+  const embeddingId = existingRow
+    ? existingRow._id
+    : await ctx.db.insert("eventEmbeddings", {
+        eventId,
+        embedding: averagedEmbedding,
+        version: latestVersion,
+        status: event.status,
+        ...buildEventEmbeddingFilterFields({
+          status: event.status,
+          lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+          articleCount: event.articleCount ?? articles.length,
+        }),
+      });
+
   if (existingRow) {
     await ctx.db.patch(existingRow._id, {
       embedding: averagedEmbedding,
@@ -823,17 +928,31 @@ async function recomputeEventEmbeddingForEvent(
         articleCount: event.articleCount ?? articles.length,
       }),
     });
-  } else {
-    await ctx.db.insert("eventEmbeddings", {
-      eventId,
-      embedding: averagedEmbedding,
-      version: latestVersion,
-      status: event.status,
-      ...buildEventEmbeddingFilterFields({
-        status: event.status,
-        lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
-        articleCount: event.articleCount ?? articles.length,
-      }),
+  }
+  const hotEmbeddingId = await syncHotEventEmbedding(ctx, {
+    eventId,
+    embeddingId,
+    embedding: averagedEmbedding,
+    version: latestVersion,
+    status: event.status,
+    lastArticleAt: event.lastArticleAt ?? event.firstPublishedAt,
+    articleCount: event.articleCount ?? articles.length,
+  });
+
+  const candidacy = await ctx.db
+    .query("eventCandidacy")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .first();
+  if (
+    candidacy &&
+    (candidacy.embeddingId !== embeddingId ||
+      candidacy.hotEmbeddingId !== hotEmbeddingId ||
+      candidacy.eventCreationTime !== event._creationTime)
+  ) {
+    await ctx.db.patch(candidacy._id, {
+      embeddingId,
+      hotEmbeddingId,
+      eventCreationTime: event._creationTime,
     });
   }
 }
@@ -866,6 +985,20 @@ export const backfillEventEmbeddingDimensions = internalAction({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, { cursor, limit }) => {
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["backfill_enabled"],
+    });
+    if (cfg.backfill_enabled !== true) {
+      console.log(
+        "[ingestion] backfillEventEmbeddingDimensions skipped: backfill_enabled is false",
+      );
+      return {
+        processed: 0,
+        continueCursor: cursor ?? null,
+        isDone: true,
+        reason: "backfill_disabled",
+      };
+    }
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 100), 1), 200);
     const page: PaginationResult<{ _id: Id<"events"> }> = await ctx.runQuery(
       internal.ingestion.getEventsForEmbeddingBackfill,
@@ -1010,8 +1143,12 @@ export const upsertIngestionMeta = internalMutation({
     articleCount: v.number(),
     error: v.optional(v.string()),
     sourceId: v.id("sources"),
+    feedFingerprint: v.optional(v.string()),
   },
-  handler: async (ctx, { feedUrl, success, articleCount, error, sourceId }) => {
+  handler: async (
+    ctx,
+    { feedUrl, success, articleCount, error, sourceId, feedFingerprint },
+  ) => {
     const existing = await ctx.db
       .query("ingestionMeta")
       .withIndex("by_feed_url", (q) => q.eq("feedUrl", feedUrl))
@@ -1033,11 +1170,15 @@ export const upsertIngestionMeta = internalMutation({
               lastError: error?.slice(0, 500),
             }),
         articleCount: existing.articleCount + articleCount,
+        ...(feedFingerprint !== undefined && {
+          lastFeedFingerprint: feedFingerprint,
+        }),
       });
     } else {
       await ctx.db.insert("ingestionMeta", {
         feedUrl,
         sourceId,
+        lastFeedFingerprint: feedFingerprint,
         lastIngestedAt: now,
         lastSuccessAt: success ? now : undefined,
         consecutiveFailures: success ? 0 : 1,
@@ -1220,6 +1361,23 @@ export const ingestSingleFeed = internalAction({
           ).map((a) => [a.contentFingerprint, a]),
         ).values(),
       );
+      const currentFeedFingerprint = feedFingerprint(dedupedRecentArticles);
+      const previousMeta = await ctx.runQuery(internal.ingestion.getIngestionMeta, {
+        feedUrl,
+      });
+      if (
+        previousMeta?.lastFeedFingerprint === currentFeedFingerprint &&
+        previousMeta.consecutiveFailures === 0
+      ) {
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: true,
+          articleCount: 0,
+          sourceId: resolvedSourceId,
+          feedFingerprint: currentFeedFingerprint,
+        });
+        return { inserted: 0, skipped: recentArticles.length };
+      }
       const canonicalUrls = dedupedRecentArticles.map((a) => a.canonicalUrl);
       const existingUrls = await ctx.runQuery(
         internal.ingestion.findExistingCanonicalUrls,
@@ -1250,6 +1408,7 @@ export const ingestSingleFeed = internalAction({
           success: true,
           articleCount: 0,
           sourceId: resolvedSourceId,
+          feedFingerprint: currentFeedFingerprint,
         });
         return { inserted: 0, skipped: skippedArticles };
       }
@@ -1279,18 +1438,20 @@ export const ingestSingleFeed = internalAction({
           internal.ingestion.insertArticles,
           {
             articles: batch,
+            skipDuplicateChecks: true,
           },
         );
         articlesInserted += insertedIds.length;
       }
 
       // 7. Update feed health (with sourceId link)
-      await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
-        feedUrl,
-        success: true,
-        articleCount: articlesInserted,
-        sourceId: resolvedSourceId,
-      });
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: true,
+          articleCount: articlesInserted,
+          sourceId: resolvedSourceId,
+          feedFingerprint: currentFeedFingerprint,
+        });
 
       console.log(
         `[ingestion] ${feedName}: ${articlesInserted} new, ${skippedArticles} skipped`,

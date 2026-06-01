@@ -15,7 +15,6 @@ const MIN_CALIBRATED_PER_SEARCH_BYTES = 1 * 1024 * 1024;
 const MAX_CALIBRATED_PER_SEARCH_BYTES = 200 * 1024 * 1024;
 const VECTOR_SEARCH_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const VECTOR_SEARCH_RUN_PAGE_SIZE = 1000;
 const VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS = 500;
 
 function roundQgb(value: number): number {
@@ -117,21 +116,28 @@ async function sumVectorSearchesSince(
   ctx: QueryCtx | MutationCtx,
   cutoff: number,
 ): Promise<number> {
-  let cursor: string | null = null;
-  let total = 0;
-  while (true) {
-    const page = await ctx.db
-      .query("vectorSearchRuns")
-      .withIndex("by_createdAt", (q) => q.gte("createdAt", cutoff))
-      .paginate({
-        cursor,
-        numItems: VECTOR_SEARCH_RUN_PAGE_SIZE,
-      });
-    total += page.page.reduce((sum, run) => sum + run.vectorSearches, 0);
-    if (page.isDone) break;
-    cursor = page.continueCursor;
+  const now = Date.now();
+  const buckets = new Map<string, { date: string; shard: number }>();
+  for (
+    let bucket = Math.floor(cutoff / (60 * 60 * 1000)) * 60 * 60 * 1000;
+    bucket <= now;
+    bucket += 60 * 60 * 1000
+  ) {
+    buckets.set(`${formatUtcDate(bucket)}:${getUtcShard(bucket)}`, {
+      date: formatUtcDate(bucket),
+      shard: getUtcShard(bucket),
+    });
   }
-  return total;
+
+  const rows = await Promise.all(
+    Array.from(buckets.values()).map(({ date, shard }) =>
+      ctx.db
+        .query("vectorSearchDaily")
+        .withIndex("by_date_shard", (q) => q.eq("date", date).eq("shard", shard))
+        .unique(),
+    ),
+  );
+  return rows.reduce((sum, row) => sum + (row?.vectorSearches ?? 0), 0);
 }
 
 async function getCalibratedPerSearchBytes(ctx: QueryCtx | MutationCtx) {
@@ -308,31 +314,30 @@ async function adjustDailyUsage(
 async function releaseExpiredReservations(
   ctx: MutationCtx,
   now: number,
-): Promise<void> {
-  for (;;) {
-    const expired = await ctx.db
-      .query("vectorSearchReservations")
-      .withIndex("by_status_expiresAt", (q) =>
-        q.eq("status", "reserved").lte("expiresAt", now),
-      )
-      .take(100);
+  limit = 100,
+) {
+  const expiredReservations = await ctx.db
+    .query("vectorSearchReservations")
+    .withIndex("by_status_expiresAt", (q) =>
+      q.eq("status", "reserved").lte("expiresAt", now),
+    )
+    .take(limit);
 
-    if (expired.length === 0) return;
-
-    for (const reservation of expired) {
-      await adjustDailyUsage(ctx, {
-        date: reservation.date,
-        shard: reservation.shard,
-        deltaQgbRead: -reservation.qgbReserved,
-        deltaVectorSearches: -reservation.vectorSearchesReserved,
-        deltaRunCount: 0,
-      });
-      await ctx.db.patch(reservation._id, {
-        status: "released",
-        updatedAt: now,
-      });
-    }
+  for (const reservation of expiredReservations) {
+    await adjustDailyUsage(ctx, {
+      date: reservation.date,
+      shard: reservation.shard,
+      deltaQgbRead: -reservation.qgbReserved,
+      deltaVectorSearches: -reservation.vectorSearchesReserved,
+      deltaRunCount: 0,
+    });
+    await ctx.db.patch(reservation._id, {
+      status: "expired",
+      updatedAt: now,
+    });
   }
+
+  return expiredReservations.length;
 }
 
 export function estimateVectorSearchQgbRead(args: {
@@ -575,9 +580,9 @@ export const recordUsage = internalMutation({
     const reservations = await ctx.db
       .query("vectorSearchReservations")
       .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
-      .collect();
+      .first();
 
-    if (reservations.length === 0) {
+    if (!reservations) {
       await adjustDailyUsage(ctx, {
         date,
         shard,
@@ -729,5 +734,50 @@ export const cleanupVectorSearchRuns = internalMutation({
       hasMore,
       scheduledContinuation,
     };
+  },
+});
+
+export const cleanupExpiredVectorSearchReservations = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const pageSize = Math.floor(Math.max(1, Math.min(args.limit ?? 100, 500)));
+    const expired = await ctx.db
+      .query("vectorSearchReservations")
+      .withIndex("by_status_expiresAt", (q) =>
+        q.eq("status", "reserved").lte("expiresAt", now),
+      )
+      .take(pageSize);
+
+    for (const reservation of expired) {
+      await adjustDailyUsage(ctx, {
+        date: reservation.date,
+        shard: reservation.shard,
+        deltaQgbRead: -reservation.qgbReserved,
+        deltaVectorSearches: -reservation.vectorSearchesReserved,
+        deltaRunCount: 0,
+      });
+      // Expiry-reclaimed holds use the "expired" terminal status to match the
+      // inline releaseExpiredReservations helper ("released" is reserved for
+      // explicit, pre-expiry releases).
+      await ctx.db.patch(reservation._id, {
+        status: "expired",
+        updatedAt: now,
+      });
+    }
+
+    const hasMore = expired.length === pageSize;
+    if (hasMore && (args.autoContinue ?? true)) {
+      await ctx.scheduler.runAfter(
+        VECTOR_SEARCH_RUN_CLEANUP_CONTINUATION_DELAY_MS,
+        internal.vectorSearchBudget.cleanupExpiredVectorSearchReservations,
+        { limit: pageSize, autoContinue: true },
+      );
+    }
+
+    return { released: expired.length, hasMore };
   },
 });

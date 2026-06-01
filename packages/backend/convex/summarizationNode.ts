@@ -356,7 +356,9 @@ export const alertOnSummaryQueueHealth = internalAction({
   > => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused) {
-      console.log("[summarization] Pipeline paused — skipping queue health check");
+      console.log(
+        "[summarization] Pipeline paused — skipping queue health check",
+      );
       return { skipped: true as const, reason: "pipeline_paused" };
     }
 
@@ -427,8 +429,19 @@ export const runPhase5Backfill = internalAction({
   }> => {
     const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
     if (paused && !args.force) {
-      console.log("[summarization] Pipeline paused — skipping Phase 5 backfill");
+      console.log(
+        "[summarization] Pipeline paused — skipping Phase 5 backfill",
+      );
       return { skipped: true as const, reason: "pipeline_paused" };
+    }
+    const backfillCfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["backfill_enabled"],
+    });
+    if (backfillCfg.backfill_enabled !== true && !args.force) {
+      console.log(
+        "[summarization] Phase 5 backfill skipped: backfill_enabled is false",
+      );
+      return { skipped: true as const, reason: "backfill_disabled" };
     }
 
     const settings: SummarySettings = await loadSummarySettings(ctx, {

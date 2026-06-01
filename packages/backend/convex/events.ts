@@ -1,98 +1,24 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import {
+  compareRankedPayload,
+  decodeRankedCursor,
+  encodeRankedCursor,
+  rankedPayload,
+  RANKED_CURSOR_PREFIX,
+  toFeedEvent,
+  type FeedSort,
+  type PublicPreviewRow,
+} from "./lib/feedSerialization";
+import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
 
-const RANKED_CURSOR_PREFIX = "ranked:";
 const TRENDING_SCAN_LIMIT = 250;
 const TOPIC_SCAN_LIMIT = 500;
 
 const FEED_SORT_VALIDATOR = v.union(v.literal("recent"), v.literal("trending"));
-
-type FeedSort = "recent" | "trending";
-
-type PublicPreviewRow = Pick<
-  Doc<"publicEventPreviews">,
-  | "eventId"
-  | "slug"
-  | "title"
-  | "imageUrl"
-  | "imageAlt"
-  | "perspectiveSummaries"
-  | "globalImpact"
-  | "firstPublishedAt"
-  | "lastUpdatedAt"
-  | "articleCount"
-  | "sourceCount"
-  | "sources"
-  | "sourceBiasCounts"
-  | "topicIds"
-  | "factualArticleCount"
-  | "factualSourceCount"
-  | "trendingScore"
->;
-
-type RankedCursorPayload = {
-  eventId: Id<"events">;
-  score: number;
-  updatedAt: number;
-  firstPublishedAt: number;
-};
-
-function updatedAtForSort(event: PublicPreviewRow): number {
-  return event.lastUpdatedAt;
-}
-
-function rankedPayload(
-  event: PublicPreviewRow,
-  sort: FeedSort,
-): RankedCursorPayload {
-  return {
-    eventId: event.eventId,
-    score: sort === "trending" ? event.trendingScore : event.lastUpdatedAt,
-    updatedAt: updatedAtForSort(event),
-    firstPublishedAt: event.firstPublishedAt,
-  };
-}
-
-function compareRankedPayload(
-  a: RankedCursorPayload,
-  b: RankedCursorPayload,
-): number {
-  return (
-    b.score - a.score ||
-    b.updatedAt - a.updatedAt ||
-    b.firstPublishedAt - a.firstPublishedAt ||
-    String(a.eventId).localeCompare(String(b.eventId))
-  );
-}
-
-function encodeRankedCursor(event: PublicPreviewRow, sort: FeedSort): string {
-  return `${RANKED_CURSOR_PREFIX}${encodeURIComponent(
-    JSON.stringify(rankedPayload(event, sort)),
-  )}`;
-}
-
-function decodeRankedCursor(cursor: string | null): RankedCursorPayload | null {
-  if (!cursor?.startsWith(RANKED_CURSOR_PREFIX)) return null;
-  try {
-    const parsed = JSON.parse(
-      decodeURIComponent(cursor.slice(RANKED_CURSOR_PREFIX.length)),
-    ) as Partial<RankedCursorPayload>;
-    if (
-      typeof parsed.eventId === "string" &&
-      typeof parsed.score === "number" &&
-      typeof parsed.updatedAt === "number" &&
-      typeof parsed.firstPublishedAt === "number"
-    ) {
-      return parsed as RankedCursorPayload;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
 
 function sortEventsForFeed(events: PublicPreviewRow[], sort: FeedSort) {
   return [...events].sort((a, b) => {
@@ -136,23 +62,32 @@ function paginateRankedEvents(
   };
 }
 
-function toFeedEvent(row: PublicPreviewRow) {
-  return {
-    _id: row.eventId,
-    slug: row.slug,
-    title: row.title,
-    imageUrl: row.imageUrl,
-    imageAlt: row.imageAlt,
-    perspectiveSummaries: row.perspectiveSummaries,
-    globalImpact: row.globalImpact,
-    firstPublishedAt: row.firstPublishedAt,
-    lastUpdatedAt: row.lastUpdatedAt,
-    topicIds: row.topicIds,
-    articleCount: row.articleCount,
-    sourceCount: row.sourceCount,
-    sourceBiasCounts: row.sourceBiasCounts,
-    sources: row.sources,
-  };
+function snapshotKey(sort: FeedSort) {
+  return `anonymous:first-page:${sort}`;
+}
+
+async function getTopicFeedCandidates(
+  ctx: QueryCtx,
+  topicId: Id<"topics">,
+  sort: FeedSort,
+  limit: number = TOPIC_SCAN_LIMIT,
+) {
+  const rows =
+    sort === "trending"
+      ? await ctx.db
+          .query("publicEventPreviewTopics")
+          .withIndex("by_topic_trending", (q) => q.eq("topicId", topicId))
+          .order("desc")
+          .take(limit)
+      : await ctx.db
+          .query("publicEventPreviewTopics")
+          .withIndex("by_topic_updated", (q) => q.eq("topicId", topicId))
+          .order("desc")
+          .take(limit);
+  const previews = await Promise.all(rows.map((row) => ctx.db.get(row.previewId)));
+  return previews.filter(
+    (preview): preview is Doc<"publicEventPreviews"> => preview !== null,
+  );
 }
 
 async function getFeedCandidates(
@@ -181,9 +116,10 @@ async function getRankedFeedCandidates(
   sort: FeedSort,
 ) {
   const scanLimit = topicId ? TOPIC_SCAN_LIMIT : TRENDING_SCAN_LIMIT;
-  const candidates = await getFeedCandidates(ctx, sort, scanLimit);
-  if (!topicId) return candidates;
-  return candidates.filter((event) => event.topicIds.includes(topicId));
+  if (topicId) {
+    return await getTopicFeedCandidates(ctx, topicId, sort);
+  }
+  return await getFeedCandidates(ctx, sort, scanLimit);
 }
 
 export const getPublishedEvents = query({
@@ -196,6 +132,50 @@ export const getPublishedEvents = query({
     const sort = args.sort ?? "trending";
 
     let events;
+
+    // Anonymous trending first-page acceleration. The trending feed otherwise
+    // requires an expensive ranked scan on every cold load. Serve the cached
+    // snapshot for the first page, then hand pagination back to the live ranked
+    // query via the stored `ranked:` cursor so the feed never dead-ends at the
+    // snapshot size. (Recent is a cheap indexed pagination and is not cached.)
+    if (
+      sort === "trending" &&
+      !args.topicId &&
+      args.paginationOpts.cursor === null
+    ) {
+      const snapshot = await ctx.db
+        .query("publicFeedSnapshots")
+        .withIndex("by_key", (q) => q.eq("key", snapshotKey("trending")))
+        .unique();
+      if (snapshot) {
+        try {
+          const parsed = JSON.parse(snapshot.payloadJson) as {
+            items: ReturnType<typeof toFeedEvent>[];
+            cursors: string[];
+          };
+          const items = parsed.items ?? [];
+          if (items.length === 0) {
+            return { page: [], isDone: true, continueCursor: "" };
+          }
+          const page = items.slice(0, args.paginationOpts.numItems);
+          const boundaryIndex =
+            Math.min(page.length, parsed.cursors.length) - 1;
+          const continueCursor =
+            boundaryIndex >= 0 ? (parsed.cursors[boundaryIndex] ?? "") : "";
+          return {
+            page,
+            isDone: continueCursor === "",
+            continueCursor,
+          };
+        } catch (error) {
+          console.error(
+            "[events] Failed to parse public feed snapshot:",
+            error,
+          );
+          // Fall through to the live query path below.
+        }
+      }
+    }
 
     if (args.topicId || sort === "trending") {
       const targetSize = args.paginationOpts.numItems;
@@ -273,11 +253,21 @@ export const getPublishedEventsByTopicIds = query({
     }
 
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 5), 1), 20);
-    const previews = await getFeedCandidates(ctx, "recent", TOPIC_SCAN_LIMIT);
-    const publishedEvents = previews
-      .filter((event) =>
-        event.topicIds.some((topicId) => uniqueTopicIds.includes(topicId)),
+    const previews = (
+      await Promise.all(
+        uniqueTopicIds.map((topicId) =>
+          getTopicFeedCandidates(ctx, topicId, "recent", safeLimit),
+        ),
       )
+    ).flat();
+    const seen = new Set<string>();
+    const publishedEvents = previews
+      .filter((event) => {
+        const key = String(event.eventId);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .sort(
         (a, b) =>
           b.lastUpdatedAt - a.lastUpdatedAt ||
@@ -324,6 +314,79 @@ export const getSitemapPublishedEvents = query({
       slug: event.slug,
       lastModifiedAt: event.lastUpdatedAt,
     }));
+  },
+});
+
+export const backfillPublicPreviewReadModels = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const pageSize = Math.min(Math.max(Math.floor(args.pageSize ?? 100), 1), 500);
+    const page = await ctx.db.query("publicEventPreviews").paginate({
+      cursor: args.cursor ?? null,
+      numItems: pageSize,
+    });
+
+    for (const preview of page.page) {
+      const existingRows = await ctx.db
+        .query("publicEventPreviewTopics")
+        .withIndex("by_event", (q) => q.eq("eventId", preview.eventId))
+        .collect();
+      const existingByTopic = new Map(
+        existingRows.map((row) => [String(row.topicId), row]),
+      );
+      const nextTopicIds = new Set(
+        preview.topicIds.map((topicId) => String(topicId)),
+      );
+
+      for (const topicId of preview.topicIds) {
+        const existing = existingByTopic.get(String(topicId));
+        const payload = {
+          previewId: preview._id,
+          lastUpdatedAt: preview.lastUpdatedAt,
+          firstPublishedAt: preview.firstPublishedAt,
+          trendingScore: preview.trendingScore,
+          updatedAt: Date.now(),
+        };
+        if (existing) {
+          await ctx.db.patch(existing._id, payload);
+        } else {
+          await ctx.db.insert("publicEventPreviewTopics", {
+            topicId,
+            eventId: preview.eventId,
+            ...payload,
+          });
+        }
+      }
+
+      for (const row of existingRows) {
+        if (!nextTopicIds.has(String(row.topicId))) {
+          await ctx.db.delete(row._id);
+        }
+      }
+    }
+
+    if (page.isDone) {
+      // Rebuild the anonymous trending snapshot once the read-model backfill
+      // has populated every preview/topic row.
+      await rebuildPublicFeedSnapshots(ctx);
+    }
+
+    return {
+      processed: page.page.length,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+export const rebuildPublicFeedSnapshotsJob = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    await rebuildPublicFeedSnapshots(ctx);
+    return { rebuilt: true as const };
   },
 });
 

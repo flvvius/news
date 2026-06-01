@@ -72,6 +72,31 @@ type LimitedQuery<T> = {
 
 type LimitedQueryFactory<T> = () => LimitedQuery<T>;
 
+type PipelineRollupPayload = {
+  readRows?: number;
+  writeRows?: number;
+  vectorSearches?: number;
+  runCount?: number;
+  errorCount?: number;
+  estimatedPayloadBytes?: number;
+};
+
+function parsePipelineRollupPayload(
+  payloadJson: string,
+  key: string,
+): PipelineRollupPayload {
+  try {
+    return JSON.parse(payloadJson) as PipelineRollupPayload;
+  } catch (error) {
+    console.error(
+      `[pipeline] Failed to parse pipelineAdminRollups payload for ${key}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return {};
+  }
+}
+
 async function limitedCount<T>(
   queryFactory: LimitedQueryFactory<T>,
   limit = DIAGNOSTIC_COUNT_LIMIT,
@@ -119,9 +144,117 @@ export const insertRunLog = internalMutation({
       )
       .first();
     if (existing && existing.runId === args.runId) return existing._id;
-    return await ctx.db.insert("pipelineRunLogs", {
+    const logId = await ctx.db.insert("pipelineRunLogs", {
       ...args,
       createdAt: Date.now(),
+    });
+    const now = Date.now();
+    const hour = Math.floor(now / HOUR_MS) * HOUR_MS;
+    const key = `${args.jobName}:${hour}`;
+    const rollup = await ctx.db
+      .query("pipelineAdminRollups")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    const previous = rollup
+      ? parsePipelineRollupPayload(rollup.payloadJson, key)
+      : {};
+    const readRows =
+      args.counters.scanned ??
+      args.counters.processed ??
+      args.counters.vectorMatchesHydrated ??
+      0;
+    const payload = {
+      jobName: args.jobName,
+      bucketStart: hour,
+      readRows: Math.max(0, (previous.readRows ?? 0) + readRows),
+      writeRows: Math.max(0, (previous.writeRows ?? 0) + 1),
+      vectorSearches: Math.max(
+        0,
+        (previous.vectorSearches ?? 0) + (args.counters.vectorSearches ?? 0),
+      ),
+      runCount: Math.max(0, (previous.runCount ?? 0) + 1),
+      errorCount: Math.max(
+        0,
+        (previous.errorCount ?? 0) + (args.status === "error" ? 1 : 0),
+      ),
+      estimatedPayloadBytes: previous.estimatedPayloadBytes ?? 0,
+      lastStatus: args.status,
+    };
+    if (rollup) {
+      await ctx.db.patch(rollup._id, {
+        payloadJson: JSON.stringify(payload),
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("pipelineAdminRollups", {
+        key,
+        payloadJson: JSON.stringify(payload),
+        generatedAt: hour,
+        updatedAt: now,
+      });
+    }
+    return logId;
+  },
+});
+
+export const recordPipelineIoRollup = internalMutation({
+  args: {
+    jobName: v.string(),
+    readRows: v.number(),
+    writeRows: v.number(),
+    vectorSearches: v.number(),
+    status: v.union(
+      v.literal("ok"),
+      v.literal("skipped"),
+      v.literal("degraded"),
+      v.literal("error"),
+    ),
+    estimatedPayloadBytes: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const hour = Math.floor(now / HOUR_MS) * HOUR_MS;
+    const key = `${args.jobName}:${hour}`;
+    const existing = await ctx.db
+      .query("pipelineAdminRollups")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    const previous = existing
+      ? parsePipelineRollupPayload(existing.payloadJson, key)
+      : {};
+    const payload = {
+      jobName: args.jobName,
+      bucketStart: hour,
+      readRows: Math.max(0, (previous.readRows ?? 0) + args.readRows),
+      writeRows: Math.max(0, (previous.writeRows ?? 0) + args.writeRows),
+      vectorSearches: Math.max(
+        0,
+        (previous.vectorSearches ?? 0) + args.vectorSearches,
+      ),
+      runCount: Math.max(0, (previous.runCount ?? 0) + 1),
+      errorCount: Math.max(
+        0,
+        (previous.errorCount ?? 0) + (args.status === "error" ? 1 : 0),
+      ),
+      estimatedPayloadBytes: Math.max(
+        0,
+        (previous.estimatedPayloadBytes ?? 0) +
+          (args.estimatedPayloadBytes ?? 0),
+      ),
+      lastStatus: args.status,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        payloadJson: JSON.stringify(payload),
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+    return await ctx.db.insert("pipelineAdminRollups", {
+      key,
+      payloadJson: JSON.stringify(payload),
+      generatedAt: hour,
+      updatedAt: now,
     });
   },
 });
@@ -587,6 +720,54 @@ export const getActiveAlerts = query({
       .withIndex("by_resolved_created_at", (q) => q.eq("resolvedAt", undefined))
       .order("desc")
       .take(100);
+  },
+});
+
+export const getPipelineIoRollups = query({
+  args: {
+    sinceHours: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+    const sinceHours = Math.min(Math.max(Math.floor(args.sinceHours ?? 168), 1), 168);
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const cutoff = Date.now() - sinceHours * HOUR_MS;
+    const rows = await ctx.db
+      .query("pipelineAdminRollups")
+      .withIndex("by_generated_at", (q) => q.gte("generatedAt", cutoff))
+      .order("desc")
+      .take(limit);
+    return rows.map((row) => {
+      try {
+        return JSON.parse(row.payloadJson) as {
+          jobName: string;
+          bucketStart: number;
+          readRows: number;
+          writeRows: number;
+          vectorSearches: number;
+          runCount: number;
+          errorCount: number;
+          estimatedPayloadBytes: number;
+          lastStatus: string;
+        };
+      } catch {
+        const keyParts = row.key.split(":");
+        const jobName =
+          keyParts.length > 1 ? keyParts.slice(0, -1).join(":") : row.key;
+        return {
+          jobName,
+          bucketStart: row.generatedAt,
+          readRows: 0,
+          writeRows: 0,
+          vectorSearches: 0,
+          runCount: 0,
+          errorCount: 0,
+          estimatedPayloadBytes: 0,
+          lastStatus: "error",
+        };
+      }
+    });
   },
 });
 

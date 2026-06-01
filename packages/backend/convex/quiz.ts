@@ -9,7 +9,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
 import { computeStreakUpdate } from "./lib/streaks";
-import { reorderChoicesForQuestion } from "./lib/quizHelpers";
 import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
@@ -83,16 +82,11 @@ function stripCorrectAnswers(quiz: Doc<"dailyQuizzes">) {
     questionCount: quiz.questions.length,
     sourceEventIds: quiz.sourceEventIds,
     publishedAt: quiz.publishedAt,
-    questions: quiz.questions.map((question, index) => ({
+    questions: quiz.questions.map((question) => ({
       id: question.id,
       type: question.type,
       question: question.question,
-      choices: reorderChoicesForQuestion(
-        question.choices,
-        question.correctChoiceId,
-        index,
-      ),
-      explanation: question.explanation,
+      choices: question.choices,
       attribution: question.attribution,
       eventId: question.eventId,
       sourceIds: question.sourceIds,
@@ -107,17 +101,13 @@ function buildReview(
   const answersByQuestion = new Map(
     answers.map((answer) => [answer.questionId, answer.choiceId]),
   );
-  const review = quiz.questions.map((question, index) => {
+  const review = quiz.questions.map((question) => {
     const selectedChoiceId = answersByQuestion.get(question.id);
     return {
       questionId: question.id,
       type: question.type,
       question: question.question,
-      choices: reorderChoicesForQuestion(
-        question.choices,
-        question.correctChoiceId,
-        index,
-      ),
+      choices: question.choices,
       selectedChoiceId,
       correctChoiceId: question.correctChoiceId,
       isCorrect: selectedChoiceId === question.correctChoiceId,

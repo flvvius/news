@@ -73,8 +73,6 @@ const ro = {
   "auth.googleError": "Autentificarea cu Google a eșuat. Încearcă din nou.",
   "auth.promptTitle":
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
-  "auth.promptBody":
-    "Poți citi fără cont. Autentificarea adaugă salvări, recomandări personale și funcții viitoare.",
   "share.copied": "Linkul evenimentului a fost copiat",
   "share.failed": "Nu am putut distribui acest eveniment. Încearcă din nou.",
   "share.label": "Distribuie acest eveniment",
@@ -93,8 +91,7 @@ const ro = {
   "saved.empty.body":
     "Fă-ți o listă personală cu tot ce vrei să citești sau să recitești.",
   "saved.loading.title": "Se încarcă salvările",
-  "saved.loading.body":
-    "Pregătim articolele salvate și contextul lor.",
+  "saved.loading.body": "Pregătim articolele salvate și contextul lor.",
   "saved.checking.title": "Verificăm salvările",
   "saved.checking.body":
     "Confirmăm sesiunea înainte să încărcăm articolele tale salvate.",
@@ -144,7 +141,8 @@ const ro = {
   "activity.savedCard": "Salvate",
   "activity.savedOne": "1 articol salvat",
   "activity.savedMany": "{count} articole salvate",
-  "activity.biasSnapshot.balanced": "Săptămâna aceasta ai avut un mix echilibrat",
+  "activity.biasSnapshot.balanced":
+    "Săptămâna aceasta ai avut un mix echilibrat",
   "activity.biasSnapshot.left": "Săptămâna aceasta ai înclinat spre stânga",
   "activity.biasSnapshot.leftStrong":
     "Săptămâna aceasta ai înclinat puternic spre stânga",
@@ -157,16 +155,17 @@ const ro = {
   "auth.metaTitle": "Cont — Biviant",
   "activity.userFallback": "Utilizator",
   "activity.adminTitle": "Diagnostic pentru inferența topicurilor",
-  "activity.adminBody": "Revizuiește alocările recente de topic pentru evenimente",
+  "activity.adminBody":
+    "Revizuiește alocările recente de topic pentru evenimente",
   "activity.admin.minScore": "Scor minim",
   "activity.admin.confidence": "Coeficient de încredere",
   "activity.admin.maxTopics": "Număr maxim de topicuri",
   "activity.admin.save": "Salvează setările",
   "activity.admin.saving": "Se salvează...",
   "activity.admin.reset": "Resetează",
-  "activity.admin.saved": "Setările pentru inferența topicurilor au fost salvate.",
-  "activity.admin.saveError":
-    "Nu am putut salva setările. Încearcă din nou.",
+  "activity.admin.saved":
+    "Setările pentru inferența topicurilor au fost salvate.",
+  "activity.admin.saveError": "Nu am putut salva setările. Încearcă din nou.",
   "activity.admin.minScoreError":
     "Scorul minim trebuie să fie un număr între 1 și 20.",
   "activity.admin.confidenceError":
@@ -286,9 +285,8 @@ const ro = {
   "feed.sort.trending": "În tendințe",
   "feed.search.threshold": "Introdu cel puțin 2 caractere pentru a căuta.",
   "feed.search.indexed": "Afișăm rezultatele indexate pentru „{query}”.",
-  "feed.authTitle": "Conturile gratuite deblochează salvările și un feed personalizat",
-  "feed.authBody":
-    "Poți citi totul anonim. Autentifică-te doar când vrei salvări sincronizate, clasare adaptată intereselor tale și alerte viitoare.",
+  "feed.authTitle":
+    "Conturile gratuite deblochează salvările și un feed personalizat",
   "feed.searching": "Căutăm evenimente...",
   "feed.loading": "Se încarcă…",
   "feed.leadStory": "Subiect principal",
@@ -353,8 +351,7 @@ const ro = {
     "Afirmații unde sursele raportează detalii semnificativ diferite.",
   "claim.framing": "Încadrare",
   "claim.framings": "Diferențe de încadrare",
-  "claim.framingBody":
-    "Fapte comune descrise cu limbaj semnificativ diferit.",
+  "claim.framingBody": "Fapte comune descrise cu limbaj semnificativ diferit.",
   "claim.leftExclusive": "Exclusiv din stânga",
   "claim.leftExclusives": "Exclusive din stânga",
   "claim.leftExclusiveBody":
@@ -413,7 +410,8 @@ const ro = {
   "quiz.submit.error": "Nu am putut trimite quizul. Încearcă din nou.",
   "quiz.result.kicker": "Rezultatul tău",
   "quiz.result.title": "{score}/{max} corecte",
-  "quiz.result.saved": "Scorul a fost salvat și ziua de streak a fost păstrată.",
+  "quiz.result.saved":
+    "Scorul a fost salvat și ziua de streak a fost păstrată.",
   "quiz.result.public":
     "Scorul tău este afișat aici. Conectează-te ca să îl salvezi și să conteze la streak.",
   "quiz.share.action": "Distribuie",
@@ -457,7 +455,8 @@ const ro = {
   "bias.label.rightStrong": "Puternic spre dreapta",
   "bias.copy.balanced": "Citești un mix sănătos de perspective.",
   "bias.copy.left": "Lectura recentă înclină spre stânga.",
-  "bias.copy.leftStrong": "Lectura recentă este puternic orientată spre stânga.",
+  "bias.copy.leftStrong":
+    "Lectura recentă este puternic orientată spre stânga.",
   "bias.copy.right": "Lectura recentă înclină spre dreapta.",
   "bias.copy.rightStrong":
     "Lectura recentă este puternic orientată spre dreapta.",
@@ -485,8 +484,7 @@ const ro = {
     "Nu am putut verifica acest link de resetare a parolei. Cere unul nou și încearcă din nou.",
   "reset.invalidToast":
     "Acest link de resetare a parolei este invalid sau a expirat. Cere unul nou și încearcă din nou.",
-  "reset.success":
-    "Parola a fost resetată. Te poți conecta acum.",
+  "reset.success": "Parola a fost resetată. Te poți conecta acum.",
   "reset.error":
     "Nu am putut reseta parola. Cere un link nou și încearcă din nou.",
   "reset.title": "Resetează parola",
@@ -596,10 +594,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.alreadyHaveAccount": "Already have an account?",
   "auth.resetEmailFirst":
     "Enter your email address first so we know where to send the reset link.",
-  "auth.resetLinkFailed":
-    "We couldn't send a reset link. Please try again.",
-  "auth.resetLinkSent":
-    "If that email exists, we sent a password reset link.",
+  "auth.resetLinkFailed": "We couldn't send a reset link. Please try again.",
+  "auth.resetLinkSent": "If that email exists, we sent a password reset link.",
   "auth.resetSendingStatus": "Sending password reset email...",
   "auth.checkEmailVerify": "Check your email to verify your account.",
   "auth.checkEmailVerifyDev":
@@ -631,10 +627,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.creatingAccount": "Creating account...",
   "auth.orContinueWith": "Or continue with",
   "auth.googleError": "Google sign-in failed. Please try again.",
-  "auth.promptTitle":
-    "Create a free account to save and personalize your news",
-  "auth.promptBody":
-    "You can read without an account. Signing in adds saved items, recommendations, and upcoming features.",
+  "auth.promptTitle": "Create a free account to save and personalize your news",
   "share.copied": "Event link copied",
   "share.failed": "Could not share this event. Please try again.",
   "share.label": "Share this event",
@@ -643,7 +636,8 @@ const en: { [K in keyof BaseStrings]: string } = {
     "The content stays open. An account only adds personal, persistent features.",
   "auth.unlockOne": "Save articles and events for later.",
   "auth.unlockTwo": "Personalize the experience around your interests.",
-  "auth.unlockThree": "Get access to notifications and new features as they roll out.",
+  "auth.unlockThree":
+    "Get access to notifications and new features as they roll out.",
   "auth.verificationTitle": "Verification matters",
   "auth.verificationBody":
     "Accounts created with email and password require address verification before the first sign-in. For Google sign-in, the provider verification remains sufficient.",
@@ -844,8 +838,6 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.search.threshold": "Type at least 2 characters to search.",
   "feed.search.indexed": "Showing indexed results for “{query}”.",
   "feed.authTitle": "Free accounts unlock bookmarks and a personalized feed",
-  "feed.authBody":
-    "You can read everything anonymously. Sign in only when you want synced bookmarks, ranking tuned to your interests, and future alerts.",
   "feed.searching": "Searching events...",
   "feed.loading": "Loading...",
   "feed.leadStory": "Lead story",
@@ -970,7 +962,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "quiz.submit.error": "Could not submit the quiz. Please try again.",
   "quiz.result.kicker": "Your result",
   "quiz.result.title": "{score}/{max} correct",
-  "quiz.result.saved": "Your score was saved and today’s streak activity counted.",
+  "quiz.result.saved":
+    "Your score was saved and today’s streak activity counted.",
   "quiz.result.public":
     "Your score is shown here. Sign in to save it and count it toward your streak.",
   "quiz.share.action": "Share",
@@ -1076,8 +1069,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "articles.source": "Source",
   "articles.viewSource": "View {name} source profile",
   "articles.readOriginal": "Read original",
-  "articles.readOriginalAria":
-    "Read original article (opens in a new tab)",
+  "articles.readOriginalAria": "Read original article (opens in a new tab)",
   "source.metaTitle": "Source profile — Biviant",
   "source.metaDescriptionLoaded":
     "Review {name}'s bias, reliability, credibility, and recent coverage on Biviant.",
@@ -1087,8 +1079,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "source.loading": "Loading source profile...",
   "source.notFound": "Source not found",
   "source.notFoundBody": "This source is not available.",
-  "source.invalidBody":
-    "This source link is invalid or no longer available.",
+  "source.invalidBody": "This source link is invalid or no longer available.",
   "source.backToFeed": "Back to feed",
   "source.profile": "Source profile",
   "source.reliability": "Reliability {score}/10",
