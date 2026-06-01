@@ -577,6 +577,15 @@ export const remove = mutation({
       .unique();
     if (existing) {
       await ctx.db.delete(existing._id);
+
+      // Mirror the eager refresh on the write paths so deleting a pipeline key
+      // (clustering_*, topic_inference_*, feed_page_size) drops it from the live
+      // runtime-config snapshot immediately instead of waiting for the cron.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.config.refreshPipelineRuntimeConfig,
+        {},
+      );
     }
   },
 });

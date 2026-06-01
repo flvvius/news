@@ -760,8 +760,11 @@ export const cleanupExpiredVectorSearchReservations = internalMutation({
         deltaVectorSearches: -reservation.vectorSearchesReserved,
         deltaRunCount: 0,
       });
+      // Expiry-reclaimed holds use the "expired" terminal status to match the
+      // inline releaseExpiredReservations helper ("released" is reserved for
+      // explicit, pre-expiry releases).
       await ctx.db.patch(reservation._id, {
-        status: "released",
+        status: "expired",
         updatedAt: now,
       });
     }

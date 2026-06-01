@@ -6229,6 +6229,7 @@ export const clusterEnrichedArticles = internalAction({
 
       const loadCandidatesForRepresentative = async (
         payload: AttachPayload,
+        forceFresh = false,
       ): Promise<ClusterCandidate[]> => {
         // Reuse a prior article's vector-search results when this article is a
         // near-duplicate of an already-searched "representative". We pick the
@@ -6238,18 +6239,24 @@ export const clusterEnrichedArticles = internalAction({
         // to avoid an O(n) lookup per comparison. Missing in-batch-created
         // events are still recovered by the pending-phase local matching below,
         // so this only trades a vector search for near-identical inputs.
+        //
+        // forceFresh skips reuse entirely: the forced-retry path runs precisely
+        // because the batch state changed (new events were created), so a stale
+        // representative result must not be returned there.
         const queryEmbedding = toEventEmbedding(payload.article.embedding);
-        let bestCandidates: ClusterCandidate[] | null = null;
-        let bestSimilarity = settings.strongSimilarity;
-        for (const cached of representativeSearchCache.values()) {
-          const similarity = cosineSimilarity(queryEmbedding, cached.embedding);
-          if (similarity >= bestSimilarity) {
-            bestSimilarity = similarity;
-            bestCandidates = cached.candidates;
+        if (!forceFresh) {
+          let bestCandidates: ClusterCandidate[] | null = null;
+          let bestSimilarity = settings.strongSimilarity;
+          for (const cached of representativeSearchCache.values()) {
+            const similarity = cosineSimilarity(queryEmbedding, cached.embedding);
+            if (similarity >= bestSimilarity) {
+              bestSimilarity = similarity;
+              bestCandidates = cached.candidates;
+            }
           }
-        }
-        if (bestCandidates) {
-          return bestCandidates;
+          if (bestCandidates) {
+            return bestCandidates;
+          }
         }
         const matches = await loadCandidatesForEmbedding(
           payload.article._id,
@@ -6389,9 +6396,13 @@ export const clusterEnrichedArticles = internalAction({
 
       const tryVectorAttach = async (
         payload: AttachPayload,
+        forceFresh = false,
       ): Promise<"attached" | "unmatched" | "skipped"> => {
         const { article, topicSlugs } = payload;
-        const candidates = await loadCandidatesForRepresentative(payload);
+        const candidates = await loadCandidatesForRepresentative(
+          payload,
+          forceFresh,
+        );
         const match = findBestCandidate(
           resolveArticle(article, topicSlugs),
           candidates,
@@ -6471,7 +6482,7 @@ export const clusterEnrichedArticles = internalAction({
         articleBatchVersionSeen.set(pendingKey, batchStateVersion);
 
         if (!useFallbackMode && pending.needsFreshVectorSearch) {
-          outcome = await tryVectorAttach(pending);
+          outcome = await tryVectorAttach(pending, true);
           pending.needsFreshVectorSearch = false;
           pending.lastBatchStateVersionSeen = batchStateVersion;
         }
@@ -6593,10 +6604,21 @@ export const clusterEnrichedArticles = internalAction({
     } finally {
       if (clusterRunReservationId && !clusterRunReservationSettled) {
         try {
-          await releaseVectorSearchReservation(ctx, clusterRunReservationId);
+          if (metrics.vectorSearches > 0) {
+            // Searches completed before an error aborted the run; settle the
+            // actual usage instead of releasing so budget accounting is not
+            // undercounted.
+            await consumeVectorSearchBatchReservation(
+              ctx,
+              metrics,
+              clusterRunReservationId,
+            );
+          } else {
+            await releaseVectorSearchReservation(ctx, clusterRunReservationId);
+          }
         } catch (error) {
           console.error(
-            `[clustering] Failed to release cluster vector reservation: ${error instanceof Error ? error.message : "Unknown error"}`,
+            `[clustering] Failed to settle cluster vector reservation: ${error instanceof Error ? error.message : "Unknown error"}`,
           );
         }
       }

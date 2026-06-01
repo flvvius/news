@@ -343,12 +343,9 @@ export const archiveSingletonEvent = internalMutation({
       }
     }
 
-    const deletedEmbeddings = await deleteByEventIndex(
-      ctx,
-      "eventEmbeddings",
-      args.eventId,
-    );
-    await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId);
+    const deletedEmbeddings =
+      (await deleteByEventIndex(ctx, "eventEmbeddings", args.eventId)) +
+      (await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId));
     const deletedCandidacies = await deleteByEventIndex(
       ctx,
       "eventCandidacy",
@@ -418,12 +415,9 @@ export const archiveStaleProcessingEvent = internalMutation({
       });
     }
 
-    const deletedEmbeddings = await deleteByEventIndex(
-      ctx,
-      "eventEmbeddings",
-      args.eventId,
-    );
-    await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId);
+    const deletedEmbeddings =
+      (await deleteByEventIndex(ctx, "eventEmbeddings", args.eventId)) +
+      (await deleteByEventIndex(ctx, "eventEmbeddingHot", args.eventId));
     const deletedCandidacies = await deleteByEventIndex(
       ctx,
       "eventCandidacy",
