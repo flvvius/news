@@ -50,6 +50,21 @@ export function BookmarkButton({
         !current,
       );
     }
+
+    // When unbookmarking, drop the event from the saved list immediately.
+    if (current === true) {
+      const savedEvents = localStore.getQuery(
+        api.interactions.getBookmarkedEvents,
+        {},
+      );
+      if (savedEvents !== undefined) {
+        localStore.setQuery(
+          api.interactions.getBookmarkedEvents,
+          {},
+          savedEvents.filter((event) => event._id !== args.eventId),
+        );
+      }
+    }
   });
 
   const handlePress = useCallback(() => {

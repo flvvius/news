@@ -1,4 +1,5 @@
 import { api } from "@news-app/backend/convex/_generated/api";
+import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
@@ -17,8 +18,36 @@ export type FeedEvent = FunctionReturnType<
   typeof api.events.getPublishedEvents
 >["page"][number];
 
+/**
+ * Structural card shape (mirrors the web EventCard props) so both feed
+ * events and bookmarked events can be rendered by the same card.
+ */
+export type EventCardEvent = {
+  _id: Id<"events">;
+  slug: string;
+  title: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  perspectiveSummaries?: { center?: string };
+  globalImpact?: string;
+  firstPublishedAt: number;
+  lastUpdatedAt?: number;
+  topicIds?: Id<"topics">[];
+  articleCount?: number;
+  sourceCount?: number;
+  sourceBiasCounts?: { left: number; center: number; right: number };
+  sources?: Array<{
+    _id: Id<"sources">;
+    name: string;
+    logoUrl?: string;
+    baseBias: number;
+    reliabilityScore: number;
+    mbfcCategory?: string;
+  }>;
+};
+
 type EventCardProps = {
-  event: FeedEvent;
+  event: EventCardEvent;
   topicNamesById: Record<string, string>;
   maxSources?: number;
   variant?: "default" | "feature";
