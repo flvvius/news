@@ -5,7 +5,6 @@
     "scheme": "news-app",
     "userInterfaceStyle": "automatic",
     "orientation": "default",
-    "newArchEnabled": true,
     "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.biviant.app",
