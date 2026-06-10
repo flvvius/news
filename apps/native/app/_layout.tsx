@@ -1,48 +1,58 @@
 import "@/global.css";
 
-import { ConvexReactClient } from "convex/react";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import { authClient } from "@/lib/auth-client";
-
 import { Stack } from "expo-router";
-import { HeroUINativeProvider } from "heroui-native";
+import { StatusBar } from "expo-status-bar";
+import { ConvexReactClient } from "convex/react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AppThemeProvider } from "@/contexts/app-theme-context";
+import { authClient } from "@/lib/auth-client";
+import { useTokenColor } from "@/lib/use-token-color";
 
-export const unstable_settings = {
-	initialRouteName: "(drawer)",
-};
-
-const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || "";
-const convex = new ConvexReactClient(convexUrl, {
-	unsavedChangesWarning: false,
-});
-
-function StackLayout() {
-	return (
-		<Stack screenOptions={{}}>
-			<Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-			<Stack.Screen
-				name="modal"
-				options={{ title: "Modal", presentation: "modal" }}
-			/>
-		</Stack>
-	);
+const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
+if (!convexUrl) {
+  throw new Error(
+    "EXPO_PUBLIC_CONVEX_URL is not set. Copy apps/native/.env.example to .env and fill it in.",
+  );
 }
 
-export default function Layout() {
-	return (
-		<ConvexBetterAuthProvider client={convex} authClient={authClient}>
-			<GestureHandlerRootView style={{ flex: 1 }}>
-				<KeyboardProvider>
-					<AppThemeProvider>
-						<HeroUINativeProvider>
-							<StackLayout />
-						</HeroUINativeProvider>
-					</AppThemeProvider>
-				</KeyboardProvider>
-			</GestureHandlerRootView>
-		</ConvexBetterAuthProvider>
-	);
+const convex = new ConvexReactClient(convexUrl, {
+  expectAuth: true,
+  unsavedChangesWarning: false,
+});
+
+function RootStack() {
+  const backgroundColor = useTokenColor("--color-background");
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor },
+      }}
+    >
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="event/[slug]" />
+      <Stack.Screen name="auth" options={{ presentation: "modal" }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+      <GestureHandlerRootView className="flex-1">
+        <KeyboardProvider>
+          <AppThemeProvider>
+            <BottomSheetModalProvider>
+              <StatusBar style="auto" />
+              <RootStack />
+            </BottomSheetModalProvider>
+          </AppThemeProvider>
+        </KeyboardProvider>
+      </GestureHandlerRootView>
+    </ConvexBetterAuthProvider>
+  );
 }
