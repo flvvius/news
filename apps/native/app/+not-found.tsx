@@ -15,7 +15,7 @@ export default function NotFoundScreen() {
           <Text className="text-2xl font-semibold tracking-tight text-foreground">
             {t("router.notFound")}
           </Text>
-          <Text className="max-w-[34ch] text-center text-sm leading-relaxed text-muted-foreground">
+          <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
             {t("native.notFound.body")}
           </Text>
           <Link href="/" asChild>

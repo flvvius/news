@@ -144,7 +144,8 @@ async function sendAuthEmail({
     return;
   }
 
-  const { error } = await resend.emails.send({
+  const startedAt = Date.now();
+  const { data, error } = await resend.emails.send({
     from: emailFromAddress,
     replyTo: emailReplyTo,
     to: [to],
@@ -154,8 +155,19 @@ async function sendAuthEmail({
   });
 
   if (error) {
+    console.error(`[auth] ${debugLabel} email send failed`, {
+      recipient: summarizeEmailForLogs(to),
+      error: error.message,
+      durationMs: Date.now() - startedAt,
+    });
     throw new Error(error.message);
   }
+
+  console.log(`[auth] ${debugLabel} email accepted by Resend`, {
+    recipient: summarizeEmailForLogs(to),
+    resendId: data?.id ?? null,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 async function convertWaitlistRecordForEmail(

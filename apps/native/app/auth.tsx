@@ -4,11 +4,17 @@ import { Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { AuthField } from "@/components/auth/auth-field";
+import {
+  AuthDivider,
+  GoogleSignInButton,
+} from "@/components/auth/google-sign-in-button";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { Screen } from "@/components/screen";
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/cn";
+import { SITE_URL } from "@/lib/site";
 
 type AuthMode = "signin" | "signup";
 
@@ -51,6 +57,7 @@ export default function AuthScreen() {
   const t = useT();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   const close = () => {
     if (router.canGoBack()) {
@@ -102,6 +109,21 @@ export default function AuthScreen() {
               <SignUpForm onVerificationPending={setVerifyEmail} />
             )}
 
+            <View className="mt-6 gap-4">
+              <AuthDivider />
+              {googleError ? (
+                <View
+                  accessibilityLiveRegion="polite"
+                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5"
+                >
+                  <Text className="text-sm text-destructive">
+                    {googleError}
+                  </Text>
+                </View>
+              ) : null}
+              <GoogleSignInButton onSuccess={close} onError={setGoogleError} />
+            </View>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={
@@ -109,11 +131,12 @@ export default function AuthScreen() {
                   ? t("native.auth.switchToSignUp")
                   : t("native.auth.switchToSignIn")
               }
-              onPress={() =>
+              onPress={() => {
+                setGoogleError(null);
                 setMode((current) =>
                   current === "signin" ? "signup" : "signin",
-                )
-              }
+                );
+              }}
               className="mt-6 min-h-11 items-center justify-center active:opacity-70"
             >
               <Text className="text-sm font-medium text-primary">
@@ -136,6 +159,8 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     const errors: FieldErrors = {};
@@ -150,20 +175,46 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
 
     setIsLoading(true);
     setFormError(null);
-    await authClient.signIn.email(
-      { email: email.trim(), password },
-      {
-        onSuccess: () => {
-          onSuccess();
-        },
-        onError: (error) => {
-          setFormError(describeAuthError(t, error));
-        },
-        onFinished: () => {
-          setIsLoading(false);
-        },
-      },
-    );
+    try {
+      const { error } = await authClient.signIn.email({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        setFormError(describeAuthError(t, { error }));
+        return;
+      }
+      onSuccess();
+    } catch {
+      setFormError(t("auth.unexpectedError"));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (isSendingReset || isLoading) return;
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setResetMessage(t("auth.resetEmailFirst"));
+      return;
+    }
+    setIsSendingReset(true);
+    setResetMessage(null);
+    try {
+      // The reset link in the email opens the web reset page; after setting a
+      // new password there, the user signs in here.
+      const { error } = await authClient.requestPasswordReset({
+        email: email.trim(),
+        redirectTo: `${SITE_URL}/reset-password`,
+      });
+      setResetMessage(
+        error ? t("auth.resetLinkFailed") : t("auth.resetLinkSent"),
+      );
+    } catch {
+      setResetMessage(t("auth.resetLinkFailed"));
+    } finally {
+      setIsSendingReset(false);
+    }
   };
 
   return (
@@ -208,6 +259,31 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
         error={fieldErrors.password}
       />
 
+      <View className="items-end">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("auth.forgotPassword")}
+          onPress={() => void handleForgotPassword()}
+          disabled={isSendingReset}
+          className={cn(
+            "min-h-11 justify-center active:opacity-70",
+            isSendingReset && "opacity-70",
+          )}
+        >
+          <Text className="text-sm font-medium text-primary">
+            {isSendingReset ? t("auth.sending") : t("auth.forgotPassword")}
+          </Text>
+        </Pressable>
+        {resetMessage ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            className="text-right text-sm text-muted-foreground"
+          >
+            {resetMessage}
+          </Text>
+        ) : null}
+      </View>
+
       <SubmitButton
         label={t("auth.signIn")}
         loadingLabel={t("native.auth.signingIn")}
@@ -248,21 +324,26 @@ function SignUpForm({
     setIsLoading(true);
     setFormError(null);
     const submittedEmail = email.trim();
-    await authClient.signUp.email(
-      { name: name.trim(), email: submittedEmail, password },
-      {
-        onSuccess: () => {
-          // The server requires email verification before sign-in.
-          onVerificationPending(submittedEmail);
-        },
-        onError: (error) => {
-          setFormError(describeAuthError(t, error));
-        },
-        onFinished: () => {
-          setIsLoading(false);
-        },
-      },
-    );
+    try {
+      const { error } = await authClient.signUp.email({
+        name: name.trim(),
+        email: submittedEmail,
+        password,
+      });
+      if (error) {
+        setFormError(describeAuthError(t, { error }));
+        return;
+      }
+      // The server requires email verification before sign-in. Note: for an
+      // email that already has an account the server intentionally returns
+      // success without sending anything (enumeration protection) — the
+      // verify screen copy covers that case.
+      onVerificationPending(submittedEmail);
+    } catch {
+      setFormError(t("auth.unexpectedError"));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -360,7 +441,7 @@ function VerifyEmailNotice({
         <Text className="text-center text-base font-semibold text-foreground">
           {t("native.auth.verifyInboxTitle")}
         </Text>
-        <Text className="max-w-[36ch] text-center text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[252px] text-center text-sm leading-relaxed text-muted-foreground">
           {t("native.auth.verifyBody").replace("{email}", email)}
         </Text>
         {resendMessage ? (

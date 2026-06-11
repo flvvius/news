@@ -623,7 +623,7 @@ const ro = {
   "native.auth.verifyTitle": "Verifică-ți e-mailul",
   "native.auth.verifyInboxTitle": "Verifică-ți inboxul",
   "native.auth.verifyBody":
-    "Am trimis un link de verificare la {email}. Confirmă-ți e-mailul, apoi revino și autentifică-te.",
+    "Dacă {email} nu are deja un cont, primești în curând un link de verificare (verifică și spam). Dacă ai deja un cont cu această adresă, nu se trimite niciun e-mail — autentifică-te sau folosește resetarea parolei.",
   "native.auth.backToSignIn": "Înapoi la autentificare",
   "native.bookmark.failed":
     "Nu am putut actualiza acest semn de carte. Încearcă din nou.",
@@ -1247,7 +1247,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.auth.verifyTitle": "Verify your email",
   "native.auth.verifyInboxTitle": "Check your inbox",
   "native.auth.verifyBody":
-    "We sent a verification link to {email}. Verify your email, then come back and sign in.",
+    "If {email} doesn't already have an account, a verification link is on its way (check spam too). If you already have an account with this address, no email is sent — sign in or use password reset instead.",
   "native.auth.backToSignIn": "Back to sign in",
   "native.bookmark.failed":
     "We couldn't update this bookmark. Please try again.",

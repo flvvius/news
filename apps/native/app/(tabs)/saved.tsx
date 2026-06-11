@@ -31,7 +31,7 @@ function SavedHeader({ count }: { count: number }) {
         <Text className="text-3xl font-bold tracking-tight text-foreground">
           {t("saved.heading")}
         </Text>
-        <Text className="max-w-[40ch] text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[280px] text-sm leading-relaxed text-muted-foreground">
           {count === 0
             ? t("saved.summary.empty")
             : count === 1

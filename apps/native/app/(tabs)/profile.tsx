@@ -184,7 +184,7 @@ function AccountCard() {
         <Text className="text-base font-semibold text-foreground">
           {t("native.profile.guestTitle")}
         </Text>
-        <Text className="max-w-[34ch] text-center text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
           {t("native.profile.guestBody")}
         </Text>
         <Pressable

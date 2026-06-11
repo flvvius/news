@@ -1,4 +1,5 @@
 import "@/global.css";
+import "@/lib/intl-polyfills";
 
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
@@ -20,7 +21,6 @@ if (!convexUrl) {
 }
 
 const convex = new ConvexReactClient(convexUrl, {
-  expectAuth: true,
   unsavedChangesWarning: false,
 });
 

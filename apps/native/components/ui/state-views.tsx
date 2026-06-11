@@ -37,7 +37,7 @@ function StateView({
         {title}
       </Text>
       {body ? (
-        <Text className="max-w-[34ch] text-center text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
           {body}
         </Text>
       ) : null}

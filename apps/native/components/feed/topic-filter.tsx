@@ -83,11 +83,13 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
         accessibilityLabel={t("feed.topic.filter")}
         onPress={() => sheetRef.current?.present()}
         className={cn(
-          "h-9 max-w-52 flex-row items-center justify-between gap-1.5 rounded-full border border-border bg-background px-3 active:opacity-80",
+          "h-9 max-w-52 flex-row items-center gap-1.5 rounded-full border border-border bg-background px-3 active:opacity-80",
           selectedTopic !== "all" && "border-primary/50 bg-primary/5",
         )}
       >
-        <View className="min-w-0 flex-1 flex-row items-center gap-2">
+        {/* No flex-1 here: the pill is content-sized, so a flex-1 child
+            collapses to zero width and hides the icon and label. */}
+        <View className="min-w-0 shrink flex-row items-center gap-2">
           <Icon name="filter-outline" size={14} className="text-foreground" />
           <Text
             numberOfLines={1}

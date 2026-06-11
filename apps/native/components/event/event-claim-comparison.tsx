@@ -123,7 +123,7 @@ function ClaimVariantRow({
             ) : null}
           </View>
 
-          <Text className="max-w-[65ch] text-sm leading-relaxed text-card-foreground">
+          <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
             {variant.statement}
           </Text>
 
@@ -198,7 +198,7 @@ function ClaimCard({
           </Text>
         </View>
 
-        <Text className="max-w-[65ch] text-base font-semibold leading-snug tracking-tight text-card-foreground">
+        <Text className="max-w-[455px] text-base font-semibold leading-snug tracking-tight text-card-foreground">
           {claim.canonicalStatement}
         </Text>
       </View>
@@ -345,7 +345,7 @@ export function EventClaimComparison({
           <Text className="text-sm font-medium text-card-foreground">
             {t("claim.unavailable")}
           </Text>
-          <Text className="mt-1.5 max-w-[55ch] text-center text-sm text-muted-foreground">
+          <Text className="mt-1.5 max-w-[385px] text-center text-sm text-muted-foreground">
             {t("claim.unavailableBody")}
           </Text>
         </View>
@@ -444,7 +444,7 @@ export function EventClaimComparison({
                 <Text className="text-base font-semibold tracking-tight text-card-foreground">
                   {t(STATUS_HEADING_KEY[status])}
                 </Text>
-                <Text className="max-w-[55ch] text-sm text-muted-foreground">
+                <Text className="max-w-[385px] text-sm text-muted-foreground">
                   {t(STATUS_BODY_KEY[status])}
                 </Text>
               </View>

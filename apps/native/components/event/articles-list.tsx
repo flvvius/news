@@ -118,7 +118,7 @@ export function ArticlesList({
                 {article.summary || article.rssSnippet ? (
                   <Text
                     numberOfLines={4}
-                    className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground"
+                    className="max-w-[455px] text-sm leading-relaxed text-muted-foreground"
                   >
                     {article.summary ?? article.rssSnippet}
                   </Text>

@@ -131,7 +131,7 @@ function EventNotFound() {
       <Text className="text-2xl font-semibold tracking-tight text-foreground">
         {t("event.notFound")}
       </Text>
-      <Text className="max-w-[36ch] text-center text-sm leading-relaxed text-muted-foreground">
+      <Text className="max-w-[252px] text-center text-sm leading-relaxed text-muted-foreground">
         {t("event.notFoundBody")}
       </Text>
       <Pressable
@@ -369,7 +369,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
           {event.globalImpact ? (
             <SectionCard title={t("event.meaning")}>
-              <Text className="max-w-[65ch] text-sm leading-relaxed text-card-foreground">
+              <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
                 {event.globalImpact}
               </Text>
             </SectionCard>
