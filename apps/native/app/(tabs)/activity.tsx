@@ -1,15 +1,12 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { formatRelativeTimestamp } from "@news-app/i18n";
 
 import { BiasBalanceMeter } from "@/components/activity/bias-balance-meter";
 import { StreakActivityCalendar } from "@/components/activity/streak-activity-calendar";
-import { AuthField } from "@/components/auth/auth-field";
 import { Screen } from "@/components/screen";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Image } from "@/components/ui/image";
@@ -18,7 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/state-views";
 import { useLocale, useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
-import { SITE_URL } from "@/lib/site";
 
 type DashboardOverview = NonNullable<
   FunctionReturnType<typeof api.interactions.getDashboardOverview>
@@ -29,19 +25,14 @@ type CurrentUser = NonNullable<
   FunctionReturnType<typeof api.user.getCurrentUser>
 >;
 
-const TOPIC_INFERENCE_DEFAULTS = {
-  minScore: 4.5,
-  confidenceRatio: 0.55,
-  maxTopics: 3,
-} as const;
+const STREAK_MILESTONES = [7, 30, 100, 365];
 
-function getNumericConfigValue(
-  row: { value: unknown } | null | undefined,
-  fallback: number,
-) {
-  return typeof row?.value === "number" && Number.isFinite(row.value)
-    ? row.value
-    : fallback;
+function getStreakMilestones(streak: number) {
+  const next =
+    STREAK_MILESTONES.find((milestone) => milestone > streak) ?? null;
+  const previousIndex = next ? STREAK_MILESTONES.indexOf(next) - 1 : -1;
+  const previous = previousIndex >= 0 ? STREAK_MILESTONES[previousIndex] : 0;
+  return { previous, next };
 }
 
 function formatReadDuration(t: ReturnType<typeof useT>, seconds?: number) {
@@ -74,11 +65,6 @@ function getBiasSnapshotLabel(balance: number, t: ReturnType<typeof useT>) {
     : t("activity.biasSnapshot.right");
 }
 
-function getNextStreakMilestone(streak: number) {
-  const milestones = [7, 30, 100, 365];
-  return milestones.find((milestone) => milestone > streak) ?? null;
-}
-
 export default function ActivityScreen() {
   const t = useT();
 
@@ -96,24 +82,15 @@ export default function ActivityScreen() {
 
 function ActivitySkeleton() {
   return (
-    <View className="flex-1 gap-5 px-4 pt-5">
-      <View className="flex-row items-center gap-4">
-        <Skeleton className="size-14 rounded-full" />
-        <View className="gap-2">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-6 w-36" />
-        </View>
+    <View className="flex-1 gap-6 px-5 pt-6">
+      <View className="gap-2">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-8 w-40" />
       </View>
-      <View className="flex-row gap-3">
-        <Skeleton className="h-24 flex-1 rounded-xl" />
-        <Skeleton className="h-24 flex-1 rounded-xl" />
-      </View>
-      <View className="flex-row gap-3">
-        <Skeleton className="h-24 flex-1 rounded-xl" />
-        <Skeleton className="h-24 flex-1 rounded-xl" />
-      </View>
-      <Skeleton className="h-56 rounded-xl" />
+      <Skeleton className="h-36 rounded-2xl" />
+      <Skeleton className="h-16 rounded-xl" />
       <Skeleton className="h-44 rounded-xl" />
+      <Skeleton className="h-32 rounded-xl" />
     </View>
   );
 }
@@ -148,88 +125,111 @@ function ActivityContent() {
   return <ActivityDashboard currentUser={currentUser} />;
 }
 
-function StatTile({
-  icon,
-  value,
-  label,
-  prominent = false,
-  hint,
+/** Uppercase kicker + optional trailing action — sections divide by type, not boxes. */
+function SectionHeader({
+  title,
+  meta,
+  actionLabel,
+  onAction,
 }: {
-  icon: IconName;
-  value: number;
-  label: string;
-  prominent?: boolean;
-  hint?: string;
+  title: string;
+  meta?: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
-    <View className="flex-1 rounded-xl border border-border/80 bg-card p-4">
-      <View className="flex-row items-center gap-3">
-        <View
-          className={cn(
-            "size-10 items-center justify-center rounded-lg",
-            prominent ? "bg-primary/10" : "bg-muted",
-          )}
+    <View className="flex-row items-baseline justify-between gap-3">
+      <Text className="text-base font-semibold tracking-tight text-foreground">
+        {title}
+      </Text>
+      {actionLabel && onAction ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+          onPress={onAction}
+          hitSlop={10}
+          className="flex-row items-center gap-0.5 active:opacity-70"
         >
-          <Icon
-            name={icon}
-            size={20}
-            className={prominent ? "text-primary" : "text-muted-foreground"}
-          />
-        </View>
-        <View className="min-w-0 flex-1">
-          <Text className="text-2xl font-bold tabular-nums text-foreground">
-            {value}
+          <Text className="text-sm font-medium text-primary">
+            {actionLabel}
           </Text>
-          <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-            {label}
-          </Text>
-        </View>
-      </View>
-      {hint ? (
-        <Text className="mt-3 text-xs text-muted-foreground">{hint}</Text>
+          <Icon name="chevron-forward" size={13} className="text-primary" />
+        </Pressable>
+      ) : meta ? (
+        <Text className="text-xs text-muted-foreground">{meta}</Text>
       ) : null}
     </View>
   );
 }
 
-function CardHeaderLink({
-  title,
-  subtitle,
-  linkLabel,
-  onPress,
+function StreakHero({
+  streak,
+  longestStreak,
 }: {
-  title: string;
-  subtitle: string;
-  linkLabel: string;
-  onPress: () => void;
+  streak: number;
+  longestStreak: number;
 }) {
+  const t = useT();
+  const { previous, next } = getStreakMilestones(streak);
+  const progress = next
+    ? Math.min(1, Math.max(0, (streak - previous) / (next - previous)))
+    : 1;
+
   return (
-    <View className="flex-row items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
-      <View className="min-w-0 flex-1">
-        <Text className="font-semibold text-card-foreground">{title}</Text>
-        <Text className="text-sm text-muted-foreground">{subtitle}</Text>
+    <View className="gap-4 rounded-2xl border border-border/70 bg-card p-5">
+      <View className="flex-row items-center gap-4">
+        <Icon name="flame" size={34} className="text-primary" />
+        <View className="min-w-0 flex-1">
+          <View className="flex-row items-baseline gap-2">
+            <Text className="text-4xl font-bold tabular-nums tracking-tight text-card-foreground">
+              {streak}
+            </Text>
+            <Text className="text-sm text-muted-foreground">
+              {t("activity.dayStreak")}
+            </Text>
+          </View>
+        </View>
+        <View className="items-end">
+          <Text className="text-base font-semibold tabular-nums text-card-foreground">
+            {longestStreak}
+          </Text>
+          <Text className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            {t("activity.best")}
+          </Text>
+        </View>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={linkLabel}
-        onPress={onPress}
-        className="min-h-11 flex-row items-center gap-1 rounded-lg px-2 active:bg-muted/50"
-      >
-        <Text className="text-sm font-medium text-foreground">{linkLabel}</Text>
-        <Icon
-          name="chevron-forward"
-          size={16}
-          className="text-muted-foreground"
-        />
-      </Pressable>
+
+      {next ? (
+        <View className="gap-1.5">
+          <View className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <View
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${Math.max(progress * 100, 2)}%` }}
+            />
+          </View>
+          <Text className="text-xs text-muted-foreground">
+            {t("activity.daysToGoal")
+              .replace("{count}", String(next - streak))
+              .replace("{milestone}", String(next))}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function ListEmptyNote({ text }: { text: string }) {
+function StatColumn({ value, label }: { value: number; label: string }) {
   return (
-    <View className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8">
-      <Text className="text-center text-sm text-muted-foreground">{text}</Text>
+    <View className="flex-1 items-center gap-0.5">
+      <Text className="text-xl font-semibold tabular-nums text-foreground">
+        {value}
+      </Text>
+      <Text
+        numberOfLines={1}
+        className="text-[11px] uppercase tracking-wide text-muted-foreground"
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -238,10 +238,12 @@ function EventRow({
   event,
   meta,
   fallbackIcon,
+  isLast,
 }: {
   event: HistoryEntry["event"];
   meta: string;
   fallbackIcon: IconName;
+  isLast: boolean;
 }) {
   const router = useRouter();
 
@@ -250,9 +252,12 @@ function EventRow({
       accessibilityRole="button"
       accessibilityLabel={event.title}
       onPress={() => router.push(`/event/${event.slug}`)}
-      className="flex-row gap-3 rounded-lg py-1.5 active:bg-muted/50"
+      className={cn(
+        "flex-row items-center gap-3 py-3 active:opacity-70",
+        !isLast && "border-b border-border/60",
+      )}
     >
-      <View className="size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+      <View className="size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
         {event.imageUrl ? (
           <Image
             source={{ uri: event.imageUrl }}
@@ -260,13 +265,17 @@ function EventRow({
             className="size-full"
           />
         ) : (
-          <Icon name={fallbackIcon} size={20} className="text-muted-foreground" />
+          <Icon
+            name={fallbackIcon}
+            size={18}
+            className="text-muted-foreground"
+          />
         )}
       </View>
       <View className="min-w-0 flex-1">
         <Text
           numberOfLines={2}
-          className="text-sm font-medium leading-snug text-foreground"
+          className="text-[15px] font-medium leading-snug text-foreground"
         >
           {event.title}
         </Text>
@@ -274,36 +283,20 @@ function EventRow({
           {meta}
         </Text>
       </View>
+      <Icon
+        name="chevron-forward"
+        size={14}
+        className="text-muted-foreground/60"
+      />
     </Pressable>
   );
 }
 
-function QuickActionCard({
-  icon,
-  title,
-  body,
-  onPress,
-}: {
-  icon: IconName;
-  title: string;
-  body: string;
-  onPress: () => void;
-}) {
+function ListEmptyNote({ text }: { text: string }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      onPress={onPress}
-      className="flex-row items-center gap-4 rounded-xl border border-border/80 bg-card p-5 active:border-primary/50 active:bg-primary/5"
-    >
-      <View className="size-12 items-center justify-center rounded-xl bg-primary/10">
-        <Icon name={icon} size={24} className="text-primary" />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text className="font-semibold text-card-foreground">{title}</Text>
-        <Text className="text-sm text-muted-foreground">{body}</Text>
-      </View>
-    </Pressable>
+    <View className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-7">
+      <Text className="text-center text-sm text-muted-foreground">{text}</Text>
+    </View>
   );
 }
 
@@ -312,23 +305,15 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
   const locale = useLocale();
   const t = useT();
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
-  const isAdmin = useQuery(api.user.isCurrentUserAdmin);
 
-  const openQuiz = () => {
-    WebBrowser.openBrowserAsync(`${SITE_URL}/quiz`).catch(() => {
-      Alert.alert(
-        t("native.about.browserErrorTitle"),
-        t("native.about.browserErrorBody"),
-      );
-    });
-  };
-
-  if (dashboardOverview === undefined || isAdmin === undefined) {
+  if (dashboardOverview === undefined) {
     return <ActivitySkeleton />;
   }
 
   const userName =
-    currentUser.profile?.name || currentUser.email || t("activity.userFallback");
+    currentUser.profile?.name ||
+    currentUser.email ||
+    t("activity.userFallback");
   const readingStreak =
     dashboardOverview?.stats.currentStreak ??
     currentUser.stats.currentStreak ??
@@ -338,7 +323,9 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
     currentUser.stats.longestStreak ??
     0;
   const articlesRead =
-    dashboardOverview?.stats.articlesRead ?? currentUser.stats.articlesRead ?? 0;
+    dashboardOverview?.stats.articlesRead ??
+    currentUser.stats.articlesRead ??
+    0;
   const biasBalance =
     dashboardOverview?.stats.biasBalance ?? currentUser.stats.biasBalance ?? 0;
   const bookmarkCount = dashboardOverview?.stats.bookmarkCount ?? 0;
@@ -349,7 +336,6 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
   const activeDays = dashboardOverview?.streakCalendar.activeDays ?? 0;
   const weeklyBiasReads = dashboardOverview?.weeklyBiasSummary.reads ?? 0;
   const weeklyBiasBalance = dashboardOverview?.weeklyBiasSummary.balance ?? 0;
-  const nextStreakMilestone = getNextStreakMilestone(readingStreak);
 
   const historyMeta = (entry: HistoryEntry) => {
     const detailBits = [
@@ -374,138 +360,51 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-6 px-4 pb-10 pt-5"
+      contentContainerClassName="gap-7 px-5 pb-12 pt-6"
     >
-      {/* Header */}
-      <View className="flex-row items-center gap-4">
-        <View className="size-14 items-center justify-center rounded-full bg-primary/10">
-          <Text className="text-2xl font-bold text-primary">
-            {userName.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View className="min-w-0 flex-1">
-          <Text className="text-sm text-muted-foreground">
-            {t("activity.welcomeBack")}
-          </Text>
-          <Text
-            numberOfLines={1}
-            className="text-2xl font-bold tracking-tight text-foreground"
-          >
-            {userName.split(" ")[0]}
-          </Text>
-        </View>
-      </View>
-
-      {/* Stats grid */}
-      <View className="gap-3">
-        <View className="flex-row gap-3">
-          <StatTile
-            icon="flame-outline"
-            value={readingStreak}
-            label={t("activity.dayStreak")}
-            prominent
-            hint={
-              nextStreakMilestone && readingStreak > 0
-                ? t("activity.daysToGoal")
-                    .replace(
-                      "{count}",
-                      String(nextStreakMilestone - readingStreak),
-                    )
-                    .replace("{milestone}", String(nextStreakMilestone))
-                : undefined
-            }
-          />
-          <StatTile
-            icon="newspaper-outline"
-            value={articlesRead}
-            label={t("activity.articlesRead")}
-          />
-        </View>
-        <View className="flex-row gap-3">
-          <StatTile
-            icon="sparkles-outline"
-            value={eventsExplored}
-            label={t("activity.eventsExplored")}
-          />
-          <StatTile
-            icon="bookmark-outline"
-            value={bookmarkCount}
-            label={t("activity.bookmarked")}
-          />
-        </View>
-      </View>
-
-      {/* Quiz CTA */}
-      <View className="gap-4 rounded-xl border border-border/80 bg-card p-4">
-        <View className="flex-row items-start gap-3">
-          <View className="size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <Icon name="bulb-outline" size={20} className="text-primary" />
-          </View>
-          <View className="min-w-0 flex-1">
-            <Text className="font-semibold text-card-foreground">
-              {t("quiz.cta.activityTitle")}
-            </Text>
-            <Text className="text-sm text-muted-foreground">
-              {t("quiz.cta.activityBody")}
-            </Text>
-          </View>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("quiz.cta.action")}
-          onPress={openQuiz}
-          className="min-h-11 items-center justify-center self-start rounded-full bg-primary px-6 active:opacity-80"
+      {/* Header — typographic, no avatar chrome */}
+      <View>
+        <Text className="text-sm text-muted-foreground">
+          {t("activity.welcomeBack")}
+        </Text>
+        <Text
+          numberOfLines={1}
+          className="text-3xl font-bold tracking-tight text-foreground"
         >
-          <Text className="text-sm font-medium text-primary-foreground">
-            {t("quiz.cta.action")}
-          </Text>
-        </Pressable>
+          {userName.split(" ")[0]}
+        </Text>
       </View>
 
-      {/* Activity calendar */}
-      <View className="gap-5 rounded-xl border border-border/80 bg-card p-5">
-        <View className="flex-row items-end justify-between gap-4">
-          <View className="min-w-0 flex-1">
-            <Text className="font-semibold text-card-foreground">
-              {t("activity.section")}
-            </Text>
-            <Text className="text-sm text-muted-foreground">
-              {t("activity.last12Weeks")}
-            </Text>
-          </View>
-          <View className="flex-row gap-5">
-            {[
-              { value: readingStreak, label: t("activity.current") },
-              { value: longestStreak, label: t("activity.best") },
-              { value: activeDays, label: t("activity.active") },
-            ].map(({ value, label }) => (
-              <View key={label} className="items-center">
-                <Text className="text-lg font-bold tabular-nums text-foreground">
-                  {value}
-                </Text>
-                <Text className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {label}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
+      {/* The one hero element on this screen */}
+      <StreakHero streak={readingStreak} longestStreak={longestStreak} />
+
+      {/* KPI strip — plain figures with hairline dividers, no icon boxes */}
+      <View className="flex-row items-center">
+        <StatColumn value={articlesRead} label={t("activity.articlesRead")} />
+        <View className="h-8 w-px bg-border/70" />
+        <StatColumn
+          value={eventsExplored}
+          label={t("activity.eventsExplored")}
+        />
+        <View className="h-8 w-px bg-border/70" />
+        <StatColumn value={bookmarkCount} label={t("activity.bookmarked")} />
+      </View>
+
+      {/* Reading consistency */}
+      <View className="gap-4">
+        <SectionHeader
+          title={t("activity.last12Weeks")}
+          meta={`${activeDays} ${t("activity.active").toLowerCase()}`}
+        />
         <StreakActivityCalendar days={streakDays} />
       </View>
 
-      {/* Bias balance */}
-      <View className="gap-5 rounded-xl border border-border/80 bg-card p-5">
-        <View>
-          <Text className="font-semibold text-card-foreground">
-            {t("activity.biasBalance")}
-          </Text>
-          <Text className="text-sm text-muted-foreground">
-            {t("activity.biasMix")}
-          </Text>
-        </View>
+      {/* Perspective balance */}
+      <View className="gap-4">
+        <SectionHeader title={t("activity.biasBalance")} />
         <BiasBalanceMeter value={biasBalance} />
         {weeklyBiasReads > 0 ? (
-          <Text className="text-xs text-muted-foreground">
+          <Text className="text-xs leading-relaxed text-muted-foreground">
             {getBiasSnapshotLabel(weeklyBiasBalance, t)}{" "}
             {t("activity.biasReads").replace(
               "{count}",
@@ -516,429 +415,56 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
       </View>
 
       {/* Recent reading */}
-      <View className="overflow-hidden rounded-xl border border-border/80 bg-card">
-        <CardHeaderLink
+      <View className="gap-1">
+        <SectionHeader
           title={t("activity.recentReading")}
-          subtitle={t("activity.recentReadingBody")}
-          linkLabel={t("tabs.feed")}
-          onPress={() => router.push("/")}
+          actionLabel={t("tabs.feed")}
+          onAction={() => router.push("/")}
         />
-        <View className="gap-3 px-5 py-5">
-          {recentHistory.length === 0 ? (
+        {recentHistory.length === 0 ? (
+          <View className="pt-2">
             <ListEmptyNote text={t("activity.readingHistoryEmpty")} />
-          ) : (
-            recentHistory
-              .slice(0, 4)
-              .map((entry) => (
-                <EventRow
-                  key={entry.event._id}
-                  event={entry.event}
-                  meta={historyMeta(entry)}
-                  fallbackIcon="newspaper-outline"
-                />
-              ))
-          )}
-        </View>
+          </View>
+        ) : (
+          <View>
+            {recentHistory.slice(0, 4).map((entry, index, list) => (
+              <EventRow
+                key={entry.event._id}
+                event={entry.event}
+                meta={historyMeta(entry)}
+                fallbackIcon="newspaper-outline"
+                isLast={index === list.length - 1}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Saved */}
-      <View className="overflow-hidden rounded-xl border border-border/80 bg-card">
-        <CardHeaderLink
+      <View className="gap-1">
+        <SectionHeader
           title={t("activity.savedLabel")}
-          subtitle={t("activity.savedSub")}
-          linkLabel={t("activity.savedAll")}
-          onPress={() => router.push("/saved")}
+          actionLabel={t("activity.savedAll")}
+          onAction={() => router.push("/saved")}
         />
-        <View className="gap-3 px-5 py-5">
-          {recentBookmarks.length === 0 ? (
+        {recentBookmarks.length === 0 ? (
+          <View className="pt-2">
             <ListEmptyNote text={t("activity.savedEmpty")} />
-          ) : (
-            recentBookmarks
-              .slice(0, 4)
-              .map((entry) => (
-                <EventRow
-                  key={entry.event._id}
-                  event={entry.event}
-                  meta={bookmarkMeta(entry)}
-                  fallbackIcon="bookmark-outline"
-                />
-              ))
-          )}
-        </View>
+          </View>
+        ) : (
+          <View>
+            {recentBookmarks.slice(0, 4).map((entry, index, list) => (
+              <EventRow
+                key={entry.event._id}
+                event={entry.event}
+                meta={bookmarkMeta(entry)}
+                fallbackIcon="bookmark-outline"
+                isLast={index === list.length - 1}
+              />
+            ))}
+          </View>
+        )}
       </View>
-
-      {/* Quick actions */}
-      <View className="gap-3">
-        <QuickActionCard
-          icon="newspaper-outline"
-          title={t("activity.feedCard")}
-          body={t("activity.feedCardBody")}
-          onPress={() => router.push("/")}
-        />
-        <QuickActionCard
-          icon="bookmark-outline"
-          title={t("activity.savedCard")}
-          body={
-            bookmarkCount === 1
-              ? t("activity.savedOne")
-              : t("activity.savedMany").replace(
-                  "{count}",
-                  String(bookmarkCount),
-                )
-          }
-          onPress={() => router.push("/saved")}
-        />
-      </View>
-
-      {isAdmin ? <AdminTopicDiagnostics /> : null}
     </ScrollView>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Admin: topic inference diagnostics + config (mirrors the web activity page)
-// ---------------------------------------------------------------------------
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-1 rounded-lg border border-border/80 bg-background p-3">
-      <Text
-        numberOfLines={1}
-        className="text-xs uppercase tracking-wide text-muted-foreground"
-      >
-        {label}
-      </Text>
-      <Text className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function TopicChipList({ label, topics }: { label: string; topics: string[] }) {
-  const t = useT();
-
-  return (
-    <View className="flex-row flex-wrap items-center gap-1.5">
-      <Text className="text-xs text-muted-foreground">{label}:</Text>
-      {topics.length > 0 ? (
-        topics.map((topic) => (
-          <View
-            key={`${label}-${topic}`}
-            className="rounded-full bg-muted px-2 py-0.5"
-          >
-            <Text className="text-xs text-foreground">{topic}</Text>
-          </View>
-        ))
-      ) : (
-        <Text className="text-xs text-muted-foreground">
-          {t("activity.none")}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-function AdminTopicDiagnostics() {
-  const t = useT();
-  const topicDiagnostics = useQuery(
-    api.clustering.getRecentTopicInferenceDiagnosticsForAdmin,
-    { limit: 10 },
-  );
-  const minScoreConfig = useQuery(api.config.get, {
-    key: "topic_inference_min_score",
-  });
-  const confidenceRatioConfig = useQuery(api.config.get, {
-    key: "topic_inference_confidence_ratio",
-  });
-  const maxTopicsConfig = useQuery(api.config.get, {
-    key: "topic_inference_max_topics",
-  });
-  const topicInferenceBounds = useQuery(api.config.getTopicInferenceBounds);
-  const setTopicInferenceSettings = useMutation(
-    api.config.setTopicInferenceSettings,
-  );
-  const [minScoreInput, setMinScoreInput] = useState("");
-  const [confidenceRatioInput, setConfidenceRatioInput] = useState("");
-  const [maxTopicsInput, setMaxTopicsInput] = useState("");
-  const [configMessage, setConfigMessage] = useState("");
-  const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const currentSettings = useMemo(
-    () => ({
-      minScore: getNumericConfigValue(
-        minScoreConfig,
-        TOPIC_INFERENCE_DEFAULTS.minScore,
-      ),
-      confidenceRatio: getNumericConfigValue(
-        confidenceRatioConfig,
-        TOPIC_INFERENCE_DEFAULTS.confidenceRatio,
-      ),
-      maxTopics: getNumericConfigValue(
-        maxTopicsConfig,
-        TOPIC_INFERENCE_DEFAULTS.maxTopics,
-      ),
-    }),
-    [minScoreConfig, confidenceRatioConfig, maxTopicsConfig],
-  );
-
-  useEffect(() => {
-    setMinScoreInput(String(currentSettings.minScore));
-    setConfidenceRatioInput(String(currentSettings.confidenceRatio));
-    setMaxTopicsInput(String(currentSettings.maxTopics));
-  }, [
-    currentSettings.minScore,
-    currentSettings.confidenceRatio,
-    currentSettings.maxTopics,
-  ]);
-
-  const hasConfigChanges =
-    minScoreInput !== String(currentSettings.minScore) ||
-    confidenceRatioInput !== String(currentSettings.confidenceRatio) ||
-    maxTopicsInput !== String(currentSettings.maxTopics);
-
-  const handleResetConfig = () => {
-    setMinScoreInput(String(currentSettings.minScore));
-    setConfidenceRatioInput(String(currentSettings.confidenceRatio));
-    setMaxTopicsInput(String(currentSettings.maxTopics));
-    setConfigMessage("");
-  };
-
-  const handleSaveConfig = async () => {
-    if (isSavingConfig) return;
-
-    const minScore = Number(minScoreInput);
-    const confidenceRatio = Number(confidenceRatioInput);
-    const maxTopics = Number(maxTopicsInput);
-
-    if (!topicInferenceBounds) return;
-
-    if (
-      !Number.isFinite(minScore) ||
-      minScore < topicInferenceBounds.minScore.min ||
-      minScore > topicInferenceBounds.minScore.max
-    ) {
-      setConfigMessage(t("activity.admin.minScoreError"));
-      return;
-    }
-    if (
-      !Number.isFinite(confidenceRatio) ||
-      confidenceRatio < topicInferenceBounds.confidenceRatio.min ||
-      confidenceRatio > topicInferenceBounds.confidenceRatio.max
-    ) {
-      setConfigMessage(t("activity.admin.confidenceError"));
-      return;
-    }
-    if (
-      !Number.isInteger(maxTopics) ||
-      maxTopics < topicInferenceBounds.maxTopics.min ||
-      maxTopics > topicInferenceBounds.maxTopics.max
-    ) {
-      setConfigMessage(t("activity.admin.maxTopicsError"));
-      return;
-    }
-
-    setIsSavingConfig(true);
-    setConfigMessage("");
-
-    try {
-      await setTopicInferenceSettings({ minScore, confidenceRatio, maxTopics });
-      setConfigMessage(t("activity.admin.saved"));
-    } catch (error) {
-      console.error("Failed to save topic inference settings:", error);
-      setConfigMessage(t("activity.admin.saveError"));
-    } finally {
-      setIsSavingConfig(false);
-    }
-  };
-
-  return (
-    <View className="gap-4 rounded-xl border border-border/80 bg-card p-5">
-      <View>
-        <Text className="text-lg font-semibold text-card-foreground">
-          {t("activity.adminTitle")}
-        </Text>
-        <Text className="text-sm text-muted-foreground">
-          {t("activity.adminBody")}
-        </Text>
-      </View>
-
-      <View className="flex-row gap-3">
-        <MetricCard
-          label={t("activity.admin.minScore")}
-          value={String(currentSettings.minScore)}
-        />
-        <MetricCard
-          label={t("activity.admin.confidence")}
-          value={String(currentSettings.confidenceRatio)}
-        />
-        <MetricCard
-          label={t("activity.admin.maxTopics")}
-          value={String(currentSettings.maxTopics)}
-        />
-      </View>
-
-      <View className="gap-3">
-        <AuthField
-          label={t("activity.admin.minScore")}
-          value={minScoreInput}
-          onChangeText={setMinScoreInput}
-          keyboardType="decimal-pad"
-          editable={!isSavingConfig}
-        />
-        <AuthField
-          label={t("activity.admin.confidence")}
-          value={confidenceRatioInput}
-          onChangeText={setConfidenceRatioInput}
-          keyboardType="decimal-pad"
-          editable={!isSavingConfig}
-        />
-        <AuthField
-          label={t("activity.admin.maxTopics")}
-          value={maxTopicsInput}
-          onChangeText={setMaxTopicsInput}
-          keyboardType="number-pad"
-          editable={!isSavingConfig}
-        />
-      </View>
-
-      <View className="flex-row flex-wrap items-center gap-3">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("activity.admin.save")}
-          onPress={() => void handleSaveConfig()}
-          disabled={isSavingConfig || !hasConfigChanges || !topicInferenceBounds}
-          className={cn(
-            "min-h-11 items-center justify-center rounded-full bg-primary px-6 active:opacity-80",
-            (isSavingConfig || !hasConfigChanges || !topicInferenceBounds) &&
-              "opacity-50",
-          )}
-        >
-          <Text className="text-sm font-medium text-primary-foreground">
-            {isSavingConfig
-              ? t("activity.admin.saving")
-              : t("activity.admin.save")}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("activity.admin.reset")}
-          onPress={handleResetConfig}
-          disabled={isSavingConfig || !hasConfigChanges}
-          className={cn(
-            "min-h-11 items-center justify-center rounded-full border border-border px-6 active:bg-muted/50",
-            (isSavingConfig || !hasConfigChanges) && "opacity-50",
-          )}
-        >
-          <Text className="text-sm font-medium text-foreground">
-            {t("activity.admin.reset")}
-          </Text>
-        </Pressable>
-      </View>
-      {configMessage ? (
-        <Text accessibilityLiveRegion="polite" className="text-sm text-muted-foreground">
-          {configMessage}
-        </Text>
-      ) : null}
-
-      <View className="gap-3">
-        {(topicDiagnostics ?? []).map((event) => (
-          <View
-            key={event.eventId}
-            className="gap-4 rounded-lg border border-border/80 bg-background p-4"
-          >
-            <View className="gap-2">
-              <View>
-                <Text className="font-medium text-foreground">
-                  {event.eventTitle}
-                </Text>
-                <Text className="text-sm text-muted-foreground">
-                  {event.articleCount === 1
-                    ? t("activity.admin.articles.one")
-                    : t("activity.admin.articles.many").replace(
-                        "{count}",
-                        String(event.articleCount),
-                      )}
-                </Text>
-              </View>
-              <TopicChipList
-                label={t("activity.admin.attached")}
-                topics={event.attachedTopics.map(
-                  (topic) => topic.displayName,
-                )}
-              />
-              <TopicChipList
-                label={t("activity.admin.inferred")}
-                topics={event.inferredTopics.map(
-                  (topic) => topic.displayName,
-                )}
-              />
-            </View>
-
-            <View>
-              <Text className="text-xs font-medium text-muted-foreground">
-                {t("activity.admin.input")}
-              </Text>
-              <View className="mt-2 gap-1">
-                <Text className="text-sm text-muted-foreground">
-                  {event.inferenceInput.title}
-                </Text>
-                {event.inferenceInput.summary ? (
-                  <Text className="text-sm text-muted-foreground">
-                    {event.inferenceInput.summary}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-
-            {event.inferenceInput.atomicFacts.length > 0 ? (
-              <View>
-                <Text className="text-xs font-medium text-muted-foreground">
-                  {t("activity.admin.facts")}
-                </Text>
-                <View className="mt-2 flex-row flex-wrap gap-1">
-                  {event.inferenceInput.atomicFacts.map((fact) => (
-                    <View
-                      key={fact}
-                      className="rounded-full bg-muted px-2 py-0.5"
-                    >
-                      <Text className="text-xs text-foreground">{fact}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            <View>
-              <Text className="text-xs font-medium text-muted-foreground">
-                {t("activity.admin.candidates")}
-              </Text>
-              <View className="mt-2 gap-2">
-                {event.topCandidates.map((candidate) => (
-                  <View
-                    key={candidate.slug}
-                    className="flex-row items-center justify-between gap-3 rounded-lg border border-border/80 p-2"
-                  >
-                    <View className="min-w-0 flex-1">
-                      <Text className="text-sm font-medium text-foreground">
-                        {candidate.displayName}
-                      </Text>
-                      <Text className="text-xs text-muted-foreground">
-                        {t("activity.admin.signals").replace(
-                          "{count}",
-                          String(candidate.signalCount),
-                        )}
-                      </Text>
-                    </View>
-                    <Text className="text-sm font-semibold tabular-nums text-foreground">
-                      {candidate.score}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
-    </View>
   );
 }
