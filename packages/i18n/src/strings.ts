@@ -563,6 +563,10 @@ const ro = {
   "native.feed.errorTitle": "Nu am putut încărca feed-ul",
   "native.feed.errorBody":
     "A apărut o problemă la încărcarea evenimentelor. Trage în jos pentru a reîncerca sau verifică-ți conexiunea.",
+  "native.feed.searchEmpty":
+    "Niciun rezultat pentru „{query}”. Încearcă alt termen sau alt subiect.",
+  "native.offline.banner":
+    "Ești offline — conținutul se actualizează când revine conexiunea.",
   "native.feed.emptyTitle": "Niciun eveniment încă",
   "native.feed.emptyBody":
     "Evenimentele publicate vor apărea aici imediat ce avem acoperire.",
@@ -623,7 +627,7 @@ const ro = {
   "native.auth.verifyTitle": "Verifică-ți e-mailul",
   "native.auth.verifyInboxTitle": "Verifică-ți inboxul",
   "native.auth.verifyBody":
-    "Dacă {email} nu are deja un cont, primești în curând un link de verificare (verifică și spam). Dacă ai deja un cont cu această adresă, nu se trimite niciun e-mail — autentifică-te sau folosește resetarea parolei.",
+    "Dacă {email} nu are deja un cont, primești în curând un link de verificare, valabil o oră (verifică și spam). Dacă ai deja un cont cu această adresă, nu se trimite niciun e-mail — autentifică-te sau folosește resetarea parolei.",
   "native.auth.backToSignIn": "Înapoi la autentificare",
   "native.bookmark.failed":
     "Nu am putut actualiza acest semn de carte. Încearcă din nou.",
@@ -1187,6 +1191,10 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.feed.errorTitle": "Couldn't load the feed",
   "native.feed.errorBody":
     "Something went wrong while loading events. Pull to retry or check your connection.",
+  "native.feed.searchEmpty":
+    "No results for “{query}”. Try another term or topic.",
+  "native.offline.banner":
+    "You're offline — content will update when the connection returns.",
   "native.feed.emptyTitle": "No events yet",
   "native.feed.emptyBody":
     "Published events will show up here as soon as coverage lands.",
@@ -1247,7 +1255,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.auth.verifyTitle": "Verify your email",
   "native.auth.verifyInboxTitle": "Check your inbox",
   "native.auth.verifyBody":
-    "If {email} doesn't already have an account, a verification link is on its way (check spam too). If you already have an account with this address, no email is sent — sign in or use password reset instead.",
+    "If {email} doesn't already have an account, a verification link valid for one hour is on its way (check spam too). If you already have an account with this address, no email is sent — sign in or use password reset instead.",
   "native.auth.backToSignIn": "Back to sign in",
   "native.bookmark.failed":
     "We couldn't update this bookmark. Please try again.",

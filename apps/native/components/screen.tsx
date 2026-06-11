@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OfflineBanner } from "@/components/ui/offline-banner";
 import { cn } from "@/lib/cn";
 
 type ScreenProps = {
@@ -23,6 +24,7 @@ export function Screen({
       className={cn("flex-1 bg-background", className)}
       style={withTopInset ? { paddingTop: insets.top } : undefined}
     >
+      <OfflineBanner />
       {children}
     </View>
   );
