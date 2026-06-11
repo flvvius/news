@@ -28,9 +28,9 @@ const DOT_SIZE = {
 } as const;
 
 const TEXT_SIZE = {
-  sm: "text-xs",
-  md: "text-xs",
-  lg: "text-sm",
+  sm: "text-sm",
+  md: "text-sm",
+  lg: "text-base",
 } as const;
 
 function dotColorClass(bias: number, thresholds: number[]) {

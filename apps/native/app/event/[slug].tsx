@@ -84,7 +84,7 @@ function BackToFeedButton() {
         size={16}
         className="text-muted-foreground"
       />
-      <Text className="text-sm font-medium text-muted-foreground">
+      <Text className="text-base font-medium text-muted-foreground">
         {t("event.backToFeed")}
       </Text>
     </Pressable>
@@ -128,10 +128,10 @@ function EventNotFound() {
 
   return (
     <View className="flex-1 items-center justify-center gap-3 px-6">
-      <Text className="text-2xl font-semibold tracking-tight text-foreground">
+      <Text className="text-3xl font-semibold tracking-tight text-foreground">
         {t("event.notFound")}
       </Text>
-      <Text className="max-w-[252px] text-center text-sm leading-relaxed text-muted-foreground">
+      <Text className="max-w-[252px] text-center text-base leading-relaxed text-muted-foreground">
         {t("event.notFoundBody")}
       </Text>
       <Pressable
@@ -140,7 +140,7 @@ function EventNotFound() {
         onPress={() => router.replace("/")}
         className="mt-2 min-h-11 items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
       >
-        <Text className="text-sm font-medium text-primary-foreground">
+        <Text className="text-base font-medium text-primary-foreground">
           {t("event.backToFeed")}
         </Text>
       </Pressable>
@@ -261,7 +261,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
           ) : (
             <View className="size-full items-center justify-center bg-muted">
               <View className="rounded-full border border-border/80 bg-background/85 px-3 py-1">
-                <Text className="text-xs font-medium text-muted-foreground">
+                <Text className="text-sm font-medium text-muted-foreground">
                   {t("event.cardLabel")}
                 </Text>
               </View>
@@ -272,7 +272,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         <View className="gap-5 px-4 py-5">
           <View className="gap-4">
             <View className="flex-row items-center justify-between gap-3">
-              <Text className="text-xs font-semibold uppercase tracking-[2.4px] text-muted-foreground">
+              <Text className="text-sm font-semibold uppercase tracking-[2.4px] text-muted-foreground">
                 {t("event.overview")}
               </Text>
               <View className="flex-row items-center gap-2">
@@ -290,14 +290,14 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
                 />
               </View>
             </View>
-            <Text className="text-2xl font-bold leading-snug tracking-tight text-foreground">
+            <Text className="text-3xl font-bold leading-snug tracking-tight text-foreground">
               {event.title}
             </Text>
           </View>
 
           <View className="gap-3 border-t border-border/70 pt-4">
             <View className="self-start rounded-full border border-border/80 bg-background/70 px-3 py-1.5">
-              <Text className="text-xs font-medium text-muted-foreground">
+              <Text className="text-sm font-medium text-muted-foreground">
                 {t("event.updated").replace(
                   "{time}",
                   formatRelativeTimestamp(lastUpdatedAt, locale),
@@ -307,15 +307,15 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
             <View className="flex-row items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3">
               <SourceAvatarStack sources={sources} max={5} />
               <View className="shrink flex-row flex-wrap items-center justify-end gap-1">
-                <Text className="text-sm font-medium text-card-foreground">
+                <Text className="text-base font-medium text-card-foreground">
                   {getPluralizedCountLabel(
                     locale,
                     "event.articles",
                     articles.length,
                   )}
                 </Text>
-                <Text className="text-sm text-muted-foreground"> · </Text>
-                <Text className="text-sm text-muted-foreground">
+                <Text className="text-base text-muted-foreground"> · </Text>
+                <Text className="text-base text-muted-foreground">
                   {getPluralizedCountLabel(
                     locale,
                     "event.sourceCount",
@@ -350,7 +350,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
             >
               <Text
                 className={cn(
-                  "text-sm font-medium",
+                  "text-base font-medium",
                   isActive ? "text-foreground" : "text-muted-foreground",
                 )}
               >
@@ -369,7 +369,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
           {event.globalImpact ? (
             <SectionCard title={t("event.meaning")}>
-              <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
+              <Text className="max-w-[455px] text-base leading-relaxed text-card-foreground">
                 {event.globalImpact}
               </Text>
             </SectionCard>

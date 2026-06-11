@@ -106,24 +106,24 @@ function ClaimVariantRow({
         />
         <View className="min-w-0 flex-1">
           <View className="mb-1.5 flex-row flex-wrap items-center gap-2">
-            <Text className="text-sm font-semibold text-card-foreground">
+            <Text className="text-base font-semibold text-card-foreground">
               {source?.name ?? t("claim.unknownSource")}
             </Text>
             <View className="rounded-full bg-muted px-2 py-0.5">
-              <Text className="text-[11px] font-medium text-muted-foreground">
+              <Text className="text-xs font-medium text-muted-foreground">
                 {formatLean(variant.sourceLean)}
               </Text>
             </View>
             {variant.value ? (
               <View className="rounded-full border border-border px-2 py-0.5">
-                <Text className="text-[11px] font-medium text-foreground">
+                <Text className="text-xs font-medium text-foreground">
                   {variant.value}
                 </Text>
               </View>
             ) : null}
           </View>
 
-          <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
+          <Text className="max-w-[455px] text-base leading-relaxed text-card-foreground">
             {variant.statement}
           </Text>
 
@@ -139,7 +139,7 @@ function ClaimVariantRow({
               hitSlop={8}
               className="mt-2 min-h-11 flex-row items-center gap-1.5 self-start active:opacity-70"
             >
-              <Text className="text-xs font-medium text-primary">
+              <Text className="text-sm font-medium text-primary">
                 {t("claim.readSourceArticle")}
               </Text>
               <Icon name="open-outline" size={12} className="text-primary" />
@@ -183,22 +183,22 @@ function ClaimCard({
                 size={13}
                 className="text-muted-foreground"
               />
-              <Text className="text-xs font-medium text-muted-foreground">
+              <Text className="text-sm font-medium text-muted-foreground">
                 {t(STATUS_LABEL_KEY[claim.status])}
               </Text>
             </View>
-            <Text className="text-xs text-muted-foreground">
+            <Text className="text-sm text-muted-foreground">
               {claim.importance}/5 {t("claim.importance")}
             </Text>
           </View>
-          <Text className="shrink-0 text-xs text-muted-foreground">
+          <Text className="shrink-0 text-sm text-muted-foreground">
             {sourceCount === 1
               ? t("claim.source.one")
               : t("claim.source.many").replace("{count}", String(sourceCount))}
           </Text>
         </View>
 
-        <Text className="max-w-[455px] text-base font-semibold leading-snug tracking-tight text-card-foreground">
+        <Text className="max-w-[455px] text-lg font-semibold leading-snug tracking-tight text-card-foreground">
           {claim.canonicalStatement}
         </Text>
       </View>
@@ -236,7 +236,7 @@ function ClaimCard({
             onPress={() => setIsExpanded((value) => !value)}
             className="mt-3 min-h-11 flex-row items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 active:bg-accent"
           >
-            <Text className="text-xs font-medium text-muted-foreground">
+            <Text className="text-sm font-medium text-muted-foreground">
               {isExpanded
                 ? t("claim.showLess")
                 : remainingCount === 1
@@ -282,10 +282,10 @@ function StatCard({
           : "border-border bg-card active:bg-accent",
       )}
     >
-      <Text className="text-2xl font-bold tabular-nums text-card-foreground">
+      <Text className="text-3xl font-bold tabular-nums text-card-foreground">
         {count}
       </Text>
-      <Text className="mt-0.5 text-center text-xs font-medium text-muted-foreground">
+      <Text className="mt-0.5 text-center text-sm font-medium text-muted-foreground">
         {label}
       </Text>
     </Pressable>
@@ -330,7 +330,7 @@ export function EventClaimComparison({
           accessibilityLiveRegion="polite"
         >
           <ActivityIndicator size="small" colorClassName="accent-primary" />
-          <Text className="text-sm text-muted-foreground">
+          <Text className="text-base text-muted-foreground">
             {t("claim.loading")}
           </Text>
         </View>
@@ -342,10 +342,10 @@ export function EventClaimComparison({
     return (
       <SectionCard title={t("claim.title")}>
         <View className="items-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8">
-          <Text className="text-sm font-medium text-card-foreground">
+          <Text className="text-base font-medium text-card-foreground">
             {t("claim.unavailable")}
           </Text>
-          <Text className="mt-1.5 max-w-[385px] text-center text-sm text-muted-foreground">
+          <Text className="mt-1.5 max-w-[385px] text-center text-base text-muted-foreground">
             {t("claim.unavailableBody")}
           </Text>
         </View>
@@ -428,7 +428,7 @@ export function EventClaimComparison({
             hitSlop={8}
             className="mt-3 self-start active:opacity-70"
           >
-            <Text className="text-xs font-medium text-primary">
+            <Text className="text-sm font-medium text-primary">
               {t("claim.clearFilter")}
             </Text>
           </Pressable>
@@ -441,10 +441,10 @@ export function EventClaimComparison({
           return (
             <View key={status} className="gap-4">
               <View className="border-l-2 border-primary pl-3">
-                <Text className="text-base font-semibold tracking-tight text-card-foreground">
+                <Text className="text-lg font-semibold tracking-tight text-card-foreground">
                   {t(STATUS_HEADING_KEY[status])}
                 </Text>
-                <Text className="max-w-[385px] text-sm text-muted-foreground">
+                <Text className="max-w-[385px] text-base text-muted-foreground">
                   {t(STATUS_BODY_KEY[status])}
                 </Text>
               </View>

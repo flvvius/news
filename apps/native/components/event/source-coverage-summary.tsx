@@ -1,4 +1,5 @@
-import { Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Pressable, Text, View } from "react-native";
 
 import { BiasIndicator } from "@/components/bias-indicator";
 import { SourceAvatar } from "@/components/source-avatar";
@@ -22,6 +23,7 @@ export function SourceCoverageSummary({
   articles,
   biasThresholds,
 }: SourceCoverageSummaryProps) {
+  const router = useRouter();
   const t = useT();
   const sources = uniqueEventSources(articles);
 
@@ -56,10 +58,10 @@ export function SourceCoverageSummary({
                 key={bucket}
                 className="flex-1 rounded-lg border border-border/70 bg-background/55 px-3 py-2"
               >
-                <Text className="text-xs text-muted-foreground">
+                <Text className="text-sm text-muted-foreground">
                   {t(BUCKET_LABEL_KEY[bucket])}
                 </Text>
-                <Text className="text-lg font-semibold text-card-foreground">
+                <Text className="text-xl font-semibold text-card-foreground">
                   {counts[bucket]}
                 </Text>
               </View>
@@ -69,9 +71,12 @@ export function SourceCoverageSummary({
 
         <View className="gap-3">
           {sources.map((source) => (
-            <View
+            <Pressable
               key={source._id}
-              className="flex-row items-center gap-3 rounded-lg border border-border/70 bg-background/55 px-3 py-3"
+              accessibilityRole="button"
+              accessibilityLabel={source.name}
+              onPress={() => router.push(`/source/${source._id}`)}
+              className="flex-row items-center gap-3 rounded-lg border border-border/70 bg-background/55 px-3 py-3 active:bg-muted/40"
             >
               <SourceAvatar
                 name={source.name}
@@ -83,12 +88,12 @@ export function SourceCoverageSummary({
                 <View className="flex-row items-center justify-between gap-2">
                   <Text
                     numberOfLines={1}
-                    className="shrink text-sm font-medium text-card-foreground"
+                    className="shrink text-base font-medium text-card-foreground"
                   >
                     {source.name}
                   </Text>
                   <View className="shrink-0 rounded-full border border-border/70 px-2 py-0.5">
-                    <Text className="text-[11px] text-muted-foreground">
+                    <Text className="text-xs text-muted-foreground">
                       {source.reliabilityScore}/10
                     </Text>
                   </View>
@@ -101,7 +106,7 @@ export function SourceCoverageSummary({
                 {source.mbfcFactual || source.mbfcCredibility ? (
                   <Text
                     numberOfLines={1}
-                    className="text-xs text-muted-foreground"
+                    className="text-sm text-muted-foreground"
                   >
                     {[
                       source.mbfcFactual
@@ -116,7 +121,7 @@ export function SourceCoverageSummary({
                   </Text>
                 ) : null}
               </View>
-            </View>
+            </Pressable>
           ))}
         </View>
       </View>

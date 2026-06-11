@@ -42,7 +42,7 @@ export function PerspectiveSummaries({
   if (!hasPerspectives) {
     return (
       <SectionCard title={t("event.summary")}>
-        <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
+        <Text className="max-w-[455px] text-base leading-relaxed text-card-foreground">
           {perspectiveSummaries?.center ?? t("event.compareOriginal")}
         </Text>
       </SectionCard>
@@ -78,7 +78,7 @@ export function PerspectiveSummaries({
                 />
                 <Text
                   className={cn(
-                    "text-sm font-medium",
+                    "text-base font-medium",
                     isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
@@ -89,7 +89,7 @@ export function PerspectiveSummaries({
           })}
         </View>
 
-        <Text className="max-w-[455px] text-sm leading-relaxed text-card-foreground">
+        <Text className="max-w-[455px] text-base leading-relaxed text-card-foreground">
           {activeText}
         </Text>
       </View>

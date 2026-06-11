@@ -13,6 +13,7 @@ import { BiasDistributionBar } from "@/components/bias-distribution-bar";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { ShareEventButton } from "@/components/share-event-button";
 import { SourceAvatarStack } from "@/components/source-avatar";
+import { Icon } from "@/components/ui/icon";
 import { Image } from "@/components/ui/image";
 import { useLocale, useT } from "@/contexts/locale-context";
 import { getBiasBucket } from "@/lib/bias";
@@ -109,7 +110,9 @@ export function EventCard({
       )}
       onPress={() => router.push(`/event/${event.slug}`)}
       className={cn(
-        "overflow-hidden border border-border/80 bg-card/95 active:opacity-90",
+        // Solid background + shadow: NN/g clickability signifier — raised
+        // surfaces read as tappable where flat tiles read as static content.
+        "overflow-hidden border border-border/80 bg-card shadow-sm active:opacity-80",
         isFeature ? "rounded-[1.4rem]" : "rounded-[1.2rem]",
       )}
     >
@@ -125,7 +128,7 @@ export function EventCard({
                 key={topic}
                 className="h-7 justify-center rounded-full border border-overlay-border bg-overlay px-3"
               >
-                <Text className="text-xs font-medium text-overlay-foreground">
+                <Text className="text-sm font-medium text-overlay-foreground">
                   {topic}
                 </Text>
               </View>
@@ -143,7 +146,7 @@ export function EventCard({
         ) : (
           <View className="size-full items-center justify-center bg-muted">
             <View className="rounded-full border border-border/80 bg-background/85 px-3 py-1">
-              <Text className="text-xs font-medium text-muted-foreground">
+              <Text className="text-sm font-medium text-muted-foreground">
                 {primaryTopic}
               </Text>
             </View>
@@ -156,7 +159,7 @@ export function EventCard({
       >
         <View className="gap-4">
           <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-[11px] font-medium uppercase tracking-[1.6px] text-muted-foreground">
+            <Text className="text-xs font-medium uppercase tracking-[1.6px] text-muted-foreground">
               {t("event.updated").replace(
                 "{time}",
                 formatRelativeTimestamp(lastUpdatedAt, locale),
@@ -180,7 +183,7 @@ export function EventCard({
           <Text
             className={cn(
               "font-semibold leading-tight tracking-tight text-card-foreground",
-              isFeature ? "text-2xl" : "text-xl",
+              isFeature ? "text-3xl" : "text-2xl",
             )}
           >
             {event.title}
@@ -190,8 +193,8 @@ export function EventCard({
         <Text
           numberOfLines={3}
           className={cn(
-            "text-sm leading-relaxed text-muted-foreground",
-            isFeature && "text-base",
+            "text-base leading-relaxed text-muted-foreground",
+            isFeature && "text-lg",
           )}
         >
           {summaryPreview}
@@ -203,10 +206,10 @@ export function EventCard({
               <SourceAvatarStack sources={event.sources} max={maxSources} />
             ) : null}
             <View className="min-w-0 flex-1">
-              <Text className="text-sm font-medium text-card-foreground">
+              <Text className="text-base font-medium text-card-foreground">
                 {t("event.sources").replace("{count}", String(totalSources))}
               </Text>
-              <Text className="text-xs text-muted-foreground">
+              <Text className="text-sm text-muted-foreground">
                 {event.articleCount !== undefined
                   ? getPluralizedCountLabel(
                       locale,
@@ -221,6 +224,15 @@ export function EventCard({
           {showBiasDistribution ? (
             <BiasDistributionBar counts={biasCounts} />
           ) : null}
+
+          {/* Explicit CTA — the visible "this card goes somewhere" signifier.
+              Visual only: the whole card is the tap target (Fitts's law). */}
+          <View className="mt-1 min-h-11 flex-row items-center justify-center gap-1.5 rounded-full bg-primary/10">
+            <Text className="text-base font-semibold text-primary">
+              {t("native.event.readAnalysis")}
+            </Text>
+            <Icon name="arrow-forward" size={15} className="text-primary" />
+          </View>
         </View>
       </View>
     </Pressable>

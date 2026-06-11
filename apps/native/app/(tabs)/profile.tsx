@@ -2,7 +2,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { Screen } from "@/components/screen";
@@ -71,7 +71,7 @@ function SegmentedPicker<Value extends string>({
 }) {
   return (
     <View
-      className="m-3 h-10 flex-row rounded-lg bg-muted p-1"
+      className="h-10 flex-row rounded-lg bg-muted p-1"
       accessibilityRole="radiogroup"
       accessibilityLabel={groupLabel}
     >
@@ -100,6 +100,28 @@ function SegmentedPicker<Value extends string>({
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+function PreferenceRow({
+  label,
+  isFirst = false,
+  children,
+}: {
+  label: string;
+  isFirst?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      className={cn(
+        "gap-2.5 px-4 py-3.5",
+        !isFirst && "border-t border-border/70",
+      )}
+    >
+      <Text className="text-sm font-medium text-foreground">{label}</Text>
+      {children}
     </View>
   );
 }
@@ -295,7 +317,7 @@ function ProfileContent() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-6 px-4 pb-10 pt-5"
+      contentContainerClassName="gap-6 px-4 pb-28 pt-5"
     >
       <Text className="text-3xl font-bold tracking-tight text-foreground">
         {t("tabs.profile")}
@@ -303,12 +325,13 @@ function ProfileContent() {
 
       <AccountCard />
 
-      <SettingsGroup title={t("native.profile.appearance")}>
-        <ThemePicker />
-      </SettingsGroup>
-
-      <SettingsGroup title={t("settings.language")}>
-        <LanguagePicker />
+      <SettingsGroup title={t("native.profile.preferences")}>
+        <PreferenceRow label={t("profile.theme")} isFirst>
+          <ThemePicker />
+        </PreferenceRow>
+        <PreferenceRow label={t("settings.language")}>
+          <LanguagePicker />
+        </PreferenceRow>
       </SettingsGroup>
 
       <SettingsGroup title={t("native.about.section")}>

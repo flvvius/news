@@ -377,7 +377,7 @@ function SearchResults({
       getItemType={() => "event-card"}
       contentContainerStyle={{
         paddingHorizontal: 16,
-        paddingBottom: 32,
+        paddingBottom: 112,
         paddingTop: HEADER_HEIGHT,
       }}
       keyboardShouldPersistTaps="handled"
@@ -497,7 +497,7 @@ function FeedList({
       getItemType={() => "event-card"}
       contentContainerStyle={{
         paddingHorizontal: 16,
-        paddingBottom: 32,
+        paddingBottom: 112,
         paddingTop: HEADER_HEIGHT,
       }}
       onEndReached={handleEndReached}

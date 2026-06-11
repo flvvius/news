@@ -193,7 +193,7 @@ function StreakHero({
           <Text className="text-base font-semibold tabular-nums text-card-foreground">
             {longestStreak}
           </Text>
-          <Text className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <Text className="text-[12px] uppercase tracking-wide text-muted-foreground">
             {t("activity.best")}
           </Text>
         </View>
@@ -226,7 +226,7 @@ function StatColumn({ value, label }: { value: number; label: string }) {
       </Text>
       <Text
         numberOfLines={1}
-        className="text-[11px] uppercase tracking-wide text-muted-foreground"
+        className="text-[12px] uppercase tracking-wide text-muted-foreground"
       >
         {label}
       </Text>
@@ -275,7 +275,7 @@ function EventRow({
       <View className="min-w-0 flex-1">
         <Text
           numberOfLines={2}
-          className="text-[15px] font-medium leading-snug text-foreground"
+          className="text-[16px] font-medium leading-snug text-foreground"
         >
           {event.title}
         </Text>
@@ -360,7 +360,7 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-7 px-5 pb-12 pt-6"
+      contentContainerClassName="gap-7 px-5 pb-28 pt-6"
     >
       {/* Header — typographic, no avatar chrome */}
       <View>

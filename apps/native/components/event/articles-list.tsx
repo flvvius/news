@@ -1,6 +1,7 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, useMutation } from "convex/react";
+import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -27,6 +28,7 @@ export function ArticlesList({
   articles,
   biasThresholds,
 }: ArticlesListProps) {
+  const router = useRouter();
   const t = useT();
   const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
@@ -78,7 +80,7 @@ export function ArticlesList({
                 />
               ) : (
                 <View className="size-full items-center justify-center bg-muted">
-                  <Text className="text-xs font-medium uppercase tracking-[1.8px] text-muted-foreground">
+                  <Text className="text-sm font-medium uppercase tracking-[1.8px] text-muted-foreground">
                     {article.source?.name ?? t("articles.source")}
                   </Text>
                 </View>
@@ -88,14 +90,19 @@ export function ArticlesList({
             <View className="gap-4 p-5">
               <View className="flex-row flex-wrap items-center gap-3">
                 {article.source ? (
-                  <>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={article.source.name}
+                    onPress={() => router.push(`/source/${article.source?._id}`)}
+                    className="min-w-0 shrink flex-row items-center gap-3 active:opacity-70"
+                  >
                     <SourceAvatar
                       name={article.source.name}
                       logoUrl={article.source.logoUrl}
                       recyclingKey={article.source._id}
                     />
                     <View className="min-w-0 shrink gap-1">
-                      <Text className="text-sm font-medium text-card-foreground">
+                      <Text className="text-base font-medium text-card-foreground">
                         {article.source.name}
                       </Text>
                       <BiasIndicator
@@ -104,21 +111,21 @@ export function ArticlesList({
                         thresholds={biasThresholds}
                       />
                     </View>
-                  </>
+                  </Pressable>
                 ) : null}
-                <Text className="ml-auto text-xs text-muted-foreground">
+                <Text className="ml-auto text-sm text-muted-foreground">
                   {formatDate(article.publishedAt, locale)}
                 </Text>
               </View>
 
               <View className="gap-2">
-                <Text className="text-lg font-semibold leading-snug tracking-tight text-card-foreground">
+                <Text className="text-xl font-semibold leading-snug tracking-tight text-card-foreground">
                   {article.title}
                 </Text>
                 {article.summary || article.rssSnippet ? (
                   <Text
                     numberOfLines={4}
-                    className="max-w-[455px] text-sm leading-relaxed text-muted-foreground"
+                    className="max-w-[455px] text-base leading-relaxed text-muted-foreground"
                   >
                     {article.summary ?? article.rssSnippet}
                   </Text>
@@ -132,7 +139,7 @@ export function ArticlesList({
                 hitSlop={8}
                 className="min-h-11 flex-row items-center gap-1 self-start active:opacity-70"
               >
-                <Text className="text-sm font-medium text-primary">
+                <Text className="text-base font-medium text-primary">
                   {t("articles.readOriginal")}
                 </Text>
                 <Icon name="open-outline" size={13} className="text-primary" />

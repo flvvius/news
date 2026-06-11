@@ -567,6 +567,8 @@ const ro = {
     "Niciun rezultat pentru „{query}”. Încearcă alt termen sau alt subiect.",
   "native.offline.banner":
     "Ești offline — conținutul se actualizează când revine conexiunea.",
+  "native.profile.preferences": "Preferințe",
+  "native.event.readAnalysis": "Citește analiza",
   "native.feed.emptyTitle": "Niciun eveniment încă",
   "native.feed.emptyBody":
     "Evenimentele publicate vor apărea aici imediat ce avem acoperire.",
@@ -1195,6 +1197,8 @@ const en: { [K in keyof BaseStrings]: string } = {
     "No results for “{query}”. Try another term or topic.",
   "native.offline.banner":
     "You're offline — content will update when the connection returns.",
+  "native.profile.preferences": "Preferences",
+  "native.event.readAnalysis": "Read the analysis",
   "native.feed.emptyTitle": "No events yet",
   "native.feed.emptyBody":
     "Published events will show up here as soon as coverage lands.",

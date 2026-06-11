@@ -55,7 +55,7 @@ export function BiasBalanceMeter({ value }: BiasBalanceMeterProps) {
             {clampedValue > 0 ? "+" : ""}
             {clampedValue}
           </Text>
-          <Text className="text-[11px] uppercase tracking-[2px] text-muted-foreground">
+          <Text className="text-[12px] uppercase tracking-[2px] text-muted-foreground">
             {t("bias.balance")}
           </Text>
         </View>
@@ -78,13 +78,13 @@ export function BiasBalanceMeter({ value }: BiasBalanceMeterProps) {
           />
         </View>
         <View className="flex-row items-center justify-between">
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-[12px] text-muted-foreground">
             {t("bias.leftHeavy")}
           </Text>
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-[12px] text-muted-foreground">
             {t("bias.center")}
           </Text>
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-[12px] text-muted-foreground">
             {t("bias.rightHeavy")}
           </Text>
         </View>

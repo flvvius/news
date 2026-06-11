@@ -44,13 +44,13 @@ export function BiasDistributionBar({
       </View>
       {withLabels ? (
         <View className="flex-row items-center justify-between">
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-xs text-muted-foreground">
             {t("event.bias.left").replace("{count}", String(counts.left))}
           </Text>
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-xs text-muted-foreground">
             {t("event.bias.center").replace("{count}", String(counts.center))}
           </Text>
-          <Text className="text-[11px] text-muted-foreground">
+          <Text className="text-xs text-muted-foreground">
             {t("event.bias.right").replace("{count}", String(counts.right))}
           </Text>
         </View>

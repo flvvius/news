@@ -23,22 +23,17 @@ function SavedHeader({ count }: { count: number }) {
   const t = useT();
 
   return (
-    <View className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80">
-      <View className="gap-3 px-6 py-7">
-        <Text className="text-xs font-semibold uppercase tracking-[2.4px] text-muted-foreground">
-          {t("saved.section")}
-        </Text>
-        <Text className="text-3xl font-bold tracking-tight text-foreground">
-          {t("saved.heading")}
-        </Text>
-        <Text className="max-w-[280px] text-sm leading-relaxed text-muted-foreground">
-          {count === 0
-            ? t("saved.summary.empty")
-            : count === 1
-              ? t("saved.summary.one")
-              : t("saved.summary.many").replace("{count}", String(count))}
-        </Text>
-      </View>
+    <View className="gap-1">
+      <Text className="text-3xl font-bold tracking-tight text-foreground">
+        {t("saved.heading")}
+      </Text>
+      <Text className="text-sm text-muted-foreground">
+        {count === 0
+          ? t("saved.summary.empty")
+          : count === 1
+            ? t("saved.summary.one")
+            : t("saved.summary.many").replace("{count}", String(count))}
+      </Text>
     </View>
   );
 }
@@ -134,7 +129,7 @@ function SavedList() {
       data={bookmarks}
       keyExtractor={(event: EventCardEvent) => event._id}
       getItemType={() => "event-card"}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 112 }}
       ListHeaderComponent={
         <View className="pb-5 pt-5">
           <SavedHeader count={bookmarks.length} />

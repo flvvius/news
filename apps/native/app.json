@@ -8,7 +8,8 @@
     "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.biviant.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "appleTeamId": "SUM4YH8JDY"
     },
     "android": {
       "package": "com.biviant.app",

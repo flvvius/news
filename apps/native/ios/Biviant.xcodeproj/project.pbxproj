@@ -21,7 +21,7 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Biviant/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Biviant/Info.plist; sourceTree = "<group>"; };
 		256FF420C6FA8E937EFE8741 /* libPods-Biviant.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Biviant.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		40512BAAB6471722B4FBCDCE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Biviant/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		40512BAAB6471722B4FBCDCE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Biviant/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8A6C740E67B304162BEE1A49 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Biviant/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Biviant/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -64,7 +64,6 @@
 				F28029D091F646B23C4C9009 /* Pods-Biviant.debug.xcconfig */,
 				DA9A43804118BAE5419069D1 /* Pods-Biviant.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -381,6 +380,8 @@
 				CODE_SIGN_ENTITLEMENTS = Biviant/Biviant.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SUM4YH8JDY;
+				CODE_SIGN_STYLE = Manual;
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "iOS Team Provisioning Profile: com.biviant.dev";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -419,6 +420,8 @@
 				CODE_SIGN_ENTITLEMENTS = Biviant/Biviant.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SUM4YH8JDY;
+				CODE_SIGN_STYLE = Manual;
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "iOS Team Provisioning Profile: com.biviant.dev";
 				INFOPLIST_FILE = Biviant/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = (

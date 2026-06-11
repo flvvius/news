@@ -92,7 +92,7 @@ export function StreakActivityCalendar({ days }: StreakActivityCalendarProps) {
         <View className="gap-1 pt-5">
           {Array.from({ length: 7 }, (_, index) => (
             <View key={index} className="h-3 items-end justify-center pr-1">
-              <Text className="text-[10px] leading-3 text-muted-foreground">
+              <Text className="text-[11px] leading-3 text-muted-foreground">
                 {index % 2 === 0 ? weekdayRows[index] : ""}
               </Text>
             </View>
@@ -104,7 +104,7 @@ export function StreakActivityCalendar({ days }: StreakActivityCalendarProps) {
             {weeks.map((week, weekIndex) => (
               <View key={weekIndex} className="gap-1">
                 <View className="h-4">
-                  <Text className="text-[10px] leading-4 text-muted-foreground">
+                  <Text className="text-[11px] leading-4 text-muted-foreground">
                     {monthLabels[weekIndex]}
                   </Text>
                 </View>
@@ -134,14 +134,14 @@ export function StreakActivityCalendar({ days }: StreakActivityCalendarProps) {
       </View>
 
       <View className="flex-row items-center justify-end gap-2">
-        <Text className="text-[11px] text-muted-foreground">
+        <Text className="text-[12px] text-muted-foreground">
           {t("calendar.less")}
         </Text>
         <View className="h-3 w-3 rounded-[3px] bg-muted" />
         <View className="h-3 w-3 rounded-[3px] bg-primary/25" />
         <View className="h-3 w-3 rounded-[3px] bg-primary/55" />
         <View className="h-3 w-3 rounded-[3px] bg-primary" />
-        <Text className="text-[11px] text-muted-foreground">
+        <Text className="text-[12px] text-muted-foreground">
           {t("calendar.more")}
         </Text>
       </View>

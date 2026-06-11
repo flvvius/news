@@ -28,11 +28,11 @@ export function SectionCard({
       )}
     >
       <View className="border-b border-border/70 bg-muted/30 px-5 py-4">
-        <Text className="text-xl font-semibold tracking-tight text-card-foreground">
+        <Text className="text-2xl font-semibold tracking-tight text-card-foreground">
           {title}
         </Text>
         {subtitle ? (
-          <Text className="mt-1 text-sm text-muted-foreground">{subtitle}</Text>
+          <Text className="mt-1 text-base text-muted-foreground">{subtitle}</Text>
         ) : null}
       </View>
       <View className={cn(!unpadded && "px-5 py-5")}>{children}</View>
