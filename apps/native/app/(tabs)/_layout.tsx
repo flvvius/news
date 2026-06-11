@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useT } from "@/contexts/locale-context";
 import { useTokenColor } from "@/lib/use-token-color";
 
 export default function TabsLayout() {
+  const t = useT();
   const background = useTokenColor("--color-background");
   const border = useTokenColor("--color-border");
   const primary = useTokenColor("--color-primary");
@@ -27,7 +29,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Feed",
+          title: t("tabs.feed"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="newspaper-outline" size={size} color={color} />
           ),
@@ -36,7 +38,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="saved"
         options={{
-          title: "Saved",
+          title: t("tabs.saved"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bookmark-outline" size={size} color={color} />
           ),
@@ -45,7 +47,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: t("tabs.profile"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-circle-outline" size={size} color={color} />
           ),

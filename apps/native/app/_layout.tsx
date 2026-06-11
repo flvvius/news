@@ -8,6 +8,7 @@ import { ConvexReactClient } from "convex/react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AppThemeProvider } from "@/contexts/app-theme-context";
+import { LocaleProvider } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 import { useTokenColor } from "@/lib/use-token-color";
 
@@ -46,10 +47,12 @@ export default function RootLayout() {
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider>
           <AppThemeProvider>
-            <BottomSheetModalProvider>
-              <StatusBar style="auto" />
-              <RootStack />
-            </BottomSheetModalProvider>
+            <LocaleProvider>
+              <BottomSheetModalProvider>
+                <StatusBar style="auto" />
+                <RootStack />
+              </BottomSheetModalProvider>
+            </LocaleProvider>
           </AppThemeProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>

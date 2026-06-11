@@ -4,14 +4,19 @@ import type { FunctionReturnType } from "convex/server";
 import { useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
+import {
+  formatRelativeTimestamp,
+  getPluralizedCountLabel,
+} from "@news-app/i18n";
+
 import { BiasDistributionBar } from "@/components/bias-distribution-bar";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { ShareEventButton } from "@/components/share-event-button";
 import { SourceAvatarStack } from "@/components/source-avatar";
 import { Image } from "@/components/ui/image";
+import { useLocale, useT } from "@/contexts/locale-context";
 import { getBiasBucket } from "@/lib/bias";
 import { cn } from "@/lib/cn";
-import { formatRelativeTimestamp } from "@/lib/dates";
 import { buildInteractionContextFromSources } from "@/lib/interactions";
 
 export type FeedEvent = FunctionReturnType<
@@ -62,16 +67,18 @@ export function EventCard({
   variant = "default",
 }: EventCardProps) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useT();
   const isFeature = variant === "feature";
 
   const topics = (event.topicIds ?? [])
     .map((id) => topicNamesById[id])
     .filter((name): name is string => Boolean(name));
-  const primaryTopic = topics[0] ?? "General";
+  const primaryTopic = topics[0] ?? t("event.general");
   const summaryPreview =
     event.perspectiveSummaries?.center ??
     event.globalImpact ??
-    "Coverage from multiple sources, summarized side by side.";
+    t("event.coveragePreview");
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const interactionContext = buildInteractionContextFromSources(
     event.sources ?? [],
@@ -96,7 +103,10 @@ export function EventCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open event: ${event.title}`}
+      accessibilityLabel={t("native.event.openLabel").replace(
+        "{title}",
+        event.title,
+      )}
       onPress={() => router.push(`/event/${event.slug}`)}
       className={cn(
         "overflow-hidden border border-border/80 bg-card/95 active:opacity-90",
@@ -108,7 +118,7 @@ export function EventCard({
         style={{ aspectRatio: CARD_IMAGE_ASPECT }}
       >
         <View className="absolute left-4 top-4 z-10 flex-row flex-wrap items-center gap-2">
-          {(topics.length > 0 ? topics : ["General"])
+          {(topics.length > 0 ? topics : [t("event.general")])
             .slice(0, isFeature ? 3 : 2)
             .map((topic) => (
               <View
@@ -147,7 +157,10 @@ export function EventCard({
         <View className="gap-4">
           <View className="flex-row items-center justify-between gap-3">
             <Text className="text-[11px] font-medium uppercase tracking-[1.6px] text-muted-foreground">
-              Updated {formatRelativeTimestamp(lastUpdatedAt)}
+              {t("event.updated").replace(
+                "{time}",
+                formatRelativeTimestamp(lastUpdatedAt, locale),
+              )}
             </Text>
             <View className="flex-row items-center gap-2">
               <ShareEventButton
@@ -191,12 +204,16 @@ export function EventCard({
             ) : null}
             <View className="min-w-0 flex-1">
               <Text className="text-sm font-medium text-card-foreground">
-                {totalSources} {totalSources === 1 ? "source" : "sources"}
+                {t("event.sources").replace("{count}", String(totalSources))}
               </Text>
               <Text className="text-xs text-muted-foreground">
-                {event.articleCount === 1
-                  ? "1 article"
-                  : `${event.articleCount} articles`}
+                {event.articleCount !== undefined
+                  ? getPluralizedCountLabel(
+                      locale,
+                      "event.articles",
+                      event.articleCount,
+                    )
+                  : t("event.follow")}
               </Text>
             </View>
           </View>

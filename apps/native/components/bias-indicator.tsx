@@ -1,9 +1,10 @@
 import { Text, View } from "react-native";
 
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import {
   DEFAULT_BIAS_THRESHOLDS,
-  getBiasLabel,
+  getBiasLabelKey,
   validateBiasThresholds,
 } from "@/lib/bias";
 
@@ -58,17 +59,18 @@ export function BiasIndicator({
   size = "md",
   thresholds: thresholdsProp,
 }: BiasIndicatorProps) {
+  const t = useT();
   const thresholds = validateBiasThresholds(
     thresholdsProp ?? DEFAULT_BIAS_THRESHOLDS,
   );
   const position = Math.max(0, Math.min(100, ((bias + 5) / 10) * 100));
-  const label = getBiasLabel(bias, thresholds);
+  const label = t(getBiasLabelKey(bias, thresholds));
 
   return (
     <View
       className="flex-row items-center gap-2"
       accessibilityRole="image"
-      accessibilityLabel={`Bias: ${label}`}
+      accessibilityLabel={`${t("bias.balance")}: ${label}`}
     >
       <View
         className={cn(

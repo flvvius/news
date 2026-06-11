@@ -8,6 +8,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { SourceAvatar } from "@/components/source-avatar";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { SectionCard } from "@/components/ui/section-card";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import type {
   ClaimStatus,
@@ -35,32 +36,32 @@ const STATUS_ICONS: Record<ClaimStatus, IconName> = {
   exclusive_center: "remove-circle-outline",
 };
 
-const STATUS_LABEL: Record<ClaimStatus, string> = {
-  agreement: "Agreement",
-  divergence: "Divergence",
-  framing: "Framing",
-  exclusive_left: "Left exclusive",
-  exclusive_right: "Right exclusive",
-  exclusive_center: "Center exclusive",
-};
+const STATUS_LABEL_KEY = {
+  agreement: "claim.agreement",
+  divergence: "claim.divergence",
+  framing: "claim.framing",
+  exclusive_left: "claim.leftExclusive",
+  exclusive_right: "claim.rightExclusive",
+  exclusive_center: "claim.centerExclusive",
+} as const;
 
-const STATUS_HEADING: Record<ClaimStatus, string> = {
-  agreement: "Agreements",
-  divergence: "Divergences",
-  framing: "Framing differences",
-  exclusive_left: "Left-only reporting",
-  exclusive_right: "Right-only reporting",
-  exclusive_center: "Center-only reporting",
-};
+const STATUS_HEADING_KEY = {
+  agreement: "claim.agreements",
+  divergence: "claim.divergences",
+  framing: "claim.framings",
+  exclusive_left: "claim.leftExclusives",
+  exclusive_right: "claim.rightExclusives",
+  exclusive_center: "claim.centerExclusives",
+} as const;
 
-const STATUS_BODY: Record<ClaimStatus, string> = {
-  agreement: "Facts that sources across the spectrum report the same way.",
-  divergence: "Claims where sources report materially different facts.",
-  framing: "The same facts, presented with different emphasis or tone.",
-  exclusive_left: "Reported only by left-leaning sources in this event.",
-  exclusive_right: "Reported only by right-leaning sources in this event.",
-  exclusive_center: "Reported only by center sources in this event.",
-};
+const STATUS_BODY_KEY = {
+  agreement: "claim.agreementBody",
+  divergence: "claim.divergenceBody",
+  framing: "claim.framingBody",
+  exclusive_left: "claim.leftExclusiveBody",
+  exclusive_right: "claim.rightExclusiveBody",
+  exclusive_center: "claim.centerExclusiveBody",
+} as const;
 
 type FilterKey = "agreements" | "divergences" | "framing" | "exclusives";
 
@@ -87,6 +88,7 @@ function ClaimVariantRow({
   articlesById: Map<string, EventArticle>;
   sourcesById: Map<string, EventSource>;
 }) {
+  const t = useT();
   const article = articlesById.get(String(variant.articleId));
   const source =
     article?.source ?? sourcesById.get(String(variant.sourceId)) ?? null;
@@ -105,7 +107,7 @@ function ClaimVariantRow({
         <View className="min-w-0 flex-1">
           <View className="mb-1.5 flex-row flex-wrap items-center gap-2">
             <Text className="text-sm font-semibold text-card-foreground">
-              {source?.name ?? "Unknown source"}
+              {source?.name ?? t("claim.unknownSource")}
             </Text>
             <View className="rounded-full bg-muted px-2 py-0.5">
               <Text className="text-[11px] font-medium text-muted-foreground">
@@ -128,7 +130,7 @@ function ClaimVariantRow({
           {article ? (
             <Pressable
               accessibilityRole="link"
-              accessibilityLabel="Read the source article"
+              accessibilityLabel={t("claim.readSourceArticle")}
               onPress={() =>
                 WebBrowser.openBrowserAsync(article.canonicalUrl).catch(() => {
                   // Browser unavailable — nothing to recover here.
@@ -138,7 +140,7 @@ function ClaimVariantRow({
               className="mt-2 min-h-11 flex-row items-center gap-1.5 self-start active:opacity-70"
             >
               <Text className="text-xs font-medium text-primary">
-                Read source article
+                {t("claim.readSourceArticle")}
               </Text>
               <Icon name="open-outline" size={12} className="text-primary" />
             </Pressable>
@@ -158,6 +160,7 @@ function ClaimCard({
   articlesById: Map<string, EventArticle>;
   sourcesById: Map<string, EventSource>;
 }) {
+  const t = useT();
   const [isExpanded, setIsExpanded] = useState(false);
   const sourceCount = new Set(
     claim.variants.map((variant) => String(variant.sourceId)),
@@ -181,15 +184,17 @@ function ClaimCard({
                 className="text-muted-foreground"
               />
               <Text className="text-xs font-medium text-muted-foreground">
-                {STATUS_LABEL[claim.status]}
+                {t(STATUS_LABEL_KEY[claim.status])}
               </Text>
             </View>
             <Text className="text-xs text-muted-foreground">
-              {claim.importance}/5 importance
+              {claim.importance}/5 {t("claim.importance")}
             </Text>
           </View>
           <Text className="shrink-0 text-xs text-muted-foreground">
-            {sourceCount === 1 ? "1 source" : `${sourceCount} sources`}
+            {sourceCount === 1
+              ? t("claim.source.one")
+              : t("claim.source.many").replace("{count}", String(sourceCount))}
           </Text>
         </View>
 
@@ -218,7 +223,14 @@ function ClaimCard({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              isExpanded ? "Show fewer variants" : "Show more variants"
+              isExpanded
+                ? t("claim.showLess")
+                : remainingCount === 1
+                  ? t("claim.showMore.one")
+                  : t("claim.showMore.many").replace(
+                      "{count}",
+                      String(remainingCount),
+                    )
             }
             accessibilityState={{ expanded: isExpanded }}
             onPress={() => setIsExpanded((value) => !value)}
@@ -226,10 +238,13 @@ function ClaimCard({
           >
             <Text className="text-xs font-medium text-muted-foreground">
               {isExpanded
-                ? "Show less"
+                ? t("claim.showLess")
                 : remainingCount === 1
-                  ? "Show 1 more"
-                  : `Show ${remainingCount} more`}
+                  ? t("claim.showMore.one")
+                  : t("claim.showMore.many").replace(
+                      "{count}",
+                      String(remainingCount),
+                    )}
             </Text>
             <Icon
               name={isExpanded ? "chevron-up-outline" : "chevron-down-outline"}
@@ -257,7 +272,7 @@ function StatCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Filter claims: ${label}`}
+      accessibilityLabel={label}
       accessibilityState={{ selected: isActive }}
       onPress={onPress}
       className={cn(
@@ -284,6 +299,7 @@ export function EventClaimComparison({
   eventId: Id<"events">;
   articles: EventArticle[];
 }) {
+  const t = useT();
   const [activeFilter, setActiveFilter] = useState<FilterKey | null>(null);
 
   const claims = useQuery(api.claimDivergence.getEventClaims, {
@@ -308,14 +324,14 @@ export function EventClaimComparison({
 
   if (claims === undefined) {
     return (
-      <SectionCard title="Claim breakdown">
+      <SectionCard title={t("claim.title")}>
         <View
           className="flex-row items-center gap-3"
           accessibilityLiveRegion="polite"
         >
           <ActivityIndicator size="small" colorClassName="accent-primary" />
           <Text className="text-sm text-muted-foreground">
-            Analyzing claims across sources…
+            {t("claim.loading")}
           </Text>
         </View>
       </SectionCard>
@@ -324,14 +340,13 @@ export function EventClaimComparison({
 
   if (claims.length === 0) {
     return (
-      <SectionCard title="Claim breakdown">
+      <SectionCard title={t("claim.title")}>
         <View className="items-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8">
           <Text className="text-sm font-medium text-card-foreground">
-            Claim analysis not available yet
+            {t("claim.unavailable")}
           </Text>
           <Text className="mt-1.5 max-w-[55ch] text-center text-sm text-muted-foreground">
-            We compare key claims once enough sources cover this event. Check
-            back soon.
+            {t("claim.unavailableBody")}
           </Text>
         </View>
       </SectionCard>
@@ -369,21 +384,21 @@ export function EventClaimComparison({
 
   return (
     <SectionCard
-      title="Claim breakdown"
-      subtitle="How sources agree, diverge, and frame this story."
+      title={t("claim.title")}
+      subtitle={t("claim.subtitle")}
       unpadded
     >
       <View className="border-b border-border bg-card px-4 py-4">
         <View className="gap-2">
           <View className="flex-row gap-2">
             <StatCard
-              label="Agreements"
+              label={t("claim.agreements")}
               count={summaryCounts.agreements}
               isActive={activeFilter === "agreements"}
               onPress={() => toggleFilter("agreements")}
             />
             <StatCard
-              label="Divergences"
+              label={t("claim.divergences")}
               count={summaryCounts.divergences}
               isActive={activeFilter === "divergences"}
               onPress={() => toggleFilter("divergences")}
@@ -391,13 +406,13 @@ export function EventClaimComparison({
           </View>
           <View className="flex-row gap-2">
             <StatCard
-              label="Framing"
+              label={t("claim.framings")}
               count={summaryCounts.framing}
               isActive={activeFilter === "framing"}
               onPress={() => toggleFilter("framing")}
             />
             <StatCard
-              label="Exclusives"
+              label={t("claim.centerExclusives")}
               count={summaryCounts.exclusives}
               isActive={activeFilter === "exclusives"}
               onPress={() => toggleFilter("exclusives")}
@@ -408,13 +423,13 @@ export function EventClaimComparison({
         {activeFilter ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Clear claim filter"
+            accessibilityLabel={t("claim.clearFilter")}
             onPress={() => setActiveFilter(null)}
             hitSlop={8}
             className="mt-3 self-start active:opacity-70"
           >
             <Text className="text-xs font-medium text-primary">
-              Clear filter
+              {t("claim.clearFilter")}
             </Text>
           </Pressable>
         ) : null}
@@ -427,10 +442,10 @@ export function EventClaimComparison({
             <View key={status} className="gap-4">
               <View className="border-l-2 border-primary pl-3">
                 <Text className="text-base font-semibold tracking-tight text-card-foreground">
-                  {STATUS_HEADING[status]}
+                  {t(STATUS_HEADING_KEY[status])}
                 </Text>
                 <Text className="max-w-[55ch] text-sm text-muted-foreground">
-                  {STATUS_BODY[status]}
+                  {t(STATUS_BODY_KEY[status])}
                 </Text>
               </View>
               <View className="gap-4">

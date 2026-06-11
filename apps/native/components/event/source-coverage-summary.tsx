@@ -3,14 +3,15 @@ import { Text, View } from "react-native";
 import { BiasIndicator } from "@/components/bias-indicator";
 import { SourceAvatar } from "@/components/source-avatar";
 import { SectionCard } from "@/components/ui/section-card";
+import { useT } from "@/contexts/locale-context";
 import { biasBucketBgClass, getBiasBucket, type BiasBucket } from "@/lib/bias";
 import { uniqueEventSources, type EventArticle } from "@/lib/event-types";
 
-const BUCKET_LABEL: Record<BiasBucket, string> = {
-  left: "Left-leaning",
-  center: "Center",
-  right: "Right-leaning",
-};
+const BUCKET_LABEL_KEY = {
+  left: "coverage.left",
+  center: "coverage.center",
+  right: "coverage.right",
+} as const;
 
 type SourceCoverageSummaryProps = {
   articles: EventArticle[];
@@ -21,6 +22,7 @@ export function SourceCoverageSummary({
   articles,
   biasThresholds,
 }: SourceCoverageSummaryProps) {
+  const t = useT();
   const sources = uniqueEventSources(articles);
 
   const counts: Record<BiasBucket, number> = { left: 0, center: 0, right: 0 };
@@ -31,7 +33,7 @@ export function SourceCoverageSummary({
   const buckets: BiasBucket[] = ["left", "center", "right"];
 
   return (
-    <SectionCard title="Coverage by source">
+    <SectionCard title={t("coverage.title")}>
       <View className="gap-5">
         <View className="gap-3">
           <View className="h-2 flex-row overflow-hidden rounded-full bg-muted">
@@ -55,7 +57,7 @@ export function SourceCoverageSummary({
                 className="flex-1 rounded-lg border border-border/70 bg-background/55 px-3 py-2"
               >
                 <Text className="text-xs text-muted-foreground">
-                  {BUCKET_LABEL[bucket]}
+                  {t(BUCKET_LABEL_KEY[bucket])}
                 </Text>
                 <Text className="text-lg font-semibold text-card-foreground">
                   {counts[bucket]}
@@ -103,10 +105,10 @@ export function SourceCoverageSummary({
                   >
                     {[
                       source.mbfcFactual
-                        ? `Factual: ${source.mbfcFactual}`
+                        ? `${t("coverage.factual")}: ${source.mbfcFactual}`
                         : null,
                       source.mbfcCredibility
-                        ? `Credibility: ${source.mbfcCredibility}`
+                        ? `${t("coverage.credibility")}: ${source.mbfcCredibility}`
                         : null,
                     ]
                       .filter(Boolean)

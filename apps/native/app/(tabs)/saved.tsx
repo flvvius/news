@@ -10,6 +10,7 @@ import { EventCardSkeleton } from "@/components/feed/event-card-skeleton";
 import { Screen } from "@/components/screen";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { EmptyState } from "@/components/ui/state-views";
+import { useT } from "@/contexts/locale-context";
 
 function clampMaxSources(raw: unknown): number {
   const value = Number(raw);
@@ -18,22 +19,24 @@ function clampMaxSources(raw: unknown): number {
     : 5;
 }
 
-function SavedHeader({ count }: { count?: number }) {
+function SavedHeader({ count }: { count: number }) {
+  const t = useT();
+
   return (
     <View className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80">
       <View className="gap-3 px-6 py-7">
         <Text className="text-xs font-semibold uppercase tracking-[2.4px] text-muted-foreground">
-          Saved
+          {t("saved.section")}
         </Text>
         <Text className="text-3xl font-bold tracking-tight text-foreground">
-          Saved events
+          {t("saved.heading")}
         </Text>
         <Text className="max-w-[40ch] text-sm leading-relaxed text-muted-foreground">
-          {count === undefined
-            ? "Events you bookmark stay here so you can come back to every side of the story."
+          {count === 0
+            ? t("saved.summary.empty")
             : count === 1
-              ? "1 saved event."
-              : `${count} saved events.`}
+              ? t("saved.summary.one")
+              : t("saved.summary.many").replace("{count}", String(count))}
         </Text>
       </View>
     </View>
@@ -41,11 +44,13 @@ function SavedHeader({ count }: { count?: number }) {
 }
 
 export default function SavedScreen() {
+  const t = useT();
+
   return (
     <Screen>
       <QueryBoundary
-        title="Couldn't load your saved events"
-        body="Something went wrong while loading bookmarks. Try again."
+        title={t("native.saved.errorTitle")}
+        body={t("native.saved.errorBody")}
       >
         <SavedContent />
       </QueryBoundary>
@@ -55,6 +60,7 @@ export default function SavedScreen() {
 
 function SavedContent() {
   const router = useRouter();
+  const t = useT();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   if (isAuthLoading) {
@@ -71,9 +77,9 @@ function SavedContent() {
       <View className="flex-1 px-4 pt-6">
         <EmptyState
           icon="bookmark-outline"
-          title="Save events for later"
-          body="Sign in to bookmark events and keep your reading list in sync across devices."
-          actionLabel="Sign in"
+          title={t("saved.empty.title")}
+          body={t("native.saved.signInBody")}
+          actionLabel={t("auth.signIn")}
           onAction={() => router.push("/auth")}
         />
       </View>
@@ -85,6 +91,7 @@ function SavedContent() {
 
 function SavedList() {
   const router = useRouter();
+  const t = useT();
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
   const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
@@ -113,9 +120,9 @@ function SavedList() {
         <SavedHeader count={0} />
         <EmptyState
           icon="bookmark-outline"
-          title="Nothing saved yet"
-          body="Tap the bookmark on any event to keep it here for later."
-          actionLabel="Browse the feed"
+          title={t("saved.none")}
+          body={t("saved.noneBody")}
+          actionLabel={t("saved.browseFeed")}
           onAction={() => router.push("/")}
         />
       </View>

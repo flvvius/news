@@ -8,6 +8,7 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import { useTokenColor } from "@/lib/use-token-color";
 
@@ -29,20 +30,22 @@ type TopicRow = { id: Id<"topics"> | "all"; label: string };
  * the native equivalent is a bottom sheet with the same content.
  */
 export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProps) {
+  const t = useT();
   const sheetRef = useRef<BottomSheetModal>(null);
   const [search, setSearch] = useState("");
   const cardColor = useTokenColor("--color-card");
   const mutedForeground = useTokenColor("--color-muted-foreground");
 
+  const allTopicsLabel = t("feed.topic.all");
   const selectedLabel =
     selectedTopic === "all"
-      ? "All topics"
+      ? allTopicsLabel
       : (topics?.find((topic) => topic._id === selectedTopic)?.displayName ??
-        "Topic");
+        t("feed.topic.single"));
 
   const rows = useMemo<TopicRow[]>(() => {
     const normalized = search.trim().toLowerCase();
-    const allRow: TopicRow = { id: "all", label: "All topics" };
+    const allRow: TopicRow = { id: "all", label: allTopicsLabel };
     const topicRows: TopicRow[] = (topics ?? []).map((topic) => ({
       id: topic._id,
       label: topic.displayName,
@@ -51,7 +54,7 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
     return [allRow, ...topicRows].filter((row) =>
       row.label.toLowerCase().includes(normalized),
     );
-  }, [topics, search]);
+  }, [topics, search, allTopicsLabel]);
 
   const handleSelect = useCallback(
     (id: Id<"topics"> | "all") => {
@@ -77,7 +80,7 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
     <View className="flex-row items-center gap-2">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Filter by topic"
+        accessibilityLabel={t("feed.topic.filter")}
         onPress={() => sheetRef.current?.present()}
         className={cn(
           "h-9 max-w-52 flex-row items-center justify-between gap-1.5 rounded-full border border-border bg-background px-3 active:opacity-80",
@@ -103,7 +106,7 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
       {selectedTopic !== "all" ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Clear topic filter"
+          accessibilityLabel={t("feed.filter.clear")}
           onPress={() => onSelect("all")}
           hitSlop={8}
           className="size-9 items-center justify-center rounded-full active:opacity-70"
@@ -123,17 +126,17 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
       >
         <View className="border-b border-border px-4 pb-4">
           <Text className="text-base font-semibold text-foreground">
-            Filter by topic
+            {t("feed.topic.drawerTitle")}
           </Text>
           <Text className="mt-0.5 text-sm text-muted-foreground">
-            Show only events from one topic.
+            {t("feed.topic.drawerBody")}
           </Text>
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search topics"
+            placeholder={t("feed.topic.search")}
             placeholderTextColorClassName="accent-muted-foreground"
-            accessibilityLabel="Search topics"
+            accessibilityLabel={t("feed.topic.search")}
             autoCapitalize="none"
             autoCorrect={false}
             className="mt-3 h-11 rounded-full border border-input bg-background px-4 text-base text-foreground"
@@ -144,7 +147,7 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
           keyExtractor={(row: TopicRow) => String(row.id)}
           ListEmptyComponent={
             <Text className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No topics match your search.
+              {t("feed.topic.empty")}
             </Text>
           }
           renderItem={({ item }: { item: TopicRow }) => {
@@ -152,7 +155,7 @@ export function TopicFilter({ topics, selectedTopic, onSelect }: TopicFilterProp
             return (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Filter by ${item.label}`}
+                accessibilityLabel={item.label}
                 accessibilityState={{ selected: isSelected }}
                 onPress={() => handleSelect(item.id)}
                 className="min-h-11 flex-row items-center justify-between gap-2 px-4 py-3 active:bg-accent"

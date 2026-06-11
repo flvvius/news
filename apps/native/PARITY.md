@@ -26,9 +26,15 @@ native idiom and why, and what was verified in this environment.
   with identical values, theme-stable by design.
 - Web footer: **not replicated anywhere** (explicit exception). Its pages live
   only under Profile → About Biviant.
-- Copy is English; the web app's ro/en i18n layer was not ported (out of scope
-  for the core reading experience; strings are centralized enough to wire a
-  locale layer later).
+- i18n: the ro/en string catalog was extracted to the shared `@news-app/i18n`
+  package (web re-exports it from its old module paths, so web code is
+  unchanged). Native resolves locale as explicit choice → account
+  `preferredLanguage` → device locale (expo-localization) → en — the native
+  analogue of the web's `resolveLocale` priority chain (search param/cookie
+  don't exist on native). A Language picker in Profile (System/Română/English)
+  persists locally and syncs `user.updatePreferredLanguage` when signed in.
+  Native-only copy lives under `native.*` keys in the same catalog; Romanian
+  plural rules are handled by the shared `getPluralizedCountLabel`.
 - BiasIndicator's gradient track: CSS `linear-gradient` → three token-colored
   segments at the same 40% opacity (no extra gradient dependency).
 
@@ -99,7 +105,8 @@ password flow (reset emails link to the web app).
 
 Account card (initial avatar, name, email, unverified-email warning), guest
 sign-in prompt, theme picker (System/Light/Dark — persisted separately from
-auth storage so sign-out can't touch it), **About Biviant** group hosting all
+auth storage so sign-out can't touch it), language picker
+(System/Română/English, synced to the account), **About Biviant** group hosting all
 seven former footer pages via in-app browser (About us, How it works, Our
 sources, Contact, Partners, Privacy, Terms — reachable signed out, satisfying
 the pre-signup legal-pages requirement), sign out, delete account

@@ -12,6 +12,7 @@ import { Screen } from "@/components/screen";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { EmptyState } from "@/components/ui/state-views";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 
 type FeedSort = "recent" | "trending";
@@ -42,10 +43,12 @@ function SortToggleButton({
   isActive: boolean;
   onPress: () => void;
 }) {
+  const t = useT();
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Sort by ${label}`}
+      accessibilityLabel={t("native.feed.sortBy").replace("{label}", label)}
       accessibilityState={{ selected: isActive }}
       onPress={onPress}
       className={cn(
@@ -79,11 +82,13 @@ function SectionHeading({ title }: { title: string }) {
 }
 
 export default function FeedScreen() {
+  const t = useT();
+
   return (
     <Screen>
       <QueryBoundary
-        title="Couldn't load the feed"
-        body="Something went wrong while loading events. Pull to retry or check your connection."
+        title={t("native.feed.errorTitle")}
+        body={t("native.feed.errorBody")}
       >
         <FeedContent />
       </QueryBoundary>
@@ -92,6 +97,7 @@ export default function FeedScreen() {
 }
 
 function FeedContent() {
+  const t = useT();
   const topics = useQuery(api.topics.getTopics);
   const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
 
@@ -143,13 +149,13 @@ function FeedContent() {
           </View>
           <View className="h-9 flex-row items-center rounded-full bg-muted/70 p-1">
             <SortToggleButton
-              label="Recent"
+              label={t("feed.sort.recent")}
               icon="time-outline"
               isActive={feedSort === "recent"}
               onPress={() => setFeedSort("recent")}
             />
             <SortToggleButton
-              label="Trending"
+              label={t("feed.sort.trending")}
               icon="trending-up-outline"
               isActive={feedSort === "trending"}
               onPress={() => setFeedSort("trending")}
@@ -192,6 +198,7 @@ function FeedList({
   onRefresh: () => void;
   onFirstPageLoaded: () => void;
 }) {
+  const t = useT();
   const {
     results: events,
     status,
@@ -232,11 +239,11 @@ function FeedList({
     return (
       <View className="flex-1 px-4 pt-6">
         <EmptyState
-          title="No events yet"
+          title={t("native.feed.emptyTitle")}
           body={
             selectedTopic === "all"
-              ? "Published events will show up here as soon as coverage lands."
-              : "No published events for this topic yet. Try another topic."
+              ? t("native.feed.emptyBody")
+              : t("native.feed.emptyBodyTopic")
           }
         />
       </View>
@@ -263,7 +270,11 @@ function FeedList({
         featuredEvent ? (
           <View className="gap-4 pb-5 pt-5">
             <SectionHeading
-              title={feedSort === "recent" ? "Lead story" : "Trending story"}
+              title={
+                feedSort === "recent"
+                  ? t("feed.leadStory")
+                  : t("feed.trendingStory")
+              }
             />
             <EventCard
               event={featuredEvent}
@@ -273,7 +284,7 @@ function FeedList({
             />
             {remainingEvents.length > 0 ? (
               <View className="pt-2">
-                <SectionHeading title="More events" />
+                <SectionHeading title={t("feed.moreEvents")} />
               </View>
             ) : null}
           </View>
@@ -294,7 +305,7 @@ function FeedList({
               accessibilityLiveRegion="polite"
               className="text-sm text-muted-foreground"
             >
-              Loading more events…
+              {t("native.feed.loadingMore")}
             </Text>
           </View>
         ) : null

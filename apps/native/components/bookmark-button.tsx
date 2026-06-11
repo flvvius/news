@@ -7,6 +7,7 @@ import { useCallback, useRef } from "react";
 import { Alert, Platform, Pressable } from "react-native";
 
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import {
   NATIVE_DEVICE_TYPE,
@@ -29,6 +30,7 @@ export function BookmarkButton({
   className,
 }: BookmarkButtonProps) {
   const router = useRouter();
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const lastPressRef = useRef(0);
 
@@ -87,18 +89,18 @@ export function BookmarkButton({
       metadata: { deviceType: NATIVE_DEVICE_TYPE },
     }).catch(() => {
       Alert.alert(
-        "Bookmark failed",
-        "We couldn't update this bookmark. Please try again.",
+        t("native.bookmark.failedTitle"),
+        t("native.bookmark.failed"),
       );
     });
-  }, [isAuthenticated, router, toggleBookmark, eventId, interactionContext]);
+  }, [isAuthenticated, router, toggleBookmark, eventId, interactionContext, t]);
 
   const bookmarked = isBookmarked === true;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={bookmarked ? "Remove bookmark" : "Add bookmark"}
+      accessibilityLabel={bookmarked ? t("bookmark.remove") : t("bookmark.add")}
       accessibilityState={{ selected: bookmarked }}
       onPress={handlePress}
       hitSlop={8}

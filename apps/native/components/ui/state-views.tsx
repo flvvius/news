@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 
 import { Icon, type IconName } from "@/components/ui/icon";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 
 type StateViewProps = {
@@ -63,18 +64,20 @@ export function EmptyState(props: StateViewProps) {
 type ErrorStateProps = Partial<StateViewProps>;
 
 export function ErrorState({
-  title = "Something went wrong",
-  body = "We couldn't load this right now. Check your connection and try again.",
-  actionLabel = "Try again",
+  title,
+  body,
+  actionLabel,
   onAction,
   className,
 }: ErrorStateProps) {
+  const t = useT();
+
   return (
     <StateView
       icon="cloud-offline-outline"
-      title={title}
-      body={body}
-      actionLabel={onAction ? actionLabel : undefined}
+      title={title ?? t("native.error.title")}
+      body={body ?? t("native.error.body")}
+      actionLabel={onAction ? (actionLabel ?? t("native.error.retry")) : undefined}
       onAction={onAction}
       className={className}
     />

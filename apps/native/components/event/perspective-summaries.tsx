@@ -2,16 +2,17 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { SectionCard } from "@/components/ui/section-card";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import type { EventDetail } from "@/lib/event-types";
 
 type Perspective = "left" | "center" | "right";
 
-const PERSPECTIVE_LABEL: Record<Perspective, string> = {
-  left: "Left",
-  center: "Center",
-  right: "Right",
-};
+const PERSPECTIVE_LABEL_KEY = {
+  left: "event.left",
+  center: "event.centerTab",
+  right: "event.right",
+} as const;
 
 /** Bias-token dot shown on each perspective tab — never red/blue. */
 const PERSPECTIVE_DOT: Record<Perspective, string> = {
@@ -27,6 +28,7 @@ type PerspectiveSummariesProps = {
 export function PerspectiveSummaries({
   perspectiveSummaries,
 }: PerspectiveSummariesProps) {
+  const t = useT();
   const [active, setActive] = useState<Perspective>("center");
 
   const available: Perspective[] = (
@@ -39,30 +41,28 @@ export function PerspectiveSummaries({
 
   if (!hasPerspectives) {
     return (
-      <SectionCard title="Summary">
+      <SectionCard title={t("event.summary")}>
         <Text className="max-w-[65ch] text-sm leading-relaxed text-card-foreground">
-          {perspectiveSummaries?.center ??
-            "Summary pending — compare the original reporting below."}
+          {perspectiveSummaries?.center ?? t("event.compareOriginal")}
         </Text>
       </SectionCard>
     );
   }
 
-  const activeText =
-    perspectiveSummaries?.[active] ??
-    "Summary pending — compare the original reporting below.";
+  const activeText = perspectiveSummaries?.[active] ?? t("event.summaryPending");
 
   return (
-    <SectionCard title="Multiple perspectives">
+    <SectionCard title={t("event.multiplePerspectives")}>
       <View className="gap-5">
         <View className="flex-row rounded-lg bg-muted p-1">
           {available.map((perspective) => {
             const isActive = perspective === active;
+            const label = t(PERSPECTIVE_LABEL_KEY[perspective]);
             return (
               <Pressable
                 key={perspective}
                 accessibilityRole="tab"
-                accessibilityLabel={`${PERSPECTIVE_LABEL[perspective]} perspective`}
+                accessibilityLabel={label}
                 accessibilityState={{ selected: isActive }}
                 onPress={() => setActive(perspective)}
                 className={cn(
@@ -82,7 +82,7 @@ export function PerspectiveSummaries({
                     isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
-                  {PERSPECTIVE_LABEL[perspective]}
+                  {label}
                 </Text>
               </Pressable>
             );

@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 
+import { useT } from "@/contexts/locale-context";
 import { biasBucketBgClass, type BiasBucket } from "@/lib/bias";
 
 type BiasDistributionBarProps = {
@@ -15,6 +16,7 @@ export function BiasDistributionBar({
   counts,
   withLabels = true,
 }: BiasDistributionBarProps) {
+  const t = useT();
   const total = counts.left + counts.center + counts.right;
   if (total === 0) return null;
 
@@ -22,7 +24,10 @@ export function BiasDistributionBar({
     <View
       className="gap-1.5"
       accessibilityRole="image"
-      accessibilityLabel={`Source bias distribution: ${counts.left} left, ${counts.center} center, ${counts.right} right`}
+      accessibilityLabel={t("event.biasDistribution")
+        .replace("{left}", String(counts.left))
+        .replace("{center}", String(counts.center))
+        .replace("{right}", String(counts.right))}
     >
       <View className="h-1.5 flex-row overflow-hidden rounded-full bg-bias-track">
         {BUCKETS.map((bucket) => {
@@ -40,13 +45,13 @@ export function BiasDistributionBar({
       {withLabels ? (
         <View className="flex-row items-center justify-between">
           <Text className="text-[11px] text-muted-foreground">
-            {counts.left} left
+            {t("event.bias.left").replace("{count}", String(counts.left))}
           </Text>
           <Text className="text-[11px] text-muted-foreground">
-            {counts.center} center
+            {t("event.bias.center").replace("{count}", String(counts.center))}
           </Text>
           <Text className="text-[11px] text-muted-foreground">
-            {counts.right} right
+            {t("event.bias.right").replace("{count}", String(counts.right))}
           </Text>
         </View>
       ) : null}

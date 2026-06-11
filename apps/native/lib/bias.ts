@@ -35,10 +35,18 @@ export function validateBiasThresholds(raw: unknown): number[] {
   return (raw.slice(0, 4) as number[]).sort((a, b) => a - b);
 }
 
-export function getBiasLabel(bias: number, thresholds: number[]): string {
-  if (bias < thresholds[0]) return "Left";
-  if (bias < thresholds[1]) return "Lean left";
-  if (bias <= thresholds[2]) return "Center";
-  if (bias <= thresholds[3]) return "Lean right";
-  return "Right";
+export function getBiasLabelKey(
+  bias: number,
+  thresholds: number[],
+):
+  | "bias.label.leftStrong"
+  | "bias.label.left"
+  | "bias.center"
+  | "bias.label.right"
+  | "bias.label.rightStrong" {
+  if (bias < thresholds[0]) return "bias.label.leftStrong";
+  if (bias < thresholds[1]) return "bias.label.left";
+  if (bias <= thresholds[2]) return "bias.center";
+  if (bias <= thresholds[3]) return "bias.label.right";
+  return "bias.label.rightStrong";
 }

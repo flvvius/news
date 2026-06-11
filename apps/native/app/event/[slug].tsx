@@ -21,11 +21,16 @@ import { ShareEventButton } from "@/components/share-event-button";
 import { SourceAvatarStack } from "@/components/source-avatar";
 import { Icon } from "@/components/ui/icon";
 import { Image } from "@/components/ui/image";
+import {
+  formatRelativeTimestamp,
+  getPluralizedCountLabel,
+} from "@news-app/i18n";
+
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { SectionCard } from "@/components/ui/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLocale, useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
-import { formatRelativeTimestamp } from "@/lib/dates";
 import { uniqueEventSources, type EventDetail } from "@/lib/event-types";
 import {
   buildInteractionContextFromSources,
@@ -42,11 +47,13 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 export default function EventDetailScreen() {
+  const t = useT();
+
   return (
     <Screen>
       <QueryBoundary
-        title="Couldn't load this event"
-        body="Something went wrong while loading the event. Try again."
+        title={t("native.event.errorTitle")}
+        body={t("native.event.errorBody")}
       >
         <EventDetailContent />
       </QueryBoundary>
@@ -56,11 +63,12 @@ export default function EventDetailScreen() {
 
 function BackToFeedButton() {
   const router = useRouter();
+  const t = useT();
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Back to feed"
+      accessibilityLabel={t("event.backToFeed")}
       onPress={() => {
         if (router.canGoBack()) {
           router.back();
@@ -77,7 +85,7 @@ function BackToFeedButton() {
         className="text-muted-foreground"
       />
       <Text className="text-sm font-medium text-muted-foreground">
-        Back to feed
+        {t("event.backToFeed")}
       </Text>
     </Pressable>
   );
@@ -116,23 +124,24 @@ function EventDetailSkeleton() {
 
 function EventNotFound() {
   const router = useRouter();
+  const t = useT();
 
   return (
     <View className="flex-1 items-center justify-center gap-3 px-6">
       <Text className="text-2xl font-semibold tracking-tight text-foreground">
-        Event not found
+        {t("event.notFound")}
       </Text>
       <Text className="max-w-[36ch] text-center text-sm leading-relaxed text-muted-foreground">
-        This event may have been unpublished or the link is incorrect.
+        {t("event.notFoundBody")}
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Back to feed"
+        accessibilityLabel={t("event.backToFeed")}
         onPress={() => router.replace("/")}
         className="mt-2 min-h-11 items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
       >
         <Text className="text-sm font-medium text-primary-foreground">
-          Back to feed
+          {t("event.backToFeed")}
         </Text>
       </Pressable>
     </View>
@@ -156,6 +165,8 @@ function EventDetailContent() {
 
 function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   const { event, articles } = eventData;
+  const t = useT();
+  const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation(api.interactions.logInteraction);
   const [activeTab, setActiveTab] = useState<"perspectives" | "claims">(
@@ -251,7 +262,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
             <View className="size-full items-center justify-center bg-muted">
               <View className="rounded-full border border-border/80 bg-background/85 px-3 py-1">
                 <Text className="text-xs font-medium text-muted-foreground">
-                  Event
+                  {t("event.cardLabel")}
                 </Text>
               </View>
             </View>
@@ -262,7 +273,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
           <View className="gap-4">
             <View className="flex-row items-center justify-between gap-3">
               <Text className="text-xs font-semibold uppercase tracking-[2.4px] text-muted-foreground">
-                Overview
+                {t("event.overview")}
               </Text>
               <View className="flex-row items-center gap-2">
                 <BookmarkButton
@@ -287,20 +298,29 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
           <View className="gap-3 border-t border-border/70 pt-4">
             <View className="self-start rounded-full border border-border/80 bg-background/70 px-3 py-1.5">
               <Text className="text-xs font-medium text-muted-foreground">
-                Updated {formatRelativeTimestamp(lastUpdatedAt)}
+                {t("event.updated").replace(
+                  "{time}",
+                  formatRelativeTimestamp(lastUpdatedAt, locale),
+                )}
               </Text>
             </View>
             <View className="flex-row items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3">
               <SourceAvatarStack sources={sources} max={5} />
               <View className="shrink flex-row flex-wrap items-center justify-end gap-1">
                 <Text className="text-sm font-medium text-card-foreground">
-                  {articles.length === 1
-                    ? "1 article"
-                    : `${articles.length} articles`}
+                  {getPluralizedCountLabel(
+                    locale,
+                    "event.articles",
+                    articles.length,
+                  )}
                 </Text>
                 <Text className="text-sm text-muted-foreground"> · </Text>
                 <Text className="text-sm text-muted-foreground">
-                  {sourceCount === 1 ? "1 source" : `${sourceCount} sources`}
+                  {getPluralizedCountLabel(
+                    locale,
+                    "event.sourceCount",
+                    sourceCount,
+                  )}
                 </Text>
               </View>
             </View>
@@ -311,8 +331,8 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
       <View className="h-11 flex-row rounded-full bg-muted/70 p-1">
         {(
           [
-            { key: "perspectives", label: "Perspectives" },
-            { key: "claims", label: "Claim breakdown" },
+            { key: "perspectives", label: t("event.perspectives") },
+            { key: "claims", label: t("event.claimBreakdown") },
           ] as const
         ).map(({ key, label }) => {
           const isActive = activeTab === key;
@@ -348,7 +368,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
           />
 
           {event.globalImpact ? (
-            <SectionCard title="Why this matters">
+            <SectionCard title={t("event.meaning")}>
               <Text className="max-w-[65ch] text-sm leading-relaxed text-card-foreground">
                 {event.globalImpact}
               </Text>

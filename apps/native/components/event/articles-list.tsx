@@ -5,12 +5,14 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { formatDate } from "@news-app/i18n";
+
 import { BiasIndicator } from "@/components/bias-indicator";
 import { SourceAvatar } from "@/components/source-avatar";
 import { Icon } from "@/components/ui/icon";
 import { Image } from "@/components/ui/image";
 import { SectionCard } from "@/components/ui/section-card";
-import { formatDate } from "@/lib/dates";
+import { useLocale, useT } from "@/contexts/locale-context";
 import type { EventArticle } from "@/lib/event-types";
 import { NATIVE_DEVICE_TYPE } from "@/lib/interactions";
 
@@ -25,6 +27,8 @@ export function ArticlesList({
   articles,
   biasThresholds,
 }: ArticlesListProps) {
+  const t = useT();
+  const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation(api.interactions.logInteraction);
 
@@ -52,7 +56,7 @@ export function ArticlesList({
   );
 
   return (
-    <SectionCard title={`Original reporting (${articles.length})`}>
+    <SectionCard title={`${t("articles.originalReporting")} (${articles.length})`}>
       <View className="gap-4">
         {articles.map((article) => (
           <View
@@ -75,7 +79,7 @@ export function ArticlesList({
               ) : (
                 <View className="size-full items-center justify-center bg-muted">
                   <Text className="text-xs font-medium uppercase tracking-[1.8px] text-muted-foreground">
-                    {article.source?.name ?? "Source"}
+                    {article.source?.name ?? t("articles.source")}
                   </Text>
                 </View>
               )}
@@ -103,7 +107,7 @@ export function ArticlesList({
                   </>
                 ) : null}
                 <Text className="ml-auto text-xs text-muted-foreground">
-                  {formatDate(article.publishedAt)}
+                  {formatDate(article.publishedAt, locale)}
                 </Text>
               </View>
 
@@ -123,13 +127,13 @@ export function ArticlesList({
 
               <Pressable
                 accessibilityRole="link"
-                accessibilityLabel={`Read the original article on ${article.source?.name ?? "the source site"}`}
+                accessibilityLabel={t("articles.readOriginalAria")}
                 onPress={() => openArticle(article)}
                 hitSlop={8}
                 className="min-h-11 flex-row items-center gap-1 self-start active:opacity-70"
               >
                 <Text className="text-sm font-medium text-primary">
-                  Read original
+                  {t("articles.readOriginal")}
                 </Text>
                 <Icon name="open-outline" size={13} className="text-primary" />
               </Pressable>

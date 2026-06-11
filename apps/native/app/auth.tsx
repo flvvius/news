@@ -7,6 +7,7 @@ import { AuthField } from "@/components/auth/auth-field";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { Screen } from "@/components/screen";
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 
 type AuthMode = "signin" | "signup";
@@ -20,28 +21,34 @@ type FieldErrors = {
   password?: string;
 };
 
-function describeAuthError(error: {
-  error?: { code?: string; message?: string; statusText?: string };
-}): string {
+type Translate = ReturnType<typeof useT>;
+
+function describeAuthError(
+  t: Translate,
+  error: {
+    error?: { code?: string; message?: string; statusText?: string };
+  },
+): string {
   const code = error.error?.code?.toUpperCase() ?? "";
   if (code.includes("INVALID_EMAIL_OR_PASSWORD")) {
-    return "Invalid email or password.";
+    return t("auth.invalidCredentials");
   }
   if (code.includes("EMAIL_NOT_VERIFIED")) {
-    return "Please verify your email before signing in. Check your inbox for the verification link.";
+    return t("auth.checkEmailVerify");
   }
   if (code.includes("USER_ALREADY_EXISTS")) {
-    return "An account with this email already exists. Try signing in instead.";
+    return t("auth.emailInUse");
   }
   return (
     error.error?.message ??
     error.error?.statusText ??
-    "Something went wrong. Please try again."
+    t("auth.unexpectedError")
   );
 }
 
 export default function AuthScreen() {
   const router = useRouter();
+  const t = useT();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
 
@@ -63,14 +70,14 @@ export default function AuthScreen() {
         <View className="mb-6 flex-row items-center justify-between">
           <Text className="text-2xl font-bold tracking-tight text-foreground">
             {verifyEmail
-              ? "Verify your email"
+              ? t("native.auth.verifyTitle")
               : mode === "signin"
-                ? "Welcome back"
-                : "Create your account"}
+                ? t("auth.welcomeBack")
+                : t("auth.signUpTitle")}
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={t("native.auth.close")}
             onPress={close}
             hitSlop={8}
             className="size-11 items-center justify-center rounded-full active:bg-accent"
@@ -99,8 +106,8 @@ export default function AuthScreen() {
               accessibilityRole="button"
               accessibilityLabel={
                 mode === "signin"
-                  ? "Switch to sign up"
-                  : "Switch to sign in"
+                  ? t("native.auth.switchToSignUp")
+                  : t("native.auth.switchToSignIn")
               }
               onPress={() =>
                 setMode((current) =>
@@ -109,18 +116,10 @@ export default function AuthScreen() {
               }
               className="mt-6 min-h-11 items-center justify-center active:opacity-70"
             >
-              <Text className="text-sm text-muted-foreground">
-                {mode === "signin" ? (
-                  <>
-                    Need an account?{" "}
-                    <Text className="font-medium text-primary">Sign up</Text>
-                  </>
-                ) : (
-                  <>
-                    Already have an account?{" "}
-                    <Text className="font-medium text-primary">Sign in</Text>
-                  </>
-                )}
+              <Text className="text-sm font-medium text-primary">
+                {mode === "signin"
+                  ? t("native.auth.switchToSignUp")
+                  : t("native.auth.switchToSignIn")}
               </Text>
             </Pressable>
           </>
@@ -131,6 +130,7 @@ export default function AuthScreen() {
 }
 
 function SignInForm({ onSuccess }: { onSuccess: () => void }) {
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -140,10 +140,10 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
   const handleSubmit = async () => {
     const errors: FieldErrors = {};
     if (!EMAIL_PATTERN.test(email.trim())) {
-      errors.email = "Enter a valid email address.";
+      errors.email = t("auth.invalidEmail");
     }
     if (password.length < PASSWORD_MIN_LENGTH) {
-      errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+      errors.password = t("auth.passwordMin");
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -157,7 +157,7 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
           onSuccess();
         },
         onError: (error) => {
-          setFormError(describeAuthError(error));
+          setFormError(describeAuthError(t, error));
         },
         onFinished: () => {
           setIsLoading(false);
@@ -169,7 +169,7 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <View className="gap-4">
       <Text className="text-sm leading-relaxed text-muted-foreground">
-        Sign in to bookmark events and keep your reading balanced.
+        {t("native.auth.signInBody")}
       </Text>
 
       {formError ? (
@@ -182,10 +182,10 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
       ) : null}
 
       <AuthField
-        label="Email"
+        label={t("auth.email")}
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder={t("auth.emailPlaceholder")}
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
@@ -194,10 +194,10 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
         error={fieldErrors.email}
       />
       <AuthField
-        label="Password"
+        label={t("auth.password")}
         value={password}
         onChangeText={setPassword}
-        placeholder="Your password"
+        placeholder={t("auth.passwordPlaceholder")}
         secureTextEntry
         autoCapitalize="none"
         autoComplete="current-password"
@@ -209,8 +209,8 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
       />
 
       <SubmitButton
-        label="Sign in"
-        loadingLabel="Signing in…"
+        label={t("auth.signIn")}
+        loadingLabel={t("native.auth.signingIn")}
         isLoading={isLoading}
         onPress={() => void handleSubmit()}
       />
@@ -223,6 +223,7 @@ function SignUpForm({
 }: {
   onVerificationPending: (email: string) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -233,13 +234,13 @@ function SignUpForm({
   const handleSubmit = async () => {
     const errors: FieldErrors = {};
     if (name.trim().length < 2) {
-      errors.name = "Enter your name.";
+      errors.name = t("auth.nameMin");
     }
     if (!EMAIL_PATTERN.test(email.trim())) {
-      errors.email = "Enter a valid email address.";
+      errors.email = t("auth.invalidEmail");
     }
     if (password.length < PASSWORD_MIN_LENGTH) {
-      errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+      errors.password = t("auth.passwordMin");
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -255,7 +256,7 @@ function SignUpForm({
           onVerificationPending(submittedEmail);
         },
         onError: (error) => {
-          setFormError(describeAuthError(error));
+          setFormError(describeAuthError(t, error));
         },
         onFinished: () => {
           setIsLoading(false);
@@ -267,7 +268,7 @@ function SignUpForm({
   return (
     <View className="gap-4">
       <Text className="text-sm leading-relaxed text-muted-foreground">
-        Create an account to save events and track your bias balance.
+        {t("native.auth.signUpBody")}
       </Text>
 
       {formError ? (
@@ -280,20 +281,20 @@ function SignUpForm({
       ) : null}
 
       <AuthField
-        label="Name"
+        label={t("auth.name")}
         value={name}
         onChangeText={setName}
-        placeholder="Your name"
+        placeholder={t("auth.namePlaceholder")}
         autoComplete="name"
         textContentType="name"
         editable={!isLoading}
         error={fieldErrors.name}
       />
       <AuthField
-        label="Email"
+        label={t("auth.email")}
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder={t("auth.emailPlaceholder")}
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
@@ -302,10 +303,10 @@ function SignUpForm({
         error={fieldErrors.email}
       />
       <AuthField
-        label="Password"
+        label={t("auth.password")}
         value={password}
         onChangeText={setPassword}
-        placeholder="At least 8 characters"
+        placeholder={t("auth.passwordCreatePlaceholder")}
         secureTextEntry
         autoCapitalize="none"
         autoComplete="new-password"
@@ -317,8 +318,8 @@ function SignUpForm({
       />
 
       <SubmitButton
-        label="Create account"
-        loadingLabel="Creating account…"
+        label={t("auth.signUp")}
+        loadingLabel={t("native.auth.creatingAccount")}
         isLoading={isLoading}
         onPress={() => void handleSubmit()}
       />
@@ -333,6 +334,7 @@ function VerifyEmailNotice({
   email: string;
   onBackToSignIn: () => void;
 }) {
+  const t = useT();
   const [isResending, setIsResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
 
@@ -341,9 +343,9 @@ function VerifyEmailNotice({
     setResendMessage(null);
     try {
       await authClient.sendVerificationEmail({ email });
-      setResendMessage("Verification email sent. Check your inbox.");
+      setResendMessage(t("auth.verifyResent"));
     } catch {
-      setResendMessage("Couldn't resend the email. Please try again.");
+      setResendMessage(t("auth.verifyResendFailed"));
     } finally {
       setIsResending(false);
     }
@@ -356,11 +358,10 @@ function VerifyEmailNotice({
           <Icon name="mail-outline" size={26} className="text-primary" />
         </View>
         <Text className="text-center text-base font-semibold text-foreground">
-          Check your inbox
+          {t("native.auth.verifyInboxTitle")}
         </Text>
         <Text className="max-w-[36ch] text-center text-sm leading-relaxed text-muted-foreground">
-          We sent a verification link to {email}. Verify your email, then come
-          back and sign in.
+          {t("native.auth.verifyBody").replace("{email}", email)}
         </Text>
         {resendMessage ? (
           <Text
@@ -373,19 +374,21 @@ function VerifyEmailNotice({
       </View>
 
       <SubmitButton
-        label="Resend verification email"
-        loadingLabel="Sending…"
+        label={t("auth.verifyResend")}
+        loadingLabel={t("auth.verifyResending")}
         isLoading={isResending}
         onPress={() => void handleResend()}
       />
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Back to sign in"
+        accessibilityLabel={t("native.auth.backToSignIn")}
         onPress={onBackToSignIn}
         className="min-h-11 items-center justify-center active:opacity-70"
       >
-        <Text className="text-sm font-medium text-primary">Back to sign in</Text>
+        <Text className="text-sm font-medium text-primary">
+          {t("native.auth.backToSignIn")}
+        </Text>
       </Pressable>
     </View>
   );

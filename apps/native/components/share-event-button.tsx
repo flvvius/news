@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { Pressable, Share } from "react-native";
 
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import {
   NATIVE_DEVICE_TYPE,
@@ -29,6 +30,7 @@ export function ShareEventButton({
   size = "default",
   className,
 }: ShareEventButtonProps) {
+  const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation(api.interactions.logInteraction);
 
@@ -57,7 +59,7 @@ export function ShareEventButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Share event"
+      accessibilityLabel={t("share.label")}
       onPress={() => void handlePress()}
       hitSlop={8}
       className={cn(
