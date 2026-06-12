@@ -1,9 +1,23 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
-import { useState, type ReactNode } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { Screen } from "@/components/screen";
 import {
@@ -11,6 +25,7 @@ import {
   SettingsRow,
 } from "@/components/settings/settings-group";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { PressableScale } from "@/components/ui/pressable-scale";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -69,37 +84,79 @@ function SegmentedPicker<Value extends string>({
   onSelect: (value: Value) => void;
   optionLabel: (label: string) => string;
 }) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const segmentWidth = trackWidth > 0 ? trackWidth / options.length : 0;
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === selected),
+  );
+
+  // Thumb slides between segments; the first layout pass positions it
+  // without animation — motion only for changes the user caused.
+  const thumbX = useSharedValue(0);
+  const hasMeasuredRef = useRef(false);
+  useEffect(() => {
+    if (segmentWidth === 0) return;
+    const target = selectedIndex * segmentWidth;
+    if (!hasMeasuredRef.current) {
+      hasMeasuredRef.current = true;
+      thumbX.value = target;
+      return;
+    }
+    thumbX.value = withTiming(target, {
+      duration: 180,
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
+    });
+  }, [selectedIndex, segmentWidth, thumbX]);
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: thumbX.value }],
+  }));
+
   return (
     <View
-      className="h-10 flex-row rounded-lg bg-muted p-1"
+      className="h-10 rounded-lg bg-muted p-1"
       accessibilityRole="radiogroup"
       accessibilityLabel={groupLabel}
     >
-      {options.map(({ value, label }) => {
-        const isActive = selected === value;
-        return (
-          <Pressable
-            key={value}
-            accessibilityRole="radio"
-            accessibilityLabel={optionLabel(label)}
-            accessibilityState={{ selected: isActive }}
-            onPress={() => onSelect(value)}
-            className={cn(
-              "flex-1 items-center justify-center rounded-md",
-              isActive && "bg-background",
-            )}
-          >
-            <Text
-              className={cn(
-                "text-sm font-medium",
-                isActive ? "text-foreground" : "text-muted-foreground",
-              )}
+      <View
+        className="relative flex-1 flex-row"
+        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+      >
+        {segmentWidth > 0 ? (
+          <Animated.View
+            style={[{ width: segmentWidth }, thumbStyle]}
+            className="absolute bottom-0 top-0 rounded-md bg-background"
+          />
+        ) : null}
+        {options.map(({ value, label }) => {
+          const isActive = selected === value;
+          return (
+            <Pressable
+              key={value}
+              accessibilityRole="radio"
+              accessibilityLabel={optionLabel(label)}
+              accessibilityState={{ selected: isActive }}
+              onPress={() => {
+                if (Platform.OS === "ios") {
+                  Haptics.selectionAsync().catch(() => {});
+                }
+                onSelect(value);
+              }}
+              className="flex-1 items-center justify-center rounded-md"
             >
-              {label}
-            </Text>
-          </Pressable>
-        );
-      })}
+              <Text
+                className={cn(
+                  "text-sm font-medium",
+                  isActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -209,16 +266,17 @@ function AccountCard() {
         <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
           {t("native.profile.guestBody")}
         </Text>
-        <Pressable
+        <PressableScale
           accessibilityRole="button"
           accessibilityLabel={t("auth.signIn")}
           onPress={() => router.push("/auth")}
-          className="mt-1 min-h-11 items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
+          className="mt-1"
+          contentClassName="min-h-11 items-center justify-center rounded-full bg-primary px-6"
         >
           <Text className="text-sm font-medium text-primary-foreground">
             {t("auth.signIn")}
           </Text>
-        </Pressable>
+        </PressableScale>
       </View>
     );
   }

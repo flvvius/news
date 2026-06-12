@@ -10,6 +10,7 @@ import { StreakActivityCalendar } from "@/components/activity/streak-activity-ca
 import { Screen } from "@/components/screen";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Image } from "@/components/ui/image";
+import { PressableScale } from "@/components/ui/pressable-scale";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/state-views";
@@ -248,14 +249,13 @@ function EventRow({
   const router = useRouter();
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={event.title}
       onPress={() => router.push(`/event/${event.slug}`)}
-      className={cn(
-        "flex-row items-center gap-3 py-3 active:opacity-70",
-        !isLast && "border-b border-border/60",
-      )}
+      scaleTo={0.98}
+      className={cn(!isLast && "border-b border-border/60")}
+      contentClassName="flex-row items-center gap-3 py-3"
     >
       <View className="size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
         {event.imageUrl ? (
@@ -288,7 +288,7 @@ function EventRow({
         size={14}
         className="text-muted-foreground/60"
       />
-    </Pressable>
+    </PressableScale>
   );
 }
 

@@ -3,11 +3,10 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import * as WebBrowser from "expo-web-browser";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
-import { SourceAvatar } from "@/components/source-avatar";
-import { Icon, type IconName } from "@/components/ui/icon";
-import { SectionCard } from "@/components/ui/section-card";
+import { Icon } from "@/components/ui/icon";
 import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import type {
@@ -18,22 +17,28 @@ import type {
   EventSource,
 } from "@/lib/event-types";
 
+/** Most informative first: divergence and exclusives, then framing, agreement. */
 const STATUS_ORDER: ClaimStatus[] = [
   "divergence",
-  "framing",
-  "agreement",
   "exclusive_left",
   "exclusive_right",
   "exclusive_center",
+  "framing",
+  "agreement",
 ];
 
-const STATUS_ICONS: Record<ClaimStatus, IconName> = {
-  agreement: "checkmark-circle-outline",
-  divergence: "warning-outline",
-  framing: "chatbox-ellipses-outline",
-  exclusive_left: "remove-circle-outline",
-  exclusive_right: "remove-circle-outline",
-  exclusive_center: "remove-circle-outline",
+/**
+ * Status mark colors. Bias tokens only where the status itself is
+ * directional; the rest stay grayscale so the list never reads as a
+ * traffic light.
+ */
+const STATUS_MARK: Record<ClaimStatus, string> = {
+  divergence: "bg-foreground",
+  framing: "bg-muted-foreground",
+  agreement: "bg-border",
+  exclusive_left: "bg-bias-left",
+  exclusive_right: "bg-bias-right",
+  exclusive_center: "bg-bias-center",
 };
 
 const STATUS_LABEL_KEY = {
@@ -63,15 +68,6 @@ const STATUS_BODY_KEY = {
   exclusive_center: "claim.centerExclusiveBody",
 } as const;
 
-type FilterKey = "agreements" | "divergences" | "framing" | "exclusives";
-
-const FILTER_STATUSES: Record<FilterKey, ClaimStatus[]> = {
-  agreements: ["agreement"],
-  divergences: ["divergence"],
-  framing: ["framing"],
-  exclusives: ["exclusive_left", "exclusive_right", "exclusive_center"],
-};
-
 function formatLean(value: string) {
   return value
     .split("-")
@@ -94,71 +90,51 @@ function ClaimVariantRow({
     article?.source ?? sourcesById.get(String(variant.sourceId)) ?? null;
 
   return (
-    <View className="border-l-2 border-border py-3 pl-4">
-      <View className="flex-row items-start gap-3">
-        <SourceAvatar
-          name={source?.name ?? "S"}
-          logoUrl={source?.logoUrl}
-          recyclingKey={source?._id}
-          sizeClassName="size-8"
-          sizePx={32}
-          className="shrink-0"
-        />
-        <View className="min-w-0 flex-1">
-          <View className="mb-1.5 flex-row flex-wrap items-center gap-2">
-            <Text className="text-base font-semibold text-card-foreground">
-              {source?.name ?? t("claim.unknownSource")}
-            </Text>
-            <View className="rounded-full bg-muted px-2 py-0.5">
-              <Text className="text-xs font-medium text-muted-foreground">
-                {formatLean(variant.sourceLean)}
-              </Text>
-            </View>
-            {variant.value ? (
-              <View className="rounded-full border border-border px-2 py-0.5">
-                <Text className="text-xs font-medium text-foreground">
-                  {variant.value}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <Text className="max-w-[455px] text-base leading-relaxed text-card-foreground">
-            {variant.statement}
-          </Text>
-
-          {article ? (
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={t("claim.readSourceArticle")}
-              onPress={() =>
-                WebBrowser.openBrowserAsync(article.canonicalUrl).catch(() => {
-                  // Browser unavailable — nothing to recover here.
-                })
-              }
-              hitSlop={8}
-              className="mt-2 min-h-11 flex-row items-center gap-1.5 self-start active:opacity-70"
-            >
-              <Text className="text-sm font-medium text-primary">
-                {t("claim.readSourceArticle")}
-              </Text>
-              <Icon name="open-outline" size={12} className="text-primary" />
-            </Pressable>
-          ) : null}
-        </View>
+    <View className="gap-1 py-3">
+      <View className="flex-row flex-wrap items-baseline gap-x-2">
+        <Text className="text-base font-semibold text-foreground">
+          {source?.name ?? t("claim.unknownSource")}
+        </Text>
+        <Text className="text-sm text-muted-foreground">
+          {formatLean(variant.sourceLean)}
+          {variant.value ? ` · ${variant.value}` : ""}
+        </Text>
       </View>
+      <Text className="max-w-[455px] text-lg leading-relaxed text-muted-foreground">
+        {variant.statement}
+      </Text>
+      {article ? (
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={t("claim.readSourceArticle")}
+          onPress={() =>
+            WebBrowser.openBrowserAsync(article.canonicalUrl).catch(() => {
+              // Browser unavailable — nothing to recover here.
+            })
+          }
+          hitSlop={8}
+          className="min-h-9 flex-row items-center gap-1 self-start active:opacity-70"
+        >
+          <Text className="text-base font-medium text-primary">
+            {t("claim.readSourceArticle")}
+          </Text>
+          <Icon name="open-outline" size={12} className="text-primary" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function ClaimCard({
+function ClaimRow({
   claim,
   articlesById,
   sourcesById,
+  isLast,
 }: {
   claim: EventClaim;
   articlesById: Map<string, EventArticle>;
   sourcesById: Map<string, EventSource>;
+  isLast: boolean;
 }) {
   const t = useT();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -166,49 +142,68 @@ function ClaimCard({
     claim.variants.map((variant) => String(variant.sourceId)),
   ).size;
 
-  const showExpandButton = claim.variants.length > 2;
-  const remainingCount = claim.variants.length - 2;
-  const visibleVariants = isExpanded
-    ? claim.variants
-    : claim.variants.slice(0, 2);
+  const disclosureLabel =
+    sourceCount === 1
+      ? t("native.event.claimVariants.one")
+      : t("native.event.claimVariants.many").replace(
+          "{count}",
+          String(sourceCount),
+        );
 
   return (
-    <View className="overflow-hidden rounded-xl border border-border bg-card">
-      <View className="px-4 py-4">
-        <View className="mb-3 flex-row items-start justify-between gap-3">
-          <View className="flex-row flex-wrap items-center gap-2">
-            <View className="flex-row items-center gap-1.5 rounded-full bg-muted px-2.5 py-1">
-              <Icon
-                name={STATUS_ICONS[claim.status]}
-                size={13}
-                className="text-muted-foreground"
-              />
-              <Text className="text-sm font-medium text-muted-foreground">
-                {t(STATUS_LABEL_KEY[claim.status])}
-              </Text>
-            </View>
-            <Text className="text-sm text-muted-foreground">
-              {claim.importance}/5 {t("claim.importance")}
-            </Text>
-          </View>
-          <Text className="shrink-0 text-sm text-muted-foreground">
+    <View className={cn("gap-2 py-4", !isLast && "border-b border-border/70")}>
+      <View className="flex-row gap-3">
+        {/* Status tick — token-colored, 3px, the only mark on the row. */}
+        <View
+          className={cn(
+            "mt-1.5 h-4 w-[3px] rounded-full",
+            STATUS_MARK[claim.status],
+          )}
+        />
+        <View className="min-w-0 flex-1 gap-1.5">
+          <Text className="max-w-[455px] text-lg font-medium leading-snug text-foreground">
+            {claim.canonicalStatement}
+          </Text>
+          <Text className="text-sm text-muted-foreground">
+            {t(STATUS_LABEL_KEY[claim.status])}
+            {" · "}
             {sourceCount === 1
               ? t("claim.source.one")
-              : t("claim.source.many").replace("{count}", String(sourceCount))}
+              : t("claim.source.many").replace(
+                  "{count}",
+                  String(sourceCount),
+                )}
           </Text>
         </View>
-
-        <Text className="max-w-[455px] text-lg font-semibold leading-snug tracking-tight text-card-foreground">
-          {claim.canonicalStatement}
-        </Text>
       </View>
 
-      <View className="border-t border-border bg-muted/30 px-4 py-3">
-        <View>
-          {visibleVariants.map((variant, index) => (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={disclosureLabel}
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={() => setIsExpanded((value) => !value)}
+        hitSlop={6}
+        className="ml-[15px] min-h-9 flex-row items-center gap-1 self-start active:opacity-70"
+      >
+        <Text className="text-base font-medium text-muted-foreground">
+          {disclosureLabel}
+        </Text>
+        <Icon
+          name={isExpanded ? "chevron-up" : "chevron-down"}
+          size={13}
+          className="text-muted-foreground"
+        />
+      </Pressable>
+
+      {isExpanded ? (
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          className="ml-[15px] border-l border-border pl-4"
+        >
+          {claim.variants.map((variant, index) => (
             <View
               key={`${variant.articleId}-${variant.sourceFactIndex ?? index}-${index}`}
-              className={cn(index > 0 && "border-t border-border/50")}
+              className={cn(index > 0 && "border-t border-border/60")}
             >
               <ClaimVariantRow
                 variant={variant}
@@ -217,78 +212,9 @@ function ClaimCard({
               />
             </View>
           ))}
-        </View>
-
-        {showExpandButton ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              isExpanded
-                ? t("claim.showLess")
-                : remainingCount === 1
-                  ? t("claim.showMore.one")
-                  : t("claim.showMore.many").replace(
-                      "{count}",
-                      String(remainingCount),
-                    )
-            }
-            accessibilityState={{ expanded: isExpanded }}
-            onPress={() => setIsExpanded((value) => !value)}
-            className="mt-3 min-h-11 flex-row items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 active:bg-accent"
-          >
-            <Text className="text-sm font-medium text-muted-foreground">
-              {isExpanded
-                ? t("claim.showLess")
-                : remainingCount === 1
-                  ? t("claim.showMore.one")
-                  : t("claim.showMore.many").replace(
-                      "{count}",
-                      String(remainingCount),
-                    )}
-            </Text>
-            <Icon
-              name={isExpanded ? "chevron-up-outline" : "chevron-down-outline"}
-              size={13}
-              className="text-muted-foreground"
-            />
-          </Pressable>
-        ) : null}
-      </View>
+        </Animated.View>
+      ) : null}
     </View>
-  );
-}
-
-function StatCard({
-  label,
-  count,
-  isActive,
-  onPress,
-}: {
-  label: string;
-  count: number;
-  isActive: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: isActive }}
-      onPress={onPress}
-      className={cn(
-        "min-h-11 flex-1 items-center justify-center rounded-xl border px-3 py-3",
-        isActive
-          ? "border-primary bg-primary/5"
-          : "border-border bg-card active:bg-accent",
-      )}
-    >
-      <Text className="text-3xl font-bold tabular-nums text-card-foreground">
-        {count}
-      </Text>
-      <Text className="mt-0.5 text-center text-sm font-medium text-muted-foreground">
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -300,7 +226,6 @@ export function EventClaimComparison({
   articles: EventArticle[];
 }) {
   const t = useT();
-  const [activeFilter, setActiveFilter] = useState<FilterKey | null>(null);
 
   const claims = useQuery(api.claimDivergence.getEventClaims, {
     eventId,
@@ -324,32 +249,30 @@ export function EventClaimComparison({
 
   if (claims === undefined) {
     return (
-      <SectionCard title={t("claim.title")}>
-        <View
-          className="flex-row items-center gap-3"
+      <View className="gap-4">
+        <Text className="text-2xl font-semibold tracking-tight text-foreground">
+          {t("native.event.claimsTitle")}
+        </Text>
+        <Text
           accessibilityLiveRegion="polite"
+          className="text-lg text-muted-foreground"
         >
-          <ActivityIndicator size="small" colorClassName="accent-primary" />
-          <Text className="text-base text-muted-foreground">
-            {t("claim.loading")}
-          </Text>
-        </View>
-      </SectionCard>
+          {t("claim.loading")}
+        </Text>
+      </View>
     );
   }
 
   if (claims.length === 0) {
     return (
-      <SectionCard title={t("claim.title")}>
-        <View className="items-center rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8">
-          <Text className="text-base font-medium text-card-foreground">
-            {t("claim.unavailable")}
-          </Text>
-          <Text className="mt-1.5 max-w-[385px] text-center text-base text-muted-foreground">
-            {t("claim.unavailableBody")}
-          </Text>
-        </View>
-      </SectionCard>
+      <View className="gap-4">
+        <Text className="text-2xl font-semibold tracking-tight text-foreground">
+          {t("native.event.claimsTitle")}
+        </Text>
+        <Text className="max-w-[455px] text-lg leading-relaxed text-muted-foreground">
+          {t("claim.unavailableBody")}
+        </Text>
+      </View>
     );
   }
 
@@ -360,101 +283,46 @@ export function EventClaimComparison({
       claim,
     ]);
   }
-
-  const summaryCounts: Record<FilterKey, number> = {
-    agreements: claimsByStatus.get("agreement")?.length ?? 0,
-    divergences: claimsByStatus.get("divergence")?.length ?? 0,
-    framing: claimsByStatus.get("framing")?.length ?? 0,
-    exclusives:
-      (claimsByStatus.get("exclusive_left")?.length ?? 0) +
-      (claimsByStatus.get("exclusive_right")?.length ?? 0) +
-      (claimsByStatus.get("exclusive_center")?.length ?? 0),
-  };
-
-  const filteredStatuses = activeFilter
-    ? FILTER_STATUSES[activeFilter]
-    : STATUS_ORDER;
-  const visibleStatuses = filteredStatuses.filter(
+  const visibleStatuses = STATUS_ORDER.filter(
     (status) => (claimsByStatus.get(status)?.length ?? 0) > 0,
   );
 
-  const toggleFilter = (filter: FilterKey) => {
-    setActiveFilter((current) => (current === filter ? null : filter));
-  };
-
   return (
-    <SectionCard
-      title={t("claim.title")}
-      subtitle={t("claim.subtitle")}
-      unpadded
-    >
-      <View className="border-b border-border bg-card px-4 py-4">
-        <View className="gap-2">
-          <View className="flex-row gap-2">
-            <StatCard
-              label={t("claim.agreements")}
-              count={summaryCounts.agreements}
-              isActive={activeFilter === "agreements"}
-              onPress={() => toggleFilter("agreements")}
-            />
-            <StatCard
-              label={t("claim.divergences")}
-              count={summaryCounts.divergences}
-              isActive={activeFilter === "divergences"}
-              onPress={() => toggleFilter("divergences")}
-            />
-          </View>
-          <View className="flex-row gap-2">
-            <StatCard
-              label={t("claim.framings")}
-              count={summaryCounts.framing}
-              isActive={activeFilter === "framing"}
-              onPress={() => toggleFilter("framing")}
-            />
-            <StatCard
-              label={t("claim.centerExclusives")}
-              count={summaryCounts.exclusives}
-              isActive={activeFilter === "exclusives"}
-              onPress={() => toggleFilter("exclusives")}
-            />
-          </View>
-        </View>
+    <View className="gap-2">
+      <Text className="text-2xl font-semibold tracking-tight text-foreground">
+        {t("native.event.claimsTitle")}
+      </Text>
+      <Text className="max-w-[455px] text-base text-muted-foreground">
+        {t("claim.subtitle")}
+      </Text>
 
-        {activeFilter ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("claim.clearFilter")}
-            onPress={() => setActiveFilter(null)}
-            hitSlop={8}
-            className="mt-3 self-start active:opacity-70"
-          >
-            <Text className="text-sm font-medium text-primary">
-              {t("claim.clearFilter")}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View className="gap-8 px-4 py-5">
+      <View className="gap-7 pt-3">
         {visibleStatuses.map((status) => {
           const statusClaims = claimsByStatus.get(status) ?? [];
           return (
-            <View key={status} className="gap-4">
-              <View className="border-l-2 border-primary pl-3">
-                <Text className="text-lg font-semibold tracking-tight text-card-foreground">
+            <View key={status}>
+              <View className="flex-row items-center gap-2 pb-1">
+                <View
+                  className={cn(
+                    "h-3.5 w-[3px] rounded-full",
+                    STATUS_MARK[status],
+                  )}
+                />
+                <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
                   {t(STATUS_HEADING_KEY[status])}
                 </Text>
-                <Text className="max-w-[385px] text-base text-muted-foreground">
-                  {t(STATUS_BODY_KEY[status])}
-                </Text>
               </View>
-              <View className="gap-4">
-                {statusClaims.map((claim) => (
-                  <ClaimCard
+              <Text className="max-w-[455px] pb-1 text-base text-muted-foreground">
+                {t(STATUS_BODY_KEY[status])}
+              </Text>
+              <View>
+                {statusClaims.map((claim, index) => (
+                  <ClaimRow
                     key={claim._id}
                     claim={claim}
                     articlesById={articlesById}
                     sourcesById={sourcesById}
+                    isLast={index === statusClaims.length - 1}
                   />
                 ))}
               </View>
@@ -462,6 +330,6 @@ export function EventClaimComparison({
           );
         })}
       </View>
-    </SectionCard>
+    </View>
   );
 }

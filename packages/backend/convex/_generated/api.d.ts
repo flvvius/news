@@ -25,6 +25,7 @@ import type * as feeds from "../feeds.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as ingestion from "../ingestion.js";
+import type * as insights from "../insights.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_aiCall from "../lib/aiCall.js";
 import type * as lib_articleExtraction from "../lib/articleExtraction.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   healthCheck: typeof healthCheck;
   http: typeof http;
   ingestion: typeof ingestion;
+  insights: typeof insights;
   interactions: typeof interactions;
   "lib/aiCall": typeof lib_aiCall;
   "lib/articleExtraction": typeof lib_articleExtraction;

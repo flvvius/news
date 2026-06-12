@@ -2,7 +2,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, useMutation } from "convex/react";
 import { useCallback } from "react";
-import { Pressable, Share } from "react-native";
+import { Pressable, Share, Text } from "react-native";
 
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/contexts/locale-context";
@@ -19,6 +19,8 @@ type ShareEventButtonProps = {
   title: string;
   interactionContext?: InteractionContextSnapshot;
   size?: "default" | "sm";
+  /** Renders a quiet icon+text row instead of the circular icon button. */
+  label?: string;
   className?: string;
 };
 
@@ -28,6 +30,7 @@ export function ShareEventButton({
   title,
   interactionContext,
   size = "default",
+  label,
   className,
 }: ShareEventButtonProps) {
   const t = useT();
@@ -55,6 +58,30 @@ export function ShareEventButton({
       // User dismissed the share sheet or sharing is unavailable.
     }
   }, [slug, title, isAuthenticated, logInteraction, eventId, interactionContext]);
+
+  if (label) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("share.label")}
+        onPress={() => void handlePress()}
+        hitSlop={8}
+        className={cn(
+          "min-h-11 flex-row items-center gap-1.5 active:opacity-70",
+          className,
+        )}
+      >
+        <Icon
+          name="share-outline"
+          size={15}
+          className="text-muted-foreground"
+        />
+        <Text className="text-sm font-medium text-muted-foreground">
+          {label}
+        </Text>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
