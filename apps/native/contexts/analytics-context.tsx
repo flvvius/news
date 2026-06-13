@@ -70,6 +70,12 @@ export type Analytics = {
   ) => void;
   /** Alias the current (anonymous) distinct ID to another id. */
   aliasUser: (alias: string) => void;
+  /**
+   * Persist the device UUID as a super property so every event — including
+   * anonymous, pre-signup ones — carries it for guest→account funnel
+   * stitching.
+   */
+  registerDeviceId: (deviceId: string) => void;
   /** Clear identity on logout so the next guest session starts clean. */
   reset: () => void;
 };
@@ -98,6 +104,13 @@ export function useAnalytics(): Analytics {
       aliasUser: (alias) => {
         try {
           client?.alias(alias);
+        } catch {
+          // Best-effort.
+        }
+      },
+      registerDeviceId: (deviceId) => {
+        try {
+          client?.register({ device_uuid: deviceId });
         } catch {
           // Best-effort.
         }

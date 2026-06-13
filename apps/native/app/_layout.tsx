@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AnalyticsProvider } from "@/contexts/analytics-context";
 import { AppThemeProvider } from "@/contexts/app-theme-context";
+import { DeviceIdentityProvider } from "@/contexts/device-identity-context";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 import { useTokenColor } from "@/lib/use-token-color";
@@ -46,18 +47,20 @@ export default function RootLayout() {
   return (
     <ConvexBetterAuthProvider client={convex} authClient={authClient}>
       <AnalyticsProvider>
-        <GestureHandlerRootView className="flex-1">
-          <KeyboardProvider>
-            <AppThemeProvider>
-              <LocaleProvider>
-                <BottomSheetModalProvider>
-                  <StatusBar style="auto" />
-                  <RootStack />
-                </BottomSheetModalProvider>
-              </LocaleProvider>
-            </AppThemeProvider>
-          </KeyboardProvider>
-        </GestureHandlerRootView>
+        <DeviceIdentityProvider>
+          <GestureHandlerRootView className="flex-1">
+            <KeyboardProvider>
+              <AppThemeProvider>
+                <LocaleProvider>
+                  <BottomSheetModalProvider>
+                    <StatusBar style="auto" />
+                    <RootStack />
+                  </BottomSheetModalProvider>
+                </LocaleProvider>
+              </AppThemeProvider>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </DeviceIdentityProvider>
       </AnalyticsProvider>
     </ConvexBetterAuthProvider>
   );
