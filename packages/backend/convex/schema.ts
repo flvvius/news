@@ -642,6 +642,12 @@ export default defineSchema({
         v.union(v.literal("ro"), v.literal("en")),
       ),
     }),
+
+    // Topics the user follows (from onboarding's topic picker or settings).
+    // Drives the client-side feed boost — never a hard filter. Optional so
+    // existing rows and guests-before-signup are valid; the guest's local
+    // selection migrates here at merge.
+    followedTopicIds: v.optional(v.array(v.id("topics"))),
   })
     .index("by_email", ["email"])
     .index("by_auth_user_id", ["authUserId"]),

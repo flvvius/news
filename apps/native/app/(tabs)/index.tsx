@@ -2,7 +2,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 
 import { EventRow, type FeedEvent } from "@/components/event-row";
@@ -12,8 +12,11 @@ import { Screen } from "@/components/screen";
 import { Icon } from "@/components/ui/icon";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { EmptyState } from "@/components/ui/state-views";
+import { useAnalytics } from "@/contexts/analytics-context";
+import { useFollowedTopics } from "@/contexts/followed-topics-context";
 import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
+import { topicLabelKey } from "@/lib/topic-label";
 
 type FeedSort = "recent" | "trending";
 
@@ -116,6 +119,8 @@ export default function FeedScreen() {
 
 function FeedContent() {
   const t = useT();
+  const { track } = useAnalytics();
+  const { followedTopicIds } = useFollowedTopics();
   const topics = useQuery(api.topics.getTopics);
   const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
 
@@ -154,10 +159,10 @@ function FeedContent() {
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};
     topics?.forEach((topic) => {
-      map[topic._id] = topic.displayName;
+      map[topic._id] = t(topicLabelKey(topic.slug), topic.displayName);
     });
     return map;
-  }, [topics]);
+  }, [topics, t]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -165,6 +170,17 @@ function FeedContent() {
     // by remounting the paginated subtree (no manual refetching).
     setRefreshKey((key) => key + 1);
   }, []);
+
+  // Fire `first_feed_render` once per feed mount, the first time content is
+  // ready (survives sort/topic switches, which only remount FeedList).
+  const firstRenderTracked = useRef(false);
+  const handleFirstPageLoaded = useCallback(() => {
+    setIsRefreshing(false);
+    if (!firstRenderTracked.current) {
+      firstRenderTracked.current = true;
+      track({ name: "first_feed_render" });
+    }
+  }, [track]);
 
   return (
     <View className="flex-1">
@@ -242,6 +258,7 @@ function FeedContent() {
               topics={topics}
               selectedTopic={selectedTopic}
               onSelect={setSelectedTopic}
+              pinnedTopicIds={followedTopicIds}
             />
             <View className="px-5">
               <SortTextControl value={feedSort} onChange={setFeedSort} />
@@ -262,11 +279,12 @@ function FeedContent() {
           key={`${refreshKey}:${feedSort}:${String(selectedTopic)}`}
           feedSort={feedSort}
           selectedTopic={selectedTopic}
+          followedTopicIds={followedTopicIds}
           pageSize={pageSize}
           topicNamesById={topicNamesById}
           isRefreshing={isRefreshing}
           onRefresh={handleRefresh}
-          onFirstPageLoaded={() => setIsRefreshing(false)}
+          onFirstPageLoaded={handleFirstPageLoaded}
         />
       )}
     </View>
@@ -341,6 +359,7 @@ function SearchResults({
 function FeedList({
   feedSort,
   selectedTopic,
+  followedTopicIds,
   pageSize,
   topicNamesById,
   isRefreshing,
@@ -349,6 +368,7 @@ function FeedList({
 }: {
   feedSort: FeedSort;
   selectedTopic: Id<"topics"> | "all";
+  followedTopicIds: Id<"topics">[];
   pageSize: number;
   topicNamesById: Record<string, string>;
   isRefreshing: boolean;
@@ -374,8 +394,36 @@ function FeedList({
     }
   }, [status, onFirstPageLoaded]);
 
+  const followedSet = useMemo(
+    () => new Set(followedTopicIds.map(String)),
+    [followedTopicIds],
+  );
+
+  // HARD GUARANTEE (topic boost, layer 1): the rank-1 global cluster — the
+  // day's biggest story — is always the lead and is NEVER displaced, demoted,
+  // or filtered out by topic selection. The boost below only reorders what
+  // comes after it.
   const leadEvent = events[0];
-  const remainingEvents = useMemo(() => events.slice(1), [events]);
+
+  const remainingEvents = useMemo(() => {
+    const rest = events.slice(1);
+    // Boost (layer 2) applies only to the unfiltered "all" view and only as a
+    // STABLE reorder: followed-topic stories rise above the rest, but every
+    // story still appears — this is a boost, never a filter. A specific topic
+    // chip uses the existing single-topic query instead.
+    if (selectedTopic !== "all" || followedSet.size === 0) {
+      return rest;
+    }
+    const followed: FeedEvent[] = [];
+    const others: FeedEvent[] = [];
+    for (const event of rest) {
+      const isFollowed = (event.topicIds ?? []).some((id) =>
+        followedSet.has(String(id)),
+      );
+      (isFollowed ? followed : others).push(event);
+    }
+    return [...followed, ...others];
+  }, [events, selectedTopic, followedSet]);
 
   const handleEndReached = useCallback(() => {
     if (status === "CanLoadMore") {

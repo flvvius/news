@@ -5,9 +5,11 @@ import { PressableScale } from "@/components/ui/pressable-scale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
+import { topicLabelKey } from "@/lib/topic-label";
 
 export type TopicOption = {
   _id: Id<"topics">;
+  slug: string;
   displayName: string;
 };
 
@@ -15,6 +17,8 @@ type TopicChipsProps = {
   topics: TopicOption[] | undefined;
   selectedTopic: Id<"topics"> | "all";
   onSelect: (topic: Id<"topics"> | "all") => void;
+  /** Followed topics — surfaced first (after "All") for one-tap access. */
+  pinnedTopicIds?: Id<"topics">[];
 };
 
 /**
@@ -22,7 +26,12 @@ type TopicChipsProps = {
  * filters are touched dozens of times a day, so they get press feedback
  * and nothing else (frequency law).
  */
-export function TopicChips({ topics, selectedTopic, onSelect }: TopicChipsProps) {
+export function TopicChips({
+  topics,
+  selectedTopic,
+  onSelect,
+  pinnedTopicIds,
+}: TopicChipsProps) {
   const t = useT();
 
   if (topics === undefined) {
@@ -35,9 +44,23 @@ export function TopicChips({ topics, selectedTopic, onSelect }: TopicChipsProps)
     );
   }
 
+  // Pinned (followed) topics lead, in the order given; the rest follow in
+  // their existing order. Pure reorder — every topic still appears.
+  const pinned = pinnedTopicIds ?? [];
+  const pinnedSet = new Set(pinned.map(String));
+  const orderedTopics = [
+    ...pinned
+      .map((id) => topics.find((topic) => topic._id === id))
+      .filter((topic): topic is TopicOption => topic !== undefined),
+    ...topics.filter((topic) => !pinnedSet.has(String(topic._id))),
+  ];
+
   const chips: Array<{ id: Id<"topics"> | "all"; label: string }> = [
     { id: "all", label: t("feed.topic.all") },
-    ...topics.map((topic) => ({ id: topic._id, label: topic.displayName })),
+    ...orderedTopics.map((topic) => ({
+      id: topic._id,
+      label: t(topicLabelKey(topic.slug), topic.displayName),
+    })),
   ];
 
   return (

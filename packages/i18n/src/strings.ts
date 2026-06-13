@@ -279,6 +279,47 @@ const ro = {
   "feed.topic.filter": "Filtrează după topic",
   "feed.topic.drawerTitle": "Filtrează după topic",
   "feed.topic.drawerBody": "Selectează un topic pentru a filtra poveștile",
+
+  // Localized topic display names (keyed by catalog slug). Fall back to the
+  // backend English displayName if a key is missing.
+  "topic.world": "Lume",
+  "topic.politics": "Politică",
+  "topic.elections": "Alegeri",
+  "topic.policy": "Politici publice",
+  "topic.courts": "Justiție",
+  "topic.immigration": "Imigrație",
+  "topic.economy": "Economie",
+  "topic.business": "Afaceri",
+  "topic.markets": "Piețe",
+  "topic.labor": "Muncă",
+  "topic.housing": "Locuințe",
+  "topic.tech": "Tehnologie",
+  "topic.ai": "IA",
+  "topic.cybersecurity": "Securitate cibernetică",
+  "topic.crypto": "Cripto",
+  "topic.health": "Sănătate",
+  "topic.science": "Știință",
+  "topic.climate": "Climă",
+  "topic.energy": "Energie",
+  "topic.defense": "Apărare",
+  "topic.education": "Educație",
+  "topic.transportation": "Transporturi",
+
+  // Onboarding — Screen A (the promise)
+  "onboarding.promise.headline": "Vezi fiecare parte a poveștii.",
+  "onboarding.promise.cardKicker": "Știrea zilei",
+  "onboarding.promise.cardTitle":
+    "Liderii ajung la un acord provizoriu după negocieri de noapte",
+  "onboarding.promise.cardSummary":
+    "Presa e împărțită în privința semnificației acordului — compară cum încadrează stânga, centrul și dreapta același rezultat.",
+  "onboarding.promise.continue": "Continuă",
+  // Onboarding — Screen B (topic picker)
+  "onboarding.topics.title": "Urmărește ce contează pentru tine",
+  "onboarding.topics.subtitle":
+    "Alege câteva subiecte ca să-ți modelezi feedul. Cele mai importante știri ale zilei apar mereu.",
+  "onboarding.topics.hint": "Alege 3–5 pentru început",
+  "onboarding.topics.continue": "Arată-mi feedul",
+  "onboarding.topics.skip": "Omite",
   "feed.close": "Închide",
   "feed.search.placeholder": "Caută evenimente după titlu...",
   "feed.search.label": "Caută evenimente",
@@ -929,6 +970,47 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.topic.filter": "Filter by topic",
   "feed.topic.drawerTitle": "Filter by topic",
   "feed.topic.drawerBody": "Select a topic to filter stories",
+
+  // Localized topic display names (keyed by catalog slug). Fall back to the
+  // backend English displayName if a key is missing.
+  "topic.world": "World",
+  "topic.politics": "Politics",
+  "topic.elections": "Elections",
+  "topic.policy": "Policy",
+  "topic.courts": "Courts",
+  "topic.immigration": "Immigration",
+  "topic.economy": "Economy",
+  "topic.business": "Business",
+  "topic.markets": "Markets",
+  "topic.labor": "Labor",
+  "topic.housing": "Housing",
+  "topic.tech": "Tech",
+  "topic.ai": "AI",
+  "topic.cybersecurity": "Cybersecurity",
+  "topic.crypto": "Crypto",
+  "topic.health": "Health",
+  "topic.science": "Science",
+  "topic.climate": "Climate",
+  "topic.energy": "Energy",
+  "topic.defense": "Defense",
+  "topic.education": "Education",
+  "topic.transportation": "Transportation",
+
+  // Onboarding — Screen A (the promise)
+  "onboarding.promise.headline": "See every side of the story.",
+  "onboarding.promise.cardKicker": "Top story",
+  "onboarding.promise.cardTitle":
+    "Leaders reach a tentative deal after late-night talks",
+  "onboarding.promise.cardSummary":
+    "Coverage splits on what the agreement means — compare how the left, center, and right frame the same outcome.",
+  "onboarding.promise.continue": "Continue",
+  // Onboarding — Screen B (topic picker)
+  "onboarding.topics.title": "Follow what matters to you",
+  "onboarding.topics.subtitle":
+    "Pick a few topics to shape your feed. The day's biggest stories always show up.",
+  "onboarding.topics.hint": "Choose 3–5 to start",
+  "onboarding.topics.continue": "Show my feed",
+  "onboarding.topics.skip": "Skip",
   "feed.close": "Close",
   "feed.search.placeholder": "Search events by title...",
   "feed.search.label": "Search events",
