@@ -100,7 +100,7 @@ function ClaimVariantRow({
           {variant.value ? ` · ${variant.value}` : ""}
         </Text>
       </View>
-      <Text className="max-w-[455px] text-lg leading-relaxed text-muted-foreground">
+      <Text className="max-w-[455px] text-base leading-relaxed text-muted-foreground">
         {variant.statement}
       </Text>
       {article ? (
@@ -161,7 +161,7 @@ function ClaimRow({
           )}
         />
         <View className="min-w-0 flex-1 gap-1.5">
-          <Text className="max-w-[455px] text-lg font-medium leading-snug text-foreground">
+          <Text className="max-w-[455px] text-base font-medium leading-snug text-foreground">
             {claim.canonicalStatement}
           </Text>
           <Text className="text-sm text-muted-foreground">
@@ -250,12 +250,12 @@ export function EventClaimComparison({
   if (claims === undefined) {
     return (
       <View className="gap-4">
-        <Text className="text-2xl font-semibold tracking-tight text-foreground">
+        <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
           {t("native.event.claimsTitle")}
         </Text>
         <Text
           accessibilityLiveRegion="polite"
-          className="text-lg text-muted-foreground"
+          className="text-base text-muted-foreground"
         >
           {t("claim.loading")}
         </Text>
@@ -266,10 +266,10 @@ export function EventClaimComparison({
   if (claims.length === 0) {
     return (
       <View className="gap-4">
-        <Text className="text-2xl font-semibold tracking-tight text-foreground">
+        <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
           {t("native.event.claimsTitle")}
         </Text>
-        <Text className="max-w-[455px] text-lg leading-relaxed text-muted-foreground">
+        <Text className="max-w-[455px] text-base leading-relaxed text-muted-foreground">
           {t("claim.unavailableBody")}
         </Text>
       </View>
@@ -308,7 +308,9 @@ export function EventClaimComparison({
                     STATUS_MARK[status],
                   )}
                 />
-                <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
+                {/* Subheading level: 15 medium, sentence case — sits below
+                    the uppercase zone label without competing with it. */}
+                <Text className="text-sm font-medium text-foreground">
                   {t(STATUS_HEADING_KEY[status])}
                 </Text>
               </View>

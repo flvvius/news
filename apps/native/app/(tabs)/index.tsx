@@ -2,27 +2,14 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  Text,
-  TextInput,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 
-import { EventCard, type FeedEvent } from "@/components/event-card";
-import { EventCardSkeleton } from "@/components/feed/event-card-skeleton";
-import { TopicFilter } from "@/components/feed/topic-filter";
+import { EventRow, type FeedEvent } from "@/components/event-row";
+import { EventRowSkeleton } from "@/components/feed/event-row-skeleton";
+import { TopicChips } from "@/components/feed/topic-chips";
 import { Screen } from "@/components/screen";
-import { Icon, type IconName } from "@/components/ui/icon";
+import { Icon } from "@/components/ui/icon";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { EmptyState } from "@/components/ui/state-views";
 import { useT } from "@/contexts/locale-context";
@@ -31,14 +18,6 @@ import { cn } from "@/lib/cn";
 type FeedSort = "recent" | "trending";
 
 const MAX_FEED_PAGE_SIZE = 50;
-const MAX_EVENT_CARD_SOURCES = 10;
-
-/** Fixed height of the floating feed toolbar (one compact control row). */
-const HEADER_HEIGHT = 52;
-/** Top padding for list content so it starts below the floating toolbar. */
-const LIST_TOP_PADDING = HEADER_HEIGHT + 20;
-/** Scroll distance (px) before the toolbar starts hiding/revealing. */
-const SCROLL_DIRECTION_THRESHOLD = 6;
 
 function clampConfigNumber(
   raw: unknown,
@@ -52,49 +31,71 @@ function clampConfigNumber(
     : fallback;
 }
 
-function SortToggleButton({
-  label,
-  icon,
-  isActive,
-  onPress,
-}: {
-  label: string;
-  icon: IconName;
-  isActive: boolean;
-  onPress: () => void;
-}) {
-  const t = useT();
+/** Hairline between rows — the only separator the feed uses. */
+function RowSeparator() {
+  return <View className="h-px bg-border" />;
+}
 
+function FeedLoadingRows() {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t("native.feed.sortBy").replace("{label}", label)}
-      accessibilityState={{ selected: isActive }}
-      onPress={onPress}
-      className={cn(
-        "h-7 flex-row items-center gap-1 rounded-full",
-        // Compact segmented control: only the active segment carries its
-        // label, so the row width no longer depends on translation length.
-        isActive ? "bg-background px-3" : "px-2.5",
-      )}
-    >
-      <Icon
-        name={icon}
-        size={13}
-        className={isActive ? "text-foreground" : "text-muted-foreground"}
-      />
-      {isActive ? (
-        <Text className="text-xs font-medium text-foreground">{label}</Text>
-      ) : null}
-    </Pressable>
+    <View className="flex-1 px-5">
+      <EventRowSkeleton lead />
+      <RowSeparator />
+      <EventRowSkeleton />
+      <RowSeparator />
+      <EventRowSkeleton />
+    </View>
   );
 }
 
-function SectionHeading({ title }: { title: string }) {
+/**
+ * Plain-text segmented control: state reads through weight and color,
+ * not pills. Switching is instant (frequency law).
+ */
+function SortTextControl({
+  value,
+  onChange,
+}: {
+  value: FeedSort;
+  onChange: (sort: FeedSort) => void;
+}) {
+  const t = useT();
+  const options: Array<{ value: FeedSort; label: string }> = [
+    { value: "trending", label: t("feed.sort.trending") },
+    { value: "recent", label: t("feed.sort.recent") },
+  ];
+
   return (
-    <Text className="text-lg font-semibold tracking-tight text-foreground">
-      {title}
-    </Text>
+    <View className="flex-row gap-6" accessibilityRole="tablist">
+      {options.map((option) => {
+        const isActive = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="tab"
+            accessibilityLabel={t("native.feed.sortBy").replace(
+              "{label}",
+              option.label,
+            )}
+            accessibilityState={{ selected: isActive }}
+            onPress={() => onChange(option.value)}
+            hitSlop={8}
+            className="min-h-11 justify-center active:opacity-70"
+          >
+            <Text
+              className={cn(
+                "text-sm",
+                isActive
+                  ? "font-semibold text-foreground"
+                  : "font-medium text-muted-foreground",
+              )}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -124,12 +125,6 @@ function FeedContent() {
     1,
     MAX_FEED_PAGE_SIZE,
   );
-  const maxSources = clampConfigNumber(
-    runtimeConfig?.eventCardMaxSources,
-    5,
-    0,
-    MAX_EVENT_CARD_SOURCES,
-  );
 
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
@@ -149,41 +144,6 @@ function FeedContent() {
   }, [searchInput]);
 
   const isSearching = searchMode && debouncedSearch.length >= 2;
-
-  // Partially persistent toolbar (NN/g): hide on scroll down, reveal on any
-  // scroll up or near the top. Pinned while searching.
-  const headerShown = useSharedValue(1);
-  const lastOffsetY = useRef(0);
-  const searchModeRef = useRef(searchMode);
-  searchModeRef.current = searchMode;
-
-  const headerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (headerShown.value - 1) * HEADER_HEIGHT }],
-    opacity: headerShown.value,
-  }));
-
-  const handleListScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = event.nativeEvent.contentOffset.y;
-      const delta = y - lastOffsetY.current;
-      lastOffsetY.current = y;
-      if (searchModeRef.current) return;
-
-      if (y <= HEADER_HEIGHT) {
-        headerShown.value = withTiming(1, { duration: 250 });
-      } else if (delta > SCROLL_DIRECTION_THRESHOLD) {
-        headerShown.value = withTiming(0, { duration: 250 });
-      } else if (delta < -SCROLL_DIRECTION_THRESHOLD) {
-        headerShown.value = withTiming(1, { duration: 250 });
-      }
-    },
-    [headerShown],
-  );
-
-  const enterSearchMode = useCallback(() => {
-    setSearchMode(true);
-    headerShown.value = withTiming(1, { duration: 200 });
-  }, [headerShown]);
 
   const exitSearchMode = useCallback(() => {
     setSearchMode(false);
@@ -208,13 +168,12 @@ function FeedContent() {
 
   return (
     <View className="flex-1">
-      <Animated.View
-        style={[{ height: HEADER_HEIGHT }, headerStyle]}
-        className="absolute left-0 right-0 top-0 z-10 justify-center border-b border-border/70 bg-card/95 px-4"
-      >
+      {/* Static masthead — no hide-on-scroll: the feed is read dozens of
+          times a day, so its chrome holds still. */}
+      <View className="gap-3 border-b border-border pb-3">
         {searchMode ? (
-          <View className="flex-row items-center gap-2">
-            <View className="h-9 min-w-0 flex-1 flex-row items-center gap-2 rounded-full border border-input bg-background px-3">
+          <View className="flex-row items-center gap-3 px-5 pt-2">
+            <View className="h-11 min-w-0 flex-1 flex-row items-center gap-2 rounded-md border border-input bg-background px-3">
               <Icon
                 name="search-outline"
                 size={15}
@@ -230,7 +189,7 @@ function FeedContent() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
-                className="h-9 min-w-0 flex-1 text-base text-foreground"
+                className="h-11 min-w-0 flex-1 text-base text-foreground"
               />
               {searchInput.length > 0 ? (
                 <Pressable
@@ -252,52 +211,50 @@ function FeedContent() {
               accessibilityLabel={t("feed.search.clear")}
               onPress={exitSearchMode}
               hitSlop={8}
-              className="size-9 items-center justify-center rounded-full active:bg-muted/60"
+              className="min-h-11 justify-center active:opacity-70"
             >
-              <Icon name="close-outline" size={20} className="text-foreground" />
+              <Text className="text-base font-medium text-foreground">
+                {t("native.feed.searchCancel")}
+              </Text>
             </Pressable>
           </View>
         ) : (
-          <View className="flex-row items-center gap-2">
-            <View className="min-w-0 flex-1">
-              <TopicFilter
-                topics={topics}
-                selectedTopic={selectedTopic}
-                onSelect={setSelectedTopic}
-              />
+          <>
+            <View className="flex-row items-center justify-between px-5 pt-2">
+              <Text className="text-3xl font-semibold tracking-tight text-foreground">
+                Biviant
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("feed.search.label")}
+                onPress={() => setSearchMode(true)}
+                hitSlop={6}
+                className="size-11 items-center justify-center active:opacity-70"
+              >
+                <Icon
+                  name="search-outline"
+                  size={20}
+                  className="text-foreground"
+                />
+              </Pressable>
             </View>
-            <View className="h-9 flex-row items-center rounded-full bg-muted/70 p-1">
-              <SortToggleButton
-                label={t("feed.sort.recent")}
-                icon="time-outline"
-                isActive={feedSort === "recent"}
-                onPress={() => setFeedSort("recent")}
-              />
-              <SortToggleButton
-                label={t("feed.sort.trending")}
-                icon="trending-up-outline"
-                isActive={feedSort === "trending"}
-                onPress={() => setFeedSort("trending")}
-              />
+            <TopicChips
+              topics={topics}
+              selectedTopic={selectedTopic}
+              onSelect={setSelectedTopic}
+            />
+            <View className="px-5">
+              <SortTextControl value={feedSort} onChange={setFeedSort} />
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("feed.search.label")}
-              onPress={enterSearchMode}
-              className="size-9 items-center justify-center rounded-full border border-border bg-background active:opacity-80"
-            >
-              <Icon name="search-outline" size={16} className="text-foreground" />
-            </Pressable>
-          </View>
+          </>
         )}
-      </Animated.View>
+      </View>
 
       {isSearching ? (
         <SearchResults
           query={debouncedSearch}
           selectedTopic={selectedTopic}
           pageSize={pageSize}
-          maxSources={maxSources}
           topicNamesById={topicNamesById}
         />
       ) : (
@@ -306,12 +263,10 @@ function FeedContent() {
           feedSort={feedSort}
           selectedTopic={selectedTopic}
           pageSize={pageSize}
-          maxSources={maxSources}
           topicNamesById={topicNamesById}
           isRefreshing={isRefreshing}
           onRefresh={handleRefresh}
           onFirstPageLoaded={() => setIsRefreshing(false)}
-          onScroll={handleListScroll}
         />
       )}
     </View>
@@ -322,13 +277,11 @@ function SearchResults({
   query,
   selectedTopic,
   pageSize,
-  maxSources,
   topicNamesById,
 }: {
   query: string;
   selectedTopic: Id<"topics"> | "all";
   pageSize: number;
-  maxSources: number;
   topicNamesById: Record<string, string>;
 }) {
   const t = useT();
@@ -340,27 +293,24 @@ function SearchResults({
 
   if (results === undefined) {
     return (
-      <View
-        className="flex-1 gap-5 px-4"
-        style={{ paddingTop: LIST_TOP_PADDING }}
-      >
+      <View className="flex-1 gap-2 px-5 pt-4">
         <Text
           accessibilityLiveRegion="polite"
           className="text-sm text-muted-foreground"
         >
           {t("feed.searching")}
         </Text>
-        <EventCardSkeleton />
-        <EventCardSkeleton />
+        <EventRowSkeleton />
+        <RowSeparator />
+        <EventRowSkeleton />
       </View>
     );
   }
 
   if (results.length === 0) {
     return (
-      <View className="flex-1 px-4" style={{ paddingTop: LIST_TOP_PADDING + 4 }}>
+      <View className="flex-1 px-5">
         <EmptyState
-          icon="search-outline"
           title={t("native.feed.emptyTitle")}
           body={t("native.feed.searchEmpty").replace("{query}", query)}
         />
@@ -368,47 +318,21 @@ function SearchResults({
     );
   }
 
-  const [topResult, ...moreResults] = results;
-
   return (
     <FlashList
-      data={moreResults}
+      data={results}
       keyExtractor={(event: FeedEvent) => event._id}
-      getItemType={() => "event-card"}
-      contentContainerStyle={{
-        paddingHorizontal: 16,
-        paddingBottom: 112,
-        paddingTop: HEADER_HEIGHT,
-      }}
+      getItemType={() => "event-row"}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={
-        <View className="gap-4 pb-5 pt-5">
-          <View className="gap-1">
-            <SectionHeading title={t("feed.topSearch")} />
-            <Text className="text-xs text-muted-foreground">
-              {t("feed.search.indexed").replace("{query}", query)}
-            </Text>
-          </View>
-          <EventCard
-            event={topResult}
-            topicNamesById={topicNamesById}
-            maxSources={maxSources}
-            variant="feature"
-          />
-          {moreResults.length > 0 ? (
-            <View className="pt-2">
-              <SectionHeading title={t("feed.moreSearch")} />
-            </View>
-          ) : null}
-        </View>
+        <Text className="pt-4 text-[11px] font-semibold uppercase tracking-[1.6px] text-muted-foreground">
+          {t("feed.search.indexed").replace("{query}", query)}
+        </Text>
       }
-      ItemSeparatorComponent={() => <View className="h-5" />}
+      ItemSeparatorComponent={RowSeparator}
       renderItem={({ item }: { item: FeedEvent }) => (
-        <EventCard
-          event={item}
-          topicNamesById={topicNamesById}
-          maxSources={maxSources}
-        />
+        <EventRow event={item} topicNamesById={topicNamesById} />
       )}
     />
   );
@@ -418,22 +342,18 @@ function FeedList({
   feedSort,
   selectedTopic,
   pageSize,
-  maxSources,
   topicNamesById,
   isRefreshing,
   onRefresh,
   onFirstPageLoaded,
-  onScroll,
 }: {
   feedSort: FeedSort;
   selectedTopic: Id<"topics"> | "all";
   pageSize: number;
-  maxSources: number;
   topicNamesById: Record<string, string>;
   isRefreshing: boolean;
   onRefresh: () => void;
   onFirstPageLoaded: () => void;
-  onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
   const t = useT();
   const {
@@ -454,7 +374,7 @@ function FeedList({
     }
   }, [status, onFirstPageLoaded]);
 
-  const featuredEvent = events[0];
+  const leadEvent = events[0];
   const remainingEvents = useMemo(() => events.slice(1), [events]);
 
   const handleEndReached = useCallback(() => {
@@ -464,20 +384,12 @@ function FeedList({
   }, [status, loadMore, pageSize]);
 
   if (status === "LoadingFirstPage") {
-    return (
-      <View
-        className="flex-1 gap-5 px-4"
-        style={{ paddingTop: LIST_TOP_PADDING }}
-      >
-        <EventCardSkeleton />
-        <EventCardSkeleton />
-      </View>
-    );
+    return <FeedLoadingRows />;
   }
 
   if (events.length === 0) {
     return (
-      <View className="flex-1 px-4" style={{ paddingTop: LIST_TOP_PADDING + 4 }}>
+      <View className="flex-1 px-5">
         <EmptyState
           title={t("native.feed.emptyTitle")}
           body={
@@ -494,66 +406,39 @@ function FeedList({
     <FlashList
       data={remainingEvents}
       keyExtractor={(event: FeedEvent) => event._id}
-      getItemType={() => "event-card"}
-      contentContainerStyle={{
-        paddingHorizontal: 16,
-        paddingBottom: 112,
-        paddingTop: HEADER_HEIGHT,
-      }}
+      getItemType={() => "event-row"}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
       onEndReached={handleEndReached}
       onEndReachedThreshold={1.2}
-      onScroll={onScroll}
-      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
           onRefresh={onRefresh}
-          progressViewOffset={HEADER_HEIGHT}
           tintColorClassName="accent-primary"
           colorsClassName="accent-primary"
         />
       }
       ListHeaderComponent={
-        featuredEvent ? (
-          <View className="gap-4 pb-5 pt-5">
-            <SectionHeading
-              title={
-                feedSort === "recent"
-                  ? t("feed.leadStory")
-                  : t("feed.trendingStory")
-              }
-            />
-            <EventCard
-              event={featuredEvent}
+        leadEvent ? (
+          <View>
+            <EventRow
+              event={leadEvent}
               topicNamesById={topicNamesById}
-              maxSources={maxSources}
-              variant="feature"
+              variant="lead"
             />
-            {remainingEvents.length > 0 ? (
-              <View className="pt-2">
-                <SectionHeading title={t("feed.moreEvents")} />
-              </View>
-            ) : null}
+            {remainingEvents.length > 0 ? <RowSeparator /> : null}
           </View>
         ) : null
       }
-      ItemSeparatorComponent={() => <View className="h-5" />}
+      ItemSeparatorComponent={RowSeparator}
       renderItem={({ item }: { item: FeedEvent }) => (
-        <EventCard
-          event={item}
-          topicNamesById={topicNamesById}
-          maxSources={maxSources}
-        />
+        <EventRow event={item} topicNamesById={topicNamesById} />
       )}
       ListFooterComponent={
         status === "LoadingMore" ? (
-          <View className="items-center py-6">
-            <Text
-              accessibilityLiveRegion="polite"
-              className="text-sm text-muted-foreground"
-            >
-              {t("native.feed.loadingMore")}
-            </Text>
+          <View accessibilityLiveRegion="polite">
+            <RowSeparator />
+            <EventRowSkeleton />
           </View>
         ) : null
       }

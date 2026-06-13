@@ -53,7 +53,7 @@ export function PerspectiveSummaries({
 
   return (
     <View className="gap-4">
-      <Text className="text-2xl font-semibold tracking-tight text-foreground">
+      <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
         {t("event.multiplePerspectives")}
       </Text>
 
@@ -72,7 +72,7 @@ export function PerspectiveSummaries({
             >
               <Text
                 className={cn(
-                  "text-lg",
+                  "text-base",
                   isActive
                     ? "font-semibold text-foreground"
                     : "font-medium text-muted-foreground",
@@ -92,7 +92,7 @@ export function PerspectiveSummaries({
       </View>
 
       <Animated.View key={active} entering={FadeIn.duration(150)}>
-        <Text className="max-w-[455px] text-lg leading-relaxed text-foreground">
+        <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
           {activeText}
         </Text>
       </Animated.View>

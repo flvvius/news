@@ -1,39 +1,52 @@
 import { api } from "@news-app/backend/convex/_generated/api";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlashList } from "@shopify/flash-list";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
-import { EventCard, type EventCardEvent } from "@/components/event-card";
-import { EventCardSkeleton } from "@/components/feed/event-card-skeleton";
+import { EventRow, type EventRowEvent } from "@/components/event-row";
+import { EventRowSkeleton } from "@/components/feed/event-row-skeleton";
 import { Screen } from "@/components/screen";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { EmptyState } from "@/components/ui/state-views";
+import { SwipeToRemoveRow } from "@/components/ui/swipe-to-remove-row";
+import { Toast } from "@/components/ui/toast";
 import { useT } from "@/contexts/locale-context";
+import { NATIVE_DEVICE_TYPE } from "@/lib/interactions";
 
-function clampMaxSources(raw: unknown): number {
-  const value = Number(raw);
-  return Number.isFinite(value)
-    ? Math.min(10, Math.max(0, Math.floor(value)))
-    : 5;
+function RowSeparator() {
+  return <View className="h-px bg-border" />;
 }
 
 function SavedHeader({ count }: { count: number }) {
   const t = useT();
 
   return (
-    <View className="gap-1">
-      <Text className="text-3xl font-bold tracking-tight text-foreground">
+    <View className="gap-1 pb-4 pt-5">
+      <Text className="text-3xl font-semibold tracking-tight text-foreground">
         {t("saved.heading")}
       </Text>
-      <Text className="text-sm text-muted-foreground">
+      <Text className="text-xs text-muted-foreground">
         {count === 0
           ? t("saved.summary.empty")
           : count === 1
             ? t("saved.summary.one")
             : t("saved.summary.many").replace("{count}", String(count))}
       </Text>
+    </View>
+  );
+}
+
+function SavedLoadingRows() {
+  return (
+    <View className="flex-1 px-5 pt-5">
+      <EventRowSkeleton />
+      <RowSeparator />
+      <EventRowSkeleton />
+      <RowSeparator />
+      <EventRowSkeleton />
     </View>
   );
 }
@@ -59,19 +72,13 @@ function SavedContent() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   if (isAuthLoading) {
-    return (
-      <View className="flex-1 gap-5 px-4 pt-5">
-        <EventCardSkeleton />
-        <EventCardSkeleton />
-      </View>
-    );
+    return <SavedLoadingRows />;
   }
 
   if (!isAuthenticated) {
     return (
-      <View className="flex-1 px-4 pt-6">
+      <View className="flex-1 px-5">
         <EmptyState
-          icon="bookmark-outline"
           title={t("saved.empty.title")}
           body={t("native.saved.signInBody")}
           actionLabel={t("auth.signIn")}
@@ -89,8 +96,27 @@ function SavedList() {
   const t = useT();
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
-  const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
-  const maxSources = clampMaxSources(runtimeConfig?.eventCardMaxSources);
+  const [removedEvent, setRemovedEvent] = useState<EventRowEvent | null>(null);
+
+  const toggleBookmark = useMutation(
+    api.interactions.toggleBookmark,
+  ).withOptimisticUpdate((localStore, args) => {
+    // Swipe removal must be instant; the undo round-trips to the server.
+    const savedEvents = localStore.getQuery(
+      api.interactions.getBookmarkedEvents,
+      {},
+    );
+    if (
+      savedEvents !== undefined &&
+      savedEvents.some((event) => event._id === args.eventId)
+    ) {
+      localStore.setQuery(
+        api.interactions.getBookmarkedEvents,
+        {},
+        savedEvents.filter((event) => event._id !== args.eventId),
+      );
+    }
+  });
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -100,21 +126,42 @@ function SavedList() {
     return map;
   }, [topics]);
 
+  const handleRemove = useCallback(
+    (event: EventRowEvent) => {
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+      setRemovedEvent(event);
+      toggleBookmark({
+        eventId: event._id,
+        metadata: { deviceType: NATIVE_DEVICE_TYPE },
+      }).catch(() => setRemovedEvent(null));
+    },
+    [toggleBookmark],
+  );
+
+  const handleUndo = useCallback(() => {
+    if (!removedEvent) return;
+    setRemovedEvent(null);
+    toggleBookmark({
+      eventId: removedEvent._id,
+      metadata: { deviceType: NATIVE_DEVICE_TYPE },
+    }).catch(() => {
+      // The bookmark list is live — a failed undo simply leaves it removed.
+    });
+  }, [removedEvent, toggleBookmark]);
+
+  const dismissToast = useCallback(() => setRemovedEvent(null), []);
+
   if (bookmarks === undefined) {
-    return (
-      <View className="flex-1 gap-5 px-4 pt-5">
-        <EventCardSkeleton />
-        <EventCardSkeleton />
-      </View>
-    );
+    return <SavedLoadingRows />;
   }
 
   if (bookmarks.length === 0) {
     return (
-      <View className="flex-1 gap-5 px-4 pt-5">
+      <View className="flex-1 px-5">
         <SavedHeader count={0} />
         <EmptyState
-          icon="bookmark-outline"
           title={t("saved.none")}
           body={t("saved.noneBody")}
           actionLabel={t("saved.browseFeed")}
@@ -125,24 +172,33 @@ function SavedList() {
   }
 
   return (
-    <FlashList
-      data={bookmarks}
-      keyExtractor={(event: EventCardEvent) => event._id}
-      getItemType={() => "event-card"}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 112 }}
-      ListHeaderComponent={
-        <View className="pb-5 pt-5">
-          <SavedHeader count={bookmarks.length} />
-        </View>
-      }
-      ItemSeparatorComponent={() => <View className="h-5" />}
-      renderItem={({ item }: { item: EventCardEvent }) => (
-        <EventCard
-          event={item}
-          topicNamesById={topicNamesById}
-          maxSources={maxSources}
+    <View className="flex-1">
+      <FlashList
+        data={bookmarks}
+        keyExtractor={(event: EventRowEvent) => event._id}
+        getItemType={() => "event-row"}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+        ListHeaderComponent={<SavedHeader count={bookmarks.length} />}
+        ItemSeparatorComponent={RowSeparator}
+        renderItem={({ item }: { item: EventRowEvent }) => (
+          <SwipeToRemoveRow
+            resetKey={item._id}
+            actionLabel={t("native.saved.removeAction")}
+            onRemove={() => handleRemove(item)}
+          >
+            <EventRow event={item} topicNamesById={topicNamesById} />
+          </SwipeToRemoveRow>
+        )}
+      />
+      {removedEvent ? (
+        <Toast
+          key={removedEvent._id}
+          message={t("native.saved.removedToast")}
+          actionLabel={t("native.saved.undo")}
+          onAction={handleUndo}
+          onDismiss={dismissToast}
         />
-      )}
-    />
+      ) : null}
+    </View>
   );
 }

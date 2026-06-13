@@ -1,3 +1,4 @@
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
@@ -24,7 +25,7 @@ import {
   SettingsGroup,
   SettingsRow,
 } from "@/components/settings/settings-group";
-import { Icon, type IconName } from "@/components/ui/icon";
+import { ConfirmSheet } from "@/components/ui/confirm-sheet";
 import { PressableScale } from "@/components/ui/pressable-scale";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,16 +41,6 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
 import { ABOUT_PAGES, aboutPageUrl } from "@/lib/site";
-
-const ABOUT_PAGE_ICONS: Record<string, IconName> = {
-  about: "information-circle-outline",
-  "how-it-works": "bulb-outline",
-  "our-sources": "library-outline",
-  contact: "mail-outline",
-  partners: "people-outline",
-  privacy: "shield-checkmark-outline",
-  terms: "document-text-outline",
-};
 
 export default function ProfileScreen() {
   const t = useT();
@@ -240,7 +231,7 @@ function AccountCard() {
 
   if (isLoading || (isAuthenticated && currentUser === undefined)) {
     return (
-      <View className="flex-row items-center gap-4 rounded-xl border border-border/80 bg-card px-4 py-4">
+      <View className="flex-row items-center gap-4 rounded-lg border border-border bg-card px-4 py-4">
         <Skeleton className="size-14 rounded-full" />
         <View className="flex-1 gap-2">
           <Skeleton className="h-5 w-32" />
@@ -251,29 +242,23 @@ function AccountCard() {
   }
 
   if (!isAuthenticated || !currentUser) {
+    // Typographic guest note — sign-in is an offer, never a wall.
     return (
-      <View className="items-center gap-3 rounded-xl border border-border/80 bg-card px-5 py-7">
-        <View className="size-14 items-center justify-center rounded-full bg-primary/10">
-          <Icon
-            name="person-circle-outline"
-            size={28}
-            className="text-primary"
-          />
-        </View>
+      <View className="gap-2 rounded-lg border border-border bg-card px-4 py-5">
         <Text className="text-base font-semibold text-foreground">
           {t("native.profile.guestTitle")}
         </Text>
-        <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[455px] text-sm leading-relaxed text-muted-foreground">
           {t("native.profile.guestBody")}
         </Text>
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={t("auth.signIn")}
           onPress={() => router.push("/auth")}
-          className="mt-1"
-          contentClassName="min-h-11 items-center justify-center rounded-full bg-primary px-6"
+          className="mt-2 self-start"
+          contentClassName="min-h-11 items-center justify-center rounded-lg bg-primary px-5"
         >
-          <Text className="text-sm font-medium text-primary-foreground">
+          <Text className="text-base font-medium text-primary-foreground">
             {t("auth.signIn")}
           </Text>
         </PressableScale>
@@ -284,7 +269,7 @@ function AccountCard() {
   const displayName = currentUser.profile?.name ?? currentUser.name ?? "—";
 
   return (
-    <View className="flex-row items-center gap-4 rounded-xl border border-border/80 bg-card px-4 py-4">
+    <View className="flex-row items-center gap-4 rounded-lg border border-border bg-card px-4 py-4">
       <View className="size-14 items-center justify-center rounded-full bg-primary/10">
         <Text className="text-xl font-semibold text-primary">
           {displayName.charAt(0).toUpperCase()}
@@ -311,6 +296,7 @@ function ProfileContent() {
   const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const deleteSheetRef = useRef<BottomSheetModal>(null);
 
   const openAboutPage = (url: string) => {
     WebBrowser.openBrowserAsync(url).catch(() => {
@@ -334,50 +320,37 @@ function ProfileContent() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      t("native.profile.deleteConfirmTitle"),
-      t("native.profile.deleteConfirmBody"),
-      [
-        { text: t("native.profile.deleteConfirmCancel"), style: "cancel" },
-        {
-          text: t("native.profile.deleteConfirmAction"),
-          style: "destructive",
-          onPress: () => {
-            authClient
-              .deleteUser()
-              .then(() => authClient.signOut())
-              .catch(() => {
-                const contactPage =
-                  ABOUT_PAGES.find((page) => page.slug === "contact") ??
-                  ABOUT_PAGES[0];
-                Alert.alert(
-                  t("native.profile.deleteFallbackTitle"),
-                  t("native.profile.deleteFallbackBody"),
-                  [
-                    {
-                      text: t("native.profile.deleteFallbackClose"),
-                      style: "cancel",
-                    },
-                    {
-                      text: t("native.profile.deleteFallbackContact"),
-                      onPress: () => openAboutPage(aboutPageUrl(contactPage)),
-                    },
-                  ],
-                );
-              });
-          },
-        },
-      ],
-    );
+  const performDeleteAccount = () => {
+    authClient
+      .deleteUser()
+      .then(() => authClient.signOut())
+      .catch(() => {
+        const contactPage =
+          ABOUT_PAGES.find((page) => page.slug === "contact") ??
+          ABOUT_PAGES[0];
+        Alert.alert(
+          t("native.profile.deleteFallbackTitle"),
+          t("native.profile.deleteFallbackBody"),
+          [
+            {
+              text: t("native.profile.deleteFallbackClose"),
+              style: "cancel",
+            },
+            {
+              text: t("native.profile.deleteFallbackContact"),
+              onPress: () => openAboutPage(aboutPageUrl(contactPage)),
+            },
+          ],
+        );
+      });
   };
 
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-6 px-4 pb-28 pt-5"
+      contentContainerClassName="gap-6 px-5 pb-8 pt-5"
     >
-      <Text className="text-3xl font-bold tracking-tight text-foreground">
+      <Text className="text-3xl font-semibold tracking-tight text-foreground">
         {t("tabs.profile")}
       </Text>
 
@@ -396,7 +369,6 @@ function ProfileContent() {
         {ABOUT_PAGES.map((page, index) => (
           <SettingsRow
             key={page.slug}
-            icon={ABOUT_PAGE_ICONS[page.slug] ?? "document-outline"}
             label={t(page.titleKey)}
             onPress={() => openAboutPage(aboutPageUrl(page))}
             isFirst={index === 0}
@@ -411,7 +383,6 @@ function ProfileContent() {
       {isAuthenticated ? (
         <SettingsGroup title={t("profile.accountSection")}>
           <SettingsRow
-            icon="log-out-outline"
             label={
               isSigningOut ? t("native.profile.signingOut") : t("auth.signOut")
             }
@@ -419,14 +390,23 @@ function ProfileContent() {
             isFirst
           />
           <SettingsRow
-            icon="trash-outline"
             label={t("native.profile.deleteConfirmTitle")}
             detail={t("native.profile.deleteDetail")}
-            onPress={handleDeleteAccount}
+            onPress={() => deleteSheetRef.current?.present()}
             destructive
           />
         </SettingsGroup>
       ) : null}
+
+      <ConfirmSheet
+        ref={deleteSheetRef}
+        title={t("native.profile.deleteConfirmTitle")}
+        body={t("native.profile.deleteConfirmBody")}
+        confirmLabel={t("native.profile.deleteConfirmAction")}
+        cancelLabel={t("native.profile.deleteConfirmCancel")}
+        destructive
+        onConfirm={performDeleteAccount}
+      />
     </ScrollView>
   );
 }

@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { Icon, type IconName } from "@/components/ui/icon";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
 
 export function SettingsGroup({
@@ -16,7 +16,7 @@ export function SettingsGroup({
       <Text className="px-1 text-xs font-semibold uppercase tracking-[1.8px] text-muted-foreground">
         {title}
       </Text>
-      <View className="overflow-hidden rounded-xl border border-border/80 bg-card">
+      <View className="overflow-hidden rounded-lg border border-border bg-card">
         {children}
       </View>
     </View>
@@ -24,7 +24,6 @@ export function SettingsGroup({
 }
 
 type SettingsRowProps = {
-  icon: IconName;
   label: string;
   detail?: string;
   onPress?: () => void;
@@ -34,8 +33,8 @@ type SettingsRowProps = {
   accessibilityLabel?: string;
 };
 
+/** Plain list row: label + chevron, hairline-separated. No leading icons. */
 export function SettingsRow({
-  icon,
   label,
   detail,
   onPress,
@@ -46,11 +45,6 @@ export function SettingsRow({
 }: SettingsRowProps) {
   const content = (
     <>
-      <Icon
-        name={icon}
-        size={20}
-        className={destructive ? "text-destructive" : "text-muted-foreground"}
-      />
       <View className="min-w-0 flex-1">
         <Text
           className={cn(

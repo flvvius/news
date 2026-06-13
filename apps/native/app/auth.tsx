@@ -75,7 +75,7 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="mb-6 flex-row items-center justify-between">
-          <Text className="text-2xl font-bold tracking-tight text-foreground">
+          <Text className="text-3xl font-semibold tracking-tight text-foreground">
             {verifyEmail
               ? t("native.auth.verifyTitle")
               : mode === "signin"
@@ -112,14 +112,12 @@ export default function AuthScreen() {
             <View className="mt-6 gap-4">
               <AuthDivider />
               {googleError ? (
-                <View
+                <Text
                   accessibilityLiveRegion="polite"
-                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5"
+                  className="text-sm text-destructive"
                 >
-                  <Text className="text-sm text-destructive">
-                    {googleError}
-                  </Text>
-                </View>
+                  {googleError}
+                </Text>
               ) : null}
               <GoogleSignInButton onSuccess={close} onError={setGoogleError} />
             </View>
@@ -143,6 +141,19 @@ export default function AuthScreen() {
                 {mode === "signin"
                   ? t("native.auth.switchToSignUp")
                   : t("native.auth.switchToSignIn")}
+              </Text>
+            </Pressable>
+
+            {/* Guest browsing stays prominent — sign-in unlocks bookmarks
+                and personalization; it is never a wall. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("native.auth.continueAsGuest")}
+              onPress={close}
+              className="mt-1 min-h-11 items-center justify-center active:opacity-70"
+            >
+              <Text className="text-sm font-medium text-muted-foreground">
+                {t("native.auth.continueAsGuest")}
               </Text>
             </Pressable>
           </>
@@ -224,12 +235,12 @@ function SignInForm({ onSuccess }: { onSuccess: () => void }) {
       </Text>
 
       {formError ? (
-        <View
+        <Text
           accessibilityLiveRegion="polite"
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5"
+          className="text-sm text-destructive"
         >
-          <Text className="text-sm text-destructive">{formError}</Text>
-        </View>
+          {formError}
+        </Text>
       ) : null}
 
       <AuthField
@@ -353,12 +364,12 @@ function SignUpForm({
       </Text>
 
       {formError ? (
-        <View
+        <Text
           accessibilityLiveRegion="polite"
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5"
+          className="text-sm text-destructive"
         >
-          <Text className="text-sm text-destructive">{formError}</Text>
-        </View>
+          {formError}
+        </Text>
       ) : null}
 
       <AuthField
@@ -434,20 +445,18 @@ function VerifyEmailNotice({
 
   return (
     <View className="gap-4">
-      <View className="items-center gap-3 rounded-xl border border-border bg-card px-5 py-8">
-        <View className="size-14 items-center justify-center rounded-full bg-primary/10">
-          <Icon name="mail-outline" size={26} className="text-primary" />
-        </View>
-        <Text className="text-center text-base font-semibold text-foreground">
+      {/* Typographic notice — no card costume, no icon mascot. */}
+      <View className="gap-2">
+        <Text className="text-base font-semibold text-foreground">
           {t("native.auth.verifyInboxTitle")}
         </Text>
-        <Text className="max-w-[252px] text-center text-sm leading-relaxed text-muted-foreground">
+        <Text className="max-w-[455px] text-sm leading-relaxed text-muted-foreground">
           {t("native.auth.verifyBody").replace("{email}", email)}
         </Text>
         {resendMessage ? (
           <Text
             accessibilityLiveRegion="polite"
-            className="text-center text-sm text-muted-foreground"
+            className="text-sm text-muted-foreground"
           >
             {resendMessage}
           </Text>

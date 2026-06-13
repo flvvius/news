@@ -105,16 +105,15 @@ export function BookmarkButton({
       onPress={handlePress}
       hitSlop={8}
       className={cn(
-        "items-center justify-center rounded-full border border-border bg-background/80 active:opacity-70",
-        size === "sm" ? "size-9" : "size-11",
-        bookmarked && "bg-primary/10",
+        // Plain icon button — state reads through fill + color, not chrome.
+        "size-11 items-center justify-center active:opacity-70",
         className,
       )}
     >
       <Icon
         name={bookmarked ? "bookmark" : "bookmark-outline"}
-        size={size === "sm" ? 16 : 20}
-        className={bookmarked ? "text-primary" : "text-muted-foreground"}
+        size={size === "sm" ? 18 : 20}
+        className={bookmarked ? "text-primary" : "text-foreground"}
       />
     </Pressable>
   );

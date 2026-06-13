@@ -88,7 +88,7 @@ function ActivitySkeleton() {
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-8 w-40" />
       </View>
-      <Skeleton className="h-36 rounded-2xl" />
+      <Skeleton className="h-36 rounded-lg" />
       <Skeleton className="h-16 rounded-xl" />
       <Skeleton className="h-44 rounded-xl" />
       <Skeleton className="h-32 rounded-xl" />
@@ -177,7 +177,7 @@ function StreakHero({
     : 1;
 
   return (
-    <View className="gap-4 rounded-2xl border border-border/70 bg-card p-5">
+    <View className="gap-4 rounded-lg border border-border bg-card p-5">
       <View className="flex-row items-center gap-4">
         <Icon name="flame" size={34} className="text-primary" />
         <View className="min-w-0 flex-1">
@@ -293,10 +293,11 @@ function EventRow({
 }
 
 function ListEmptyNote({ text }: { text: string }) {
+  // Typographic empty note — no dashed-border costume.
   return (
-    <View className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-7">
-      <Text className="text-center text-sm text-muted-foreground">{text}</Text>
-    </View>
+    <Text className="py-4 text-sm leading-relaxed text-muted-foreground">
+      {text}
+    </Text>
   );
 }
 
@@ -360,7 +361,7 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-7 px-5 pb-28 pt-6"
+      contentContainerClassName="gap-7 px-5 pb-8 pt-6"
     >
       {/* Header — typographic, no avatar chrome */}
       <View>
@@ -369,7 +370,7 @@ function ActivityDashboard({ currentUser }: { currentUser: CurrentUser }) {
         </Text>
         <Text
           numberOfLines={1}
-          className="text-3xl font-bold tracking-tight text-foreground"
+          className="text-3xl font-semibold tracking-tight text-foreground"
         >
           {userName.split(" ")[0]}
         </Text>

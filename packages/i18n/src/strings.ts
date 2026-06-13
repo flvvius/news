@@ -75,7 +75,7 @@ const ro = {
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
   "share.copied": "Linkul evenimentului a fost copiat",
   "share.failed": "Nu am putut distribui acest eveniment. Încearcă din nou.",
-  "share.label": "Distribuie acest eveniment",
+  "share.label": "Distribuie evenimentul",
   "auth.unlockTitle": "Ce deblochează un cont",
   "auth.unlockBody":
     "Conținutul rămâne deschis. Un cont adaugă doar funcții personale și persistente.",
@@ -585,6 +585,7 @@ const ro = {
     "Niciun eveniment publicat pentru acest subiect încă. Încearcă alt subiect.",
   "native.feed.loadingMore": "Încărcăm mai multe evenimente…",
   "native.feed.sortBy": "Sortează după {label}",
+  "native.feed.searchCancel": "Renunță",
   "native.event.errorTitle": "Nu am putut încărca evenimentul",
   "native.event.errorBody":
     "A apărut o problemă la încărcarea evenimentului. Încearcă din nou.",
@@ -595,6 +596,9 @@ const ro = {
     "A apărut o problemă la încărcarea salvărilor. Încearcă din nou.",
   "native.saved.signInBody":
     "Autentifică-te pentru a salva evenimente și a-ți sincroniza lista de citit pe toate dispozitivele.",
+  "native.saved.removeAction": "Elimină",
+  "native.saved.removedToast": "Eliminat din salvate",
+  "native.saved.undo": "Anulează",
   "native.profile.errorTitle": "Nu am putut încărca profilul",
   "native.profile.errorBody":
     "A apărut o problemă la încărcarea contului. Încearcă din nou.",
@@ -640,6 +644,7 @@ const ro = {
   "native.auth.verifyBody":
     "Dacă {email} nu are deja un cont, primești în curând un link de verificare, valabil o oră (verifică și spam). Dacă ai deja un cont cu această adresă, nu se trimite niciun e-mail — autentifică-te sau folosește resetarea parolei.",
   "native.auth.backToSignIn": "Înapoi la autentificare",
+  "native.auth.continueAsGuest": "Continuă fără cont",
   "native.bookmark.failed":
     "Nu am putut actualiza acest semn de carte. Încearcă din nou.",
   "native.bookmark.failedTitle": "Salvarea a eșuat",
@@ -1225,6 +1230,7 @@ const en: { [K in keyof BaseStrings]: string } = {
     "No published events for this topic yet. Try another topic.",
   "native.feed.loadingMore": "Loading more events…",
   "native.feed.sortBy": "Sort by {label}",
+  "native.feed.searchCancel": "Cancel",
   "native.event.errorTitle": "Couldn't load this event",
   "native.event.errorBody":
     "Something went wrong while loading the event. Try again.",
@@ -1235,6 +1241,9 @@ const en: { [K in keyof BaseStrings]: string } = {
     "Something went wrong while loading bookmarks. Try again.",
   "native.saved.signInBody":
     "Sign in to bookmark events and keep your reading list in sync across devices.",
+  "native.saved.removeAction": "Remove",
+  "native.saved.removedToast": "Removed from saved",
+  "native.saved.undo": "Undo",
   "native.profile.errorTitle": "Couldn't load your profile",
   "native.profile.errorBody":
     "Something went wrong while loading your account. Try again.",
@@ -1280,6 +1289,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.auth.verifyBody":
     "If {email} doesn't already have an account, a verification link valid for one hour is on its way (check spam too). If you already have an account with this address, no email is sent — sign in or use password reset instead.",
   "native.auth.backToSignIn": "Back to sign in",
+  "native.auth.continueAsGuest": "Continue without an account",
   "native.bookmark.failed":
     "We couldn't update this bookmark. Please try again.",
   "native.bookmark.failedTitle": "Bookmark failed",

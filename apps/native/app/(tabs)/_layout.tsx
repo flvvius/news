@@ -1,11 +1,9 @@
-import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Tabs } from "expo-router";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon, type IconName } from "@/components/ui/icon";
-import { useAppTheme } from "@/contexts/app-theme-context";
 import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 
@@ -37,39 +35,21 @@ type TabBarProps = {
   };
 };
 
-function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
+/**
+ * Flat, full-width tab bar: bg-background + top hairline. No blur, no
+ * shadow, no float — the bar is furniture, not a feature. State reads
+ * through icon fill and text color, never through animation (frequency
+ * law: tab switches happen dozens of times a day).
+ */
+function EditorialTabBar({ state, descriptors, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
-  const { activeTheme } = useAppTheme();
 
   return (
     <View
-      pointerEvents="box-none"
-      className="absolute left-6 right-6"
-      style={{ bottom: Math.max(insets.bottom - 14, 8) }}
+      className="border-t border-border bg-background"
+      style={{ paddingBottom: Math.max(insets.bottom, 8) }}
     >
-      <View
-        className="overflow-hidden rounded-full border border-border/60"
-        style={{
-          // Soft, layered elevation — visible lift without a harsh halo.
-          shadowColor: "#000",
-          shadowOpacity: 0.14,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 10,
-        }}
-      >
-        <BlurView
-          intensity={100}
-          tint={
-            activeTheme === "dark"
-              ? "systemChromeMaterialDark"
-              : "systemChromeMaterialLight"
-          }
-          style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}
-        />
-        {/* Thin scrim over the blur keeps icon/label contrast on busy content. */}
-        <View className="absolute bottom-0 left-0 right-0 top-0 bg-card/30" />
-        <View className="h-[64px] flex-row items-center px-1.5">
+      <View className="h-[52px] flex-row items-stretch">
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;
@@ -100,19 +80,19 @@ function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
               accessibilityState={{ selected: isFocused }}
               accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
               onPress={handlePress}
-              className="h-full flex-1 items-center justify-center gap-0.5 active:opacity-70"
+              className="flex-1 items-center justify-center gap-1 active:opacity-70"
             >
               <Icon
                 name={isFocused ? icons.active : icons.idle}
-                size={23}
-                className={isFocused ? "text-primary" : "text-muted-foreground"}
+                size={22}
+                className={isFocused ? "text-foreground" : "text-muted-foreground"}
               />
               <Text
                 numberOfLines={1}
                 className={cn(
                   "text-[11px]",
                   isFocused
-                    ? "font-semibold text-primary"
+                    ? "font-semibold text-foreground"
                     : "font-medium text-muted-foreground",
                 )}
               >
@@ -121,7 +101,6 @@ function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
             </Pressable>
           );
         })}
-        </View>
       </View>
     </View>
   );
@@ -132,7 +111,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      tabBar={(props) => <FloatingTabBar {...(props as TabBarProps)} />}
+      tabBar={(props) => <EditorialTabBar {...(props as TabBarProps)} />}
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="index" options={{ title: t("tabs.feed") }} />

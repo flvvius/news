@@ -104,15 +104,15 @@ function SourceSkeleton() {
     <View className="flex-1 gap-6 px-5 pt-2">
       <Skeleton className="h-6 w-32" />
       <View className="flex-row items-center gap-4">
-        <Skeleton className="size-16 rounded-2xl" />
+        <Skeleton className="size-16 rounded-lg" />
         <View className="flex-1 gap-2">
           <Skeleton className="h-7 w-44" />
           <Skeleton className="h-4 w-28" />
         </View>
       </View>
-      <Skeleton className="h-14 rounded-xl" />
-      <Skeleton className="h-40 rounded-xl" />
-      <Skeleton className="h-32 rounded-xl" />
+      <Skeleton className="h-14 rounded-lg" />
+      <Skeleton className="h-40 rounded-lg" />
+      <Skeleton className="h-32 rounded-lg" />
     </View>
   );
 }
@@ -226,11 +226,9 @@ function ArticleRow({
           </Text>
         ) : null}
         {isOutlier ? (
-          <View className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5">
-            <Text className="text-[12px] font-medium text-warning">
-              {t("source.outlier")}
-            </Text>
-          </View>
+          <Text className="text-xs font-medium text-warning">
+            · {t("source.outlier")}
+          </Text>
         ) : null}
       </View>
 
@@ -323,10 +321,10 @@ function SourceProfileView({ data }: { data: SourceProfile }) {
           logoUrl={source.logoUrl}
           sizeClassName="size-16"
           sizePx={64}
-          className="rounded-2xl"
+          className="rounded-lg"
         />
         <View className="min-w-0 flex-1 gap-1">
-          <Text className="text-2xl font-bold tracking-tight text-foreground">
+          <Text className="text-2xl font-semibold tracking-tight text-foreground">
             {source.name}
           </Text>
           <Pressable
@@ -344,21 +342,17 @@ function SourceProfileView({ data }: { data: SourceProfile }) {
         </View>
       </View>
 
-      <View className="flex-row flex-wrap items-center gap-2.5">
+      {/* Metadata reads as a plain meta line — chips would shout. */}
+      <View className="flex-row flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <BiasIndicator bias={source.baseBias} size="md" thresholds={thresholds} />
-        <View className="rounded-full border border-border/70 bg-muted/40 px-3 py-1">
-          <Text className="text-xs font-medium text-muted-foreground">
-            {formatBiasLabel(source.biasLabel)}
-          </Text>
-        </View>
-        <View className="rounded-full border border-border/70 bg-muted/40 px-3 py-1">
-          <Text className="text-xs font-medium text-muted-foreground">
-            {t("source.reliability").replace(
-              "{score}",
-              String(source.reliabilityScore),
-            )}
-          </Text>
-        </View>
+        <Text className="text-xs font-medium text-muted-foreground">
+          {formatBiasLabel(source.biasLabel)}
+          {" · "}
+          {t("source.reliability").replace(
+            "{score}",
+            String(source.reliabilityScore),
+          )}
+        </Text>
       </View>
 
       {/* KPI strip */}

@@ -99,7 +99,7 @@ export function EventSources({
 
   return (
     <View className="gap-1">
-      <Text className="text-2xl font-semibold tracking-tight text-foreground">
+      <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
         {t("native.event.sourcesTitle")}
       </Text>
 
@@ -134,7 +134,7 @@ export function EventSources({
                 <View className="min-w-0 flex-1">
                   <Text
                     numberOfLines={1}
-                    className="text-lg font-medium text-foreground"
+                    className="text-base font-medium text-foreground"
                   >
                     {source.name}
                   </Text>

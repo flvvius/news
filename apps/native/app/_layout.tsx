@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { ConvexReactClient } from "convex/react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { AnalyticsProvider } from "@/contexts/analytics-context";
 import { AppThemeProvider } from "@/contexts/app-theme-context";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
@@ -44,18 +45,20 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <ConvexBetterAuthProvider client={convex} authClient={authClient}>
-      <GestureHandlerRootView className="flex-1">
-        <KeyboardProvider>
-          <AppThemeProvider>
-            <LocaleProvider>
-              <BottomSheetModalProvider>
-                <StatusBar style="auto" />
-                <RootStack />
-              </BottomSheetModalProvider>
-            </LocaleProvider>
-          </AppThemeProvider>
-        </KeyboardProvider>
-      </GestureHandlerRootView>
+      <AnalyticsProvider>
+        <GestureHandlerRootView className="flex-1">
+          <KeyboardProvider>
+            <AppThemeProvider>
+              <LocaleProvider>
+                <BottomSheetModalProvider>
+                  <StatusBar style="auto" />
+                  <RootStack />
+                </BottomSheetModalProvider>
+              </LocaleProvider>
+            </AppThemeProvider>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </AnalyticsProvider>
     </ConvexBetterAuthProvider>
   );
 }

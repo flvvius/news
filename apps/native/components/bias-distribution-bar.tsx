@@ -29,7 +29,8 @@ export function BiasDistributionBar({
         .replace("{center}", String(counts.center))
         .replace("{right}", String(counts.right))}
     >
-      <View className="h-1.5 flex-row overflow-hidden rounded-full bg-bias-track">
+      {/* 4px — the signature element; thin enough to annotate, never to shout. */}
+      <View className="h-1 flex-row overflow-hidden rounded-full bg-bias-track">
         {BUCKETS.map((bucket) => {
           const count = counts[bucket];
           if (count === 0) return null;

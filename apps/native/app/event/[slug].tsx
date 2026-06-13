@@ -30,6 +30,7 @@ import {
   getPluralizedCountLabel,
 } from "@news-app/i18n";
 
+import { PressableScale } from "@/components/ui/pressable-scale";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocale, useT } from "@/contexts/locale-context";
@@ -66,16 +67,18 @@ export default function EventDetailScreen() {
 }
 
 function EventDetailSkeleton() {
+  // Mirrors the final layout: kicker, title, meta, bar, 3:2 photo, summary.
   return (
-    <View className="gap-6 px-5" style={{ paddingTop: HEADER_HEIGHT + 16 }}>
+    <View className="gap-5 px-5" style={{ paddingTop: HEADER_HEIGHT + 16 }}>
       <Skeleton className="h-3.5 w-24" />
       <View className="gap-2.5">
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-8 w-3/4" />
       </View>
       <Skeleton className="h-3.5 w-48" />
-      <Skeleton className="h-1.5 w-full rounded-full" />
-      <View className="gap-2 pt-4">
+      <Skeleton className="h-1 w-full rounded-full" />
+      <Skeleton className="w-full rounded-lg" style={{ aspectRatio: 3 / 2 }} />
+      <View className="gap-2 pt-1">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-2/3" />
@@ -93,19 +96,20 @@ function EventNotFound() {
       <Text className="text-2xl font-semibold tracking-tight text-foreground">
         {t("event.notFound")}
       </Text>
-      <Text className="max-w-[252px] text-center text-lg leading-relaxed text-muted-foreground">
+      <Text className="max-w-[252px] text-center text-base leading-relaxed text-muted-foreground">
         {t("event.notFoundBody")}
       </Text>
-      <Pressable
+      <PressableScale
         accessibilityRole="button"
         accessibilityLabel={t("event.backToFeed")}
         onPress={() => router.replace("/")}
-        className="mt-2 min-h-11 items-center justify-center rounded-lg bg-primary px-6 active:opacity-80"
+        className="mt-2"
+        contentClassName="min-h-11 items-center justify-center rounded-lg bg-primary px-6"
       >
-        <Text className="text-lg font-medium text-primary-foreground">
+        <Text className="text-base font-medium text-primary-foreground">
           {t("event.backToFeed")}
         </Text>
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
@@ -364,8 +368,8 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
           <View
             // bg-muted shows as the loading placeholder; the fixed aspect
             // ratio reserves the exact height up front — zero layout shift.
-            className="w-full overflow-hidden rounded-lg border border-border bg-muted"
-            style={{ aspectRatio: 16 / 9, marginTop: 20 }}
+            className="mt-6 w-full overflow-hidden rounded-lg border border-border bg-muted"
+            style={{ aspectRatio: 3 / 2 }}
           >
             <Image
               source={{ uri: event.imageUrl }}
@@ -380,8 +384,8 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
         {/* Zone 3 — neutral summary, reading layer one */}
         {summary ? (
-          <View className="gap-2 pt-7">
-            <Text className="max-w-[455px] text-lg leading-relaxed text-foreground">
+          <View className="gap-2 pt-6">
+            <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
               {summary}
             </Text>
             <Text className="text-sm text-muted-foreground">
@@ -395,33 +399,28 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
         {/* Global impact — context while the summary is fresh */}
         {event.globalImpact ? (
-          <View
-            className="gap-3 border-t border-border pt-6"
-            style={{ marginTop: 28 }}
-          >
-            <Text className="text-2xl font-semibold tracking-tight text-foreground">
-              {t("event.meaning")}
-            </Text>
-            <Text className="max-w-[455px] text-lg leading-relaxed text-foreground">
+          <View className="mt-8 gap-3 border-t border-border pt-6">
+            <SectionKicker text={t("event.meaning")} />
+            <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
               {event.globalImpact}
             </Text>
           </View>
         ) : null}
 
         {/* Zone 4 — perspectives */}
-        <View className="border-t border-border pt-6" style={{ marginTop: 28 }}>
+        <View className="mt-8 border-t border-border pt-6">
           <PerspectiveSummaries
             perspectiveSummaries={event.perspectiveSummaries}
           />
         </View>
 
         {/* Zone 5 — claims */}
-        <View className="border-t border-border pt-6" style={{ marginTop: 28 }}>
+        <View className="mt-8 border-t border-border pt-6">
           <EventClaimComparison eventId={event._id} articles={articles} />
         </View>
 
         {/* Zone 6 — sources */}
-        <View className="border-t border-border pt-6" style={{ marginTop: 28 }}>
+        <View className="mt-8 border-t border-border pt-6">
           <EventSources
             eventId={event._id}
             articles={articles}
@@ -431,18 +430,13 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
         {/* Zone 7 — personalized "So what?" */}
         {insight ? (
-          <View
-            className="gap-3 border-t border-border pt-6"
-            style={{ marginTop: 28 }}
-          >
-            <Text className="text-2xl font-semibold tracking-tight text-foreground">
-              {t("native.event.sowhatTitle")}
-            </Text>
-            <Text className="max-w-[455px] text-lg leading-relaxed text-foreground">
+          <View className="mt-8 gap-3 border-t border-border pt-6">
+            <SectionKicker text={t("native.event.sowhatTitle")} />
+            <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
               {insight.personalImpact}
             </Text>
             {insight.actionableTip ? (
-              <Text className="max-w-[455px] text-lg leading-relaxed text-muted-foreground">
+              <Text className="max-w-[455px] text-base leading-relaxed text-muted-foreground">
                 {insight.actionableTip}
               </Text>
             ) : null}
@@ -450,10 +444,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         ) : null}
 
         {/* Zone 8 — quiet footer actions */}
-        <View
-          className="flex-row items-center gap-6 border-t border-border pt-4"
-          style={{ marginTop: 28 }}
-        >
+        <View className="mt-8 flex-row items-center gap-6 border-t border-border pt-4">
           <ShareEventButton
             eventId={event._id}
             slug={event.slug}
