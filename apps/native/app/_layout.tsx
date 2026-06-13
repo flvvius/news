@@ -16,6 +16,7 @@ import {
   useDeviceIdentity,
 } from "@/contexts/device-identity-context";
 import { FollowedTopicsProvider } from "@/contexts/followed-topics-context";
+import { GuestActivityProvider } from "@/contexts/guest-activity-context";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 import { useTokenColor } from "@/lib/use-token-color";
@@ -73,10 +74,12 @@ export default function RootLayout() {
               <AppThemeProvider>
                 <LocaleProvider>
                   <FollowedTopicsProvider>
-                    <BottomSheetModalProvider>
-                      <StatusBar style="auto" />
-                      <RootStack />
-                    </BottomSheetModalProvider>
+                    <GuestActivityProvider>
+                      <BottomSheetModalProvider>
+                        <StatusBar style="auto" />
+                        <RootStack />
+                      </BottomSheetModalProvider>
+                    </GuestActivityProvider>
                   </FollowedTopicsProvider>
                 </LocaleProvider>
               </AppThemeProvider>

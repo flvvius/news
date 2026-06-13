@@ -33,6 +33,7 @@ import {
 import { PressableScale } from "@/components/ui/pressable-scale";
 import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useGuestActivity } from "@/contexts/guest-activity-context";
 import { useLocale, useT } from "@/contexts/locale-context";
 import { getBiasBucket } from "@/lib/bias";
 import { uniqueEventSources, type EventDetail } from "@/lib/event-types";
@@ -145,6 +146,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation(api.interactions.logInteraction);
+  const { recordRead } = useGuestActivity();
   const [barLabelsVisible, setBarLabelsVisible] = useState(false);
 
   const thresholdsConfig = useQuery(api.config.get, { key: "bias_thresholds" });
@@ -200,33 +202,57 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   const maxScrollDepthRef = useRef(0);
   const logInteractionRef = useRef(logInteraction);
   logInteractionRef.current = logInteraction;
+  const recordReadRef = useRef(recordRead);
+  recordReadRef.current = recordRead;
   const interactionContextRef = useRef(interactionContext);
   interactionContextRef.current = interactionContext;
 
   useEffect(() => {
-    if (!isAuthenticated) return;
     const startedAt = Date.now();
 
     return () => {
-      logInteractionRef
+      const timeSpentSeconds = Math.max(
+        1,
+        Math.round((Date.now() - startedAt) / 1000),
+      );
+      const scrollDepthPercentage = maxScrollDepthRef.current;
+      const context = interactionContextRef.current;
+
+      if (isAuthenticated) {
+        logInteractionRef
+          .current({
+            eventId: event._id,
+            type: "view",
+            context,
+            metadata: {
+              deviceType: NATIVE_DEVICE_TYPE,
+              scrollDepthPercentage,
+              timeSpentSeconds,
+            },
+          })
+          .catch(() => {
+            // View analytics are best-effort.
+          });
+        return;
+      }
+
+      // Guest reads accrue locally (no server write) and replay into the
+      // account at merge — this is what makes guest streaks possible.
+      recordReadRef
         .current({
           eventId: event._id,
-          type: "view",
-          context: interactionContextRef.current,
-          metadata: {
-            deviceType: NATIVE_DEVICE_TYPE,
-            scrollDepthPercentage: maxScrollDepthRef.current,
-            timeSpentSeconds: Math.max(
-              1,
-              Math.round((Date.now() - startedAt) / 1000),
-            ),
-          },
+          slug: event.slug,
+          timestamp: Date.now(),
+          timeSpentSeconds,
+          scrollDepthPercentage,
+          biasRating: context?.biasRating,
+          sourceReliability: context?.sourceReliability,
         })
         .catch(() => {
-          // View analytics are best-effort.
+          // Local queue write is best-effort.
         });
     };
-  }, [event._id, isAuthenticated]);
+  }, [event._id, event.slug, isAuthenticated]);
 
   const handleScroll = (
     nativeEvent: NativeSyntheticEvent<NativeScrollEvent>,
