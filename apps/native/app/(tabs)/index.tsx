@@ -7,6 +7,7 @@ import { Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 
 import { EventRow, type FeedEvent } from "@/components/event-row";
 import { EventRowSkeleton } from "@/components/feed/event-row-skeleton";
+import { StreakTeaserBanner } from "@/components/feed/streak-teaser-banner";
 import { TopicChips } from "@/components/feed/topic-chips";
 import { Screen } from "@/components/screen";
 import { Icon } from "@/components/ui/icon";
@@ -275,7 +276,11 @@ function FeedContent() {
           topicNamesById={topicNamesById}
         />
       ) : (
-        <FeedList
+        <>
+          {/* Guest streak teaser — inline, self-hiding (renders nothing unless
+              a guest is on their 2nd–3rd reading day and hasn't dismissed). */}
+          <StreakTeaserBanner />
+          <FeedList
           key={`${refreshKey}:${feedSort}:${String(selectedTopic)}`}
           feedSort={feedSort}
           selectedTopic={selectedTopic}
@@ -285,7 +290,8 @@ function FeedContent() {
           isRefreshing={isRefreshing}
           onRefresh={handleRefresh}
           onFirstPageLoaded={handleFirstPageLoaded}
-        />
+          />
+        </>
       )}
     </View>
   );

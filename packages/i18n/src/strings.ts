@@ -78,6 +78,14 @@ const ro = {
   "gate.bookmark.body":
     "Creează un cont gratuit ca să salvezi această poveste și să-ți păstrezi salvările sincronizate.",
   "gate.continueEmail": "Continuă cu e-mail",
+  // Streak teaser banner (guest, 2nd–3rd reading day)
+  "gate.streak.body":
+    "Ai citit {count} zile la rând — creează un cont ca să-ți păstrezi streakul.",
+  "gate.streak.action": "Creează cont",
+  "gate.streak.dismiss": "Închide",
+  "gate.streak.title": "Păstrează-ți streakul de citire",
+  "gate.streak.sheetBody":
+    "Creează un cont gratuit ca streakul și istoricul tău de citire să te urmeze pe toate dispozitivele.",
   "auth.promptTitle":
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
   "share.copied": "Linkul evenimentului a fost copiat",
@@ -778,6 +786,14 @@ const en: { [K in keyof BaseStrings]: string } = {
   "gate.bookmark.body":
     "Create a free account to bookmark this story and keep your saves in sync.",
   "gate.continueEmail": "Continue with email",
+  // Streak teaser banner (guest, 2nd–3rd reading day)
+  "gate.streak.body":
+    "You've read {count} days in a row — create an account to keep your streak.",
+  "gate.streak.action": "Create account",
+  "gate.streak.dismiss": "Dismiss",
+  "gate.streak.title": "Keep your reading streak",
+  "gate.streak.sheetBody":
+    "Create a free account so your streak and reading history follow you across devices.",
   "auth.promptTitle": "Create a free account to save and personalize your news",
   "share.copied": "Event link copied",
   "share.failed": "Could not share this event. Please try again.",
