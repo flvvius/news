@@ -34,6 +34,15 @@ function isProductionDeployment() {
 const siteUrl = requireEnv("SITE_URL");
 const googleClientId = requireEnv("GOOGLE_CLIENT_ID");
 const googleClientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
+// Apple Sign-In is configured only when credentials are present, so dev
+// deployments without Apple env still boot (Google + email keep working).
+// Native "Sign in with Apple" returns an identity token whose `aud` claim is
+// the app bundle id, so appBundleIdentifier must match for idToken
+// verification to pass. clientSecret is only needed for the web redirect flow.
+const appleClientId = process.env.APPLE_CLIENT_ID?.trim() || null;
+const appleAppBundleIdentifier =
+  process.env.APPLE_APP_BUNDLE_IDENTIFIER?.trim() || "com.biviant.app";
+const appleClientSecret = process.env.APPLE_CLIENT_SECRET?.trim() || null;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -537,6 +546,17 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         clientId: googleClientId,
         clientSecret: googleClientSecret,
       },
+      ...(appleClientId
+        ? {
+            apple: {
+              clientId: appleClientId,
+              appBundleIdentifier: appleAppBundleIdentifier,
+              ...(appleClientSecret
+                ? { clientSecret: appleClientSecret }
+                : {}),
+            },
+          }
+        : {}),
     },
     plugins: [
       expo(),

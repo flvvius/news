@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
+import { AppleSignInButton } from "@/components/auth/apple-sign-in-button";
 import { AuthField } from "@/components/auth/auth-field";
 import {
   AuthDivider,
@@ -57,7 +58,7 @@ export default function AuthScreen() {
   const t = useT();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
-  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   const close = () => {
     if (router.canGoBack()) {
@@ -111,15 +112,18 @@ export default function AuthScreen() {
 
             <View className="mt-6 gap-4">
               <AuthDivider />
-              {googleError ? (
+              {socialError ? (
                 <Text
                   accessibilityLiveRegion="polite"
                   className="text-sm text-destructive"
                 >
-                  {googleError}
+                  {socialError}
                 </Text>
               ) : null}
-              <GoogleSignInButton onSuccess={close} onError={setGoogleError} />
+              {/* Apple first on iOS per platform convention; renders null
+                  where native Sign in with Apple is unavailable. */}
+              <AppleSignInButton onSuccess={close} onError={setSocialError} />
+              <GoogleSignInButton onSuccess={close} onError={setSocialError} />
             </View>
 
             <Pressable
@@ -130,7 +134,7 @@ export default function AuthScreen() {
                   : t("native.auth.switchToSignIn")
               }
               onPress={() => {
-                setGoogleError(null);
+                setSocialError(null);
                 setMode((current) =>
                   current === "signin" ? "signup" : "signin",
                 );
