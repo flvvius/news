@@ -73,6 +73,11 @@ const ro = {
   "auth.orContinueWith": "Sau continuă cu",
   "auth.googleError": "Autentificarea cu Google a eșuat. Încearcă din nou.",
   "auth.appleError": "Autentificarea cu Apple a eșuat. Încearcă din nou.",
+  // Contextual sign-in gate (bookmark) bottom sheet
+  "gate.bookmark.title": "Salvează poveștile pe toate dispozitivele",
+  "gate.bookmark.body":
+    "Creează un cont gratuit ca să salvezi această poveste și să-ți păstrezi salvările sincronizate.",
+  "gate.continueEmail": "Continuă cu e-mail",
   "auth.promptTitle":
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
   "share.copied": "Linkul evenimentului a fost copiat",
@@ -768,6 +773,11 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.orContinueWith": "Or continue with",
   "auth.googleError": "Google sign-in failed. Please try again.",
   "auth.appleError": "Apple sign-in failed. Please try again.",
+  // Contextual sign-in gate (bookmark) bottom sheet
+  "gate.bookmark.title": "Save stories across devices",
+  "gate.bookmark.body":
+    "Create a free account to bookmark this story and keep your saves in sync.",
+  "gate.continueEmail": "Continue with email",
   "auth.promptTitle": "Create a free account to save and personalize your news",
   "share.copied": "Event link copied",
   "share.failed": "Could not share this event. Please try again.",

@@ -33,3 +33,12 @@ export async function saveLocalFollowedTopics(
     // Persistence is best-effort; the in-session selection still applies.
   }
 }
+
+/** Drop the local selection (after merge into an account, or on logout). */
+export async function clearLocalFollowedTopics(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(FOLLOWED_TOPICS_KEY);
+  } catch {
+    // Best-effort.
+  }
+}

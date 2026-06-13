@@ -487,7 +487,33 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
             await ctx.db.delete(privateCtx._id);
           }
 
-          // todo: check if i want soft delete (+ manage related data - insights, interactions, etc)
+          // Delete the user's interaction log (views, bookmarks, shares, …),
+          // their insights, and the guest-merge ledger so nothing dangles a
+          // reference to the removed user.
+          const interactions = await ctx.db
+            .query("interactions")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const interaction of interactions) {
+            await ctx.db.delete(interaction._id);
+          }
+
+          const insights = await ctx.db
+            .query("userInsights")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const insight of insights) {
+            await ctx.db.delete(insight._id);
+          }
+
+          const merges = await ctx.db
+            .query("guestMerges")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const merge of merges) {
+            await ctx.db.delete(merge._id);
+          }
+
           await ctx.db.delete(appUser._id);
         }
       },

@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import {
+  clearLocalFollowedTopics,
   loadLocalFollowedTopics,
   saveLocalFollowedTopics,
 } from "@/lib/followed-topics";
@@ -23,6 +24,8 @@ type FollowedTopicsContextType = {
   isReady: boolean;
   /** Persist a new selection locally and, when signed in, to the account. */
   setFollowedTopics: (topicIds: Id<"topics">[]) => void;
+  /** Clear the local selection and in-memory state (logout — no data bleed). */
+  resetLocal: () => void;
 };
 
 const FollowedTopicsContext = createContext<
@@ -90,9 +93,16 @@ export function FollowedTopicsProvider({ children }: { children: ReactNode }) {
     [isAuthenticated, setFollowedTopicsMutation],
   );
 
+  const resetLocal = useCallback(() => {
+    setLocalTopicIds([]);
+    clearLocalFollowedTopics().catch(() => {
+      // Best-effort.
+    });
+  }, []);
+
   const value = useMemo<FollowedTopicsContextType>(
-    () => ({ followedTopicIds, isReady, setFollowedTopics }),
-    [followedTopicIds, isReady, setFollowedTopics],
+    () => ({ followedTopicIds, isReady, setFollowedTopics, resetLocal }),
+    [followedTopicIds, isReady, setFollowedTopics, resetLocal],
   );
 
   return (

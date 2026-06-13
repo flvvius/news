@@ -9,6 +9,7 @@ import { ConvexReactClient } from "convex/react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SessionSync } from "@/components/session-sync";
 import { AnalyticsProvider } from "@/contexts/analytics-context";
 import { AppThemeProvider } from "@/contexts/app-theme-context";
 import {
@@ -77,6 +78,7 @@ export default function RootLayout() {
                     <GuestActivityProvider>
                       <BottomSheetModalProvider>
                         <StatusBar style="auto" />
+                        <SessionSync />
                         <RootStack />
                       </BottomSheetModalProvider>
                     </GuestActivityProvider>

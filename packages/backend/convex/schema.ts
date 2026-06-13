@@ -746,6 +746,21 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"]),
 
   // =========================================================================
+  // 7b. GUEST MERGES (Idempotency ledger for guest→account migration)
+  // =========================================================================
+  // One row per device that has folded its local guest activity into an
+  // account. Keyed by the device UUID so a retried merge is a no-op. The
+  // device UUID rotates on logout, so each guest session merges at most once.
+  guestMerges: defineTable({
+    userId: v.id("users"),
+    deviceId: v.string(),
+    mergedAt: v.number(),
+    readsMerged: v.number(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"]),
+
+  // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
   // =========================================================================
   waitlist: defineTable({

@@ -795,6 +795,126 @@ export const getDashboardOverview = query({
 // Interaction Logging (generic — for views, clicks, shares, etc.)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Guest → account merge
+// ---------------------------------------------------------------------------
+
+const GUEST_READ_VALIDATOR = v.object({
+  eventId: v.id("events"),
+  timestamp: v.number(),
+  timeSpentSeconds: v.optional(v.number()),
+  scrollDepthPercentage: v.optional(v.number()),
+  biasRating: v.optional(v.number()),
+  sourceReliability: v.optional(v.number()),
+});
+
+/**
+ * Fold a guest's locally-queued activity into the now-authenticated account.
+ * Called once per device after signup/login (decision 4 — a plain mutation,
+ * no Better Auth hook). Idempotent per device via the `guestMerges` ledger:
+ * the device UUID rotates on logout, so each guest session merges at most once.
+ *
+ * Reads replay through the same `recordInteraction` path live views use, so
+ * the streak / articlesRead / bias-balance stats reconstruct exactly as if the
+ * guest had been signed in — "richer record wins" falls out of replaying the
+ * (older) guest history into the account. Followed topics union with any the
+ * account already has.
+ */
+export const mergeGuestActivity = mutation({
+  args: {
+    deviceId: v.string(),
+    reads: v.array(GUEST_READ_VALIDATOR),
+    followedTopicIds: v.array(v.id("topics")),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
+    // Idempotency: this device already merged into an account.
+    const existingMerge = await ctx.db
+      .query("guestMerges")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .first();
+    if (existingMerge) {
+      return {
+        merged: false as const,
+        reason: "already_merged" as const,
+        readsReplayed: 0,
+        topicsReplayed: 0,
+        streakDays: 0,
+      };
+    }
+
+    // Replay reads oldest-first so the streak rebuilds day by day.
+    const orderedReads = [...args.reads].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
+    let readsReplayed = 0;
+    for (const read of orderedReads) {
+      // Skip reads whose event no longer exists — never dangle an interaction.
+      const event = await ctx.db.get(read.eventId);
+      if (!event) continue;
+
+      const context =
+        read.biasRating !== undefined
+          ? {
+              biasRating: read.biasRating,
+              sourceReliability: read.sourceReliability ?? 0,
+            }
+          : undefined;
+
+      await recordInteraction(ctx, {
+        userId,
+        eventId: read.eventId,
+        type: "view",
+        context,
+        metadata: {
+          deviceType: "mobile",
+          timeSpentSeconds: read.timeSpentSeconds,
+          scrollDepthPercentage: read.scrollDepthPercentage,
+        },
+        timestamp: read.timestamp,
+      });
+      readsReplayed += 1;
+    }
+
+    // Union followed topics with any the account already has (richer wins).
+    const user = await ctx.db.get(userId);
+    const existingTopics = user?.followedTopicIds ?? [];
+    const mergedTopics = [...existingTopics];
+    const seen = new Set<string>(existingTopics.map(String));
+    for (const topicId of args.followedTopicIds) {
+      if (seen.has(topicId)) continue;
+      const topic = await ctx.db.get(topicId);
+      if (topic) {
+        seen.add(topicId);
+        mergedTopics.push(topicId);
+      }
+    }
+    if (mergedTopics.length !== existingTopics.length) {
+      await ctx.db.patch(userId, { followedTopicIds: mergedTopics });
+    }
+
+    await ctx.db.insert("guestMerges", {
+      userId,
+      deviceId: args.deviceId,
+      mergedAt: Date.now(),
+      readsMerged: readsReplayed,
+    });
+
+    const stats = await ctx.db
+      .query("userStats")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+
+    return {
+      merged: true as const,
+      readsReplayed,
+      topicsReplayed: mergedTopics.length - existingTopics.length,
+      streakDays: stats?.currentStreak ?? 0,
+    };
+  },
+});
+
 export const logInteraction = mutation({
   args: {
     eventId: v.id("events"),
