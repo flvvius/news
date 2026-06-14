@@ -86,6 +86,12 @@ const ro = {
   "gate.streak.title": "Păstrează-ți streakul de citire",
   "gate.streak.sheetBody":
     "Creează un cont gratuit ca streakul și istoricul tău de citire să te urmeze pe toate dispozitivele.",
+  // Notification pre-permission primer
+  "primer.title": "Primește rezumatul de dimineață",
+  "primer.body":
+    "Îți trimitem un singur rezumat de dimineață pe subiectele pe care le urmărești — cele mai importante știri ale zilei, din toate perspectivele. Fără spam.",
+  "primer.accept": "Activează notificările",
+  "primer.decline": "Mai târziu",
   "auth.promptTitle":
     "Creează un cont gratuit ca să salvezi și să personalizezi știrile",
   "share.copied": "Linkul evenimentului a fost copiat",
@@ -794,6 +800,12 @@ const en: { [K in keyof BaseStrings]: string } = {
   "gate.streak.title": "Keep your reading streak",
   "gate.streak.sheetBody":
     "Create a free account so your streak and reading history follow you across devices.",
+  // Notification pre-permission primer
+  "primer.title": "Get your morning briefing",
+  "primer.body":
+    "We'll send one morning briefing on the topics you follow — the day's biggest stories, every side. No spam.",
+  "primer.accept": "Enable notifications",
+  "primer.decline": "Not now",
   "auth.promptTitle": "Create a free account to save and personalize your news",
   "share.copied": "Event link copied",
   "share.failed": "Could not share this event. Please try again.",

@@ -35,7 +35,12 @@ import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGuestActivity } from "@/contexts/guest-activity-context";
 import { useLocale, useT } from "@/contexts/locale-context";
+import { useNotificationPrimer } from "@/contexts/notification-primer-context";
 import { getBiasBucket } from "@/lib/bias";
+import {
+  QUALIFIED_READ_MIN_SCROLL,
+  QUALIFIED_READ_MIN_SECONDS,
+} from "@/lib/guest-activity-queue";
 import { uniqueEventSources, type EventDetail } from "@/lib/event-types";
 import {
   buildInteractionContextFromSources,
@@ -147,6 +152,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation(api.interactions.logInteraction);
   const { recordRead } = useGuestActivity();
+  const { maybeShowPrimer } = useNotificationPrimer();
   const [barLabelsVisible, setBarLabelsVisible] = useState(false);
 
   const thresholdsConfig = useQuery(api.config.get, { key: "bias_thresholds" });
@@ -254,6 +260,23 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
     };
   }, [event._id, event.slug, isAuthenticated]);
 
+  // Notification primer fires on the first *qualified* read (decision 6):
+  // 30s dwell OR ≥60% scroll, whichever first, once per visit. The primer
+  // itself self-gates on cooldown / lifetime cap / OS state.
+  const primerTriggeredRef = useRef(false);
+  const triggerPrimer = () => {
+    if (primerTriggeredRef.current) return;
+    primerTriggeredRef.current = true;
+    maybeShowPrimer();
+  };
+
+  useEffect(() => {
+    const id = setTimeout(triggerPrimer, QUALIFIED_READ_MIN_SECONDS * 1000);
+    return () => clearTimeout(id);
+    // Fires once per visit; triggerPrimer reads only stable refs/context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleScroll = (
     nativeEvent: NativeSyntheticEvent<NativeScrollEvent>,
   ) => {
@@ -267,6 +290,9 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         : Math.min(1, Math.max(0, contentOffset.y / scrollable));
     if (depth > maxScrollDepthRef.current) {
       maxScrollDepthRef.current = depth;
+    }
+    if (depth >= QUALIFIED_READ_MIN_SCROLL) {
+      triggerPrimer();
     }
   };
 

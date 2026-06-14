@@ -514,6 +514,14 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
             await ctx.db.delete(merge._id);
           }
 
+          const pushTokens = await ctx.db
+            .query("pushTokens")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const pushToken of pushTokens) {
+            await ctx.db.delete(pushToken._id);
+          }
+
           await ctx.db.delete(appUser._id);
         }
       },

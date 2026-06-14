@@ -40,6 +40,7 @@ import type * as lib_streaks from "../lib/streaks.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
 import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
+import type * as notifications from "../notifications.js";
 import type * as pipeline from "../pipeline.js";
 import type * as pipelineDiagnostics from "../pipelineDiagnostics.js";
 import type * as privateData from "../privateData.js";
@@ -99,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "lib/userProfile": typeof lib_userProfile;
   mbfc: typeof mbfc;
   migrations: typeof migrations;
+  notifications: typeof notifications;
   pipeline: typeof pipeline;
   pipelineDiagnostics: typeof pipelineDiagnostics;
   privateData: typeof privateData;

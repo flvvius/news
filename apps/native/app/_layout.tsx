@@ -19,6 +19,7 @@ import {
 import { FollowedTopicsProvider } from "@/contexts/followed-topics-context";
 import { GuestActivityProvider } from "@/contexts/guest-activity-context";
 import { LocaleProvider } from "@/contexts/locale-context";
+import { NotificationPrimerProvider } from "@/contexts/notification-primer-context";
 import { authClient } from "@/lib/auth-client";
 import { useTokenColor } from "@/lib/use-token-color";
 
@@ -77,9 +78,11 @@ export default function RootLayout() {
                   <FollowedTopicsProvider>
                     <GuestActivityProvider>
                       <BottomSheetModalProvider>
-                        <StatusBar style="auto" />
-                        <SessionSync />
-                        <RootStack />
+                        <NotificationPrimerProvider>
+                          <StatusBar style="auto" />
+                          <SessionSync />
+                          <RootStack />
+                        </NotificationPrimerProvider>
                       </BottomSheetModalProvider>
                     </GuestActivityProvider>
                   </FollowedTopicsProvider>

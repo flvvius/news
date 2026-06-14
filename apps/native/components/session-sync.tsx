@@ -13,6 +13,8 @@ import {
 } from "@/lib/followed-topics";
 import { loadGuestReads } from "@/lib/guest-activity-queue";
 import { clearPendingIntent, loadPendingIntent } from "@/lib/pending-intent";
+import { clearPushToken, loadPushToken } from "@/lib/push-token";
+import { Platform } from "react-native";
 
 /**
  * Watches the auth boundary and runs the guest↔account lifecycle. Renders
@@ -32,6 +34,7 @@ export function SessionSync() {
   );
   const mergeGuestActivity = useMutation(api.interactions.mergeGuestActivity);
   const toggleBookmark = useMutation(api.interactions.toggleBookmark);
+  const registerPushToken = useMutation(api.notifications.registerPushToken);
 
   const { deviceId, rotateDeviceId } = useDeviceIdentity();
   const { clear: clearGuestActivity } = useGuestActivity();
@@ -84,6 +87,25 @@ export function SessionSync() {
         }
       }
 
+      // A guest who granted notifications before signing in has a token held
+      // locally; register it now that there's an account to attach it to.
+      const pushToken = await loadPushToken();
+      if (pushToken) {
+        try {
+          await registerPushToken({
+            token: pushToken,
+            platform:
+              Platform.OS === "ios"
+                ? "ios"
+                : Platform.OS === "android"
+                  ? "android"
+                  : undefined,
+          });
+        } catch {
+          // Best-effort; the primer will re-register on a later grant.
+        }
+      }
+
       const intent = await loadPendingIntent();
       if (intent) {
         track({ name: "gate_accepted", properties: { reason: intent.gate } });
@@ -109,6 +131,7 @@ export function SessionSync() {
       track,
       clearGuestActivity,
       toggleBookmark,
+      registerPushToken,
     ],
   );
 
@@ -117,6 +140,9 @@ export function SessionSync() {
     await clearGuestActivity();
     resetFollowedTopics();
     await clearPendingIntent();
+    // Drop the local push token so it isn't reused by the next guest; the
+    // server row is reassigned on the next account's registration.
+    await clearPushToken();
     await rotateDeviceId();
   }, [resetAnalytics, clearGuestActivity, resetFollowedTopics, rotateDeviceId]);
 

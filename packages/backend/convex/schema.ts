@@ -761,6 +761,21 @@ export default defineSchema({
     .index("by_user", ["userId"]),
 
   // =========================================================================
+  // 7c. PUSH TOKENS (Expo push targets, one row per device)
+  // =========================================================================
+  // Registered only for authenticated users (a guest's token is held locally
+  // until signup, then registered). Deduped by token so a device that signs
+  // into a different account reassigns rather than duplicates.
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    platform: v.optional(v.union(v.literal("ios"), v.literal("android"))),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_token", ["token"]),
+
+  // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
   // =========================================================================
   waitlist: defineTable({

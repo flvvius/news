@@ -11,6 +11,7 @@ import { SignInSheet } from "@/components/auth/sign-in-sheet";
 import { Icon } from "@/components/ui/icon";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { useT } from "@/contexts/locale-context";
+import { useNotificationPrimer } from "@/contexts/notification-primer-context";
 import { cn } from "@/lib/cn";
 import {
   NATIVE_DEVICE_TYPE,
@@ -37,6 +38,7 @@ export function BookmarkButton({
   const t = useT();
   const { isAuthenticated } = useConvexAuth();
   const { track } = useAnalytics();
+  const { maybeShowPrimer } = useNotificationPrimer();
   const lastPressRef = useRef(0);
   const sheetRef = useRef<BottomSheetModal>(null);
 
@@ -100,13 +102,29 @@ export function BookmarkButton({
       eventId,
       context: interactionContext,
       metadata: { deviceType: NATIVE_DEVICE_TYPE },
-    }).catch(() => {
-      Alert.alert(
-        t("native.bookmark.failedTitle"),
-        t("native.bookmark.failed"),
-      );
-    });
-  }, [isAuthenticated, track, eventId, toggleBookmark, interactionContext, t]);
+    })
+      .then((result) => {
+        // First save is a primer trigger (decision 6). Only on save, not
+        // unsave; the primer self-gates on cooldown / cap / OS state.
+        if (result?.bookmarked) {
+          maybeShowPrimer();
+        }
+      })
+      .catch(() => {
+        Alert.alert(
+          t("native.bookmark.failedTitle"),
+          t("native.bookmark.failed"),
+        );
+      });
+  }, [
+    isAuthenticated,
+    track,
+    eventId,
+    toggleBookmark,
+    interactionContext,
+    maybeShowPrimer,
+    t,
+  ]);
 
   const bookmarked = isBookmarked === true;
 
