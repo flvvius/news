@@ -70,6 +70,64 @@ export async function deletePostHogPersonRequest(params: {
   }
 }
 
+/**
+ * Server-side PostHog capture (Ticket 14). Posts one event to the EU ingest
+ * endpoint using the project API key. Split out for unit testing with a mock
+ * `fetch`. Returns whether the event was accepted.
+ */
+export async function capturePostHogEventRequest(params: {
+  apiKey: string;
+  ingestHost: string;
+  distinctId: string;
+  event: string;
+  properties?: Record<string, unknown>;
+  fetchFn?: typeof fetch;
+}): Promise<boolean> {
+  const doFetch = params.fetchFn ?? fetch;
+  const base = params.ingestHost.replace(/\/+$/, "");
+  try {
+    const res = await doFetch(`${base}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: params.apiKey,
+        event: params.event,
+        distinct_id: params.distinctId,
+        properties: { ...params.properties, $lib: "convex-server" },
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Emit `account_created` for every new account (Ticket 14), so total signups
+ * are measurable independent of the gate funnel's `signup_completed`. distinct_id
+ * is the Better Auth user id, matching the client's identify. No-ops if the
+ * project key isn't configured.
+ */
+export const captureAccountCreated = internalAction({
+  args: { distinctId: v.string() },
+  handler: async (_ctx, args): Promise<{ captured: boolean }> => {
+    const apiKey = process.env.POSTHOG_KEY?.trim();
+    const ingestHost =
+      process.env.POSTHOG_INGEST_HOST?.trim() || "https://eu.i.posthog.com";
+    if (!apiKey) {
+      console.warn("[posthog] account_created skipped: POSTHOG_KEY not set.");
+      return { captured: false };
+    }
+    const ok = await capturePostHogEventRequest({
+      apiKey,
+      ingestHost,
+      distinctId: args.distinctId,
+      event: "account_created",
+    });
+    return { captured: ok };
+  },
+});
+
 export const deletePostHogPerson = internalAction({
   args: { distinctId: v.string() },
   handler: async (_ctx, args): Promise<PostHogDeletionResult> => {

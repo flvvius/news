@@ -38,6 +38,18 @@ const NotificationPrimerContext = createContext<
   NotificationPrimerContextType | undefined
 >(undefined);
 
+// Ticket 21: show notifications while the app is foregrounded (banner + sound),
+// otherwise a delivered push is invisible to an active user. Set once at module
+// load.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 function resolvePlatform(): "ios" | "android" | undefined {
   if (Platform.OS === "ios") return "ios";
   if (Platform.OS === "android") return "android";
@@ -92,6 +104,13 @@ export function NotificationPrimerProvider({
 
   const maybeShowPrimer = useCallback(() => {
     void (async () => {
+      // Ticket 6: the primer promises a "morning briefing" — it must stay
+      // dormant until the briefing cron (T19) can actually send, and it must
+      // never burn the one-shot iOS grant for a guest who can't be messaged.
+      // Flip EXPO_PUBLIC_NOTIFICATIONS_ENABLED on once the cron delivers.
+      if (process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABLED !== "true") return;
+      if (!isAuthenticated) return;
+
       if (presentedThisSessionRef.current) return;
 
       // If the OS already has an answer (or can't be asked again), there's
@@ -115,7 +134,7 @@ export function NotificationPrimerProvider({
       track({ name: "primer_shown" });
       sheetRef.current?.present();
     })();
-  }, [markResolved, track]);
+  }, [markResolved, track, isAuthenticated]);
 
   const dismiss = () => sheetRef.current?.dismiss();
 

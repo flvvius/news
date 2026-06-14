@@ -474,6 +474,15 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           biasBalance: 0,
         });
 
+        // Ticket 14: an unconditional signup signal, independent of the gate
+        // funnel's signup_completed, so total signups are measurable. Scheduled
+        // so the external capture runs after this mutation commits.
+        await ctx.scheduler.runAfter(
+          0,
+          internal.posthog.captureAccountCreated,
+          { distinctId: authUser._id },
+        );
+
         if (authUser.emailVerified) {
           await convertWaitlistRecordForEmail(ctx, normalizedEmail);
         }
@@ -593,6 +602,18 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       cookieCache: {
         enabled: true,
         maxAge: 7 * 60, // cache session in signed cookie for 7 min — skips DB on repeated get-session calls
+      },
+    },
+    // Ticket 11: collapse the same human signing in via different providers into
+    // one account when the verified email matches. Apple + Google both return
+    // verified emails, so a user with a real (non-relay) Apple email links to
+    // their Google account automatically. KNOWN LIMITATION: Apple "Hide My
+    // Email" relay addresses won't match a Google address, so those remain
+    // separate accounts by design — see docs/account-linking.md.
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["google", "apple"],
       },
     },
     emailAndPassword: {

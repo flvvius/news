@@ -1040,4 +1040,30 @@ export default defineSchema({
     .index("by_code_resolved", ["code", "resolvedAt"])
     .index("by_created_at", ["createdAt"])
     .index("by_resolved_created_at", ["resolvedAt", "createdAt"]),
+
+  // =========================================================================
+  // RATE LIMITS (Ticket 18 — fixed-window counters for abusable mutations)
+  // =========================================================================
+  // One row per (key) where key encodes the limited action + subject, e.g.
+  // "merge:<deviceId>" or "pushToken:<userId>". A fixed window is cheap and
+  // good enough to blunt abuse of guest-reachable + auth mutations.
+  rateLimits: defineTable({
+    key: v.string(),
+    count: v.number(),
+    windowStartedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  // =========================================================================
+  // BRIEFING SENDS (Ticket 19 — morning-briefing dedupe ledger)
+  // =========================================================================
+  // One row per (user, event) the morning briefing has already pushed, so a
+  // story is never sent to the same user twice.
+  briefingSends: defineTable({
+    userId: v.id("users"),
+    eventId: v.id("events"),
+    sentAt: v.number(),
+  })
+    .index("by_user_event", ["userId", "eventId"])
+    .index("by_user", ["userId"])
+    .index("by_sent_at", ["sentAt"]),
 });

@@ -289,6 +289,45 @@ describe("replayGuestMerge (Ticket 1: memory-folded merge)", () => {
     ).toBe(false);
   });
 
+  test("Ticket 7: merged streak never drops below the guest teaser", async () => {
+    const t = convexTest(schema, modules);
+    const events = await seedEvents(t, 3);
+    // Reads on 3 consecutive days, then an isolated later day — the folded
+    // current run ends on the isolated day (= 1), but the teaser showed 3.
+    const reads = [
+      { eventId: events[0], timestamp: 20000 * DAY_MS + 1, timeSpentSeconds: 60 },
+      { eventId: events[1], timestamp: 20001 * DAY_MS + 1, timeSpentSeconds: 60 },
+      { eventId: events[2], timestamp: 20002 * DAY_MS + 1, timeSpentSeconds: 60 },
+      { eventId: events[0], timestamp: 20004 * DAY_MS + 1, timeSpentSeconds: 5 },
+    ];
+
+    // Without the teaser value, the folded current streak is the isolated 1.
+    const noClamp = await seedUserWithStats(t, "noclamp@test");
+    const r1 = await t.run((ctx) =>
+      replayGuestMerge(ctx, noClamp, {
+        deviceId: "d-noclamp",
+        reads,
+        followedTopicIds: [],
+      }),
+    );
+    expect(r1.streakDays).toBe(1);
+
+    // With the teaser value (3), the merge must clamp up — never show a drop.
+    const clamp = await seedUserWithStats(t, "clamp@test");
+    const r2 = await t.run((ctx) =>
+      replayGuestMerge(ctx, clamp, {
+        deviceId: "d-clamp",
+        reads,
+        followedTopicIds: [],
+        guestStreak: 3,
+      }),
+    );
+    expect(r2.streakDays).toBeGreaterThanOrEqual(3);
+    const stats = await readStats(t, clamp);
+    expect(stats.currentStreak).toBeGreaterThanOrEqual(3);
+    expect(stats.longestStreak).toBeGreaterThanOrEqual(3);
+  });
+
   test("skips reads whose event no longer exists (never dangles)", async () => {
     const t = convexTest(schema, modules);
     const [liveEvent] = await seedEvents(t, 1);

@@ -42,14 +42,52 @@ async function writeItem(key: string, value: string): Promise<void> {
   }
 }
 
-/** Return the stored device id, minting and persisting one on first launch. */
-export async function loadOrCreateDeviceId(): Promise<string> {
-  const existing = await readItem(DEVICE_ID_KEY);
-  if (existing) return existing;
+/**
+ * Tri-state read (Ticket 9): distinguish "read succeeded, empty" (genuine first
+ * launch → mint) from "read threw" (transient keychain failure → must NOT mint,
+ * or a stored id gets overwritten and one guest splits into two identities).
+ */
+type ReadAttempt = { ok: true; value: string | null } | { ok: false };
 
-  const id = Crypto.randomUUID();
-  await writeItem(DEVICE_ID_KEY, id);
-  return id;
+async function tryReadItem(key: string): Promise<ReadAttempt> {
+  try {
+    return { ok: true, value: await SecureStore.getItemAsync(key) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+const DEVICE_ID_READ_ATTEMPTS = 3;
+const DEVICE_ID_READ_RETRY_MS = 60;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Return the stored device id, minting + persisting one only on a genuine first
+ * launch. A transient read failure is retried; if it never succeeds we return
+ * an ephemeral, UNPERSISTED id so a possibly-existing stored id survives for the
+ * next launch (Ticket 9) — we never mint over an unknown store.
+ */
+export async function loadOrCreateDeviceId(): Promise<string> {
+  for (let attempt = 0; attempt < DEVICE_ID_READ_ATTEMPTS; attempt++) {
+    const result = await tryReadItem(DEVICE_ID_KEY);
+    if (result.ok) {
+      if (result.value) return result.value; // existing id
+      // Read succeeded and was empty → real first launch: mint + persist.
+      const id = Crypto.randomUUID();
+      await writeItem(DEVICE_ID_KEY, id);
+      return id;
+    }
+    // Read threw — wait briefly and retry; do NOT mint on a transient failure.
+    if (attempt < DEVICE_ID_READ_ATTEMPTS - 1) {
+      await delay(DEVICE_ID_READ_RETRY_MS);
+    }
+  }
+  // Every read threw: use an ephemeral id for this session WITHOUT persisting,
+  // so we don't clobber a stored id we simply couldn't read.
+  return Crypto.randomUUID();
 }
 
 /**

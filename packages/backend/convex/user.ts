@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { ConvexError } from "convex/values";
 import { isAdminEmail } from "./lib/betaAccess";
+import { enforceRateLimit } from "./lib/rateLimit";
 
 /**
  * Get the current user's full profile.
@@ -180,6 +181,13 @@ export const setFollowedTopics = mutation({
     if (!user) {
       throw new ConvexError("User not found - please refresh and try again");
     }
+
+    // Ticket 18: bound topic writes per user.
+    await enforceRateLimit(ctx, {
+      key: `followedTopics:${user._id}`,
+      limit: 20,
+      windowMs: 60_000,
+    });
 
     // Drop unknown/duplicate ids rather than trusting the client wholesale.
     const seen = new Set<string>();

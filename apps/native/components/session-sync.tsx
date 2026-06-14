@@ -41,9 +41,9 @@ export function SessionSync() {
 
   const convex = useConvex();
   const { deviceId, rotateDeviceId } = useDeviceIdentity();
-  const { clear: clearGuestActivity } = useGuestActivity();
+  const { clear: clearGuestActivity, guestStreak } = useGuestActivity();
   const { resetLocal: resetFollowedTopics } = useFollowedTopics();
-  const { track, identifyUser, reset: resetAnalytics } = useAnalytics();
+  const { track, identifyUser } = useAnalytics();
 
   // Latches the login work to once per authenticated session; reset on logout.
   const loginHandledRef = useRef(false);
@@ -70,6 +70,8 @@ export function SessionSync() {
               sourceReliability: read.sourceReliability,
             })),
             followedTopicIds: followedTopics as Id<"topics">[],
+            // Ticket 7: the merged streak must never drop below the teaser.
+            guestStreak: guestStreak.currentStreak,
           });
           if (result.merged) {
             track({
@@ -136,13 +138,12 @@ export function SessionSync() {
       clearGuestActivity,
       toggleBookmark,
       registerPushToken,
+      guestStreak,
     ],
   );
 
   const handleLogout = useCallback(
     async (devId: string | null) => {
-      resetAnalytics();
-
       // Ticket 3: only drop the local guest stores once the server ledger
       // confirms this device's queue merged into an account. On any uncertainty
       // (no device id yet, or the check fails / is offline) treat it as
@@ -172,9 +173,10 @@ export function SessionSync() {
       // Drop the local push token so it isn't reused by the next guest; the
       // server row is reassigned on the next account's registration.
       await clearPushToken();
+      // rotateDeviceId owns the analytics reset + new device_uuid (Ticket 10).
       await rotateDeviceId();
     },
-    [resetAnalytics, resetFollowedTopics, rotateDeviceId, convex],
+    [resetFollowedTopics, rotateDeviceId, convex],
   );
 
   useEffect(() => {

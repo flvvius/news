@@ -97,7 +97,21 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     ) {
       return null;
     }
-    return new PostHog(apiKey as string, { host });
+    const created = new PostHog(apiKey as string, { host });
+    try {
+      // Ticket 16: tag dev/internal devices so funnels can exclude them. A
+      // super property rides on every event for filtering/cohorts in PostHog.
+      const isInternal =
+        (typeof __DEV__ !== "undefined" && __DEV__) ||
+        process.env.EXPO_PUBLIC_INTERNAL_DEVICE === "true";
+      created.register({
+        is_internal_device: isInternal,
+        app_environment: isInternal ? "development" : "production",
+      });
+    } catch {
+      // Best-effort.
+    }
+    return created;
   }, [consentLoaded, optedOut]);
 
   const consent = useMemo<AnalyticsConsent>(

@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { authComponent } from "./auth";
 import { getConfig } from "./config";
+import { enforceRateLimit } from "./lib/rateLimit";
 import { computeStreakUpdate } from "./lib/streaks";
 import {
   getPublicPreviewByEventId,
@@ -900,6 +901,15 @@ export async function replayGuestMerge(
     deviceId: string;
     reads: GuestReadInput[];
     followedTopicIds: Id<"topics">[];
+    /**
+     * The streak the guest teaser last showed (qualified-read days). The merged
+     * streak must never come out below it (Ticket 7) — a guest who saw "3-day
+     * streak" before signing up must not land on a smaller number. The folded
+     * streak counts every replayed view-day, but a late unqualified read can
+     * leave the *current run* shorter than the qualified teaser run, so we clamp
+     * up to the teaser value.
+     */
+    guestStreak?: number;
   },
 ): Promise<MergeGuestActivityResult> {
   // Idempotency: this device already merged into an account.
@@ -988,11 +998,17 @@ export async function replayGuestMerge(
     readsReplayed += 1;
   }
 
+  // Ticket 7: the merged streak must never drop below the teaser the guest
+  // saw. Clamp the current (and therefore longest) streak up to it.
+  const teaserStreak = Math.max(0, Math.floor(args.guestStreak ?? 0));
+  const mergedCurrentStreak = Math.max(folded.currentStreak, teaserStreak);
+  const mergedLongestStreak = Math.max(folded.longestStreak, mergedCurrentStreak);
+
   // One stats write for the whole merge (vs one per read before).
   if (stats && readsReplayed > 0) {
     await ctx.db.patch(stats._id, {
-      currentStreak: folded.currentStreak,
-      longestStreak: folded.longestStreak,
+      currentStreak: mergedCurrentStreak,
+      longestStreak: mergedLongestStreak,
       articlesRead: folded.articlesRead,
       biasBalance: folded.biasBalance,
       lastActiveAt: folded.lastActiveAt,
@@ -1027,7 +1043,7 @@ export async function replayGuestMerge(
     merged: true,
     readsReplayed,
     topicsReplayed: mergedTopics.length - existingTopics.length,
-    streakDays: folded.currentStreak,
+    streakDays: readsReplayed > 0 ? mergedCurrentStreak : folded.currentStreak,
   };
 }
 
@@ -1042,8 +1058,16 @@ export const mergeGuestActivity = mutation({
     deviceId: v.string(),
     reads: v.array(GUEST_READ_VALIDATOR),
     followedTopicIds: v.array(v.id("topics")),
+    guestStreak: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<MergeGuestActivityResult> => {
+    // Ticket 18: bound merge attempts per device (idempotent, but the replay is
+    // expensive — don't let a device hammer it).
+    await enforceRateLimit(ctx, {
+      key: `merge:${args.deviceId}`,
+      limit: 5,
+      windowMs: 60_000,
+    });
     const userId = await requireUserId(ctx);
     return replayGuestMerge(ctx, userId, args);
   },

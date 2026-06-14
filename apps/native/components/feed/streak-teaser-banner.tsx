@@ -9,22 +9,23 @@ import { Icon } from "@/components/ui/icon";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { useGuestActivity } from "@/contexts/guest-activity-context";
 import { useT } from "@/contexts/locale-context";
+import { markFiredOncePerSession } from "@/lib/analytics-session";
 import { clearPendingIntent, savePendingIntent } from "@/lib/pending-intent";
 import {
-  loadStreakTeaserDismissedAt,
-  setStreakTeaserDismissedAt,
-  STREAK_TEASER_SUPPRESS_MS,
+  loadStreakTeaserState,
+  registerImpression,
+  saveStreakTeaserState,
+  shouldShowStreakTeaser,
+  STREAK_TEASER_MIN_STREAK,
 } from "@/lib/streak-teaser";
 
-/** Streak lengths that trigger the teaser — the 2nd–3rd reading day. */
-const TEASER_STREAK_DAYS = new Set([2, 3]);
-
 /**
- * Inline (never modal) teaser shown to a guest on their 2nd–3rd consecutive
- * reading day. The streak count is real — read from the local guest queue
- * (steps 5–6) — so the copy never over-claims. The CTA opens the sign-in gate;
- * dismissing (or engaging) suppresses it device-locally for 30 days. Renders
- * nothing once signed in.
+ * Inline (never modal) teaser shown to a guest once their reading streak reaches
+ * {@link STREAK_TEASER_MIN_STREAK}+ days. The streak count is real — read from
+ * the local guest queue — so the copy never over-claims. Trigger is widened
+ * (Ticket 15): instead of a hard 2–3 day window, it shows at streak ≥ 2 bounded
+ * by an impression cap + 30-day cooldown, so an engaged guest is re-surfaced
+ * later rather than nagged every launch. Renders nothing once signed in.
  */
 export function StreakTeaserBanner() {
   const t = useT();
@@ -34,27 +35,29 @@ export function StreakTeaserBanner() {
   const { track } = useAnalytics();
 
   const sheetRef = useRef<BottomSheetModal>(null);
-  const [dismissalLoaded, setDismissalLoaded] = useState(false);
-  // Assume suppressed until the stored dismissal loads, so the banner never
-  // flashes before we know whether it was dismissed.
-  const [suppressed, setSuppressed] = useState(true);
-  const shownTrackedRef = useRef(false);
+  const [stateLoaded, setStateLoaded] = useState(false);
+  // Whether the impression cap/cooldown allows showing this session — frozen at
+  // load so recording the impression doesn't hide the banner mid-session.
+  const [impressionAllowed, setImpressionAllowed] = useState(false);
+  // Dismiss/engage hides it immediately for the rest of the session.
+  const [dismissed, setDismissed] = useState(false);
+  const impressionRecordedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    loadStreakTeaserDismissedAt()
-      .then((dismissedAt) => {
+    loadStreakTeaserState()
+      .then((state) => {
         if (cancelled) return;
-        const isSuppressed =
-          dismissedAt !== null &&
-          Date.now() - dismissedAt < STREAK_TEASER_SUPPRESS_MS;
-        setSuppressed(isSuppressed);
-        setDismissalLoaded(true);
+        // Pass MIN_STREAK so this reflects only the impression-cap/cooldown part.
+        setImpressionAllowed(
+          shouldShowStreakTeaser(STREAK_TEASER_MIN_STREAK, state, Date.now()),
+        );
+        setStateLoaded(true);
       })
       .catch(() => {
         if (!cancelled) {
-          setSuppressed(false);
-          setDismissalLoaded(true);
+          setImpressionAllowed(true);
+          setStateLoaded(true);
         }
       });
     return () => {
@@ -64,11 +67,22 @@ export function StreakTeaserBanner() {
 
   const streak = guestStreak.currentStreak;
   const bannerVisible =
-    dismissalLoaded && !suppressed && TEASER_STREAK_DAYS.has(streak);
+    stateLoaded &&
+    !dismissed &&
+    impressionAllowed &&
+    streak >= STREAK_TEASER_MIN_STREAK;
 
   useEffect(() => {
-    if (bannerVisible && !shownTrackedRef.current) {
-      shownTrackedRef.current = true;
+    if (!bannerVisible || impressionRecordedRef.current) return;
+    impressionRecordedRef.current = true;
+    // Count this impression toward the cap (persisted for future sessions);
+    // visibility stays frozen via impressionAllowed for this session.
+    void (async () => {
+      const state = await loadStreakTeaserState();
+      await saveStreakTeaserState(registerImpression(state, Date.now()));
+    })();
+    // Analytics impression fires once per session, not once per mount (T16).
+    if (markFiredOncePerSession("gate_shown:streak_teaser")) {
       track({ name: "gate_shown", properties: { reason: "streak_teaser" } });
     }
   }, [bannerVisible, track]);
@@ -79,8 +93,7 @@ export function StreakTeaserBanner() {
   }
 
   const suppress = () => {
-    setSuppressed(true);
-    setStreakTeaserDismissedAt(Date.now()).catch(() => {});
+    setDismissed(true);
   };
 
   const handleCreateAccount = () => {

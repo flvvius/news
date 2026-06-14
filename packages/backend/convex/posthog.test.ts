@@ -1,7 +1,10 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 
-import { deletePostHogPersonRequest } from "./posthog";
+import {
+  capturePostHogEventRequest,
+  deletePostHogPersonRequest,
+} from "./posthog";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 
@@ -91,6 +94,41 @@ describe("deletePostHogPersonRequest (Ticket 5b: GDPR erasure)", () => {
       deleted: false,
       reason: "error",
     });
+  });
+});
+
+describe("capturePostHogEventRequest (Ticket 14: account_created)", () => {
+  test("posts the event to the capture endpoint with the project key", async () => {
+    const { fn, calls } = mockFetch([{ ok: true }]);
+    const ok = await capturePostHogEventRequest({
+      apiKey: "phc_proj",
+      ingestHost: "https://eu.i.posthog.com",
+      distinctId: "user_abc",
+      event: "account_created",
+      fetchFn: fn,
+    });
+    expect(ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://eu.i.posthog.com/capture/");
+    const body = JSON.parse(String(calls[0].init?.body));
+    expect(body.api_key).toBe("phc_proj");
+    expect(body.event).toBe("account_created");
+    expect(body.distinct_id).toBe("user_abc");
+  });
+
+  test("a thrown fetch returns false (never escapes)", async () => {
+    const fn = (async () => {
+      throw new Error("down");
+    }) as unknown as typeof fetch;
+    expect(
+      await capturePostHogEventRequest({
+        apiKey: "k",
+        ingestHost: "https://eu.i.posthog.com",
+        distinctId: "u",
+        event: "account_created",
+        fetchFn: fn,
+      }),
+    ).toBe(false);
   });
 });
 

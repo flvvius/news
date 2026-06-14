@@ -267,4 +267,17 @@ crons.interval(
   {},
 );
 
+// ---------------------------------------------------------------------------
+// Morning Briefing — Daily (Ticket 19)
+// ---------------------------------------------------------------------------
+// Pushes one fresh followed-topic story per user. No-ops until BRIEFING_ENABLED
+// is set, so it stays dormant until push infra is configured (the cron the
+// notification primer in T6 waits on). 07:00 UTC is a basic global send window.
+crons.daily(
+  "send-morning-briefing",
+  { hourUTC: 7, minuteUTC: 0 },
+  internal.briefing.sendMorningBriefings,
+  {},
+);
+
 export default crons;

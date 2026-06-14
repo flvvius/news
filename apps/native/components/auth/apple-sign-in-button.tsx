@@ -4,6 +4,13 @@ import { ActivityIndicator, Platform, Pressable, Text } from "react-native";
 
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/contexts/locale-context";
+import {
+  clearPendingAppleIdentity,
+  hasAppleIdentity,
+  loadPendingAppleIdentity,
+  savePendingAppleIdentity,
+  type ApplePendingIdentity,
+} from "@/lib/apple-identity";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
 
@@ -78,19 +85,33 @@ export function AppleSignInButton({
         return;
       }
 
+      // Apple returns name/email only on the FIRST consent (Ticket 21). Persist
+      // them BEFORE the backend call and reuse on a retry, so a failed first
+      // attempt doesn't leave a nameless account on the next try. Cleared only
+      // after the account actually persists.
+      const fromCredential: ApplePendingIdentity = {
+        firstName: credential.fullName?.givenName ?? undefined,
+        lastName: credential.fullName?.familyName ?? undefined,
+        email: credential.email ?? undefined,
+      };
+      if (hasAppleIdentity(fromCredential)) {
+        await savePendingAppleIdentity(fromCredential);
+      }
+      const identity = hasAppleIdentity(fromCredential)
+        ? fromCredential
+        : ((await loadPendingAppleIdentity()) ?? fromCredential);
+
       const { error } = await authClient.signIn.social({
         provider: "apple",
         idToken: {
           token: identityToken,
-          // Name/email arrive only on first consent — forward them so the
-          // created account is not nameless. Absent on later sign-ins.
-          user: credential.fullName
+          user: hasAppleIdentity(identity)
             ? {
                 name: {
-                  firstName: credential.fullName.givenName ?? undefined,
-                  lastName: credential.fullName.familyName ?? undefined,
+                  firstName: identity.firstName,
+                  lastName: identity.lastName,
                 },
-                email: credential.email ?? undefined,
+                email: identity.email,
               }
             : undefined,
         },
@@ -104,6 +125,8 @@ export function AppleSignInButton({
       // session actually exists (mirrors the Google button).
       const session = await authClient.getSession();
       if (session.data) {
+        // Account persisted — safe to drop the first-consent identity.
+        await clearPendingAppleIdentity();
         onSuccess();
       }
     } catch (error) {

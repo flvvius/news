@@ -8,6 +8,8 @@ import {
   writeAsStringAsync,
 } from "expo-file-system/legacy";
 
+import { reportError } from "./error-monitoring";
+
 /**
  * Local guest interaction queue: event reads accrued while signed out, stored
  * as a JSON file (not SecureStore — that caps values at ~2KB, too small for a
@@ -101,8 +103,11 @@ async function deleteIfExists(uri: string | null): Promise<void> {
  * surfaced to the user, but we want a breadcrumb when it happens.
  */
 function reportQueueCorruption(): void {
-  // TODO(T17): forward to Sentry once error monitoring lands.
   console.warn("[guest-activity-queue] recovered from a corrupt queue file");
+  // Ticket 17: surface to error monitoring (no-ops until Sentry is configured).
+  reportError(new Error("guest-activity queue file was corrupt"), {
+    scope: "guest-activity-queue",
+  });
 }
 
 /**

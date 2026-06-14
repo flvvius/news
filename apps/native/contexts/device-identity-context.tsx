@@ -15,6 +15,7 @@ import {
   markOnboardingComplete,
   rotateDeviceId as rotateStoredDeviceId,
 } from "@/lib/device-identity";
+import { rotateIdentity } from "@/lib/rotate-identity";
 
 type DeviceIdentityContextType = {
   /** Stable anonymous device id; null until SecureStore has been read. */
@@ -41,7 +42,7 @@ const DeviceIdentityContext = createContext<
 >(undefined);
 
 export function DeviceIdentityProvider({ children }: { children: ReactNode }) {
-  const { registerDeviceId } = useAnalytics();
+  const { registerDeviceId, reset: resetAnalytics } = useAnalytics();
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [hasOnboarded, setHasOnboarded] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -74,11 +75,16 @@ export function DeviceIdentityProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const rotateDeviceId = useCallback(async () => {
-    const id = await rotateStoredDeviceId();
+    // Ticket 10 contract: new UUID + posthog.reset() + re-register device_uuid,
+    // so the next guest can't stitch to the account that just signed out.
+    const id = await rotateIdentity({
+      rotateStoredDeviceId,
+      resetAnalytics,
+      registerDeviceId,
+    });
     setDeviceId(id);
-    registerDeviceId(id);
     return id;
-  }, [registerDeviceId]);
+  }, [registerDeviceId, resetAnalytics]);
 
   const value = useMemo<DeviceIdentityContextType>(
     () => ({

@@ -42,6 +42,7 @@ import {
   QUALIFIED_READ_MIN_SECONDS,
 } from "@/lib/guest-activity-queue";
 import { uniqueEventSources, type EventDetail } from "@/lib/event-types";
+import { createVisitTracker } from "@/lib/visit-tracker";
 import {
   buildInteractionContextFromSources,
   NATIVE_DEVICE_TYPE,
@@ -203,62 +204,69 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
     opacity: interpolate(scrollY.value, [8, 48], [0, 1], "clamp"),
   }));
 
-  // View tracking mirrors the web event page: log once on leave with time
-  // spent and max scroll depth. Refs keep the cleanup callback stable.
-  const maxScrollDepthRef = useRef(0);
+  // View tracking mirrors the web event page: log EXACTLY once on leave with
+  // final time + max scroll (Ticket 8). A per-visit tracker guarantees a single
+  // append regardless of scroll/time churn; refs keep the commit stable so the
+  // effect mounts once per visit (auth state is read at commit time, not a dep).
   const logInteractionRef = useRef(logInteraction);
   logInteractionRef.current = logInteraction;
   const recordReadRef = useRef(recordRead);
   recordReadRef.current = recordRead;
   const interactionContextRef = useRef(interactionContext);
   interactionContextRef.current = interactionContext;
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
+  const visitTrackerRef = useRef<ReturnType<typeof createVisitTracker> | null>(
+    null,
+  );
 
   useEffect(() => {
-    const startedAt = Date.now();
-
-    return () => {
-      const timeSpentSeconds = Math.max(
-        1,
-        Math.round((Date.now() - startedAt) / 1000),
-      );
-      const scrollDepthPercentage = maxScrollDepthRef.current;
-      const context = interactionContextRef.current;
-
-      if (isAuthenticated) {
-        logInteractionRef
+    const tracker = createVisitTracker({
+      startedAt: Date.now(),
+      now: () => Date.now(),
+      onCommit: ({ timeSpentSeconds, scrollDepthPercentage }) => {
+        const context = interactionContextRef.current;
+        if (isAuthenticatedRef.current) {
+          logInteractionRef
+            .current({
+              eventId: event._id,
+              type: "view",
+              context,
+              metadata: {
+                deviceType: NATIVE_DEVICE_TYPE,
+                scrollDepthPercentage,
+                timeSpentSeconds,
+              },
+            })
+            .catch(() => {
+              // View analytics are best-effort.
+            });
+          return;
+        }
+        // Guest reads accrue locally (no server write) and replay into the
+        // account at merge — this is what makes guest streaks possible.
+        recordReadRef
           .current({
             eventId: event._id,
-            type: "view",
-            context,
-            metadata: {
-              deviceType: NATIVE_DEVICE_TYPE,
-              scrollDepthPercentage,
-              timeSpentSeconds,
-            },
+            slug: event.slug,
+            timestamp: Date.now(),
+            timeSpentSeconds,
+            scrollDepthPercentage,
+            biasRating: context?.biasRating,
+            sourceReliability: context?.sourceReliability,
           })
           .catch(() => {
-            // View analytics are best-effort.
+            // Local queue write is best-effort.
           });
-        return;
-      }
+      },
+    });
+    visitTrackerRef.current = tracker;
 
-      // Guest reads accrue locally (no server write) and replay into the
-      // account at merge — this is what makes guest streaks possible.
-      recordReadRef
-        .current({
-          eventId: event._id,
-          slug: event.slug,
-          timestamp: Date.now(),
-          timeSpentSeconds,
-          scrollDepthPercentage,
-          biasRating: context?.biasRating,
-          sourceReliability: context?.sourceReliability,
-        })
-        .catch(() => {
-          // Local queue write is best-effort.
-        });
+    return () => {
+      // Single commit per visit (idempotent if cleanup runs twice).
+      tracker.commit();
     };
-  }, [event._id, event.slug, isAuthenticated]);
+  }, [event._id, event.slug]);
 
   // Notification primer fires on the first *qualified* read (decision 6):
   // 30s dwell OR ≥60% scroll, whichever first, once per visit. The primer
@@ -288,9 +296,8 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
       scrollable <= 0
         ? 1
         : Math.min(1, Math.max(0, contentOffset.y / scrollable));
-    if (depth > maxScrollDepthRef.current) {
-      maxScrollDepthRef.current = depth;
-    }
+    // Feeds the per-visit tracker; the single read is committed on leave.
+    visitTrackerRef.current?.recordScroll(depth);
     if (depth >= QUALIFIED_READ_MIN_SCROLL) {
       triggerPrimer();
     }

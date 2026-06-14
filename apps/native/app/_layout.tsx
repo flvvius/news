@@ -21,7 +21,12 @@ import { GuestActivityProvider } from "@/contexts/guest-activity-context";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { NotificationPrimerProvider } from "@/contexts/notification-primer-context";
 import { authClient } from "@/lib/auth-client";
+import { initErrorMonitoring } from "@/lib/error-monitoring";
 import { useTokenColor } from "@/lib/use-token-color";
+
+// Ticket 17: stand up crash/exception monitoring as early as possible (no-ops
+// until a Sentry DSN is configured).
+initErrorMonitoring();
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 if (!convexUrl) {

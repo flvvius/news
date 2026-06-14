@@ -1,6 +1,6 @@
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@news-app/backend/convex/_generated/api";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
@@ -21,11 +21,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { Screen } from "@/components/screen";
-import { useAnalytics, useAnalyticsConsent } from "@/contexts/analytics-context";
+import { useAnalyticsConsent } from "@/contexts/analytics-context";
 import { useDeviceIdentity } from "@/contexts/device-identity-context";
 import { useFollowedTopics } from "@/contexts/followed-topics-context";
 import { useGuestActivity } from "@/contexts/guest-activity-context";
 import { clearLocalGuestData } from "@/lib/clear-guest-data";
+import { loadPushToken } from "@/lib/push-token";
 import {
   SettingsGroup,
   SettingsRow,
@@ -330,7 +331,7 @@ function ProfileContent() {
   const { clear: clearGuestActivity } = useGuestActivity();
   const { resetLocal: resetFollowedTopics } = useFollowedTopics();
   const { rotateDeviceId } = useDeviceIdentity();
-  const { reset: resetAnalytics } = useAnalytics();
+  const removePushToken = useMutation(api.notifications.removePushToken);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const deleteSheetRef = useRef<BottomSheetModal>(null);
   const clearDataSheetRef = useRef<BottomSheetModal>(null);
@@ -348,6 +349,16 @@ function ProfileContent() {
     if (isSigningOut) return;
     setIsSigningOut(true);
     try {
+      // Ticket 21: unregister the server-side push token while still
+      // authenticated, before signOut tears the session down.
+      const pushToken = await loadPushToken();
+      if (pushToken) {
+        try {
+          await removePushToken({ token: pushToken });
+        } catch {
+          // Best-effort; the row is reassigned on the next account's register.
+        }
+      }
       // The Better Auth expo plugin purges its SecureStore entries here.
       await authClient.signOut();
     } catch {
@@ -399,7 +410,7 @@ function ProfileContent() {
       await clearLocalGuestData();
       await clearGuestActivity();
       resetFollowedTopics();
-      resetAnalytics();
+      // rotateDeviceId owns the analytics reset + new device_uuid (Ticket 10).
       await rotateDeviceId();
       Alert.alert(t("native.privacy.clearDataDone"));
     })();

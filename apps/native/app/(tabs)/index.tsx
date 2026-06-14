@@ -2,7 +2,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 
 import { EventRow, type FeedEvent } from "@/components/event-row";
@@ -16,7 +16,9 @@ import { EmptyState } from "@/components/ui/state-views";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { useFollowedTopics } from "@/contexts/followed-topics-context";
 import { useT } from "@/contexts/locale-context";
+import { markFiredOncePerSession } from "@/lib/analytics-session";
 import { cn } from "@/lib/cn";
+import { stableTopicBoost } from "@/lib/feed-boost";
 import { topicLabelKey } from "@/lib/topic-label";
 
 type FeedSort = "recent" | "trending";
@@ -172,13 +174,11 @@ function FeedContent() {
     setRefreshKey((key) => key + 1);
   }, []);
 
-  // Fire `first_feed_render` once per feed mount, the first time content is
-  // ready (survives sort/topic switches, which only remount FeedList).
-  const firstRenderTracked = useRef(false);
+  // Fire `first_feed_render` once per SESSION (Ticket 16), not once per mount —
+  // remounting the feed tab must not re-fire the impression.
   const handleFirstPageLoaded = useCallback(() => {
     setIsRefreshing(false);
-    if (!firstRenderTracked.current) {
-      firstRenderTracked.current = true;
+    if (markFiredOncePerSession("first_feed_render")) {
       track({ name: "first_feed_render" });
     }
   }, [track]);
@@ -420,16 +420,14 @@ function FeedList({
     if (selectedTopic !== "all" || followedSet.size === 0) {
       return rest;
     }
-    const followed: FeedEvent[] = [];
-    const others: FeedEvent[] = [];
-    for (const event of rest) {
-      const isFollowed = (event.topicIds ?? []).some((id) =>
-        followedSet.has(String(id)),
-      );
-      (isFollowed ? followed : others).push(event);
-    }
-    return [...followed, ...others];
-  }, [events, selectedTopic, followedSet]);
+    // Ticket 12: freeze the FIRST page's boosted order and append later pages in
+    // natural order, so loading more never reorders rows already on screen. The
+    // lead (events[0]) is excluded from `rest` and always stays position 1. The
+    // first page contributed `pageSize - 1` items to `rest` (the lead took one).
+    return stableTopicBoost(rest, pageSize - 1, (event) =>
+      (event.topicIds ?? []).some((id) => followedSet.has(String(id))),
+    );
+  }, [events, selectedTopic, followedSet, pageSize]);
 
   const handleEndReached = useCallback(() => {
     if (status === "CanLoadMore") {

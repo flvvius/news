@@ -3,10 +3,12 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   internalAction,
+  internalMutation,
   internalQuery,
   mutation,
 } from "./_generated/server";
 import { authComponent } from "./auth";
+import { enforceRateLimit } from "./lib/rateLimit";
 import { getUserProfileByAuthUserId } from "./lib/userProfile";
 
 const PLATFORM_VALIDATOR = v.union(v.literal("ios"), v.literal("android"));
@@ -23,6 +25,13 @@ export const registerPushToken = mutation({
     if (!authUser) throw new ConvexError("Not authenticated");
     const user = await getUserProfileByAuthUserId(ctx, authUser._id);
     if (!user) throw new ConvexError("User not found");
+
+    // Ticket 18: bound token registrations per user.
+    await enforceRateLimit(ctx, {
+      key: `pushToken:${user._id}`,
+      limit: 10,
+      windowMs: 60_000,
+    });
 
     const existing = await ctx.db
       .query("pushTokens")
@@ -82,6 +91,24 @@ export const getUserPushTokens = internalQuery({
   },
 });
 
+/**
+ * Delete tokens Expo reported as undeliverable (DeviceNotRegistered) so a dead
+ * device stops being targeted on every future send (Ticket 19).
+ */
+export const pruneInvalidTokens = internalMutation({
+  args: { tokens: v.array(v.string()) },
+  handler: async (ctx, { tokens }) => {
+    for (const token of tokens) {
+      const row = await ctx.db
+        .query("pushTokens")
+        .withIndex("by_token", (q) => q.eq("token", token))
+        .first();
+      if (row) await ctx.db.delete(row._id);
+    }
+    return { pruned: tokens.length };
+  },
+});
+
 const EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send";
 
 /**
@@ -126,11 +153,31 @@ export const sendPushToUser = internalAction({
         );
         return { sent: 0 };
       }
+
+      // Prune tokens Expo reports as DeviceNotRegistered so dead devices stop
+      // being targeted (Ticket 19). Receipts line up 1:1 with `messages`.
+      const payload = (await response.json()) as {
+        data?: Array<{ status?: string; details?: { error?: string } }>;
+      };
+      const deadTokens: string[] = [];
+      payload.data?.forEach((ticket, index) => {
+        if (
+          ticket.status === "error" &&
+          ticket.details?.error === "DeviceNotRegistered"
+        ) {
+          const token = tokens[index];
+          if (token) deadTokens.push(token);
+        }
+      });
+      if (deadTokens.length > 0) {
+        await ctx.runMutation(internal.notifications.pruneInvalidTokens, {
+          tokens: deadTokens,
+        });
+      }
+      return { sent: tokens.length - deadTokens.length };
     } catch (error) {
       console.error("[notifications] Expo push send threw", error);
       return { sent: 0 };
     }
-
-    return { sent: tokens.length };
   },
 });
