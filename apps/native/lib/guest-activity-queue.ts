@@ -223,6 +223,23 @@ export function clearGuestReads(): Promise<void> {
   });
 }
 
+/**
+ * Clear the guest queue only when its merge into an account is confirmed.
+ *
+ * Ticket 3: logout must never delete an *unmerged* queue, or the guest's
+ * reading history is silently lost. `deviceMerged` comes from the server
+ * `guestMerges` ledger (see `hasDeviceMerged`); pass `false` on any uncertainty
+ * (e.g. the check failed / offline) so the queue is retained and the next login
+ * retries the merge. Returns whether the queue was actually cleared.
+ */
+export async function clearGuestReadsIfMerged(
+  deviceMerged: boolean,
+): Promise<boolean> {
+  if (!deviceMerged) return false;
+  await clearGuestReads();
+  return true;
+}
+
 function startOfUtcDay(timestamp: number): number {
   return Math.floor(timestamp / DAY_MS) * DAY_MS;
 }

@@ -1049,6 +1049,24 @@ export const mergeGuestActivity = mutation({
   },
 });
 
+/**
+ * Whether a device's guest queue has been merged into an account, by the
+ * `guestMerges` ledger. Ticket 3: logout consults this before clearing local
+ * guest stores — an unmerged queue must be retained for retry, never deleted.
+ * Keyed by the opaque device UUID and intentionally auth-free, since logout
+ * runs as the session is being torn down.
+ */
+export const hasDeviceMerged = query({
+  args: { deviceId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("guestMerges")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .first();
+    return row !== null;
+  },
+});
+
 export const logInteraction = mutation({
   args: {
     eventId: v.id("events"),

@@ -1,6 +1,6 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useAnalytics } from "@/contexts/analytics-context";
@@ -11,7 +11,10 @@ import {
   clearLocalFollowedTopics,
   loadLocalFollowedTopics,
 } from "@/lib/followed-topics";
-import { loadGuestReads } from "@/lib/guest-activity-queue";
+import {
+  clearGuestReadsIfMerged,
+  loadGuestReads,
+} from "@/lib/guest-activity-queue";
 import { clearPendingIntent, loadPendingIntent } from "@/lib/pending-intent";
 import { clearPushToken, loadPushToken } from "@/lib/push-token";
 import { Platform } from "react-native";
@@ -36,6 +39,7 @@ export function SessionSync() {
   const toggleBookmark = useMutation(api.interactions.toggleBookmark);
   const registerPushToken = useMutation(api.notifications.registerPushToken);
 
+  const convex = useConvex();
   const { deviceId, rotateDeviceId } = useDeviceIdentity();
   const { clear: clearGuestActivity } = useGuestActivity();
   const { resetLocal: resetFollowedTopics } = useFollowedTopics();
@@ -135,16 +139,43 @@ export function SessionSync() {
     ],
   );
 
-  const handleLogout = useCallback(async () => {
-    resetAnalytics();
-    await clearGuestActivity();
-    resetFollowedTopics();
-    await clearPendingIntent();
-    // Drop the local push token so it isn't reused by the next guest; the
-    // server row is reassigned on the next account's registration.
-    await clearPushToken();
-    await rotateDeviceId();
-  }, [resetAnalytics, clearGuestActivity, resetFollowedTopics, rotateDeviceId]);
+  const handleLogout = useCallback(
+    async (devId: string | null) => {
+      resetAnalytics();
+
+      // Ticket 3: only drop the local guest stores once the server ledger
+      // confirms this device's queue merged into an account. On any uncertainty
+      // (no device id yet, or the check fails / is offline) treat it as
+      // unmerged and RETAIN — the next login replays the queue (the merge is
+      // idempotent per device). Deleting an unmerged queue is silent
+      // guest-history loss.
+      let merged = false;
+      if (devId) {
+        try {
+          merged = await convex.query(api.interactions.hasDeviceMerged, {
+            deviceId: devId,
+          });
+        } catch {
+          merged = false;
+        }
+      }
+      const cleared = await clearGuestReadsIfMerged(merged);
+      if (cleared) {
+        // Queue confirmed-merged and dropped — also drop the followed-topics
+        // store so a post-logout guest session starts clean. (The guest-activity
+        // React state is already empty here: handleLogin resets it on a
+        // confirmed merge, so there is nothing stale to clear.)
+        resetFollowedTopics();
+      }
+
+      await clearPendingIntent();
+      // Drop the local push token so it isn't reused by the next guest; the
+      // server row is reassigned on the next account's registration.
+      await clearPushToken();
+      await rotateDeviceId();
+    },
+    [resetAnalytics, resetFollowedTopics, rotateDeviceId, convex],
+  );
 
   useEffect(() => {
     if (isLoading) return;
@@ -158,9 +189,11 @@ export function SessionSync() {
     }
 
     // Guest or just logged out. Run cleanup once if we had a live session.
+    // Pass the current (pre-rotation) device id so the ledger check targets the
+    // session that owned the queue.
     if (loginHandledRef.current) {
       loginHandledRef.current = false;
-      void handleLogout();
+      void handleLogout(deviceId);
     }
   }, [
     isAuthenticated,

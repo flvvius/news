@@ -41,6 +41,7 @@ vi.mock("expo-file-system/legacy", () => ({
 import {
   appendGuestRead,
   clearGuestReads,
+  clearGuestReadsIfMerged,
   loadGuestReads,
   type GuestRead,
 } from "./guest-activity-queue";
@@ -128,6 +129,27 @@ describe("guest-activity-queue (Ticket 2: atomic write + corrupt recovery)", () 
 
     expect(await loadGuestReads()).toEqual([]);
     expect(fsState.files.has(PRIMARY)).toBe(false);
+  });
+
+  test("Ticket 3: an unmerged queue survives logout and merges on relogin", async () => {
+    // Guest accrues reads.
+    await appendGuestRead(readA);
+    await appendGuestRead(readB);
+    expect(await loadGuestReads()).toEqual([readA, readB]);
+
+    // Login attempt whose merge FAILS (e.g. offline): the queue is not cleared,
+    // and logout runs with merged=false (ledger has no row / check failed).
+    const clearedOnFailedLogout = await clearGuestReadsIfMerged(false);
+    expect(clearedOnFailedLogout).toBe(false);
+    // Survived logout — no silent history loss.
+    expect(await loadGuestReads()).toEqual([readA, readB]);
+
+    // Next login finds the retained queue available to replay; after a
+    // confirmed merge, logout runs with merged=true and clears it.
+    expect(await loadGuestReads()).toEqual([readA, readB]);
+    const clearedAfterMerge = await clearGuestReadsIfMerged(true);
+    expect(clearedAfterMerge).toBe(true);
+    expect(await loadGuestReads()).toEqual([]);
   });
 
   test("clear removes the primary and both sidecars (no resurrection)", async () => {

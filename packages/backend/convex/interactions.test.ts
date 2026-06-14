@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 
 import { recordInteraction, replayGuestMerge } from "./interactions";
 import schema from "./schema";
+import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
 // Documented convex-test glob: `!(*.*.*)` drops files with a second dot, which
@@ -251,6 +252,41 @@ describe("replayGuestMerge (Ticket 1: memory-folded merge)", () => {
     // Nothing changed: no duplicated history, no stats drift.
     expect(await countInteractions(t, user)).toBe(countAfterFirst);
     expect(await readStats(t, user)).toEqual(statsAfterFirst);
+  });
+
+  test("hasDeviceMerged reflects the ledger (Ticket 3 logout gate)", async () => {
+    const t = convexTest(schema, modules);
+    const events = await seedEvents(t, 2);
+    const user = await seedUserWithStats(t, "ledger@test");
+
+    // Before any merge the ledger has no row — logout must treat this as
+    // unmerged and RETAIN the queue.
+    expect(
+      await t.query(api.interactions.hasDeviceMerged, { deviceId: "dev-x" }),
+    ).toBe(false);
+
+    await t.run((ctx) =>
+      replayGuestMerge(ctx, user, {
+        deviceId: "dev-x",
+        reads: [
+          {
+            eventId: events[0],
+            timestamp: 20000 * DAY_MS,
+            biasRating: 1,
+            timeSpentSeconds: 60,
+          },
+        ],
+        followedTopicIds: [],
+      }),
+    );
+
+    // After a confirmed merge the gate opens for that device only.
+    expect(
+      await t.query(api.interactions.hasDeviceMerged, { deviceId: "dev-x" }),
+    ).toBe(true);
+    expect(
+      await t.query(api.interactions.hasDeviceMerged, { deviceId: "dev-other" }),
+    ).toBe(false);
   });
 
   test("skips reads whose event no longer exists (never dangles)", async () => {
