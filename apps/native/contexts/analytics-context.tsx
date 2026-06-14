@@ -26,8 +26,11 @@ import type { AnalyticsEvent } from "@/lib/analytics";
  */
 
 const apiKey = process.env.EXPO_PUBLIC_POSTHOG_KEY?.trim();
+// EU region by default: Biviant is an EU operator, so an unconfigured-host
+// build must never default to the US ingest endpoint. Override only with an
+// explicit EXPO_PUBLIC_POSTHOG_HOST.
 const host =
-  process.env.EXPO_PUBLIC_POSTHOG_HOST?.trim() || "https://us.i.posthog.com";
+  process.env.EXPO_PUBLIC_POSTHOG_HOST?.trim() || "https://eu.i.posthog.com";
 
 const AnalyticsContext = createContext<PostHog | null>(null);
 

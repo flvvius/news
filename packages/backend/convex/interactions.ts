@@ -112,6 +112,53 @@ function startOfUtcDay(timestamp: number): number {
   return Math.floor(timestamp / DAY_MS) * DAY_MS;
 }
 
+/** The streak/read/bias fields a "view" advances. */
+type ViewStatsAccumulator = {
+  currentStreak: number;
+  longestStreak: number;
+  articlesRead: number;
+  biasBalance: number;
+  lastActiveAt?: number;
+};
+
+/**
+ * Pure fold of a single "view" into a running stats accumulator.
+ *
+ * Both the live per-view write (`updateUserStatsForView`) and the guest-merge
+ * replay (`replayGuestMerge`) go through this one function, so folding N reads
+ * in a single mutation is identical *by construction* to applying them one at a
+ * time — that equivalence is exactly Ticket 1's contract. Bias is rounded and
+ * clamped at every step (not just at the end) because the next step reads back
+ * the *stored* (rounded) balance, so the rounding compounds and must be
+ * reproduced step-by-step to match a day-by-day replay.
+ */
+function foldViewStats(
+  stats: ViewStatsAccumulator,
+  timestamp: number,
+  biasRating: number,
+): ViewStatsAccumulator {
+  const streakUpdate = computeStreakUpdate(stats, timestamp);
+
+  const clampedBias = Math.max(-5, Math.min(5, biasRating));
+  const previousReads = stats.articlesRead;
+  const previousAverageBias = previousReads > 0 ? stats.biasBalance / 20 : 0;
+  const nextReads = previousReads + 1;
+  const nextAverageBias =
+    (previousAverageBias * previousReads + clampedBias) / nextReads;
+  const nextBiasBalance = Math.max(
+    -100,
+    Math.min(100, Math.round(nextAverageBias * 20)),
+  );
+
+  return {
+    currentStreak: streakUpdate.currentStreak,
+    longestStreak: streakUpdate.longestStreak,
+    articlesRead: nextReads,
+    biasBalance: nextBiasBalance,
+    lastActiveAt: streakUpdate.lastActiveAt,
+  };
+}
+
 async function updateUserStatsForView(
   ctx: MutationCtx,
   userId: Id<"users">,
@@ -136,25 +183,14 @@ async function updateUserStatsForView(
     }
   }
 
-  const streakUpdate = computeStreakUpdate(stats, timestamp);
-
-  const clampedBias = Math.max(-5, Math.min(5, context.biasRating));
-  const previousReads = stats.articlesRead;
-  const previousAverageBias = previousReads > 0 ? stats.biasBalance / 20 : 0;
-  const nextReads = previousReads + 1;
-  const nextAverageBias =
-    (previousAverageBias * previousReads + clampedBias) / nextReads;
-  const nextBiasBalance = Math.max(
-    -100,
-    Math.min(100, Math.round(nextAverageBias * 20)),
-  );
+  const next = foldViewStats(stats, timestamp, context.biasRating);
 
   await ctx.db.patch(stats._id, {
-    currentStreak: streakUpdate.currentStreak,
-    longestStreak: streakUpdate.longestStreak,
-    articlesRead: nextReads,
-    biasBalance: nextBiasBalance,
-    lastActiveAt: streakUpdate.lastActiveAt,
+    currentStreak: next.currentStreak,
+    longestStreak: next.longestStreak,
+    articlesRead: next.articlesRead,
+    biasBalance: next.biasBalance,
+    lastActiveAt: next.lastActiveAt,
   });
 }
 
@@ -192,7 +228,7 @@ async function resolveInteractionContext(
   return { biasRating: 0, sourceReliability: 0 };
 }
 
-async function recordInteraction(
+export async function recordInteraction(
   ctx: MutationCtx,
   args: {
     userId: Id<"users">;
@@ -809,16 +845,197 @@ const GUEST_READ_VALIDATOR = v.object({
 });
 
 /**
+ * Defensive upper bound on reads replayed in a single merge. The client queue
+ * is already capped at the same number (`MAX_QUEUED_READS` in the native
+ * `guest-activity-queue`), so a well-behaved client never trips this; it only
+ * guards the Convex transaction against a tampered/oversized payload. Reads
+ * beyond the cap are dropped oldest-first (the most recent activity, which
+ * drives the live streak, is what we keep).
+ */
+const MAX_MERGE_READS = 1000;
+
+type GuestReadInput = {
+  eventId: Id<"events">;
+  timestamp: number;
+  timeSpentSeconds?: number;
+  scrollDepthPercentage?: number;
+  biasRating?: number;
+  sourceReliability?: number;
+};
+
+export type MergeGuestActivityResult =
+  | {
+      merged: false;
+      reason: "already_merged";
+      readsReplayed: number;
+      topicsReplayed: number;
+      streakDays: number;
+    }
+  | {
+      merged: true;
+      readsReplayed: number;
+      topicsReplayed: number;
+      streakDays: number;
+    };
+
+/**
+ * Core guest→account merge, given an already-resolved `userId`. Split out from
+ * the auth gate so it is unit-testable without the Better Auth component.
+ *
+ * Ticket 1: the previous implementation replayed up to 1000 reads as 1000 live
+ * `recordInteraction` calls, each re-reading and re-patching the single
+ * `userStats` row — ~4000 sequential DB ops that blow the Convex
+ * read/write/time limits and roll the whole merge back, losing the guest's
+ * entire history at signup. We instead **fold the stats in memory** and write
+ * `userStats` exactly once. Interaction rows still persist (the guest's history
+ * is the point), but event-existence lookups are cached so duplicate-event
+ * reads cost one DB read, not N. Idempotency is preserved via the `guestMerges`
+ * ledger; folding goes through the same `foldViewStats` as the live path, so
+ * the result equals a day-by-day replay.
+ */
+export async function replayGuestMerge(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  args: {
+    deviceId: string;
+    reads: GuestReadInput[];
+    followedTopicIds: Id<"topics">[];
+  },
+): Promise<MergeGuestActivityResult> {
+  // Idempotency: this device already merged into an account.
+  const existingMerge = await ctx.db
+    .query("guestMerges")
+    .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+    .first();
+  if (existingMerge) {
+    return {
+      merged: false,
+      reason: "already_merged",
+      readsReplayed: 0,
+      topicsReplayed: 0,
+      streakDays: 0,
+    };
+  }
+
+  // Replay reads oldest-first so the streak rebuilds day by day; bound the
+  // count defensively (keep the most recent reads if over the cap).
+  const orderedReads = [...args.reads]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-MAX_MERGE_READS);
+
+  // Load (or lazily create) the single stats row. We fold every replayed read
+  // into this accumulator in memory and patch the row once at the end.
+  let stats = await ctx.db
+    .query("userStats")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  if (!stats) {
+    const statsId = await ctx.db.insert("userStats", {
+      userId,
+      currentStreak: 0,
+      longestStreak: 0,
+      articlesRead: 0,
+      biasBalance: 0,
+    });
+    stats = await ctx.db.get(statsId);
+  }
+
+  let folded: ViewStatsAccumulator = {
+    currentStreak: stats?.currentStreak ?? 0,
+    longestStreak: stats?.longestStreak ?? 0,
+    articlesRead: stats?.articlesRead ?? 0,
+    biasBalance: stats?.biasBalance ?? 0,
+    lastActiveAt: stats?.lastActiveAt,
+  };
+
+  // Cache event-existence so a guest who re-read the same event many times
+  // costs one read per *unique* event, not one per queue entry.
+  const eventExists = new Map<string, boolean>();
+  let readsReplayed = 0;
+  for (const read of orderedReads) {
+    let exists = eventExists.get(read.eventId);
+    if (exists === undefined) {
+      exists = (await ctx.db.get(read.eventId)) !== null;
+      eventExists.set(read.eventId, exists);
+    }
+    // Skip reads whose event no longer exists — never dangle an interaction.
+    if (!exists) continue;
+
+    // Mirror the live path's context resolution: a read with no captured bias
+    // stores a zeroed context (no article lookup happens here).
+    const context: InteractionContext =
+      read.biasRating !== undefined
+        ? {
+            biasRating: read.biasRating,
+            sourceReliability: read.sourceReliability ?? 0,
+          }
+        : { biasRating: 0, sourceReliability: 0 };
+
+    await ctx.db.insert("interactions", {
+      userId,
+      eventId: read.eventId,
+      type: "view",
+      context,
+      metadata: normalizeInteractionMetadata({
+        deviceType: "mobile",
+        timeSpentSeconds: read.timeSpentSeconds,
+        scrollDepthPercentage: read.scrollDepthPercentage,
+      }),
+      timestamp: read.timestamp,
+    });
+
+    folded = foldViewStats(folded, read.timestamp, context.biasRating);
+    readsReplayed += 1;
+  }
+
+  // One stats write for the whole merge (vs one per read before).
+  if (stats && readsReplayed > 0) {
+    await ctx.db.patch(stats._id, {
+      currentStreak: folded.currentStreak,
+      longestStreak: folded.longestStreak,
+      articlesRead: folded.articlesRead,
+      biasBalance: folded.biasBalance,
+      lastActiveAt: folded.lastActiveAt,
+    });
+  }
+
+  // Union followed topics with any the account already has (richer wins).
+  const user = await ctx.db.get(userId);
+  const existingTopics = user?.followedTopicIds ?? [];
+  const mergedTopics = [...existingTopics];
+  const seen = new Set<string>(existingTopics.map(String));
+  for (const topicId of args.followedTopicIds) {
+    if (seen.has(topicId)) continue;
+    const topic = await ctx.db.get(topicId);
+    if (topic) {
+      seen.add(topicId);
+      mergedTopics.push(topicId);
+    }
+  }
+  if (mergedTopics.length !== existingTopics.length) {
+    await ctx.db.patch(userId, { followedTopicIds: mergedTopics });
+  }
+
+  await ctx.db.insert("guestMerges", {
+    userId,
+    deviceId: args.deviceId,
+    mergedAt: Date.now(),
+    readsMerged: readsReplayed,
+  });
+
+  return {
+    merged: true,
+    readsReplayed,
+    topicsReplayed: mergedTopics.length - existingTopics.length,
+    streakDays: folded.currentStreak,
+  };
+}
+
+/**
  * Fold a guest's locally-queued activity into the now-authenticated account.
  * Called once per device after signup/login (decision 4 — a plain mutation,
- * no Better Auth hook). Idempotent per device via the `guestMerges` ledger:
- * the device UUID rotates on logout, so each guest session merges at most once.
- *
- * Reads replay through the same `recordInteraction` path live views use, so
- * the streak / articlesRead / bias-balance stats reconstruct exactly as if the
- * guest had been signed in — "richer record wins" falls out of replaying the
- * (older) guest history into the account. Followed topics union with any the
- * account already has.
+ * no Better Auth hook). Thin wrapper that resolves auth; the merge logic lives
+ * in {@link replayGuestMerge}.
  */
 export const mergeGuestActivity = mutation({
   args: {
@@ -826,92 +1043,9 @@ export const mergeGuestActivity = mutation({
     reads: v.array(GUEST_READ_VALIDATOR),
     followedTopicIds: v.array(v.id("topics")),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<MergeGuestActivityResult> => {
     const userId = await requireUserId(ctx);
-
-    // Idempotency: this device already merged into an account.
-    const existingMerge = await ctx.db
-      .query("guestMerges")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
-      .first();
-    if (existingMerge) {
-      return {
-        merged: false as const,
-        reason: "already_merged" as const,
-        readsReplayed: 0,
-        topicsReplayed: 0,
-        streakDays: 0,
-      };
-    }
-
-    // Replay reads oldest-first so the streak rebuilds day by day.
-    const orderedReads = [...args.reads].sort(
-      (a, b) => a.timestamp - b.timestamp,
-    );
-    let readsReplayed = 0;
-    for (const read of orderedReads) {
-      // Skip reads whose event no longer exists — never dangle an interaction.
-      const event = await ctx.db.get(read.eventId);
-      if (!event) continue;
-
-      const context =
-        read.biasRating !== undefined
-          ? {
-              biasRating: read.biasRating,
-              sourceReliability: read.sourceReliability ?? 0,
-            }
-          : undefined;
-
-      await recordInteraction(ctx, {
-        userId,
-        eventId: read.eventId,
-        type: "view",
-        context,
-        metadata: {
-          deviceType: "mobile",
-          timeSpentSeconds: read.timeSpentSeconds,
-          scrollDepthPercentage: read.scrollDepthPercentage,
-        },
-        timestamp: read.timestamp,
-      });
-      readsReplayed += 1;
-    }
-
-    // Union followed topics with any the account already has (richer wins).
-    const user = await ctx.db.get(userId);
-    const existingTopics = user?.followedTopicIds ?? [];
-    const mergedTopics = [...existingTopics];
-    const seen = new Set<string>(existingTopics.map(String));
-    for (const topicId of args.followedTopicIds) {
-      if (seen.has(topicId)) continue;
-      const topic = await ctx.db.get(topicId);
-      if (topic) {
-        seen.add(topicId);
-        mergedTopics.push(topicId);
-      }
-    }
-    if (mergedTopics.length !== existingTopics.length) {
-      await ctx.db.patch(userId, { followedTopicIds: mergedTopics });
-    }
-
-    await ctx.db.insert("guestMerges", {
-      userId,
-      deviceId: args.deviceId,
-      mergedAt: Date.now(),
-      readsMerged: readsReplayed,
-    });
-
-    const stats = await ctx.db
-      .query("userStats")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
-
-    return {
-      merged: true as const,
-      readsReplayed,
-      topicsReplayed: mergedTopics.length - existingTopics.length,
-      streakDays: stats?.currentStreak ?? 0,
-    };
+    return replayGuestMerge(ctx, userId, args);
   },
 });
 

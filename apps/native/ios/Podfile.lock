@@ -247,6 +247,8 @@ PODS:
     - RNWorklets
   - ExpoNetwork (56.0.5):
     - ExpoModulesCore
+  - ExpoNotifications (56.0.17):
+    - ExpoModulesCore
   - ExpoRouter (56.2.10):
     - ExpoModulesCore
     - RNScreens
@@ -2432,6 +2434,7 @@ DEPENDENCIES:
   - "ExpoModulesWorklets (from `../../../node_modules/.pnpm/expo-modules-core@56.0.16_react-native-worklets@0.8.3_@babel+core@7.28.5_@react-native+_117d95ccd330582f34b6c5125f0238b5/node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)"
   - "ExpoModulesWorkletsAdapter (from `../../../node_modules/.pnpm/expo-modules-core@56.0.16_react-native-worklets@0.8.3_@babel+core@7.28.5_@react-native+_117d95ccd330582f34b6c5125f0238b5/node_modules/expo-modules-core`)"
   - "ExpoNetwork (from `../../../node_modules/.pnpm/expo-network@56.0.5_expo@56.0.11_react@19.2.3/node_modules/expo-network/ios`)"
+  - "ExpoNotifications (from `../../../node_modules/.pnpm/expo-notifications@56.0.17_expo@56.0.11_react-native@0.85.3_@babel+core@7.28.5_@react-n_1407933ecb237684aaee1fa5cedb2651/node_modules/expo-notifications/ios`)"
   - "ExpoRouter (from `../../../node_modules/.pnpm/expo-router@56.2.10_0ba325966f03a3bab780f5c89ae60dfa/node_modules/expo-router/ios`)"
   - "ExpoSecureStore (from `../../../node_modules/.pnpm/expo-secure-store@56.0.4_expo@56.0.11/node_modules/expo-secure-store/ios`)"
   - "ExpoSymbols (from `../../../node_modules/.pnpm/expo-symbols@56.0.6_expo-font@56.0.6_expo@56.0.11_react-native@0.85.3_@babel+core@7.28._0dc27f7cd99fb0f3a34eee7ecd63330f/node_modules/expo-symbols/ios`)"
@@ -2580,6 +2583,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-modules-core@56.0.16_react-native-worklets@0.8.3_@babel+core@7.28.5_@react-native+_117d95ccd330582f34b6c5125f0238b5/node_modules/expo-modules-core"
   ExpoNetwork:
     :path: "../../../node_modules/.pnpm/expo-network@56.0.5_expo@56.0.11_react@19.2.3/node_modules/expo-network/ios"
+  ExpoNotifications:
+    :path: "../../../node_modules/.pnpm/expo-notifications@56.0.17_expo@56.0.11_react-native@0.85.3_@babel+core@7.28.5_@react-n_1407933ecb237684aaee1fa5cedb2651/node_modules/expo-notifications/ios"
   ExpoRouter:
     :path: "../../../node_modules/.pnpm/expo-router@56.2.10_0ba325966f03a3bab780f5c89ae60dfa/node_modules/expo-router/ios"
   ExpoSecureStore:
@@ -2786,6 +2791,7 @@ SPEC CHECKSUMS:
   ExpoModulesWorklets: 111c11b9ab7fe23ce3e52bba7bbfcf5ef730139f
   ExpoModulesWorkletsAdapter: b246543ff08a7c3ef89b9f6264e3448f8cf87138
   ExpoNetwork: 06f00de1f1d3b33327d392232b1e5dd866b05444
+  ExpoNotifications: 261ea4618d5e266647dd7c294a78a38e7f92131c
   ExpoRouter: abac86e050a6cb4f7f11dd9e79e11f7986d2be03
   ExpoSecureStore: f1bd083c1b7b8d4142013ffcc0082d377d9f49f4
   ExpoSymbols: 377747de25bcb1ab68ec68f23d81fb81d43eae83
