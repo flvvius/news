@@ -21,6 +21,44 @@ function requireEnv(name: string) {
   return value;
 }
 
+/** Both bundle ids ship by default so dev + prod sign-in work pre-config. */
+const DEFAULT_APPLE_AUDIENCES = ["com.biviant.dev", "com.biviant.app"];
+
+/**
+ * Parse the Apple `aud` allow-list from APPLE_APP_BUNDLE_IDENTIFIER (Ticket 4).
+ *
+ * Convex env vars are plain strings, and we can't be sure which shape the
+ * value is set in, so accept both a JSON array (`["com.biviant.dev",
+ * "com.biviant.app"]`) and a comma/whitespace-separated list
+ * (`com.biviant.dev, com.biviant.app`). An unset/blank value falls back to
+ * both known bundle ids so a fresh deployment accepts dev + prod sign-in
+ * without extra config.
+ */
+export function parseAppleAudiences(raw: string | undefined): string[] {
+  const value = raw?.trim();
+  if (!value) return [...DEFAULT_APPLE_AUDIENCES];
+
+  if (value.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        const ids = parsed.map((v) => String(v).trim()).filter(Boolean);
+        // A well-formed (if empty) JSON array resolves here; an empty one
+        // falls back to defaults rather than yielding no audiences.
+        return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
+      }
+    } catch {
+      // Not valid JSON — fall through to delimiter parsing.
+    }
+  }
+
+  const ids = value
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
+}
+
 function isProductionDeployment() {
   const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
   if (nodeEnv === "production") {
@@ -37,11 +75,16 @@ const googleClientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
 // Apple Sign-In is configured only when credentials are present, so dev
 // deployments without Apple env still boot (Google + email keep working).
 // Native "Sign in with Apple" returns an identity token whose `aud` claim is
-// the app bundle id, so appBundleIdentifier must match for idToken
-// verification to pass. clientSecret is only needed for the web redirect flow.
+// the app bundle id. The dev build runs `com.biviant.dev` and prod runs
+// `com.biviant.app`, so idToken verification must accept BOTH or every dev
+// sign-in is rejected (Ticket 4). The provider's `audience` option takes a
+// string array and matches the token `aud` against any entry, so we parse
+// APPLE_APP_BUNDLE_IDENTIFIER into a list. clientSecret is only needed for the
+// web redirect flow.
 const appleClientId = process.env.APPLE_CLIENT_ID?.trim() || null;
-const appleAppBundleIdentifier =
-  process.env.APPLE_APP_BUNDLE_IDENTIFIER?.trim() || "com.biviant.app";
+const appleAudiences = parseAppleAudiences(
+  process.env.APPLE_APP_BUNDLE_IDENTIFIER,
+);
 const appleClientSecret = process.env.APPLE_CLIENT_SECRET?.trim() || null;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
@@ -584,7 +627,10 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         ? {
             apple: {
               clientId: appleClientId,
-              appBundleIdentifier: appleAppBundleIdentifier,
+              // Accept every configured bundle id (dev + prod) as a valid
+              // idToken `aud`; `audience` takes priority over the single-value
+              // `appBundleIdentifier` in the provider (Ticket 4).
+              audience: appleAudiences,
               ...(appleClientSecret
                 ? { clientSecret: appleClientSecret }
                 : {}),
