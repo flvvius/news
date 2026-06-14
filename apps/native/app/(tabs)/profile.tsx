@@ -21,6 +21,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { Screen } from "@/components/screen";
+import { useAnalytics, useAnalyticsConsent } from "@/contexts/analytics-context";
+import { useDeviceIdentity } from "@/contexts/device-identity-context";
+import { useFollowedTopics } from "@/contexts/followed-topics-context";
+import { useGuestActivity } from "@/contexts/guest-activity-context";
+import { clearLocalGuestData } from "@/lib/clear-guest-data";
 import {
   SettingsGroup,
   SettingsRow,
@@ -220,6 +225,33 @@ function LanguagePicker() {
   );
 }
 
+function AnalyticsPicker() {
+  const t = useT();
+  const { optedOut, setOptedOut } = useAnalyticsConsent();
+
+  const options: Array<SegmentedOption<"on" | "off">> = [
+    { value: "on", label: t("native.privacy.analyticsOn") },
+    { value: "off", label: t("native.privacy.analyticsOff") },
+  ];
+
+  return (
+    <View className="gap-2.5">
+      <Text className="text-sm leading-relaxed text-muted-foreground">
+        {t("native.privacy.analyticsDescription")}
+      </Text>
+      <SegmentedPicker
+        groupLabel={t("native.privacy.analyticsLabel")}
+        options={options}
+        selected={optedOut ? "off" : "on"}
+        onSelect={(value) => setOptedOut(value === "off")}
+        optionLabel={(label) =>
+          t("native.privacy.analyticsOptionLabel").replace("{label}", label)
+        }
+      />
+    </View>
+  );
+}
+
 function AccountCard() {
   const router = useRouter();
   const t = useT();
@@ -295,8 +327,13 @@ function AccountCard() {
 function ProfileContent() {
   const t = useT();
   const { isAuthenticated } = useConvexAuth();
+  const { clear: clearGuestActivity } = useGuestActivity();
+  const { resetLocal: resetFollowedTopics } = useFollowedTopics();
+  const { rotateDeviceId } = useDeviceIdentity();
+  const { reset: resetAnalytics } = useAnalytics();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const deleteSheetRef = useRef<BottomSheetModal>(null);
+  const clearDataSheetRef = useRef<BottomSheetModal>(null);
 
   const openAboutPage = (url: string) => {
     WebBrowser.openBrowserAsync(url).catch(() => {
@@ -323,7 +360,16 @@ function ProfileContent() {
   const performDeleteAccount = () => {
     authClient
       .deleteUser()
-      .then(() => authClient.signOut())
+      .then(async () => {
+        // Deletion must wipe even *unmerged* local guest data — unlike logout
+        // (Ticket 3), there is no account left to retry a merge into, and the
+        // ledger rows are already gone so the logout handler would otherwise
+        // retain them (Ticket 5b). signOut() then triggers the session-sync
+        // logout path, which resets analytics, the push token and the device id.
+        await clearGuestActivity();
+        resetFollowedTopics();
+        await authClient.signOut();
+      })
       .catch(() => {
         const contactPage =
           ABOUT_PAGES.find((page) => page.slug === "contact") ??
@@ -345,6 +391,20 @@ function ProfileContent() {
       });
   };
 
+  const handleClearGuestData = () => {
+    void (async () => {
+      // Erase every device-local guest store, then become a fresh anonymous
+      // identity: reset the analytics person and rotate the device id (which
+      // re-registers the new device_uuid super property). Ticket 5c.
+      await clearLocalGuestData();
+      await clearGuestActivity();
+      resetFollowedTopics();
+      resetAnalytics();
+      await rotateDeviceId();
+      Alert.alert(t("native.privacy.clearDataDone"));
+    })();
+  };
+
   return (
     <ScrollView
       className="flex-1"
@@ -363,6 +423,20 @@ function ProfileContent() {
         <PreferenceRow label={t("settings.language")}>
           <LanguagePicker />
         </PreferenceRow>
+      </SettingsGroup>
+
+      <SettingsGroup title={t("native.privacy.section")}>
+        <PreferenceRow label={t("native.privacy.analyticsLabel")} isFirst>
+          <AnalyticsPicker />
+        </PreferenceRow>
+        {!isAuthenticated ? (
+          <SettingsRow
+            label={t("native.privacy.clearDataLabel")}
+            detail={t("native.privacy.clearDataDetail")}
+            onPress={() => clearDataSheetRef.current?.present()}
+            destructive
+          />
+        ) : null}
       </SettingsGroup>
 
       <SettingsGroup title={t("native.about.section")}>
@@ -406,6 +480,16 @@ function ProfileContent() {
         cancelLabel={t("native.profile.deleteConfirmCancel")}
         destructive
         onConfirm={performDeleteAccount}
+      />
+
+      <ConfirmSheet
+        ref={clearDataSheetRef}
+        title={t("native.privacy.clearDataConfirmTitle")}
+        body={t("native.privacy.clearDataConfirmBody")}
+        confirmLabel={t("native.privacy.clearDataConfirmAction")}
+        cancelLabel={t("native.privacy.clearDataConfirmCancel")}
+        destructive
+        onConfirm={handleClearGuestData}
       />
     </ScrollView>
   );

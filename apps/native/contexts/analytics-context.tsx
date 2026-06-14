@@ -1,12 +1,20 @@
 import PostHog, { PostHogProvider } from "posthog-react-native";
 import {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 
 import type { AnalyticsEvent } from "@/lib/analytics";
+import {
+  loadAnalyticsOptOut,
+  saveAnalyticsOptOut,
+  shouldEnableAnalytics,
+} from "@/lib/analytics-consent";
 
 /**
  * PostHog is the funnel transport for guest-first onboarding. We construct the
@@ -23,6 +31,12 @@ import type { AnalyticsEvent } from "@/lib/analytics";
  * call no-ops. Analytics is best-effort and must never block the app booting
  * or a user action — mirroring the existing "logging never surfaces to the
  * user" convention across the codebase.
+ *
+ * Consent (Ticket 5a): analytics runs under a legitimate-interest basis, so it
+ * is ON by default but the user can opt out (Profile → Privacy). Opting out —
+ * or simply not having loaded the persisted choice yet — gates the PostHog
+ * client from being constructed, so an opted-out user never emits a single
+ * event.
  */
 
 const apiKey = process.env.EXPO_PUBLIC_POSTHOG_KEY?.trim();
@@ -34,27 +48,88 @@ const host =
 
 const AnalyticsContext = createContext<PostHog | null>(null);
 
+export type AnalyticsConsent = {
+  /** True when the user has opted out of analytics. */
+  optedOut: boolean;
+  /** Whether the persisted choice has loaded yet. */
+  isReady: boolean;
+  /** Persist and apply an opt-out choice. */
+  setOptedOut: (optedOut: boolean) => void;
+};
+
+const AnalyticsConsentContext = createContext<AnalyticsConsent | undefined>(
+  undefined,
+);
+
 export function AnalyticsProvider({ children }: { children: ReactNode }) {
-  const client = useMemo(() => {
-    if (!apiKey) return null;
-    return new PostHog(apiKey, { host });
+  const [optedOut, setOptedOutState] = useState(false);
+  const [consentLoaded, setConsentLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAnalyticsOptOut()
+      .then((value) => {
+        if (!cancelled) {
+          setOptedOutState(value);
+          setConsentLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setConsentLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (!client) {
-    return (
-      <AnalyticsContext.Provider value={null}>
-        {children}
-      </AnalyticsContext.Provider>
-    );
-  }
+  const setOptedOut = useCallback((value: boolean) => {
+    setOptedOutState(value);
+    void saveAnalyticsOptOut(value);
+  }, []);
+
+  const client = useMemo(() => {
+    if (
+      !shouldEnableAnalytics({
+        hasApiKey: Boolean(apiKey),
+        consentLoaded,
+        optedOut,
+      })
+    ) {
+      return null;
+    }
+    return new PostHog(apiKey as string, { host });
+  }, [consentLoaded, optedOut]);
+
+  const consent = useMemo<AnalyticsConsent>(
+    () => ({ optedOut, isReady: consentLoaded, setOptedOut }),
+    [optedOut, consentLoaded, setOptedOut],
+  );
 
   return (
-    <AnalyticsContext.Provider value={client}>
-      <PostHogProvider client={client} autocapture={false}>
-        {children}
-      </PostHogProvider>
-    </AnalyticsContext.Provider>
+    <AnalyticsConsentContext.Provider value={consent}>
+      {client ? (
+        <AnalyticsContext.Provider value={client}>
+          <PostHogProvider client={client} autocapture={false}>
+            {children}
+          </PostHogProvider>
+        </AnalyticsContext.Provider>
+      ) : (
+        <AnalyticsContext.Provider value={null}>
+          {children}
+        </AnalyticsContext.Provider>
+      )}
+    </AnalyticsConsentContext.Provider>
   );
+}
+
+export function useAnalyticsConsent(): AnalyticsConsent {
+  const consent = useContext(AnalyticsConsentContext);
+  if (!consent) {
+    throw new Error(
+      "useAnalyticsConsent must be used within AnalyticsProvider",
+    );
+  }
+  return consent;
 }
 
 /** JSON-safe person-property values accepted by PostHog's identify. */

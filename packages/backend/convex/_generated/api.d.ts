@@ -43,6 +43,7 @@ import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
 import type * as pipeline from "../pipeline.js";
 import type * as pipelineDiagnostics from "../pipelineDiagnostics.js";
+import type * as posthog from "../posthog.js";
 import type * as privateData from "../privateData.js";
 import type * as prompts from "../prompts.js";
 import type * as quiz from "../quiz.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   pipeline: typeof pipeline;
   pipelineDiagnostics: typeof pipelineDiagnostics;
+  posthog: typeof posthog;
   privateData: typeof privateData;
   prompts: typeof prompts;
   quiz: typeof quiz;

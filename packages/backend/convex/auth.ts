@@ -506,6 +506,14 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
       },
 
       onDelete: async (ctx, authUser) => {
+        // GDPR erasure: also delete the PostHog person + events (Ticket 5b).
+        // The distinct_id is the Better Auth user id (what the client passes to
+        // identify at login). Scheduled so the external HTTP call runs after
+        // this mutation commits; it no-ops if PostHog deletion creds are unset.
+        await ctx.scheduler.runAfter(0, internal.posthog.deletePostHogPerson, {
+          distinctId: authUser._id,
+        });
+
         const appUser = await ctx.db
           .query("users")
           .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))

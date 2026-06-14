@@ -332,6 +332,10 @@ const ro = {
   "onboarding.promise.cardSummary":
     "Presa e împărțită în privința semnificației acordului — compară cum încadrează stânga, centrul și dreapta același rezultat.",
   "onboarding.promise.continue": "Continuă",
+  "onboarding.promise.privacyNotice":
+    "Continuând, accepți că folosim analize anonime pentru a îmbunătăți Biviant. Poți renunța oricând în Setări.",
+  "onboarding.promise.privacyLink": "Politica de confidențialitate",
+  "onboarding.promise.privacyLinkA11y": "Deschide politica de confidențialitate",
   // Onboarding — Screen B (topic picker)
   "onboarding.topics.title": "Urmărește ce contează pentru tine",
   "onboarding.topics.subtitle":
@@ -692,6 +696,22 @@ const ro = {
   "native.theme.optionLabel": "Tema {label}",
   "native.language.system": "Sistem",
   "native.language.optionLabel": "Limba {label}",
+  "native.privacy.section": "Confidențialitate",
+  "native.privacy.analyticsLabel": "Analiză de utilizare",
+  "native.privacy.analyticsDescription":
+    "Partajează date de utilizare anonime ca să ne ajuți să îmbunătățim Biviant. Poți dezactiva oricând.",
+  "native.privacy.analyticsOn": "Activată",
+  "native.privacy.analyticsOff": "Dezactivată",
+  "native.privacy.analyticsOptionLabel": "Analiză {label}",
+  "native.privacy.clearDataLabel": "Șterge datele mele",
+  "native.privacy.clearDataDetail":
+    "Elimină istoricul de lectură de pe acest dispozitiv și îl resetează",
+  "native.privacy.clearDataConfirmTitle": "Ștergi datele tale?",
+  "native.privacy.clearDataConfirmBody":
+    "Aceasta elimină definitiv istoricul tău de lectură și subiectele urmărite de pe acest dispozitiv și resetează identitatea de analiză. Nu poate fi anulată.",
+  "native.privacy.clearDataConfirmAction": "Șterge datele",
+  "native.privacy.clearDataConfirmCancel": "Anulează",
+  "native.privacy.clearDataDone": "Datele tale au fost șterse de pe acest dispozitiv.",
   "native.auth.close": "Închide",
   "native.auth.signInBody":
     "Autentifică-te pentru a salva evenimente și a-ți păstra lectura echilibrată.",
@@ -1042,6 +1062,10 @@ const en: { [K in keyof BaseStrings]: string } = {
   "onboarding.promise.cardSummary":
     "Coverage splits on what the agreement means — compare how the left, center, and right frame the same outcome.",
   "onboarding.promise.continue": "Continue",
+  "onboarding.promise.privacyNotice":
+    "By continuing you accept that we use anonymous analytics to improve Biviant. You can opt out anytime in Settings.",
+  "onboarding.promise.privacyLink": "Privacy Policy",
+  "onboarding.promise.privacyLinkA11y": "Open the privacy policy",
   // Onboarding — Screen B (topic picker)
   "onboarding.topics.title": "Follow what matters to you",
   "onboarding.topics.subtitle":
@@ -1399,6 +1423,22 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.theme.optionLabel": "{label} theme",
   "native.language.system": "System",
   "native.language.optionLabel": "{label} language",
+  "native.privacy.section": "Privacy",
+  "native.privacy.analyticsLabel": "Usage analytics",
+  "native.privacy.analyticsDescription":
+    "Share anonymous usage data to help us improve Biviant. You can turn this off anytime.",
+  "native.privacy.analyticsOn": "On",
+  "native.privacy.analyticsOff": "Off",
+  "native.privacy.analyticsOptionLabel": "Analytics {label}",
+  "native.privacy.clearDataLabel": "Clear my data",
+  "native.privacy.clearDataDetail":
+    "Remove your on-device reading history and reset this device",
+  "native.privacy.clearDataConfirmTitle": "Clear your data?",
+  "native.privacy.clearDataConfirmBody":
+    "This permanently removes your reading history and followed topics from this device and resets your analytics identity. This can't be undone.",
+  "native.privacy.clearDataConfirmAction": "Clear data",
+  "native.privacy.clearDataConfirmCancel": "Cancel",
+  "native.privacy.clearDataDone": "Your data was cleared from this device.",
   "native.auth.close": "Close",
   "native.auth.signInBody":
     "Sign in to bookmark events and keep your reading balanced.",

@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo } from "react";
-import { Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 
 import { EventRow } from "@/components/event-row";
 import { Screen } from "@/components/screen";
@@ -8,6 +9,7 @@ import { PressableScale } from "@/components/ui/pressable-scale";
 import { useAnalytics } from "@/contexts/analytics-context";
 import { useT } from "@/contexts/locale-context";
 import { buildOnboardingFixtureEvent } from "@/lib/onboarding-fixture";
+import { ABOUT_PAGES, aboutPageUrl } from "@/lib/site";
 
 /**
  * Screen A — the promise. One headline, one real story card (rendered from a
@@ -38,6 +40,17 @@ export default function OnboardingPromiseScreen() {
     router.push("/onboarding/topics");
   };
 
+  const openPrivacyPolicy = () => {
+    const privacyPage =
+      ABOUT_PAGES.find((page) => page.slug === "privacy") ?? ABOUT_PAGES[0];
+    WebBrowser.openBrowserAsync(aboutPageUrl(privacyPage)).catch(() => {
+      Alert.alert(
+        t("native.about.browserErrorTitle"),
+        t("native.about.browserErrorBody"),
+      );
+    });
+  };
+
   return (
     <Screen>
       <View className="flex-1 justify-between px-5 pb-8 pt-8">
@@ -58,16 +71,33 @@ export default function OnboardingPromiseScreen() {
           </View>
         </View>
 
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={t("onboarding.promise.continue")}
-          onPress={handleContinue}
-          contentClassName="min-h-12 items-center justify-center rounded-lg bg-primary"
-        >
-          <Text className="text-base font-medium text-primary-foreground">
-            {t("onboarding.promise.continue")}
+        <View className="gap-4">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={t("onboarding.promise.continue")}
+            onPress={handleContinue}
+            contentClassName="min-h-12 items-center justify-center rounded-lg bg-primary"
+          >
+            <Text className="text-base font-medium text-primary-foreground">
+              {t("onboarding.promise.continue")}
+            </Text>
+          </PressableScale>
+
+          {/* Transparency notice (Ticket 5d): analytics runs under a
+              legitimate-interest basis; opt-out lives in Settings, privacy
+              policy is one tap away. */}
+          <Text className="text-center text-xs leading-relaxed text-muted-foreground">
+            {t("onboarding.promise.privacyNotice")}{" "}
+            <Text
+              accessibilityRole="link"
+              accessibilityLabel={t("onboarding.promise.privacyLinkA11y")}
+              onPress={openPrivacyPolicy}
+              className="font-medium text-primary underline"
+            >
+              {t("onboarding.promise.privacyLink")}
+            </Text>
           </Text>
-        </PressableScale>
+        </View>
       </View>
     </Screen>
   );
