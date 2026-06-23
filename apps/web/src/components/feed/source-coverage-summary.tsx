@@ -149,20 +149,6 @@ export default function SourceCoverageSummary({
                   </span>
                 </div>
                 <BiasIndicator bias={source.baseBias} size="sm" />
-                {(source.mbfcFactual || source.mbfcCredibility) && (
-                  <p className="truncate text-xs text-muted-foreground">
-                      {[
-                        source.mbfcFactual
-                        ? `${t("coverage.factual")}: ${source.mbfcFactual}`
-                        : null,
-                      source.mbfcCredibility
-                        ? `${t("coverage.credibility")}: ${source.mbfcCredibility}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
               </div>
             </Link>
           ))}
