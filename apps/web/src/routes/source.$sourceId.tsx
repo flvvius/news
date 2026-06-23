@@ -169,7 +169,6 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   }
 
   const { source, stats, articles } = data;
-  const averageAiBias = stats.averageAiBias;
 
   return (
     <div className="bg-linear-to-b from-background via-background to-muted/35">
@@ -239,7 +238,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                 </a>
               </div>
 
-              <div className="grid gap-3 border-t border-border/70 pt-5 sm:grid-cols-4">
+              <div className="grid gap-3 border-t border-border/70 pt-5 sm:grid-cols-2">
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
                   <p className="text-xs text-muted-foreground">
                     {t("source.recentArticles")}
@@ -252,24 +251,6 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   <p className="text-xs text-muted-foreground">{t("source.events")}</p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.eventCount}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.aiBiasAvg")}
-                  </p>
-                  <p className="text-2xl font-semibold text-card-foreground">
-                    {averageAiBias === null
-                      ? t("source.notRated")
-                      : averageAiBias.toFixed(1)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.outliers")}
-                  </p>
-                  <p className="text-2xl font-semibold text-card-foreground">
-                    {stats.biasOutlierCount + stats.sourceBiasOutlierCount}
                   </p>
                 </div>
               </div>
@@ -292,50 +273,6 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   <p className="font-medium text-card-foreground">
                     {formatOptional(source.mbfcCategory, t("source.notRated"))}
                   </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.factualRating")}
-                  </p>
-                  <p className="font-medium text-card-foreground">
-                    {formatOptional(source.mbfcFactual, t("source.notRated"))}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.credibilityLabel")}
-                  </p>
-                  <p className="font-medium text-card-foreground">
-                    {formatOptional(
-                      source.mbfcCredibility,
-                      t("source.notRated"),
-                    )}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.rollingSample")}
-                  </p>
-                  <p className="font-medium text-card-foreground">
-                    {t("source.rollingArticles").replace(
-                      "{count}",
-                      String(source.rollingBiasSampleSize ?? 0),
-                    )}
-                  </p>
-                  {typeof source.rollingBiasMean === "number" && (
-                    <p className="text-sm text-muted-foreground">
-                      {t("source.mean").replace(
-                        "{value}",
-                        source.rollingBiasMean.toFixed(1),
-                      )}
-                      {typeof source.rollingBiasStddev === "number"
-                        ? ` · ${t("source.stddev").replace(
-                            "{value}",
-                            source.rollingBiasStddev.toFixed(1),
-                          )}`
-                        : ""}
-                    </p>
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -375,23 +312,6 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                               >
                                 {formatRelativeTimestamp(article.publishedAt, locale)}
                               </span>
-                              {typeof article.aiBiasScore === "number" && (
-                                <>
-                                  <span>·</span>
-                                  <span>
-                                    {t("source.aiBias").replace(
-                                      "{count}",
-                                      article.aiBiasScore.toFixed(1),
-                                    )}
-                                  </span>
-                                </>
-                              )}
-                              {(article.biasOutlierFlag ||
-                                article.sourceBiasOutlierFlag) && (
-                                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-800">
-                                  {t("source.outlier")}
-                                </span>
-                              )}
                             </div>
                             <h2 className="text-base font-semibold leading-snug tracking-tight text-card-foreground">
                               {article.title}
