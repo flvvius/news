@@ -26,6 +26,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { authClient } from "@/lib/auth-client";
 import { getToken } from "@/lib/auth-server";
+import { PostHogAnalytics } from "@/lib/posthog";
 
 const fetchAuth = createServerFn({ method: "GET" }).handler(async () => {
   const token = await getToken();
@@ -223,6 +224,7 @@ function RootDocument() {
             <Footer />
             <MobileTabBar />
             <Toaster richColors />
+            <PostHogAnalytics />
             {TanStackRouterDevtools && (
               <Suspense fallback={null}>
                 <TanStackRouterDevtools position="bottom-left" />

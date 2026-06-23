@@ -1,0 +1,54 @@
+import { useEffect } from "react";
+import posthog from "posthog-js";
+import { useLocation } from "@tanstack/react-router";
+
+const POSTHOG_KEY = (import.meta as any).env.VITE_PUBLIC_POSTHOG_KEY as
+	| string
+	| undefined;
+const POSTHOG_HOST = (import.meta as any).env.VITE_PUBLIC_POSTHOG_HOST as
+	| string
+	| undefined;
+
+let initialized = false;
+
+function ensureInitialized() {
+	if (initialized || typeof window === "undefined" || !POSTHOG_KEY) {
+		return;
+	}
+	posthog.init(POSTHOG_KEY, {
+		api_host: POSTHOG_HOST ?? "https://us.i.posthog.com",
+		// We capture pageviews manually below so client-side (SPA) route
+		// changes are tracked, not just the initial document load.
+		capture_pageview: false,
+		capture_pageleave: true,
+		// Avoid creating person profiles for anonymous visitors.
+		person_profiles: "identified_only",
+	});
+	initialized = true;
+}
+
+/**
+ * Initializes PostHog on the client and captures a `$pageview` on every
+ * client-side route change. Renders nothing.
+ *
+ * No-op when `VITE_PUBLIC_POSTHOG_KEY` is not set (e.g. local dev without
+ * analytics), so the app keeps working without PostHog configured. Reads the
+ * `posthog` singleton elsewhere via `import posthog from "posthog-js"` to
+ * capture custom events.
+ */
+export function PostHogAnalytics() {
+	const location = useLocation();
+
+	useEffect(() => {
+		ensureInitialized();
+	}, []);
+
+	useEffect(() => {
+		if (typeof window === "undefined" || !POSTHOG_KEY || !initialized) {
+			return;
+		}
+		posthog.capture("$pageview", { $current_url: window.location.href });
+	}, [location.href]);
+
+	return null;
+}
