@@ -21,6 +21,44 @@ function requireEnv(name: string) {
   return value;
 }
 
+/** Both bundle ids ship by default so dev + prod sign-in work pre-config. */
+const DEFAULT_APPLE_AUDIENCES = ["com.biviant.dev", "com.biviant.app"];
+
+/**
+ * Parse the Apple `aud` allow-list from APPLE_APP_BUNDLE_IDENTIFIER (Ticket 4).
+ *
+ * Convex env vars are plain strings, and we can't be sure which shape the
+ * value is set in, so accept both a JSON array (`["com.biviant.dev",
+ * "com.biviant.app"]`) and a comma/whitespace-separated list
+ * (`com.biviant.dev, com.biviant.app`). An unset/blank value falls back to
+ * both known bundle ids so a fresh deployment accepts dev + prod sign-in
+ * without extra config.
+ */
+export function parseAppleAudiences(raw: string | undefined): string[] {
+  const value = raw?.trim();
+  if (!value) return [...DEFAULT_APPLE_AUDIENCES];
+
+  if (value.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        const ids = parsed.map((v) => String(v).trim()).filter(Boolean);
+        // A well-formed (if empty) JSON array resolves here; an empty one
+        // falls back to defaults rather than yielding no audiences.
+        return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
+      }
+    } catch {
+      // Not valid JSON — fall through to delimiter parsing.
+    }
+  }
+
+  const ids = value
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
+}
+
 function isProductionDeployment() {
   const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
   if (nodeEnv === "production") {
@@ -34,6 +72,20 @@ function isProductionDeployment() {
 const siteUrl = requireEnv("SITE_URL");
 const googleClientId = requireEnv("GOOGLE_CLIENT_ID");
 const googleClientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
+// Apple Sign-In is configured only when credentials are present, so dev
+// deployments without Apple env still boot (Google + email keep working).
+// Native "Sign in with Apple" returns an identity token whose `aud` claim is
+// the app bundle id. The dev build runs `com.biviant.dev` and prod runs
+// `com.biviant.app`, so idToken verification must accept BOTH or every dev
+// sign-in is rejected (Ticket 4). The provider's `audience` option takes a
+// string array and matches the token `aud` against any entry, so we parse
+// APPLE_APP_BUNDLE_IDENTIFIER into a list. clientSecret is only needed for the
+// web redirect flow.
+const appleClientId = process.env.APPLE_CLIENT_ID?.trim() || null;
+const appleAudiences = parseAppleAudiences(
+  process.env.APPLE_APP_BUNDLE_IDENTIFIER,
+);
+const appleClientSecret = process.env.APPLE_CLIENT_SECRET?.trim() || null;
 const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -144,7 +196,8 @@ async function sendAuthEmail({
     return;
   }
 
-  const { error } = await resend.emails.send({
+  const startedAt = Date.now();
+  const { data, error } = await resend.emails.send({
     from: emailFromAddress,
     replyTo: emailReplyTo,
     to: [to],
@@ -154,8 +207,19 @@ async function sendAuthEmail({
   });
 
   if (error) {
+    console.error(`[auth] ${debugLabel} email send failed`, {
+      recipient: summarizeEmailForLogs(to),
+      error: error.message,
+      durationMs: Date.now() - startedAt,
+    });
     throw new Error(error.message);
   }
+
+  console.log(`[auth] ${debugLabel} email accepted by Resend`, {
+    recipient: summarizeEmailForLogs(to),
+    resendId: data?.id ?? null,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 async function convertWaitlistRecordForEmail(
@@ -410,6 +474,15 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           biasBalance: 0,
         });
 
+        // Ticket 14: an unconditional signup signal, independent of the gate
+        // funnel's signup_completed, so total signups are measurable. Scheduled
+        // so the external capture runs after this mutation commits.
+        await ctx.scheduler.runAfter(
+          0,
+          internal.posthog.captureAccountCreated,
+          { distinctId: authUser._id },
+        );
+
         if (authUser.emailVerified) {
           await convertWaitlistRecordForEmail(ctx, normalizedEmail);
         }
@@ -442,6 +515,14 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
       },
 
       onDelete: async (ctx, authUser) => {
+        // GDPR erasure: also delete the PostHog person + events (Ticket 5b).
+        // The distinct_id is the Better Auth user id (what the client passes to
+        // identify at login). Scheduled so the external HTTP call runs after
+        // this mutation commits; it no-ops if PostHog deletion creds are unset.
+        await ctx.scheduler.runAfter(0, internal.posthog.deletePostHogPerson, {
+          distinctId: authUser._id,
+        });
+
         const appUser = await ctx.db
           .query("users")
           .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
@@ -466,7 +547,41 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
             await ctx.db.delete(privateCtx._id);
           }
 
-          // todo: check if i want soft delete (+ manage related data - insights, interactions, etc)
+          // Delete the user's interaction log (views, bookmarks, shares, …),
+          // their insights, and the guest-merge ledger so nothing dangles a
+          // reference to the removed user.
+          const interactions = await ctx.db
+            .query("interactions")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const interaction of interactions) {
+            await ctx.db.delete(interaction._id);
+          }
+
+          const insights = await ctx.db
+            .query("userInsights")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const insight of insights) {
+            await ctx.db.delete(insight._id);
+          }
+
+          const merges = await ctx.db
+            .query("guestMerges")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const merge of merges) {
+            await ctx.db.delete(merge._id);
+          }
+
+          const pushTokens = await ctx.db
+            .query("pushTokens")
+            .withIndex("by_user", (q) => q.eq("userId", appUser._id))
+            .collect();
+          for (const pushToken of pushTokens) {
+            await ctx.db.delete(pushToken._id);
+          }
+
           await ctx.db.delete(appUser._id);
         }
       },
@@ -487,6 +602,18 @@ function createAuth(ctx: GenericCtx<DataModel>) {
       cookieCache: {
         enabled: true,
         maxAge: 7 * 60, // cache session in signed cookie for 7 min — skips DB on repeated get-session calls
+      },
+    },
+    // Ticket 11: collapse the same human signing in via different providers into
+    // one account when the verified email matches. Apple + Google both return
+    // verified emails, so a user with a real (non-relay) Apple email links to
+    // their Google account automatically. KNOWN LIMITATION: Apple "Hide My
+    // Email" relay addresses won't match a Google address, so those remain
+    // separate accounts by design — see docs/account-linking.md.
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["google", "apple"],
       },
     },
     emailAndPassword: {
@@ -525,6 +652,20 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         clientId: googleClientId,
         clientSecret: googleClientSecret,
       },
+      ...(appleClientId
+        ? {
+            apple: {
+              clientId: appleClientId,
+              // Accept every configured bundle id (dev + prod) as a valid
+              // idToken `aud`; `audience` takes priority over the single-value
+              // `appBundleIdentifier` in the provider (Ticket 4).
+              audience: appleAudiences,
+              ...(appleClientSecret
+                ? { clientSecret: appleClientSecret }
+                : {}),
+            },
+          }
+        : {}),
     },
     plugins: [
       expo(),

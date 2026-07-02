@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { ConvexError } from "convex/values";
 import { isAdminEmail } from "./lib/betaAccess";
+import { enforceRateLimit } from "./lib/rateLimit";
 
 /**
  * Get the current user's full profile.
@@ -47,6 +48,7 @@ export const getCurrentUser = query({
       // Custom data
       _id: user._id,
       profile: user.profile,
+      followedTopicIds: user.followedTopicIds ?? [],
       privateContext: privateContext
         ? {
             incomeBracket: privateContext.incomeBracket,
@@ -155,6 +157,56 @@ export const updatePreferredLanguage = mutation({
  * Writes to the separate userPrivateContext table.
  * Throws ConvexError if not authenticated or user not found.
  */
+/**
+ * Replace the current user's followed topics (onboarding topic picker or
+ * settings). Validates that every id refers to a real topic so a stale client
+ * cannot persist dangling ids. The guest's local selection is folded in here
+ * by the merge mutation at signup.
+ */
+export const setFollowedTopics = mutation({
+  args: {
+    topicIds: v.array(v.id("topics")),
+  },
+  handler: async (ctx, { topicIds }) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUser._id))
+      .unique();
+
+    if (!user) {
+      throw new ConvexError("User not found - please refresh and try again");
+    }
+
+    // Ticket 18: bound topic writes per user.
+    await enforceRateLimit(ctx, {
+      key: `followedTopics:${user._id}`,
+      limit: 20,
+      windowMs: 60_000,
+    });
+
+    // Drop unknown/duplicate ids rather than trusting the client wholesale.
+    const seen = new Set<string>();
+    const validTopicIds: typeof topicIds = [];
+    for (const topicId of topicIds) {
+      if (seen.has(topicId)) continue;
+      const topic = await ctx.db.get(topicId);
+      if (topic) {
+        seen.add(topicId);
+        validTopicIds.push(topicId);
+      }
+    }
+
+    await ctx.db.patch(user._id, { followedTopicIds: validTopicIds });
+
+    return { followedTopicIds: validTopicIds };
+  },
+});
+
 export const updatePrivateContext = mutation({
   args: {
     privateContext: v.object({

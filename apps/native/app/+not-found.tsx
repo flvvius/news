@@ -1,32 +1,36 @@
-import { Container } from "@/components/container";
 import { Link, Stack } from "expo-router";
-import { Text, View, Pressable } from "react-native";
-import { Card } from "heroui-native";
+import { Pressable, Text, View } from "react-native";
+
+import { Screen } from "@/components/screen";
+import { useT } from "@/contexts/locale-context";
 
 export default function NotFoundScreen() {
-	return (
-		<>
-			<Stack.Screen options={{ title: "Oops!" }} />
-			<Container>
-				<View className="flex-1 justify-center items-center p-6">
-					<Card variant="secondary" className="items-center p-8 max-w-md">
-						<Text className="text-6xl mb-4">🤔</Text>
-						<Card.Title className="text-2xl text-center mb-2">
-							Page Not Found
-						</Card.Title>
-						<Card.Description className="text-center mb-6">
-							Sorry, the page you're looking for doesn't exist.
-						</Card.Description>
-						<Link href="/" asChild>
-							<Pressable className="bg-accent px-6 py-3 rounded-lg active:opacity-70">
-								<Text className="text-accent-foreground font-medium text-base">
-									Go to Home
-								</Text>
-							</Pressable>
-						</Link>
-					</Card>
-				</View>
-			</Container>
-		</>
-	);
+  const t = useT();
+
+  return (
+    <>
+      <Stack.Screen options={{ title: t("router.notFound") }} />
+      <Screen>
+        <View className="flex-1 items-center justify-center gap-3 px-6">
+          <Text className="text-2xl font-semibold tracking-tight text-foreground">
+            {t("router.notFound")}
+          </Text>
+          <Text className="max-w-[240px] text-center text-sm leading-relaxed text-muted-foreground">
+            {t("native.notFound.body")}
+          </Text>
+          <Link href="/" asChild>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t("native.notFound.cta")}
+              className="mt-2 min-h-11 items-center justify-center rounded-full bg-primary px-6 active:opacity-80"
+            >
+              <Text className="text-sm font-medium text-primary-foreground">
+                {t("native.notFound.cta")}
+              </Text>
+            </Pressable>
+          </Link>
+        </View>
+      </Screen>
+    </>
+  );
 }

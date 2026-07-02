@@ -1,5 +1,165 @@
-@import 'tailwindcss';
-@import 'uniwind';
-@import 'heroui-native/styles';
+@import "tailwindcss";
+@import "uniwind";
 
-@source './node_modules/heroui-native/lib';
+/*
+ * Biviant design tokens — ported 1:1 from apps/web/src/index.css.
+ * Light values live in @theme; dark overrides in @variant dark (uniwind
+ * resolves them per active theme). Only semantic classes may be used in
+ * components: bg-background, text-foreground, text-muted-foreground,
+ * bg-card, bg-primary, border-border, text-destructive, text-success,
+ * text-warning, bg-muted, bg-accent, and the bias-* spectrum tokens.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale bumped ~1px over Tailwind defaults for mobile readability. */
+  --text-xs: 13px;
+  --text-sm: 15px;
+  --text-base: 17px;
+  --text-lg: 19px;
+  --text-xl: 21px;
+  --text-2xl: 25px;
+  --text-3xl: 31px;
+  --text-4xl: 37px;
+  --text-5xl: 49px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --color-background: oklch(0.99 0.002 80);
+  --color-foreground: oklch(0.15 0.01 60);
+
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.15 0.01 60);
+
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.15 0.01 60);
+
+  --color-primary: oklch(0.45 0.1 250);
+  --color-primary-foreground: oklch(0.985 0 0);
+
+  --color-secondary: oklch(0.965 0.003 80);
+  --color-secondary-foreground: oklch(0.2 0.01 60);
+
+  --color-muted: oklch(0.955 0.004 80);
+  --color-muted-foreground: oklch(0.5 0.01 60);
+
+  --color-accent: oklch(0.955 0.004 80);
+  --color-accent-foreground: oklch(0.2 0.01 60);
+
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.985 0 0);
+
+  --color-border: oklch(0.91 0.004 80);
+  --color-input: oklch(0.91 0.004 80);
+  --color-ring: oklch(0.55 0.08 250);
+
+  --color-success: oklch(0.55 0.14 155);
+  --color-success-foreground: oklch(0.985 0 0);
+  --color-warning: oklch(0.75 0.15 75);
+  --color-warning-foreground: oklch(0.2 0 0);
+
+  /* Scrim chips rendered on top of imagery — theme-stable by design */
+  --color-overlay: oklch(0 0 0 / 45%);
+  --color-overlay-foreground: oklch(1 0 0);
+  --color-overlay-border: oklch(1 0 0 / 20%);
+
+  /* Bias spectrum — neutral, non-political (indigo / gray / amber) */
+  --color-bias-left: oklch(0.58 0.1 280);
+  --color-bias-left-muted: oklch(0.58 0.06 280);
+  --color-bias-center: oklch(0.55 0.01 80);
+  --color-bias-right: oklch(0.68 0.12 70);
+  --color-bias-right-muted: oklch(0.68 0.08 70);
+  --color-bias-track: oklch(0.92 0.005 80);
+}
+
+/*
+ * Uniwind requires every theme to define the same variable set: any token
+ * overridden in @variant dark must also be declared in @variant light
+ * (values mirror the @theme defaults above).
+ */
+@variant light {
+  --color-background: oklch(0.99 0.002 80);
+  --color-foreground: oklch(0.15 0.01 60);
+
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.15 0.01 60);
+
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.15 0.01 60);
+
+  --color-primary: oklch(0.45 0.1 250);
+  --color-primary-foreground: oklch(0.985 0 0);
+
+  --color-secondary: oklch(0.965 0.003 80);
+  --color-secondary-foreground: oklch(0.2 0.01 60);
+
+  --color-muted: oklch(0.955 0.004 80);
+  --color-muted-foreground: oklch(0.5 0.01 60);
+
+  --color-accent: oklch(0.955 0.004 80);
+  --color-accent-foreground: oklch(0.2 0.01 60);
+
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.985 0 0);
+
+  --color-border: oklch(0.91 0.004 80);
+  --color-input: oklch(0.91 0.004 80);
+  --color-ring: oklch(0.55 0.08 250);
+
+  --color-success: oklch(0.55 0.14 155);
+  --color-success-foreground: oklch(0.985 0 0);
+  --color-warning: oklch(0.75 0.15 75);
+  --color-warning-foreground: oklch(0.2 0 0);
+
+  --color-bias-left: oklch(0.58 0.1 280);
+  --color-bias-left-muted: oklch(0.58 0.06 280);
+  --color-bias-center: oklch(0.55 0.01 80);
+  --color-bias-right: oklch(0.68 0.12 70);
+  --color-bias-right-muted: oklch(0.68 0.08 70);
+  --color-bias-track: oklch(0.92 0.005 80);
+}
+
+@variant dark {
+  --color-background: oklch(0.14 0.008 270);
+  --color-foreground: oklch(0.93 0.005 80);
+
+  --color-card: oklch(0.19 0.008 270);
+  --color-card-foreground: oklch(0.93 0.005 80);
+
+  --color-popover: oklch(0.19 0.008 270);
+  --color-popover-foreground: oklch(0.93 0.005 80);
+
+  --color-primary: oklch(0.65 0.12 250);
+  --color-primary-foreground: oklch(0.14 0.008 270);
+
+  --color-secondary: oklch(0.24 0.008 270);
+  --color-secondary-foreground: oklch(0.93 0.005 80);
+
+  --color-muted: oklch(0.24 0.008 270);
+  --color-muted-foreground: oklch(0.65 0.01 80);
+
+  --color-accent: oklch(0.24 0.008 270);
+  --color-accent-foreground: oklch(0.93 0.005 80);
+
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-destructive-foreground: oklch(0.985 0 0);
+
+  --color-border: oklch(1 0 0 / 10%);
+  --color-input: oklch(1 0 0 / 15%);
+  --color-ring: oklch(0.55 0.08 250);
+
+  --color-success: oklch(0.65 0.16 155);
+  --color-success-foreground: oklch(0.14 0 0);
+  --color-warning: oklch(0.78 0.14 75);
+  --color-warning-foreground: oklch(0.14 0 0);
+
+  --color-bias-left: oklch(0.65 0.1 280);
+  --color-bias-left-muted: oklch(0.65 0.06 280);
+  --color-bias-center: oklch(0.6 0.01 80);
+  --color-bias-right: oklch(0.75 0.12 70);
+  --color-bias-right-muted: oklch(0.75 0.08 70);
+  --color-bias-track: oklch(0.25 0.005 270);
+}

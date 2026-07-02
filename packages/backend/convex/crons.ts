@@ -137,12 +137,12 @@ crons.daily(
 // ---------------------------------------------------------------------------
 // Computes rolling per-source article bias stats and flags articles that are
 // unusually partisan for their outlet.
-crons.daily(
-  "flag-bias-outliers",
-  { hourUTC: 5, minuteUTC: 0 },
-  internal.bias.flagBiasOutliers,
-  {},
-);
+// crons.daily(
+//   "flag-bias-outliers",
+//   { hourUTC: 5, minuteUTC: 0 },
+//   internal.bias.flagBiasOutliers,
+//   {},
+// );
 
 // ---------------------------------------------------------------------------
 // AI Budget Reservation Cleanup — Hourly
@@ -264,6 +264,19 @@ crons.interval(
   "prune-hot-event-embeddings",
   { hours: 1 },
   internal.clustering.pruneHotEventEmbeddings,
+  {},
+);
+
+// ---------------------------------------------------------------------------
+// Morning Briefing — Daily (Ticket 19)
+// ---------------------------------------------------------------------------
+// Pushes one fresh followed-topic story per user. No-ops until BRIEFING_ENABLED
+// is set, so it stays dormant until push infra is configured (the cron the
+// notification primer in T6 waits on). 07:00 UTC is a basic global send window.
+crons.daily(
+  "send-morning-briefing",
+  { hourUTC: 7, minuteUTC: 0 },
+  internal.briefing.sendMorningBriefings,
   {},
 );
 

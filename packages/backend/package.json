@@ -5,19 +5,25 @@
   "exports": {
     "./convex/_generated/api": "./convex/_generated/api.js",
     "./convex/_generated/api.d.ts": "./convex/_generated/api.d.ts",
-    "./convex/_generated/dataModel": "./convex/_generated/dataModel.d.ts"
+    "./convex/_generated/dataModel": "./convex/_generated/dataModel.d.ts",
+    "./convex/lib/streaks": "./convex/lib/streaks.ts"
   },
   "scripts": {
     "build": "convex codegen",
     "dev": "convex dev",
-    "dev:setup": "convex dev --configure --until-success"
+    "dev:setup": "convex dev --configure --until-success",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^24.3.0",
-    "typescript": "catalog:"
+    "convex-test": "^0.0.41",
+    "typescript": "catalog:",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@better-auth/expo": "catalog:",
@@ -26,9 +32,12 @@
     "@resvg/resvg-js": "^2.6.2",
     "better-auth": "catalog:",
     "convex": "catalog:",
+    "expo": "~56.0.0-preview.9",
     "jsdom": "^26.0.0",
     "openai": "^6.25.0",
     "posthog-node": "^5.26.0",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
     "resend": "^6.9.2",
     "sharp": "^0.34.5",
     "wink-eng-lite-web-model": "^1.8.1",

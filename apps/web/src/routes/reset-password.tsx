@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,11 @@ function ResetPasswordRoute() {
       ? t("reset.invalidToken")
       : t("reset.verifyLink");
 
+  // Reset tokens are single-use: a double-click that races past the button's
+  // isSubmitting guard fires twice, succeeding once and then showing a
+  // misleading "invalid token" error for the duplicate.
+  const isResettingRef = useRef(false);
+
   const form = useForm({
     defaultValues: {
       password: "",
@@ -69,6 +74,10 @@ function ResetPasswordRoute() {
         );
         return;
       }
+      if (isResettingRef.current) {
+        return;
+      }
+      isResettingRef.current = true;
 
       await authClient.resetPassword(
         {
@@ -84,6 +93,7 @@ function ResetPasswordRoute() {
             });
           },
           onError: (error) => {
+            isResettingRef.current = false;
             const message = error.error.message || t("reset.error");
             toast.error(message);
           },

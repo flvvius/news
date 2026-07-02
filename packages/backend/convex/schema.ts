@@ -642,6 +642,12 @@ export default defineSchema({
         v.union(v.literal("ro"), v.literal("en")),
       ),
     }),
+
+    // Topics the user follows (from onboarding's topic picker or settings).
+    // Drives the client-side feed boost — never a hard filter. Optional so
+    // existing rows and guests-before-signup are valid; the guest's local
+    // selection migrates here at merge.
+    followedTopicIds: v.optional(v.array(v.id("topics"))),
   })
     .index("by_email", ["email"])
     .index("by_auth_user_id", ["authUserId"]),
@@ -738,6 +744,36 @@ export default defineSchema({
     .index("by_user_event_type", ["userId", "eventId", "type"])
     .index("by_event", ["eventId"])
     .index("by_timestamp", ["timestamp"]),
+
+  // =========================================================================
+  // 7b. GUEST MERGES (Idempotency ledger for guest→account migration)
+  // =========================================================================
+  // One row per device that has folded its local guest activity into an
+  // account. Keyed by the device UUID so a retried merge is a no-op. The
+  // device UUID rotates on logout, so each guest session merges at most once.
+  guestMerges: defineTable({
+    userId: v.id("users"),
+    deviceId: v.string(),
+    mergedAt: v.number(),
+    readsMerged: v.number(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"]),
+
+  // =========================================================================
+  // 7c. PUSH TOKENS (Expo push targets, one row per device)
+  // =========================================================================
+  // Registered only for authenticated users (a guest's token is held locally
+  // until signup, then registered). Deduped by token so a device that signs
+  // into a different account reassigns rather than duplicates.
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    platform: v.optional(v.union(v.literal("ios"), v.literal("android"))),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_token", ["token"]),
 
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
@@ -1004,4 +1040,30 @@ export default defineSchema({
     .index("by_code_resolved", ["code", "resolvedAt"])
     .index("by_created_at", ["createdAt"])
     .index("by_resolved_created_at", ["resolvedAt", "createdAt"]),
+
+  // =========================================================================
+  // RATE LIMITS (Ticket 18 — fixed-window counters for abusable mutations)
+  // =========================================================================
+  // One row per (key) where key encodes the limited action + subject, e.g.
+  // "merge:<deviceId>" or "pushToken:<userId>". A fixed window is cheap and
+  // good enough to blunt abuse of guest-reachable + auth mutations.
+  rateLimits: defineTable({
+    key: v.string(),
+    count: v.number(),
+    windowStartedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  // =========================================================================
+  // BRIEFING SENDS (Ticket 19 — morning-briefing dedupe ledger)
+  // =========================================================================
+  // One row per (user, event) the morning briefing has already pushed, so a
+  // story is never sent to the same user twice.
+  briefingSends: defineTable({
+    userId: v.id("users"),
+    eventId: v.id("events"),
+    sentAt: v.number(),
+  })
+    .index("by_user_event", ["userId", "eventId"])
+    .index("by_user", ["userId"])
+    .index("by_sent_at", ["sentAt"]),
 });
