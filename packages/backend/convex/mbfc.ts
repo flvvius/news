@@ -22,6 +22,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { namedAxisBias } from "./lib/biasAxis";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -187,6 +188,7 @@ export const updateSourceMbfc = internalMutation({
     },
   ) => {
     await ctx.db.patch(sourceId, {
+      bias: namedAxisBias(baseBias),
       baseBias,
       reliabilityScore,
       mbfcCategory,

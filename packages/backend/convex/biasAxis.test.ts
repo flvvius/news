@@ -1,0 +1,146 @@
+import { convexTest } from "convex-test";
+import { describe, expect, test } from "vitest";
+
+import {
+  BIAS_AXIS,
+  biasScoreOf,
+  clampBiasScore,
+  namedAxisBias,
+} from "./lib/biasAxis";
+import schema from "./schema";
+import { api } from "./_generated/api";
+
+const modules = (
+  import.meta as unknown as {
+    glob: (pattern: string) => Record<string, () => Promise<unknown>>;
+  }
+).glob("./**/!(*.*.*)*.*s");
+
+describe("namedAxisBias helpers (BIV-302)", () => {
+  test("builds the canonical object on the launch axis", () => {
+    expect(namedAxisBias(-3)).toEqual({
+      axis: "reformist_suveranist",
+      score: -3,
+    });
+    expect(namedAxisBias(0).axis).toBe(BIAS_AXIS);
+  });
+
+  test("clamps scores to -5..+5 and defuses non-finite input", () => {
+    expect(clampBiasScore(9)).toBe(5);
+    expect(clampBiasScore(-12)).toBe(-5);
+    expect(clampBiasScore(Number.NaN)).toBe(0);
+    expect(namedAxisBias(7)).toEqual({ axis: BIAS_AXIS, score: 5 });
+  });
+
+  test("biasScoreOf reads the object with fallback", () => {
+    expect(biasScoreOf({ axis: BIAS_AXIS, score: 2 }, 0)).toBe(2);
+    expect(biasScoreOf(undefined, -1)).toBe(-1);
+    expect(biasScoreOf(null, 4)).toBe(4);
+  });
+});
+
+describe("backfillNamedAxisBias migration (BIV-302)", () => {
+  test("backfills sources and scored articles, skips already-migrated rows", async () => {
+    const t = convexTest(schema, modules);
+
+    const { legacySourceId, migratedSourceId, scoredArticleId, unscoredArticleId } =
+      await t.run(async (ctx) => {
+        const legacySourceId = await ctx.db.insert("sources", {
+          domain: "digi24.ro",
+          name: "Digi24",
+          baseBias: -1,
+          reliabilityScore: 8,
+        });
+        const migratedSourceId = await ctx.db.insert("sources", {
+          domain: "biziday.ro",
+          name: "Biziday",
+          bias: { axis: "reformist_suveranist", score: 0 },
+          baseBias: 0,
+          reliabilityScore: 8,
+        });
+        const scoredArticleId = await ctx.db.insert("articles", {
+          sourceId: legacySourceId,
+          title: "Test",
+          url: "https://digi24.ro/a",
+          canonicalUrl: "https://digi24.ro/a",
+          status: "enriched",
+          publishedAt: Date.now(),
+          aiBiasScore: 2,
+        });
+        const unscoredArticleId = await ctx.db.insert("articles", {
+          sourceId: legacySourceId,
+          title: "Test 2",
+          url: "https://digi24.ro/b",
+          canonicalUrl: "https://digi24.ro/b",
+          status: "unprocessed",
+          publishedAt: Date.now(),
+        });
+        return {
+          legacySourceId,
+          migratedSourceId,
+          scoredArticleId,
+          unscoredArticleId,
+        };
+      });
+
+    const result = await t.mutation(api.migrations.backfillNamedAxisBias, {
+      autoContinue: false,
+    });
+    expect(result.sourcesPatched).toBe(1);
+    expect(result.articlesPatched).toBe(1);
+    expect(result.isDone).toBe(true);
+
+    await t.run(async (ctx) => {
+      const legacySource = await ctx.db.get(legacySourceId);
+      expect(legacySource?.bias).toEqual({
+        axis: "reformist_suveranist",
+        score: -1,
+      });
+      // baseBias mirror untouched
+      expect(legacySource?.baseBias).toBe(-1);
+
+      const migratedSource = await ctx.db.get(migratedSourceId);
+      expect(migratedSource?.bias?.score).toBe(0);
+
+      const scoredArticle = await ctx.db.get(scoredArticleId);
+      expect(scoredArticle?.aiBias).toEqual({
+        axis: "reformist_suveranist",
+        score: 2,
+      });
+      expect(scoredArticle?.aiBiasScore).toBe(2);
+
+      const unscoredArticle = await ctx.db.get(unscoredArticleId);
+      expect(unscoredArticle?.aiBias).toBeUndefined();
+    });
+  });
+
+  test("is idempotent on a second run", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const sourceId = await ctx.db.insert("sources", {
+        domain: "hotnews.ro",
+        name: "HotNews",
+        baseBias: -2,
+        reliabilityScore: 8,
+      });
+      await ctx.db.insert("articles", {
+        sourceId,
+        title: "T",
+        url: "https://hotnews.ro/a",
+        canonicalUrl: "https://hotnews.ro/a",
+        status: "enriched",
+        publishedAt: Date.now(),
+        aiBiasScore: -1,
+      });
+    });
+
+    const first = await t.mutation(api.migrations.backfillNamedAxisBias, {
+      autoContinue: false,
+    });
+    const second = await t.mutation(api.migrations.backfillNamedAxisBias, {
+      autoContinue: false,
+    });
+    expect(first.sourcesPatched + first.articlesPatched).toBe(2);
+    expect(second.sourcesPatched + second.articlesPatched).toBe(0);
+  });
+});

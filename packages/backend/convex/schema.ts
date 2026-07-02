@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { namedAxisBiasValidator } from "./lib/biasAxis";
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -42,10 +43,13 @@ export default defineSchema({
   // 2. SOURCES (Reputation Layer)
   // =========================================================================
   sources: defineTable({
-    domain: v.string(), // "nytimes.com"
-    name: v.string(), // "The New York Times"
-    baseBias: v.number(), // -5 (Left) to +5 (Right)
-    reliabilityScore: v.number(), // 1-10 (10 = Academic/Reuters, 1 = Tabloid)
+    domain: v.string(), // "digi24.ro"
+    name: v.string(), // "Digi24"
+    // Canonical named-axis bias (BIV-302); baseBias is the derived
+    // single-score mirror consumed by the UI and must stay in sync.
+    bias: v.optional(namedAxisBiasValidator),
+    baseBias: v.number(), // -5 (reformist) to +5 (suveranist) — see docs/bias-axis-spec.md
+    reliabilityScore: v.number(), // 1-10 (10 = wire service, 1 = tabloid)
     logoUrl: v.optional(v.string()),
 
     // MBFC (Media Bias/Fact Check) enrichment — populated via RapidAPI
@@ -533,7 +537,10 @@ export default defineSchema({
     factExtractionLastAttemptAt: v.optional(v.number()),
     needsFactExtraction: v.optional(v.boolean()),
 
-    // Populated by enrichment pipeline (AI bias detection)
+    // Populated by enrichment pipeline (AI bias detection).
+    // aiBias is the canonical named-axis object (BIV-302); aiBiasScore is the
+    // derived single-score mirror consumed by the UI.
+    aiBias: v.optional(namedAxisBiasValidator),
     aiBiasScore: v.optional(v.number()),
     biasComponents: v.optional(
       v.object({

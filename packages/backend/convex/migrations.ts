@@ -15,6 +15,7 @@ import type { Doc } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
+import { namedAxisBias } from "./lib/biasAxis";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -526,6 +527,88 @@ export const queueEventShareAssetsBackfill = mutation({
     return {
       processed: page.page.length,
       queued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
+      remainingPages,
+    };
+  },
+});
+
+/**
+ * BIV-302: backfill the named-axis bias objects from the legacy single
+ * scores. Sources get `bias` from `baseBias`; articles with an
+ * `aiBiasScore` get `aiBias`. Idempotent — rows that already carry the
+ * object are skipped.
+ */
+export const backfillNamedAxisBias = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Sources are a small table — migrate them all on the first page.
+    let sourcesPatched = 0;
+    if (!args.cursor) {
+      const sources = await ctx.db.query("sources").collect();
+      for (const source of sources) {
+        if (source.bias) continue;
+        await ctx.db.patch(source._id, {
+          bias: namedAxisBias(source.baseBias),
+        });
+        sourcesPatched++;
+      }
+    }
+
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      200,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let articlesPatched = 0;
+    for (const article of page.page) {
+      if (article.aiBias || article.aiBiasScore === undefined) continue;
+      await ctx.db.patch(article._id, {
+        aiBias: namedAxisBias(article.aiBiasScore),
+      });
+      articlesPatched++;
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
+    const scheduledContinuation =
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        MIGRATION_CONTINUATION_DELAY_MS,
+        api.migrations.backfillNamedAxisBias,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+          remainingPages: remainingPages - 1,
+        },
+      );
+    }
+
+    return {
+      sourcesPatched,
+      articlesProcessed: page.page.length,
+      articlesPatched,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       scheduledContinuation,

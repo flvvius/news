@@ -26,6 +26,7 @@ import type { MutationCtx } from "./_generated/server";
 import { ALL_FEEDS, type FeedEntry } from "./feeds";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
+import { namedAxisBias } from "./lib/biasAxis";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -720,6 +721,7 @@ export const createSource = internalMutation({
     return ctx.db.insert("sources", {
       domain,
       name,
+      bias: namedAxisBias(baseBias),
       baseBias,
       reliabilityScore,
       logoUrl: `https://logo.clearbit.com/${domain}`,
@@ -763,6 +765,7 @@ export const getOrCreateSource = internalMutation({
     return ctx.db.insert("sources", {
       domain,
       name,
+      bias: namedAxisBias(baseBias),
       baseBias,
       reliabilityScore,
       logoUrl: `https://logo.clearbit.com/${domain}`,
