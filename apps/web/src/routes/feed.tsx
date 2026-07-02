@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
+import { buildFeedQueryArgs } from "@/lib/feed-query";
 import {
   BrainCircuitIcon,
   CheckIcon,
@@ -384,9 +385,7 @@ function FeedContent() {
     loadMore,
   } = usePaginatedQuery(
     api.events.getPublishedEvents,
-    selectedTopic === "all"
-      ? { sort: feedSort }
-      : { topicId: selectedTopic, sort: feedSort },
+    buildFeedQueryArgs(selectedTopic, feedSort),
     { initialNumItems: pageSize },
   );
   const searchResults = useQuery(

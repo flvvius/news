@@ -27,11 +27,22 @@ function classifySourceBias(source: Pick<Doc<"sources">, "baseBias" | "mbfcCateg
 export function computeTrendingScore(args: {
   factualArticleCount?: number;
   factualSourceCount?: number;
+  articleCount?: number;
+  sourceCount?: number;
   lastUpdatedAt?: number;
   firstPublishedAt: number;
 }) {
-  const sourceScore = (args.factualSourceCount ?? 0) * 10;
-  const articleScore = (args.factualArticleCount ?? 0) * 3;
+  // BIV-801: the claim-verified counts only populate while the claim-analysis
+  // pipeline runs, and that pipeline is paused (BIV-602). Without a fallback
+  // the score degenerates to the recency term alone and Trending becomes
+  // indistinguishable from Latest. Raw coverage (how many sources/articles
+  // corroborate the event) is the honest degraded signal, so treat a zero
+  // factual count the same as an absent one — a paused pipeline also writes
+  // zeros, making 0 vs undefined meaningless as a distinction.
+  const sourceSignal = args.factualSourceCount || args.sourceCount || 0;
+  const articleSignal = args.factualArticleCount || args.articleCount || 0;
+  const sourceScore = sourceSignal * 10;
+  const articleScore = articleSignal * 3;
   const recencyScore =
     (args.lastUpdatedAt ?? args.firstPublishedAt) / 3_600_000;
   return sourceScore + articleScore + recencyScore;
@@ -228,7 +239,16 @@ export async function syncPublicEventPreview(
     topicIds: topics,
     factualArticleCount: event.factualArticleCount,
     factualSourceCount: event.factualSourceCount,
-    trendingScore: computeTrendingScore(event),
+    trendingScore: computeTrendingScore({
+      factualArticleCount: event.factualArticleCount,
+      factualSourceCount: event.factualSourceCount,
+      // Resolved above (event fields or article scan) so the coverage
+      // fallback sees real counts even while the event cache is warming.
+      articleCount: articleCount ?? 0,
+      sourceCount: sourceCount ?? validSources.length,
+      lastUpdatedAt: event.lastUpdatedAt,
+      firstPublishedAt: event.firstPublishedAt,
+    }),
     sourceBiasCounts,
     sources: validSources.slice(0, MAX_PREVIEW_SOURCES).map((source) => ({
       _id: source._id,

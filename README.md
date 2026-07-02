@@ -220,6 +220,23 @@ Important implication:
 - the feed is event-driven, not article-driven
 - if real ingestion does not produce `events`, the feed will still rely on seeded/demo events
 
+##### Trending vs Latest (BIV-801)
+
+The Trending tab ranks by `trendingScore` (in
+`packages/backend/convex/lib/publicEventPreviews.ts`), which combines
+corroboration and recency: `sources*10 + articles*3 + hoursSinceEpoch`.
+The corroboration terms prefer the claim-verified counts
+(`factualSourceCount`/`factualArticleCount`), but those only populate while
+the claim-analysis pipeline runs — and it is paused behind a feature flag
+(BIV-602). Without the raw-coverage fallback the score degenerated to the
+recency term alone and Trending was indistinguishable from Latest.
+Trending does **not** rank on user interactions, so an interaction-free dev
+database is not the cause of tab sameness. Note that existing
+`publicEventPreviews` rows keep their stored score until the next
+`syncPublicEventPreview` (pipeline update or
+`internal.clustering.backfillEventCandidacy` run), and the anonymous
+first-page snapshot refreshes via the `rebuild-public-feed-snapshots` cron.
+
 #### Event detail page
 
 The event page expects:
