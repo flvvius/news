@@ -57,8 +57,7 @@ The current repo is in a transitional state:
 
 ### Partially implemented
 
-- MBFC RapidAPI integration exists in code, but is not the default active path
-- Source MBFC data is currently seeded manually from the curated feed list
+- Source ratings are seeded manually from `sourceReputation.ts` (the authoritative source-metadata path; the old MBFC RapidAPI integration was removed)
 - Native app auth and Convex connection work, but the app is mostly scaffold/UI shell
 - Event model and event pages exist, but the current real-data pipeline does not yet create/publish events from ingested articles
 
@@ -173,7 +172,7 @@ This is the Convex backend package and the most important backend logic in the r
 - [`ingestion.ts`](./packages/backend/convex/ingestion.ts): RSS fetch/parse/dedup/source creation/article insert/pipeline locks
 - [`enrichment.ts`](./packages/backend/convex/enrichment.ts): article claiming and DB-side enrichment mutations
 - [`enrichmentNode.ts`](./packages/backend/convex/enrichmentNode.ts): OpenAI embedding generation
-- [`mbfc.ts`](./packages/backend/convex/mbfc.ts): MBFC API integration path
+- [`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts): manual Romanian source-reputation seed (authoritative source metadata)
 - [`crons.ts`](./packages/backend/convex/crons.ts): scheduled ingestion and enrichment jobs
 
 ### Product support
@@ -352,21 +351,15 @@ Article records inserted by ingestion currently contain:
 - logs AI usage
 - checks daily budget before spending
 
-#### 5. MBFC API integration path
+#### 5. Source metadata path
 
-[`mbfc.ts`](./packages/backend/convex/mbfc.ts) exists and supports:
-
-- source lookup via RapidAPI
-- normalization of bias/factual ratings
-- writing back to `sources`
-- fallback marking as `unrated`
-- batch enrichment
-
-But today:
-
-- the MBFC cron is disabled
-- the feed list still carries manual MBFC data
-- the active MVP path is manual metadata in `feeds.ts`, not API-enriched metadata
+Source bias/reliability ratings are seeded manually from
+[`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts)
+(hand-assigned axis scores + reliability + provenance notes, upserted via
+`seeds:seedRomanianSources`). This is the single documented source-metadata
+path; the old MBFC RapidAPI integration was removed in BIV-402. If the
+source list ever grows past what hand-curation can maintain, see the backlog
+note in `sourceReputation.ts` before adding an automated refresh.
 
 ### What does not exist yet
 
@@ -497,10 +490,6 @@ Currently active:
 - `ingest-rss-feeds`: every 60 minutes
 - `enrich-articles`: every 30 minutes
 
-Currently disabled:
-
-- MBFC API source enrichment cron
-
 ## Environment Variables
 
 This repo uses a mix of web env vars, native public env vars, and backend/server env vars.
@@ -532,7 +521,6 @@ Required or commonly expected by the current code:
 
 - `OPENAI_API_KEY`
 - `POSTHOG_API_KEY` (optional)
-- `RAPIDAPI_KEY` for MBFC API path
 - `RESEND_API_KEY`
 
 ### Native public env vars
@@ -544,7 +532,7 @@ Note:
 
 - not every integration is required for local development
 - the easiest local path is usually seeded data + web app + Convex
-- MBFC API and Resend can be omitted if you do not need those flows locally
+- Resend can be omitted if you do not need email flows locally
 
 ## Local Development
 

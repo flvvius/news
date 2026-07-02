@@ -54,7 +54,9 @@ export default defineSchema({
     provenance: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
 
-    // MBFC (Media Bias/Fact Check) enrichment — populated via RapidAPI
+    // Legacy MBFC (Media Bias/Fact Check) metadata. The RapidAPI integration
+    // was removed (BIV-402); these fields remain readable for existing rows
+    // and are seeded from feeds.ts curated data where available.
     mbfcCategory: v.optional(v.string()), // "left", "left-center", "center", "right-center", "right", "unrated"
     mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
     mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"

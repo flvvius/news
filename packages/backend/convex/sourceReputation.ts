@@ -20,6 +20,11 @@
  * Outlets beyond the launch feed list are seeded too so articles that arrive
  * via discovery overlays (BIV-103 Google News) resolve to rated sources by
  * domain instead of getting neutral defaults.
+ *
+ * BACKLOG (BIV-402): if the source list ever grows past what can be curated
+ * by hand, add an automated refresh against an external ratings API. The old
+ * MBFC RapidAPI integration was deleted (it barely covered Romania); any
+ * future integration must never overwrite provenance-marked manual scores.
  */
 
 export interface SourceReputationEntry {

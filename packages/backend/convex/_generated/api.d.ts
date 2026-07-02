@@ -42,7 +42,6 @@ import type * as lib_romanian from "../lib/romanian.js";
 import type * as lib_sourceBias from "../lib/sourceBias.js";
 import type * as lib_streaks from "../lib/streaks.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
-import type * as mbfc from "../mbfc.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
 import type * as pipeline from "../pipeline.js";
@@ -108,7 +107,6 @@ declare const fullApi: ApiFromModules<{
   "lib/sourceBias": typeof lib_sourceBias;
   "lib/streaks": typeof lib_streaks;
   "lib/userProfile": typeof lib_userProfile;
-  mbfc: typeof mbfc;
   migrations: typeof migrations;
   notifications: typeof notifications;
   pipeline: typeof pipeline;

@@ -96,7 +96,7 @@ events (processing → published)  +  publicEventPreviews
 ```
 
 ### 3.1 Ingestion (`ingestion.ts`)
-Entry: `ingestAllFeeds` (cron, 60 min). Feeds are **curated by hand** in `feeds.ts` (~two dozen outlets, each with domain + bias + reliability + MBFC metadata). MBFC's API integration exists (`mbfc.ts`) but the cron is disabled; metadata is seeded from the curated list.
+Entry: `ingestAllFeeds` (cron, 60 min). Feeds are **curated by hand** in `feeds.ts` (Romanian launch set, two tiers), with bias/reliability derived from the manual reputation seed in `sourceReputation.ts` — the single source-metadata path (the old MBFC API integration was removed in BIV-402).
 
 Per feed (`ingestSingleFeed`, an action):
 1. **Get-or-create the source** by domain (logo via Clearbit).
