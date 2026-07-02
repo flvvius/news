@@ -106,7 +106,15 @@ const ARTICLE_BIAS_JSON_SCHEMA = {
           additionalProperties: false,
           properties: {
             id: { type: "string" },
-            politicalLean: { type: "integer", minimum: -5, maximum: 5 },
+            bias: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                axis: { type: "string", enum: ["reformist_suveranist"] },
+                score: { type: "integer", minimum: -5, maximum: 5 },
+              },
+              required: ["axis", "score"],
+            },
             emotionalLanguage: { type: "integer", minimum: 0, maximum: 5 },
             sourceDiversity: { type: "integer", minimum: 0, maximum: 5 },
             factOpinionRatio: { type: "integer", minimum: 0, maximum: 5 },
@@ -114,7 +122,7 @@ const ARTICLE_BIAS_JSON_SCHEMA = {
           },
           required: [
             "id",
-            "politicalLean",
+            "bias",
             "emotionalLanguage",
             "sourceDiversity",
             "factOpinionRatio",
@@ -397,8 +405,18 @@ function sanitizeBiasComponents(raw: unknown): BiasComponents | null {
   const rationale = safeString(row.rationale, "").replace(/\s+/g, " ");
   if (rationale.length === 0) return null;
 
+  // The model outputs the named-axis object { axis, score } (BIV-302). The
+  // score is stored under the legacy biasComponents.politicalLean field name,
+  // which now carries the reformist(−)↔suveranist(+) axis score.
+  const biasObject =
+    row.bias && typeof row.bias === "object"
+      ? (row.bias as Record<string, unknown>)
+      : null;
+  const axisScore =
+    biasObject !== null ? biasObject.score : row.politicalLean;
+
   return {
-    politicalLean: safeInteger(row.politicalLean, 0, -5, 5),
+    politicalLean: safeInteger(axisScore, 0, -5, 5),
     emotionalLanguage: safeInteger(row.emotionalLanguage, 0, 0, 5),
     sourceDiversity: safeInteger(row.sourceDiversity, 0, 0, 5),
     factOpinionRatio: safeInteger(row.factOpinionRatio, 0, 0, 5),

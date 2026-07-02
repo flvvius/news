@@ -22,9 +22,9 @@ const DEFAULT_MAX_INPUT_ARTICLES = 12;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const SUMMARY_WORD_LIMITS = {
-  center: 120,
-  left: 100,
-  right: 100,
+  neutral: 120,
+  reformist: 100,
+  suveranist: 100,
   globalImpact: 100,
 };
 
@@ -74,28 +74,28 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      center: {
+      neutral: {
         type: "string",
         description:
-          "60-120 word factual core, grounded in supplied article material.",
+          "Nucleul factual de 60-120 de cuvinte, în limba română, ancorat în articolele furnizate.",
       },
-      left: {
+      reformist: {
         type: "string",
         description:
-          "25-100 word left/left-center framing summary or the limited-coverage fallback.",
+          "Rezumatul cadrării reformiste de 25-100 de cuvinte, în limba română, sau textul de rezervă pentru acoperire limitată.",
       },
-      right: {
+      suveranist: {
         type: "string",
         description:
-          "25-100 word right/right-center framing summary or the limited-coverage fallback.",
+          "Rezumatul cadrării suveraniste de 25-100 de cuvinte, în limba română, sau textul de rezervă pentru acoperire limitată.",
       },
       globalImpact: {
         type: "string",
         description:
-          "25-100 word concrete downstream impact, or the exact fallback when unsupported.",
+          "Impactul concret de 25-100 de cuvinte, în limba română, sau textul de rezervă exact când nu este susținut.",
       },
     },
-    required: ["center", "left", "right", "globalImpact"],
+    required: ["neutral", "reformist", "suveranist", "globalImpact"],
   },
 } as const;
 
@@ -142,17 +142,17 @@ function parseSummaryOutput(
   }
 
   const record = parsed as Record<string, unknown>;
-  const centerFallback = `Coverage is developing around ${eventTitle}.`;
+  const neutralFallback = `Acoperirea subiectului „${eventTitle}" este în curs de dezvoltare.`;
   const sideFallback =
-    "The available coverage does not provide enough distinct framing from this side yet.";
+    "Acoperirea disponibilă nu oferă încă o cadrare distinctă din această parte.";
 
   return {
-    center: cleanSummaryField(record.center, centerFallback),
-    left: cleanSummaryField(record.left, sideFallback),
-    right: cleanSummaryField(record.right, sideFallback),
+    neutral: cleanSummaryField(record.neutral, neutralFallback),
+    reformist: cleanSummaryField(record.reformist, sideFallback),
+    suveranist: cleanSummaryField(record.suveranist, sideFallback),
     globalImpact: cleanSummaryField(
       record.globalImpact,
-      "This story may affect public debate as more reporting develops.",
+      "Această știre poate influența dezbaterea publică pe măsură ce apar noi relatări.",
     ),
   };
 }
@@ -174,6 +174,13 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   return violations;
 }
 
+/**
+ * Bump when the summary prompt semantics change so existing events are
+ * resummarized even with unchanged article inputs. v2 = Romanian-first
+ * neutral/reformist/suveranist prompt (BIV-202).
+ */
+const SUMMARY_PROMPT_VERSION = 2;
+
 function buildSummarySignature(input: {
   event: { _id: string; title: string };
   articles: Array<{
@@ -187,6 +194,7 @@ function buildSummarySignature(input: {
   }>;
 }): string {
   const payload = {
+    promptVersion: SUMMARY_PROMPT_VERSION,
     eventId: input.event._id,
     title: input.event.title,
     articles: input.articles
@@ -716,9 +724,9 @@ export const processSummaryJob = internalAction({
           jobId: job._id,
           eventId: input.event._id,
           runId,
-          neutral: summary.center,
-          reformist: summary.left,
-          suveranist: summary.right,
+          neutral: summary.neutral,
+          reformist: summary.reformist,
+          suveranist: summary.suveranist,
           globalImpact: summary.globalImpact,
           summarySignature,
         },

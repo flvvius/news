@@ -539,6 +539,81 @@ export const queueEventShareAssetsBackfill = mutation({
 });
 
 /**
+ * BIV-202: the bias axis changed from left↔right to reformist↔suveranist,
+ * so previously scored articles hold incomparable values. Requeue bias
+ * scoring on scored, non-archived articles by flagging them for
+ * re-enrichment and resetting the bias detection state. Paginated with
+ * auto-continue like the other backfills.
+ */
+export const requeueBiasScoringForAxisChange = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      200,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let requeued = 0;
+    for (const article of page.page) {
+      if (article.biasAnalyzedAt === undefined) continue;
+      if (article.status === "archived" || article.status === "discarded") {
+        continue;
+      }
+      await ctx.db.patch(article._id, {
+        needsReenrichment: true,
+        biasDetectionStatus: "deferred",
+        biasDetectionAttempts: 0,
+        biasAnalyzedAt: undefined,
+      });
+      requeued++;
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
+    const scheduledContinuation =
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        MIGRATION_CONTINUATION_DELAY_MS,
+        api.migrations.requeueBiasScoringForAxisChange,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+          remainingPages: remainingPages - 1,
+        },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      requeued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
+      remainingPages,
+    };
+  },
+});
+
+/**
  * BIV-303: convert perspectiveSummaries from the legacy center/left/right
  * keys to neutral/reformist/suveranist on events and publicEventPreviews.
  * Idempotent — rows already on the new keys are rewritten identically and

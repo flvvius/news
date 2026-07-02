@@ -541,6 +541,8 @@ export default defineSchema({
     aiBiasScore: v.optional(v.number()),
     biasComponents: v.optional(
       v.object({
+        // Legacy field name; since BIV-202 this carries the model's
+        // reformist(−)↔suveranist(+) axis score.
         politicalLean: v.number(),
         emotionalLanguage: v.number(),
         sourceDiversity: v.number(),
