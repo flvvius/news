@@ -3,20 +3,13 @@ import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
 import StreakActivityCalendar from "@/components/streak-activity-calendar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  useConvexAuth,
-  useMutation as useConvexMutationHook,
-  useQuery,
-} from "convex/react";
-import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { formatRelativeTimestamp } from "@/lib/dates";
 import {
   Bookmark,
@@ -26,21 +19,6 @@ import {
   Newspaper,
   Sparkles,
 } from "lucide-react";
-
-const TOPIC_INFERENCE_DEFAULTS = {
-  minScore: 4.5,
-  confidenceRatio: 0.55,
-  maxTopics: 3,
-} as const;
-
-function getNumericConfigValue(
-  row: { value: unknown } | null | undefined,
-  fallback: number,
-) {
-  return typeof row?.value === "number" && Number.isFinite(row.value)
-    ? row.value
-    : fallback;
-}
 
 function formatReadDuration(
   t: ReturnType<typeof useT>,
@@ -141,64 +119,8 @@ function AuthorizedDashboard({
   const locale = useLocale();
   const t = useT();
   const dashboardOverview = useQuery(api.interactions.getDashboardOverview);
-  const isAdmin = useQuery(api.user.isCurrentUserAdmin);
-  const topicDiagnostics = useQuery(
-    api.clustering.getRecentTopicInferenceDiagnosticsForAdmin,
-    isAdmin ? { limit: 10 } : "skip",
-  );
-  const minScoreConfig = useQuery(
-    api.config.get,
-    isAdmin ? { key: "topic_inference_min_score" } : "skip",
-  );
-  const confidenceRatioConfig = useQuery(
-    api.config.get,
-    isAdmin ? { key: "topic_inference_confidence_ratio" } : "skip",
-  );
-  const maxTopicsConfig = useQuery(
-    api.config.get,
-    isAdmin ? { key: "topic_inference_max_topics" } : "skip",
-  );
-  const topicInferenceBounds = useQuery(
-    api.config.getTopicInferenceBounds,
-    isAdmin ? {} : "skip",
-  );
-  const setTopicInferenceSettings = useConvexMutationHook(
-    api.config.setTopicInferenceSettings,
-  );
-  const [minScoreInput, setMinScoreInput] = useState("");
-  const [confidenceRatioInput, setConfidenceRatioInput] = useState("");
-  const [maxTopicsInput, setMaxTopicsInput] = useState("");
-  const [configMessage, setConfigMessage] = useState("");
-  const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const currentSettings = useMemo(
-    () => ({
-      minScore: getNumericConfigValue(
-        minScoreConfig,
-        TOPIC_INFERENCE_DEFAULTS.minScore,
-      ),
-      confidenceRatio: getNumericConfigValue(
-        confidenceRatioConfig,
-        TOPIC_INFERENCE_DEFAULTS.confidenceRatio,
-      ),
-      maxTopics: getNumericConfigValue(
-        maxTopicsConfig,
-        TOPIC_INFERENCE_DEFAULTS.maxTopics,
-      ),
-    }),
-    [minScoreConfig, confidenceRatioConfig, maxTopicsConfig],
-  );
 
-  useEffect(() => {
-    setMinScoreInput(String(currentSettings.minScore));
-    setConfidenceRatioInput(String(currentSettings.confidenceRatio));
-    setMaxTopicsInput(String(currentSettings.maxTopics));
-  }, [
-    currentSettings.minScore,
-    currentSettings.confidenceRatio,
-    currentSettings.maxTopics,
-  ]);
-
-  if (dashboardOverview === undefined || isAdmin === undefined) {
+  if (dashboardOverview === undefined) {
     return (
       <PageLoadingState
         title={t("activity.loading.title")}
@@ -207,71 +129,6 @@ function AuthorizedDashboard({
       />
     );
   }
-
-  const hasConfigChanges =
-    minScoreInput !== String(currentSettings.minScore) ||
-      confidenceRatioInput !== String(currentSettings.confidenceRatio) ||
-      maxTopicsInput !== String(currentSettings.maxTopics);
-
-  const handleResetConfig = () => {
-    setMinScoreInput(String(currentSettings.minScore));
-    setConfidenceRatioInput(String(currentSettings.confidenceRatio));
-    setMaxTopicsInput(String(currentSettings.maxTopics));
-    setConfigMessage("");
-  };
-
-  const handleSaveConfig = async (event: FormEvent) => {
-    event.preventDefault();
-    if (isSavingConfig) return;
-
-    const minScore = Number(minScoreInput);
-    const confidenceRatio = Number(confidenceRatioInput);
-    const maxTopics = Number(maxTopicsInput);
-
-    if (!topicInferenceBounds) return;
-
-    if (
-      !Number.isFinite(minScore) ||
-      minScore < topicInferenceBounds.minScore.min ||
-      minScore > topicInferenceBounds.minScore.max
-    ) {
-      setConfigMessage(t("activity.admin.minScoreError"));
-      return;
-    }
-    if (
-      !Number.isFinite(confidenceRatio) ||
-      confidenceRatio < topicInferenceBounds.confidenceRatio.min ||
-      confidenceRatio > topicInferenceBounds.confidenceRatio.max
-    ) {
-      setConfigMessage(t("activity.admin.confidenceError"));
-      return;
-    }
-    if (
-      !Number.isInteger(maxTopics) ||
-      maxTopics < topicInferenceBounds.maxTopics.min ||
-      maxTopics > topicInferenceBounds.maxTopics.max
-    ) {
-      setConfigMessage(t("activity.admin.maxTopicsError"));
-      return;
-    }
-
-    setIsSavingConfig(true);
-    setConfigMessage("");
-
-    try {
-      await setTopicInferenceSettings({
-        minScore,
-        confidenceRatio,
-        maxTopics,
-      });
-      setConfigMessage(t("activity.admin.saved"));
-    } catch (error) {
-      console.error("Failed to save topic inference settings:", error);
-      setConfigMessage(t("activity.admin.saveError"));
-    } finally {
-      setIsSavingConfig(false);
-    }
-  };
 
   const userName =
     currentUser?.profile?.name || currentUser?.email || t("activity.userFallback");
@@ -680,255 +537,8 @@ function AuthorizedDashboard({
               </div>
             </Link>
           </div>
-
-          {/* Admin: Topic Diagnostics */}
-          {isAdmin && (
-            <section className="space-y-4 rounded-xl border border-border bg-card p-6">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {t("activity.adminTitle")}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("activity.adminBody")}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <MetricCard
-                  label={t("activity.admin.minScore")}
-                  value={String(currentSettings.minScore)}
-                />
-                <MetricCard
-                  label={t("activity.admin.confidence")}
-                  value={String(currentSettings.confidenceRatio)}
-                />
-                <MetricCard
-                  label={t("activity.admin.maxTopics")}
-                  value={String(currentSettings.maxTopics)}
-                />
-              </div>
-
-              <form onSubmit={handleSaveConfig} className="space-y-4 pt-2">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="topic-inference-min-score"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {t("activity.admin.minScore")}
-                    </label>
-                    <Input
-                      id="topic-inference-min-score"
-                      inputMode="decimal"
-                      aria-label={t("activity.admin.minScore")}
-                      value={minScoreInput}
-                      onChange={(e) => setMinScoreInput(e.target.value)}
-                      disabled={isSavingConfig}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="topic-inference-confidence-ratio"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {t("activity.admin.confidence")}
-                    </label>
-                    <Input
-                      id="topic-inference-confidence-ratio"
-                      inputMode="decimal"
-                      aria-label={t("activity.admin.confidence")}
-                      value={confidenceRatioInput}
-                      onChange={(e) =>
-                        setConfidenceRatioInput(e.target.value)
-                      }
-                      disabled={isSavingConfig}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="topic-inference-max-topics"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {t("activity.admin.maxTopics")}
-                    </label>
-                    <Input
-                      id="topic-inference-max-topics"
-                      inputMode="numeric"
-                      aria-label={t("activity.admin.maxTopics")}
-                      value={maxTopicsInput}
-                      onChange={(e) => setMaxTopicsInput(e.target.value)}
-                      disabled={isSavingConfig}
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={
-                      isSavingConfig || !hasConfigChanges || !topicInferenceBounds
-                    }
-                  >
-                    {isSavingConfig
-                      ? t("activity.admin.saving")
-                      : t("activity.admin.save")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetConfig}
-                    disabled={isSavingConfig || !hasConfigChanges}
-                  >
-                    {t("activity.admin.reset")}
-                  </Button>
-                  {configMessage && (
-                    <p
-                      className="text-sm text-muted-foreground"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {configMessage}
-                    </p>
-                  )}
-                </div>
-              </form>
-
-              <div className="space-y-3 pt-2">
-                {(topicDiagnostics ?? []).map((event) => (
-                  <article
-                    key={event.eventId}
-                    className="rounded-lg border border-border bg-background p-4"
-                  >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="font-medium">{event.eventTitle}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {event.articleCount === 1
-                            ? t("activity.admin.articles.one")
-                            : t("activity.admin.articles.many").replace(
-                                "{count}",
-                                String(event.articleCount),
-                              )}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <TopicChipList
-                          label={t("activity.admin.attached")}
-                          topics={event.attachedTopics.map(
-                            (topic) => topic.displayName,
-                          )}
-                        />
-                        <TopicChipList
-                          label={t("activity.admin.inferred")}
-                          topics={event.inferredTopics.map(
-                            (topic) => topic.displayName,
-                          )}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {t("activity.admin.input")}
-                          </p>
-                          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                            <p>{event.inferenceInput.title}</p>
-                            {event.inferenceInput.summary && (
-                              <p>{event.inferenceInput.summary}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {event.inferenceInput.atomicFacts.length > 0 && (
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground">
-                              {t("activity.admin.facts")}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {event.inferenceInput.atomicFacts.map((fact) => (
-                                <span
-                                  key={fact}
-                                  className="rounded-full bg-muted px-2 py-0.5 text-xs"
-                                >
-                                  {fact}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground">
-                          {t("activity.admin.candidates")}
-                        </p>
-                        <div className="mt-2 space-y-2">
-                          {event.topCandidates.map((candidate) => (
-                            <div
-                              key={candidate.slug}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-border p-2"
-                            >
-                              <div>
-                                <p className="text-sm font-medium">
-                                  {candidate.displayName}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {t("activity.admin.signals").replace(
-                                    "{count}",
-                                    String(candidate.signalCount),
-                                  )}
-                                </p>
-                              </div>
-                              <p className="text-sm font-semibold tabular-nums">
-                                {candidate.score}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-    </div>
-  );
-}
-
-function TopicChipList({ label, topics }: { label: string; topics: string[] }) {
-  const t = useT();
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}:</span>
-      {topics.length > 0 ? (
-        topics.map((topic) => (
-          <span
-            key={`${label}-${topic}`}
-            className="rounded-full bg-muted px-2 py-0.5 text-xs"
-          >
-            {topic}
-          </span>
-        ))
-      ) : (
-        <span className="text-xs text-muted-foreground">{t("activity.none")}</span>
-      )}
     </div>
   );
 }
