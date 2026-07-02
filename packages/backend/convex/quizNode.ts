@@ -6,10 +6,12 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
-import { callOpenAI } from "./lib/aiCall";
+import { callLLM } from "./lib/aiCall";
 
 const DEFAULT_ENABLED = true;
-const DEFAULT_MODEL = "gpt-5-nano";
+import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
+
+const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 const DEFAULT_TARGET_QUESTIONS = 5;
 const DEFAULT_MIN_QUESTIONS = 3;
 const QUIZ_PROMPT_VERSION = "2026-05-31";
@@ -534,9 +536,9 @@ async function generateDailyQuizForDate(
     { ...input, events: usableEvents },
     settings.targetQuestions,
   );
-  let response: Awaited<ReturnType<typeof callOpenAI<RawQuizResponse>>>;
+  let response: Awaited<ReturnType<typeof callLLM<RawQuizResponse>>>;
   try {
-    response = await callOpenAI<RawQuizResponse>({
+    response = await callLLM<RawQuizResponse>({
       kind: "chat",
       model: settings.model,
       temperature: 0.2,

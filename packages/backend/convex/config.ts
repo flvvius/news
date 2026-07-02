@@ -682,8 +682,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_model",
-        value: "gpt-5-nano",
-        description: "OpenAI chat model used for event perspective summaries.",
+        value: "gemini-3.1-flash-lite",
+        description:
+          "Chat model used for event perspective summaries (gemini-* routes via Gemini's OpenAI-compatible API; anything else via OpenAI).",
       },
       {
         key: "event_summary_enqueue_limit",
@@ -735,9 +736,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used to extract atomic facts from articles during enrichment.",
+          "Chat model used to extract atomic facts from articles during enrichment.",
       },
       {
         key: "article_fact_extraction_max_articles_per_run",
@@ -764,9 +765,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_bias_detection_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used for per-article bias component scoring during enrichment.",
+          "Chat model used for per-article bias component scoring during enrichment.",
       },
       {
         key: "article_bias_detection_max_articles_per_run",
@@ -818,9 +819,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "claim_analysis_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used for event-level claim divergence analysis.",
+          "Chat model used for event-level claim divergence analysis.",
       },
       {
         key: "claim_analysis_batch_size",
@@ -1139,6 +1140,15 @@ export const seedDefaults = internalMutation({
       "pipeline_alert_check_interval_minutes",
     ]);
 
+    // BIV-201: rows still holding a stale prior default are migrated to the
+    // new default; explicit operator overrides (any other value) are kept.
+    const staleValueMigrations: Record<string, string[]> = {
+      event_summary_model: ['"gpt-5-nano"'],
+      article_fact_extraction_model: ['"gpt-5-nano"'],
+      article_bias_detection_model: ['"gpt-5-nano"'],
+      claim_analysis_model: ['"gpt-5-nano"'],
+    };
+
     let created = 0;
     let updated = 0;
     for (const { key, value, description } of defaults) {
@@ -1149,6 +1159,18 @@ export const seedDefaults = internalMutation({
       const nextValue = JSON.stringify(value);
 
       if (existing) {
+        const staleValues = staleValueMigrations[key];
+        if (staleValues?.includes(existing.value)) {
+          if (existing.value !== nextValue) {
+            await ctx.db.patch(existing._id, {
+              value: nextValue,
+              description,
+              updatedAt: Date.now(),
+            });
+            updated++;
+          }
+          continue;
+        }
         if (!forcedDefaultKeys.has(key)) continue;
 
         if (

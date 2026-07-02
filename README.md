@@ -519,7 +519,8 @@ Required or commonly expected by the current code:
 
 ### AI / ingestion / email env vars
 
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY` (embeddings + any gpt-* chat models)
+- `GEMINI_API_KEY` (gemini-* chat models — the default pipeline summarizer/bias scorer)
 - `POSTHOG_API_KEY` (optional)
 - `RESEND_API_KEY`
 

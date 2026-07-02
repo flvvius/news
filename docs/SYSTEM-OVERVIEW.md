@@ -19,7 +19,7 @@ The whole content pipeline is **autonomous**: a set of Convex cron jobs run cont
 - **Web: TanStack Start + React 19 + Tailwind v4** (`apps/web`).
 - **Native: Expo / React Native** (`apps/native`) — now a real product surface (feed, event detail, claims, quiz, streaks), not just a shell.
 - **Auth: Better Auth** with a Convex storage adapter (email/password + Google + Apple, cross-domain + Expo plugins).
-- **AI: OpenAI** — `text-embedding-3-small` for embeddings (512 dims), and the **`gpt-5-nano`** family for all reasoning tasks (fact extraction, bias scoring, summaries, claim divergence, quiz). Every model id is **runtime-configurable** via the `config` table, so the defaults in code can be overridden without a deploy.
+- **AI: Gemini + OpenAI** — `text-embedding-3-small` (OpenAI) for embeddings (512 dims), and **`gemini-3.1-flash-lite`** (via Gemini's OpenAI-compatible API) as the default chat model for reasoning tasks (bias scoring, summaries; fact extraction/claim divergence are paused). Every model id is **runtime-configurable** via the `config` table — gemini-* ids route to Gemini, everything else to OpenAI (`lib/modelRouting.ts`).
 - **Email: Resend**. **Analytics: PostHog** (instruments every LLM call for token/cost/latency tracking).
 
 ### Convex function types you'll see everywhere

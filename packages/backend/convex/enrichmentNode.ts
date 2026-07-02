@@ -21,11 +21,15 @@ import { shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
 import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
 import { v } from "convex/values";
-import { callOpenAI } from "./lib/aiCall";
+import { callLLM } from "./lib/aiCall";
 import {
   buildArticleBiasScoringPrompt,
   buildArticleFactExtractionPrompt,
 } from "./prompts";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_EMBEDDING_MODEL,
+} from "./lib/modelRouting";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,8 +42,8 @@ const BATCH_SIZE = 40;
 const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 
 /** OpenAI embedding model — cheap & effective for clustering */
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const DEFAULT_FACT_EXTRACTION_MODEL = "gpt-5-nano";
+const EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL;
+const DEFAULT_FACT_EXTRACTION_MODEL = DEFAULT_CHAT_MODEL;
 // Atomic-fact extraction is paused with claim analysis (BIV-602); flip the
 // article_fact_extraction_enabled config key to re-enable.
 const DEFAULT_FACT_EXTRACTION_ENABLED = false;
@@ -47,7 +51,7 @@ const DEFAULT_FACT_EXTRACTION_MAX_ARTICLES = 20;
 const DEFAULT_FACT_EXTRACTION_MAX_FACTS = 8;
 const DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS = 2600;
 const DEFAULT_BIAS_DETECTION_ENABLED = true;
-const DEFAULT_BIAS_DETECTION_MODEL = "gpt-5-nano";
+const DEFAULT_BIAS_DETECTION_MODEL = DEFAULT_CHAT_MODEL;
 const DEFAULT_BIAS_DETECTION_MAX_ARTICLES = 20;
 const DEFAULT_BIAS_DETECTION_MAX_INPUT_CHARS = 6000;
 const DEFAULT_BIAS_SOURCE_DELTA_THRESHOLD = 2;
@@ -239,7 +243,7 @@ async function generateEmbeddings(
   ctx: ActionCtx,
   texts: string[],
 ): Promise<{ embeddings: Array<number[] | null>; tokensUsed: number }> {
-  const response = await callOpenAI<
+  const response = await callLLM<
     Array<{ index: number; embedding: number[] }>
   >({
     kind: "embedding",
@@ -529,7 +533,7 @@ async function scoreBiasForArticles(
     });
 
     try {
-      const response = await callOpenAI<unknown>({
+      const response = await callLLM<unknown>({
         kind: "chat",
         model: settings.model,
         temperature: 0,
@@ -650,7 +654,7 @@ async function extractAtomicFactsForArticles(
     });
 
     try {
-      const response = await callOpenAI<unknown>({
+      const response = await callLLM<unknown>({
         kind: "chat",
         model: settings.model,
         temperature: 0,

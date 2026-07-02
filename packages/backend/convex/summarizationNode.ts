@@ -7,10 +7,12 @@ import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
-import { callOpenAI } from "./lib/aiCall";
+import { callLLM } from "./lib/aiCall";
 import { buildEventSummaryPrompt, type EventSummaryOutput } from "./prompts";
 
-const DEFAULT_MODEL = "gpt-5-nano";
+import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
+
+const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 const DEFAULT_ENQUEUE_LIMIT = 40;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -651,7 +653,7 @@ export const processSummaryJob = internalAction({
       let retryInstruction: string | null = null;
 
       for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await callOpenAI<unknown>({
+        const response = await callLLM<unknown>({
           kind: "chat",
           model: settings.model,
           temperature: 0.2,

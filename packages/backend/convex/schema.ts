@@ -862,7 +862,7 @@ export default defineSchema({
   // Budget limit stored in config table: key="ai_daily_budget_usd"
   aiUsage: defineTable({
     date: v.string(), // "YYYY-MM-DD" for daily grouping
-    model: v.string(), // "gpt-4o-mini", "text-embedding-3-small"
+    model: v.string(), // "gemini-3.1-flash-lite", "text-embedding-3-small"
     operation: v.string(), // "summarize_event", "generate_embedding", "bias_detection"
     callType: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
