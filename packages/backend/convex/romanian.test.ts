@@ -4,6 +4,7 @@ import {
   foldDiacriticsToAscii,
   looksRomanian,
   normalizeRomanianDiacritics,
+  romanianCount,
 } from "./lib/romanian";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 
@@ -117,5 +118,27 @@ describe("ingestion text normalization applies diacritic fixes", () => {
     expect(
       normalizeArticleSnippet("<p>Coaliţia a decis <b>şi</b> restul.</p>"),
     ).toBe("Coaliția a decis și restul.");
+  });
+});
+
+describe("romanianCount", () => {
+  test("singular at exactly 1", () => {
+    expect(romanianCount(1, "articol", "articole")).toBe("1 articol");
+  });
+
+  test("plain plural for 2-19", () => {
+    expect(romanianCount(2, "sursă", "surse")).toBe("2 surse");
+    expect(romanianCount(19, "articol", "articole")).toBe("19 articole");
+  });
+
+  test("partitive 'de' from 20 up", () => {
+    expect(romanianCount(20, "articol", "articole")).toBe("20 de articole");
+    expect(romanianCount(100, "articol", "articole")).toBe("100 de articole");
+  });
+
+  test("last two digits decide: 101-119 drop 'de', 120+ takes it", () => {
+    expect(romanianCount(101, "articol", "articole")).toBe("101 articole");
+    expect(romanianCount(119, "articol", "articole")).toBe("119 articole");
+    expect(romanianCount(120, "articol", "articole")).toBe("120 de articole");
   });
 });

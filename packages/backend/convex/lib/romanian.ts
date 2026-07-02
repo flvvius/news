@@ -47,6 +47,22 @@ export function foldDiacriticsToAscii(text: string): string {
   return text.normalize("NFD").replace(/\p{M}+/gu, "");
 }
 
+/**
+ * Format a count with a Romanian noun: singular at 1, plural otherwise, and
+ * the partitive "de" required before the noun when the number's last two
+ * digits fall outside 1-19 ("19 articole" but "20 de articole").
+ */
+export function romanianCount(
+  count: number,
+  singular: string,
+  plural: string,
+): string {
+  if (count === 1) return `1 ${singular}`;
+  const lastTwo = Math.abs(count) % 100;
+  const needsDe = lastTwo === 0 || lastTwo >= 20;
+  return `${count} ${needsDe ? "de " : ""}${plural}`;
+}
+
 // Frequent Romanian function words that rarely appear in English text.
 const ROMANIAN_MARKER_WORDS = new Set([
   "și",

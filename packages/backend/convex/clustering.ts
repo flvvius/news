@@ -28,7 +28,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
-import { foldDiacriticsToAscii } from "./lib/romanian";
+import { foldDiacriticsToAscii, romanianCount } from "./lib/romanian";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
@@ -1628,12 +1628,12 @@ async function refreshEventPresentation(
       220,
     ) ??
     summarizeText(normalizeTitleForClustering(best.article.title), 160) ??
-    "Coverage is still being assembled from multiple sources.";
+    "Acoperirea este încă în curs de agregare din mai multe surse.";
 
   const coverageLine =
     resolvedSourceCount > 1
-      ? `This cluster currently includes ${resolvedArticleCount} articles from ${resolvedSourceCount} sources.`
-      : `This cluster currently includes ${resolvedArticleCount} article${resolvedArticleCount === 1 ? "" : "s"}.`;
+      ? `Acest eveniment include ${romanianCount(resolvedArticleCount, "articol", "articole")} din ${romanianCount(resolvedSourceCount, "sursă", "surse")}.`
+      : `Acest eveniment include ${romanianCount(resolvedArticleCount, "articol", "articole")}.`;
 
   const centerSummary = summarizeText(
     `${representativeSnippet} ${coverageLine}`,
@@ -1643,7 +1643,7 @@ async function refreshEventPresentation(
   const sourceNames = Array.from(uniqueSources).slice(0, 3);
   const sourceLine =
     sourceNames.length > 0
-      ? `Sources in this event include ${sourceNames.join(", ")}${resolvedSourceCount > sourceNames.length ? ", and others" : ""}.`
+      ? `Printre sursele acestui eveniment se numără ${sourceNames.join(", ")}${resolvedSourceCount > sourceNames.length ? " și altele" : ""}.`
       : undefined;
   const globalImpact = summarizeText(
     `${coverageLine} ${sourceLine ?? ""}`.trim(),
