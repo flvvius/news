@@ -170,6 +170,52 @@ const STOPWORDS = new Set([
   "who",
   "will",
   "with",
+  // Romanian stopwords (BIV-501). Title tokens pass through
+  // foldDiacriticsToAscii before this filter, so ASCII-folded forms only.
+  // Tokens under 3 chars are already dropped by the length filter.
+  "acest",
+  "aceasta",
+  "acestei",
+  "acestui",
+  "ani",
+  "anunta",
+  "asupra",
+  "care",
+  "catre",
+  "cand",
+  "cea",
+  "cel",
+  "cele",
+  "celor",
+  "cum",
+  "dar",
+  "despre",
+  "din",
+  "dintre",
+  "doar",
+  "dupa",
+  "este",
+  "fara",
+  "fata",
+  "fiind",
+  "fost",
+  "iar",
+  "intre",
+  "mai",
+  "noi",
+  "nou",
+  "noua",
+  "pentru",
+  "peste",
+  "prin",
+  "sau",
+  "spre",
+  "spune",
+  "sunt",
+  "toate",
+  "unde",
+  "unei",
+  "unui",
 ]);
 
 function toEventEmbedding(articleEmbedding: number[]): number[] {
@@ -555,7 +601,7 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function normalizeTitleTokens(text: string): Set<string> {
+export function normalizeTitleTokens(text: string): Set<string> {
   return new Set(
     normalizeText(text)
       .split(" ")

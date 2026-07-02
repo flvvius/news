@@ -16,6 +16,7 @@ import type * as briefing from "../briefing.js";
 import type * as claimDivergence from "../claimDivergence.js";
 import type * as claimDivergenceNode from "../claimDivergenceNode.js";
 import type * as clustering from "../clustering.js";
+import type * as clusteringTuning from "../clusteringTuning.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   claimDivergence: typeof claimDivergence;
   claimDivergenceNode: typeof claimDivergenceNode;
   clustering: typeof clustering;
+  clusteringTuning: typeof clusteringTuning;
   config: typeof config;
   crons: typeof crons;
   emails: typeof emails;
