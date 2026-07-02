@@ -43,6 +43,35 @@ const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
 const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
 const EVENT_EMBEDDING_DIMENSIONS = 512;
 
+/**
+ * Feed quarantine (BIV-101): after this many consecutive failures a feed is
+ * skipped by the batch run, but retried once per backoff interval so it can
+ * recover on its own. Quarantined feeds stay visible in ingestionMeta
+ * (consecutiveFailures + lastError) and in the run-log gauges.
+ */
+const QUARANTINE_CONSECUTIVE_FAILURES = 5;
+const QUARANTINE_RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/** Pure quarantine decision so the policy is unit-testable. */
+export function isFeedQuarantined(
+  meta: {
+    consecutiveFailures: number;
+    lastIngestedAt?: number;
+  } | null,
+  now: number,
+): boolean {
+  if (!meta) return false;
+  if (meta.consecutiveFailures < QUARANTINE_CONSECUTIVE_FAILURES) return false;
+  // Allow one probe attempt per backoff interval so a fixed feed recovers.
+  if (
+    meta.lastIngestedAt === undefined ||
+    now - meta.lastIngestedAt >= QUARANTINE_RETRY_INTERVAL_MS
+  ) {
+    return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -60,32 +89,30 @@ interface ParsedArticle {
 }
 
 const KNOWN_HEADLINE_SUFFIXES = [
-  "Reuters",
-  "AP News",
-  "Associated Press",
-  "BBC News",
-  "PBS NewsHour",
-  "ABC News",
-  "CBS News",
-  "NBC News",
-  "CNN",
-  "NPR",
-  "The Hill",
-  "Axios",
-  "Politico",
-  "Bloomberg",
-  "Bloomberg.com",
-  "CNBC",
-  "The Guardian",
-  "Fox News",
-  "Financial Times",
-  "The Wall Street Journal",
-  "Wall Street Journal",
-  "The New York Times",
-  "New York Times",
-  "The Washington Post",
-  "Washington Post",
-  "USA Today",
+  "Digi24",
+  "HotNews",
+  "HotNews.ro",
+  "G4Media",
+  "G4Media.ro",
+  "Recorder",
+  "Agerpres",
+  "AGERPRES",
+  "Ziarul Financiar",
+  "RISE Project",
+  "Europa Liberă România",
+  "Europa Liberă",
+  "Adevărul",
+  "Adevarul",
+  "Libertatea",
+  "Știrile ProTV",
+  "Stirileprotv.ro",
+  "Antena 3 CNN",
+  "Antena 3",
+  "Gândul",
+  "Gandul",
+  "Biziday",
+  "SpotMedia",
+  "SpotMedia.ro",
 ];
 
 // ---------------------------------------------------------------------------
@@ -1315,7 +1342,7 @@ export const ingestSingleFeed = internalAction({
           "User-Agent": USER_AGENT,
           Accept:
             "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
           Referer: "https://www.google.com/",
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
@@ -1556,8 +1583,20 @@ export const ingestAllFeeds = internalAction({
         inserted: number;
         error?: string;
       }> = [];
+      const quarantinedFeeds: string[] = [];
 
       for (const feed of ALL_FEEDS) {
+        const meta = await ctx.runQuery(internal.ingestion.getIngestionMeta, {
+          feedUrl: feed.url,
+        });
+        if (isFeedQuarantined(meta, Date.now())) {
+          quarantinedFeeds.push(feed.name);
+          console.warn(
+            `[ingestion] ${feed.name} quarantined (${meta!.consecutiveFailures} consecutive failures; last error: ${meta!.lastError ?? "unknown"})`,
+          );
+          continue;
+        }
+
         const result = await ctx.runAction(internal.ingestion.ingestSingleFeed, {
           feedUrl: feed.url,
           feedName: feed.name,
@@ -1580,7 +1619,7 @@ export const ingestAllFeeds = internalAction({
       let failedFeeds = results.filter((r) => r.error);
 
       console.log(
-        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed`,
+        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed, ${quarantinedFeeds.length} quarantined`,
       );
 
       // Retry failed feeds once after a short delay (helps with transient errors)
@@ -1647,15 +1686,20 @@ export const ingestAllFeeds = internalAction({
         startedAt,
         finishedAt,
         durationMs: finishedAt - startedAt,
-        status: failedFeeds.length > 0 ? "degraded" : "ok",
+        status:
+          failedFeeds.length > 0 || quarantinedFeeds.length > 0
+            ? "degraded"
+            : "ok",
         counters: {
           feedsProcessed: results.length,
           failedFeeds: failedFeeds.length,
+          quarantinedFeeds: quarantinedFeeds.length,
           insertedArticles: insertedTotal,
           retryInsertedArticles: retryInserted,
         },
         gauges: {
           scheduledEnrichment: insertedTotal > 0,
+          quarantinedFeedNames: quarantinedFeeds.join(", ") || null,
         },
         metadata: {},
       });
