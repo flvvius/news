@@ -25,6 +25,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { ALL_FEEDS, type FeedEntry } from "./feeds";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+import { normalizeRomanianDiacritics } from "./lib/romanian";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -332,7 +333,9 @@ function stripHtml(text: string): string {
 }
 
 export function normalizeArticleTitle(title: string): string {
-  const cleaned = stripHtml(title).replace(/\s+/g, " ").trim();
+  const cleaned = normalizeRomanianDiacritics(stripHtml(title))
+    .replace(/\s+/g, " ")
+    .trim();
   for (const suffix of KNOWN_HEADLINE_SUFFIXES) {
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const suffixPattern = new RegExp(`\\s+-\\s+${escapedSuffix}$`, "i");
@@ -344,7 +347,7 @@ export function normalizeArticleTitle(title: string): string {
 }
 
 export function normalizeArticleSnippet(snippet: string): string {
-  return stripHtml(snippet)
+  return normalizeRomanianDiacritics(stripHtml(snippet))
     .replace(/\s*[•·]\s*/g, " ")
     .replace(/\b[A-Z]{2,5}\s*-\s*/g, " ")
     .replace(/\s+/g, " ")
@@ -437,9 +440,11 @@ function normalizeCanonicalPath(pathname: string): string {
 }
 
 function normalizeFingerprintText(value: string): string {
+  // Unicode-aware so Romanian diacritics survive fingerprinting (ASCII-only
+  // stripping collapsed "Ședință" to "edin", inflating same-source collisions).
   return normalizeArticleSnippet(value)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

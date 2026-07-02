@@ -2,6 +2,7 @@
 
 import winkNLP from "wink-nlp";
 import model from "wink-eng-lite-web-model";
+import { normalizeRomanianDiacritics } from "./romanian";
 
 type ExtractionMethod =
   | "article"
@@ -140,7 +141,10 @@ type FetchResult = {
 };
 
 function normalizeWhitespace(text: string): string {
-  return text
+  // Diacritic normalization rides along here so every extracted field
+  // (body text, summaries, meta descriptions, entities) reads normalized
+  // before embedding, clustering, or any LLM call.
+  return normalizeRomanianDiacritics(text)
     .replace(/\u00a0/g, " ")
     .replace(/\s+/g, " ")
     .trim();

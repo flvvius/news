@@ -28,6 +28,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
+import { foldDiacriticsToAscii } from "./lib/romanian";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import {
@@ -550,7 +551,10 @@ function maxCrossEventSimilarity(
 }
 
 function normalizeText(text: string): string {
-  return text
+  // Fold diacritics first so Romanian titles written with and without
+  // diacritics ("ședință" vs "sedinta") produce the same tokens instead of
+  // being gutted by the ASCII filter.
+  return foldDiacriticsToAscii(text)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
@@ -796,7 +800,7 @@ function normalizeTitleForClustering(text: string): string {
 }
 
 function slugify(value: string): string {
-  const slug = value
+  const slug = foldDiacriticsToAscii(value)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
