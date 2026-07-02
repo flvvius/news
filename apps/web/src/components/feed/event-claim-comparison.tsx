@@ -343,6 +343,11 @@ export default function EventClaimComparison({
       .map((source) => [String(source._id), source]),
   );
 
+  // Claim analysis feature-flagged off (BIV-602) — hide the section entirely.
+  if (claims === null) {
+    return null;
+  }
+
   if (claims === undefined) {
     return (
       <Card className="overflow-hidden border-border py-0">

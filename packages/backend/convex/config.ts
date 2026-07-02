@@ -729,9 +729,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, enrichment extracts structured atomic facts from article text using the configured chat model.",
+          "When true, enrichment extracts structured atomic facts from article text using the configured chat model. Paused for the Romanian launch (BIV-602).",
       },
       {
         key: "article_fact_extraction_model",
@@ -812,9 +812,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "claim_analysis_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims.",
+          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims, and the claim UI renders. Paused for the Romanian launch (BIV-602).",
       },
       {
         key: "claim_analysis_model",
@@ -1107,6 +1107,10 @@ export const seedDefaults = internalMutation({
     ];
 
     const forcedDefaultKeys = new Set([
+      // BIV-602: claim analysis paused — force the off state onto existing
+      // deployments; operators re-enable explicitly via config:set.
+      "article_fact_extraction_enabled",
+      "claim_analysis_enabled",
       "clustering_same_source_min_similarity",
       "clustering_min_similarity",
       "clustering_weak_extraction_min_similarity",

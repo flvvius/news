@@ -40,7 +40,9 @@ const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 /** OpenAI embedding model — cheap & effective for clustering */
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const DEFAULT_FACT_EXTRACTION_MODEL = "gpt-5-nano";
-const DEFAULT_FACT_EXTRACTION_ENABLED = true;
+// Atomic-fact extraction is paused with claim analysis (BIV-602); flip the
+// article_fact_extraction_enabled config key to re-enable.
+const DEFAULT_FACT_EXTRACTION_ENABLED = false;
 const DEFAULT_FACT_EXTRACTION_MAX_ARTICLES = 20;
 const DEFAULT_FACT_EXTRACTION_MAX_FACTS = 8;
 const DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS = 2600;

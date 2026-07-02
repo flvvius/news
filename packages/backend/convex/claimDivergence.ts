@@ -427,6 +427,17 @@ export const getEventClaims = query({
       throw new ConvexError("Event is not readable");
     }
 
+    // BIV-602: claim analysis is feature-flagged. `null` tells clients the
+    // feature is off (hide the section); `[]` means enabled-but-pending.
+    const claimAnalysisEnabled = await getConfig(
+      ctx,
+      "claim_analysis_enabled",
+      false,
+    );
+    if (!claimAnalysisEnabled) {
+      return null;
+    }
+
     const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 20)));
     const rows = args.status
       ? await ctx.db

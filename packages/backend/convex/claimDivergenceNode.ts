@@ -15,7 +15,9 @@ import {
 } from "./prompts";
 
 const DEFAULT_MODEL = "gpt-5-nano";
-const DEFAULT_ENABLED = true;
+// Claim analysis is paused for the Romanian launch (BIV-602); flip the
+// claim_analysis_enabled config key to re-enable.
+const DEFAULT_ENABLED = false;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_SCAN_LIMIT = 60;
 const DEFAULT_MIN_ARTICLES = 3;
