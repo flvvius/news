@@ -1,7 +1,5 @@
 "use node";
 
-import winkNLP from "wink-nlp";
-import model from "wink-eng-lite-web-model";
 import { normalizeRomanianDiacritics } from "./romanian";
 
 type ExtractionMethod =
@@ -56,17 +54,11 @@ const BLOCKED_PAGE_PATTERNS = [
   /bot detection/i,
 ];
 
-const nlp = winkNLP(model);
-const its = nlp.its;
-
 type NormalizedEntityCandidate = {
   value: string;
   wasAllUppercase: boolean;
 };
 
-interface TokenLike {
-  out(method?: unknown): string;
-}
 const ENTITY_MAX_TEXT_CHARS = 6000;
 const ENTITY_MAX_COUNT = 32;
 const ENTITY_NOISE_TERMS = new Set([
@@ -108,22 +100,36 @@ const WEEKDAY_ENTITY_NOISE_TERMS = new Set([
   "friday",
   "saturday",
   "sunday",
+  "luni",
+  "marți",
+  "marti",
+  "miercuri",
+  "joi",
+  "vineri",
+  "sâmbătă",
+  "sambata",
+  "duminică",
+  "duminica",
 ]);
 const ENTITY_ROLE_PREFIXES = [
   "former",
   "president",
   "prime minister",
-  "attorney general",
-  "house speaker",
-  "senate majority leader",
-  "senate minority leader",
-  "gop rep",
-  "democratic rep",
-  "republican rep",
   "rep",
   "sen",
-  "admiral",
   "dr",
+  "fostul",
+  "fosta",
+  "președintele",
+  "presedintele",
+  "premierul",
+  "prim-ministrul",
+  "ministrul",
+  "senatorul",
+  "deputatul",
+  "europarlamentarul",
+  "primarul",
+  "liderul",
 ];
 const NUMERIC_ENTITY_PATTERN =
   /\$\d[\d,.]*(?:\s?(?:billion|million|trillion))?|\b\d+(?:\.\d+)?%|\b\d+(?:st|nd|rd|th)\b/gi;
@@ -192,10 +198,10 @@ function buildEmbeddingText(title: string, bodyText: string, rssSnippet: string)
 
 function normalizeEntityCandidate(value: string): NormalizedEntityCandidate {
   const cleaned = normalizeWhitespace(value).replace(
-    /^[^A-Za-z0-9$]+|[^A-Za-z0-9%]+$/g,
+    /^[^\p{L}\p{N}$]+|[^\p{L}\p{N}%]+$/gu,
     "",
   );
-  const letters = cleaned.match(/[A-Za-z]/g) ?? [];
+  const letters = cleaned.match(/\p{L}/gu) ?? [];
   const wasAllUppercase =
     letters.length > 0 &&
     letters.every((letter) => letter === letter.toUpperCase());
@@ -220,8 +226,10 @@ function isUsefulEntityCandidate(
   numericEntities: Set<string>,
 ): boolean {
   if (entity.length < 3 || entity.length > 80) return false;
-  if (!/[a-z0-9]/.test(entity)) return false;
-  if (/^(?:[a-z]\s*)+$/.test(entity)) return false;
+  if (!/[\p{Ll}\p{N}]/u.test(entity)) return false;
+  // Reject runs of single letters ("a b c"); the old ASCII version of this
+  // check accidentally rejected every all-lowercase entity.
+  if (/^\p{Ll}(?:\s+\p{Ll})*$/u.test(entity)) return false;
 
   const words = entity.split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > 7) return false;
@@ -272,6 +280,21 @@ function addNumericEntities(
   }
 }
 
+// Capitalized-run entity matcher (BIV-601). Replaces the former wink-nlp
+// PROPN tagger, whose English-only model produced garbage on Romanian text.
+// Matches runs of capitalized words optionally joined by Romanian/English
+// name connectors ("Curtea de Apel București", "Bank of America").
+const PROPER_NOUN_CONNECTOR =
+  "(?:de|din|al|ale|a|la|lui|pe|sub|și|si|of|the|and|for|in|on|to)";
+// Digits are allowed inside words (Digi24, G4Media) and as standalone
+// continuation tokens (Antena 3, Formula 1).
+const PROPER_NOUN_WORD = "\\p{Lu}[\\p{L}\\p{N}'’.-]*";
+const PROPER_NOUN_CONTINUATION = `(?:${PROPER_NOUN_WORD}|\\p{N}+)`;
+const PROPER_NOUN_SEQUENCE = new RegExp(
+  `${PROPER_NOUN_WORD}(?:\\s+(?:${PROPER_NOUN_CONNECTOR}\\s+)?${PROPER_NOUN_CONTINUATION}){0,4}`,
+  "gu",
+);
+
 function collectProperNounCandidates(
   text: string,
   scores: Map<string, number>,
@@ -279,22 +302,11 @@ function collectProperNounCandidates(
   allUppercaseEntities: Set<string>,
   weight: number,
 ) {
-  const doc = nlp.readDoc(text.slice(0, ENTITY_MAX_TEXT_CHARS));
-  const tokens: Array<{ value: string; normal: string; pos: string; type: string }> = [];
+  const sample = text.slice(0, ENTITY_MAX_TEXT_CHARS);
+  const matches = sample.match(PROPER_NOUN_SEQUENCE) ?? [];
 
-  doc.tokens().each((token: TokenLike) => {
-    tokens.push({
-      value: token.out(),
-      normal: token.out(its.normal),
-      pos: token.out(its.pos),
-      type: token.out(its.type),
-    });
-  });
-
-  let phrase: string[] = [];
-  const flush = () => {
-    if (phrase.length === 0) return;
-    const normalized = normalizeEntityCandidate(phrase.join(" "));
+  for (const match of matches) {
+    const normalized = normalizeEntityCandidate(match);
     if (normalized.value) {
       scores.set(normalized.value, (scores.get(normalized.value) ?? 0) + weight);
       if (normalized.wasAllUppercase) allUppercaseEntities.add(normalized.value);
@@ -302,20 +314,13 @@ function collectProperNounCandidates(
       // Body matches use lower weights and must earn their way in by repetition.
       if (weight >= 3) titleEntities.add(normalized.value);
     }
-    phrase = [];
-  };
-
-  for (const token of tokens) {
-    if (token.pos === "PROPN" && token.type === "word") {
-      phrase.push(token.value);
-    } else {
-      flush();
-    }
   }
-  flush();
 }
 
-function extractEntityCandidates(title: string, ...texts: string[]): string[] {
+export function extractEntityCandidates(
+  title: string,
+  ...texts: string[]
+): string[] {
   const scores = new Map<string, number>();
   const titleEntities = new Set<string>();
   const allUppercaseEntities = new Set<string>();
