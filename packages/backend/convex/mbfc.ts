@@ -187,6 +187,18 @@ export const updateSourceMbfc = internalMutation({
       mbfcCredibility,
     },
   ) => {
+    const source = await ctx.db.get(sourceId);
+    if (source?.provenance) {
+      // Manually seeded reputation (BIV-401) is authoritative — record the
+      // MBFC metadata but never overwrite curated bias/reliability scores.
+      await ctx.db.patch(sourceId, {
+        mbfcCategory,
+        mbfcFactual,
+        mbfcCredibility,
+        mbfcLastChecked: Date.now(),
+      });
+      return;
+    }
     await ctx.db.patch(sourceId, {
       bias: namedAxisBias(baseBias),
       baseBias,

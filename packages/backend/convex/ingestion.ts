@@ -24,6 +24,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { ALL_FEEDS, type FeedEntry } from "./feeds";
+import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
 import { namedAxisBias } from "./lib/biasAxis";
@@ -695,13 +696,14 @@ export const getIngestionMeta = internalQuery({
 // Internal Mutations
 // ---------------------------------------------------------------------------
 
-/** Create a source record for a new domain, using curated MBFC data from feeds.ts. */
+/** Create a source record for a new domain, using curated data from feeds.ts. */
 export const createSource = internalMutation({
   args: {
     domain: v.string(),
     name: v.string(),
     baseBias: v.number(),
     reliabilityScore: v.number(),
+    provenance: v.optional(v.string()),
     mbfcCategory: v.string(),
     mbfcFactual: v.optional(v.string()),
     mbfcCredibility: v.optional(v.string()),
@@ -713,6 +715,7 @@ export const createSource = internalMutation({
       name,
       baseBias,
       reliabilityScore,
+      provenance,
       mbfcCategory,
       mbfcFactual,
       mbfcCredibility,
@@ -724,6 +727,7 @@ export const createSource = internalMutation({
       bias: namedAxisBias(baseBias),
       baseBias,
       reliabilityScore,
+      provenance,
       logoUrl: `https://logo.clearbit.com/${domain}`,
       mbfcCategory,
       mbfcFactual,
@@ -740,6 +744,7 @@ export const getOrCreateSource = internalMutation({
     name: v.string(),
     baseBias: v.number(),
     reliabilityScore: v.number(),
+    provenance: v.optional(v.string()),
     mbfcCategory: v.string(),
     mbfcFactual: v.optional(v.string()),
     mbfcCredibility: v.optional(v.string()),
@@ -751,6 +756,7 @@ export const getOrCreateSource = internalMutation({
       name,
       baseBias,
       reliabilityScore,
+      provenance,
       mbfcCategory,
       mbfcFactual,
       mbfcCredibility,
@@ -768,6 +774,7 @@ export const getOrCreateSource = internalMutation({
       bias: namedAxisBias(baseBias),
       baseBias,
       reliabilityScore,
+      provenance,
       logoUrl: `https://logo.clearbit.com/${domain}`,
       mbfcCategory,
       mbfcFactual,
@@ -1332,6 +1339,7 @@ export const ingestSingleFeed = internalAction({
           name: feedName,
           baseBias,
           reliabilityScore,
+          provenance: getSourceReputation(feedDomain)?.provenance,
           mbfcCategory,
           mbfcFactual,
           mbfcCredibility,

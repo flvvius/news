@@ -1,6 +1,53 @@
 import { internalMutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
+import { ROMANIAN_SOURCE_REPUTATION } from "./sourceReputation";
+import { namedAxisBias } from "./lib/biasAxis";
+
+/**
+ * Seed/refresh the Romanian source-reputation rows (BIV-401).
+ * Idempotent upsert by domain — safe to re-run after editing
+ * sourceReputation.ts. Run: npx convex run seeds:seedRomanianSources
+ */
+export const seedRomanianSources = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let created = 0;
+    let updated = 0;
+
+    for (const entry of ROMANIAN_SOURCE_REPUTATION) {
+      const values = {
+        name: entry.name,
+        bias: namedAxisBias(entry.biasScore),
+        baseBias: entry.biasScore,
+        reliabilityScore: entry.reliabilityScore,
+        provenance: entry.provenance,
+      };
+
+      const existing = await ctx.db
+        .query("sources")
+        .withIndex("by_domain", (q) => q.eq("domain", entry.domain))
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, values);
+        updated++;
+      } else {
+        await ctx.db.insert("sources", {
+          domain: entry.domain,
+          logoUrl: `https://logo.clearbit.com/${entry.domain}`,
+          ...values,
+        });
+        created++;
+      }
+    }
+
+    console.log(
+      `✅ Romanian source reputation seeded: ${created} created, ${updated} updated`,
+    );
+    return { created, updated };
+  },
+});
 
 /**
  * Seed the database with dummy data for UI development.

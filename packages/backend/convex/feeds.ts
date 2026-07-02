@@ -8,15 +8,17 @@
  * Staged ramp: start at 15 feeds; expand only after clustering and the
  * Romanian eval harness (BIV-701) prove stable. Do NOT jump to 100+.
  *
- * Bias/reliability values are provisional hand-curated seeds; the layered
- * Romanian source-reputation seed (BIV-401: MBFC-Romania + Ethical Media
- * Alliance whitelist + Veridica/Expert Forum low-reliability list) is the
- * authoritative pass.
+ * Bias + reliability come from the manual Romanian source-reputation seed
+ * (sourceReputation.ts, BIV-401) — the single authoritative source-metadata
+ * layer. A feed without a reputation entry fails the module-load assertion
+ * below, so every launch feed's domain always resolves to a rated source.
  *
  * Broken feeds are quarantined by the ingestion loop after repeated
  * consecutive failures (see QUARANTINE_* in ingestion.ts) and surfaced in
  * pipeline run logs — never silently dropped.
  */
+
+import { getSourceReputation } from "./sourceReputation";
 
 export interface MBFCData {
   /** MBFC bias category */
@@ -38,24 +40,29 @@ export interface FeedEntry {
   tier: 1 | 2;
   /** Curated ratings (MBFC where rated; otherwise editor-curated equivalent) */
   mbfc: MBFCData;
-  /** Numeric bias: -5 to +5 (axis semantics defined in BIV-301) */
+  /** Numeric bias from the reputation seed: -5 (reformist) to +5 (suveranist) */
   baseBias: number;
-  /** Reliability 1-10 (10 = wire service, 1 = tabloid) */
+  /** Reliability 1-10 from the reputation seed */
   reliabilityScore: number;
+  /** Provenance note for the ratings, from the reputation seed */
+  provenance: string;
 }
+
+type FeedDefinition = Omit<
+  FeedEntry,
+  "baseBias" | "reliabilityScore" | "provenance"
+>;
 
 // ---------------------------------------------------------------------------
 // Tier 1 — verified-direct Romanian set (fetch-tested 2026-07-02)
 // ---------------------------------------------------------------------------
-const TIER_1: FeedEntry[] = [
+const TIER_1: FeedDefinition[] = [
   {
     url: "https://www.digi24.ro/rss",
     name: "Digi24",
     domain: "digi24.ro",
     tier: 1,
     mbfc: { category: "center", factual: "high", credibility: "high" },
-    baseBias: -1,
-    reliabilityScore: 8,
   },
   {
     url: "https://hotnews.ro/feed",
@@ -63,8 +70,6 @@ const TIER_1: FeedEntry[] = [
     domain: "hotnews.ro",
     tier: 1,
     mbfc: { category: "left-center", factual: "high", credibility: "high" },
-    baseBias: -2,
-    reliabilityScore: 8,
   },
   {
     url: "https://www.g4media.ro/feed",
@@ -72,8 +77,6 @@ const TIER_1: FeedEntry[] = [
     domain: "g4media.ro",
     tier: 1,
     mbfc: { category: "left-center", factual: "high", credibility: "high" },
-    baseBias: -2,
-    reliabilityScore: 7,
   },
   {
     url: "https://recorder.ro/feed/",
@@ -81,8 +84,6 @@ const TIER_1: FeedEntry[] = [
     domain: "recorder.ro",
     tier: 1,
     mbfc: { category: "left-center", factual: "very-high", credibility: "high" },
-    baseBias: -1,
-    reliabilityScore: 9,
   },
   {
     // NOTE: endpoint returned 520/522 at verification time while the homepage
@@ -93,8 +94,6 @@ const TIER_1: FeedEntry[] = [
     domain: "agerpres.ro",
     tier: 1,
     mbfc: { category: "center", factual: "very-high", credibility: "high" },
-    baseBias: 0,
-    reliabilityScore: 9,
   },
   {
     url: "https://www.zf.ro/rss/",
@@ -102,8 +101,6 @@ const TIER_1: FeedEntry[] = [
     domain: "zf.ro",
     tier: 1,
     mbfc: { category: "right-center", factual: "high", credibility: "high" },
-    baseBias: 1,
-    reliabilityScore: 8,
   },
   {
     url: "https://www.riseproject.ro/feed/",
@@ -111,8 +108,6 @@ const TIER_1: FeedEntry[] = [
     domain: "riseproject.ro",
     tier: 1,
     mbfc: { category: "center", factual: "very-high", credibility: "high" },
-    baseBias: 0,
-    reliabilityScore: 9,
   },
   {
     // Canonical RSS endpoint behind the /rssfeeds listing page (Pangea CMS
@@ -122,23 +117,19 @@ const TIER_1: FeedEntry[] = [
     domain: "romania.europalibera.org",
     tier: 1,
     mbfc: { category: "center", factual: "very-high", credibility: "high" },
-    baseBias: -1,
-    reliabilityScore: 9,
   },
 ];
 
 // ---------------------------------------------------------------------------
 // Tier 2 — mainstream reach (each fetch-verified live 2026-07-02)
 // ---------------------------------------------------------------------------
-const TIER_2: FeedEntry[] = [
+const TIER_2: FeedDefinition[] = [
   {
     url: "https://adevarul.ro/rss",
     name: "Adevărul",
     domain: "adevarul.ro",
     tier: 2,
     mbfc: { category: "center", factual: "mostly-factual", credibility: "medium" },
-    baseBias: 0,
-    reliabilityScore: 6,
   },
   {
     url: "https://www.libertatea.ro/feed",
@@ -150,8 +141,6 @@ const TIER_2: FeedEntry[] = [
       factual: "mostly-factual",
       credibility: "medium",
     },
-    baseBias: -1,
-    reliabilityScore: 6,
   },
   {
     url: "https://stirileprotv.ro/rss",
@@ -159,8 +148,6 @@ const TIER_2: FeedEntry[] = [
     domain: "stirileprotv.ro",
     tier: 2,
     mbfc: { category: "center", factual: "mostly-factual", credibility: "high" },
-    baseBias: 0,
-    reliabilityScore: 7,
   },
   {
     url: "https://www.antena3.ro/rss",
@@ -168,8 +155,6 @@ const TIER_2: FeedEntry[] = [
     domain: "antena3.ro",
     tier: 2,
     mbfc: { category: "right", factual: "mixed", credibility: "low" },
-    baseBias: 3,
-    reliabilityScore: 4,
   },
   {
     url: "https://www.gandul.ro/feed",
@@ -177,8 +162,6 @@ const TIER_2: FeedEntry[] = [
     domain: "gandul.ro",
     tier: 2,
     mbfc: { category: "right-center", factual: "mixed", credibility: "medium" },
-    baseBias: 1,
-    reliabilityScore: 5,
   },
   {
     url: "https://www.biziday.ro/feed/",
@@ -186,8 +169,6 @@ const TIER_2: FeedEntry[] = [
     domain: "biziday.ro",
     tier: 2,
     mbfc: { category: "center", factual: "high", credibility: "high" },
-    baseBias: 0,
-    reliabilityScore: 8,
   },
   {
     url: "https://spotmedia.ro/rss",
@@ -195,15 +176,32 @@ const TIER_2: FeedEntry[] = [
     domain: "spotmedia.ro",
     tier: 2,
     mbfc: { category: "left-center", factual: "high", credibility: "high" },
-    baseBias: -2,
-    reliabilityScore: 7,
   },
 ];
+
+function withReputation(definition: FeedDefinition): FeedEntry {
+  const reputation = getSourceReputation(definition.domain);
+  if (!reputation) {
+    // Fail fast at module load: a launch feed must always resolve to a rated
+    // source row (BIV-401 acceptance).
+    throw new Error(
+      `Feed ${definition.domain} has no entry in ROMANIAN_SOURCE_REPUTATION`,
+    );
+  }
+  return {
+    ...definition,
+    baseBias: reputation.biasScore,
+    reliabilityScore: reputation.reliabilityScore,
+    provenance: reputation.provenance,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // All feeds — single export
 // ---------------------------------------------------------------------------
-export const ALL_FEEDS: FeedEntry[] = [...TIER_1, ...TIER_2];
+export const ALL_FEEDS: FeedEntry[] = [...TIER_1, ...TIER_2].map(
+  withReputation,
+);
 
 /** Total number of curated feeds */
 export const FEED_COUNT = ALL_FEEDS.length;
