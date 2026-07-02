@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   foldDiacriticsToAscii,
+  looksRomanian,
   normalizeRomanianDiacritics,
 } from "./lib/romanian";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
@@ -69,6 +70,39 @@ describe("foldDiacriticsToAscii (BIV-102)", () => {
 
   test("leaves ASCII untouched", () => {
     expect(foldDiacriticsToAscii("plain ascii 123")).toBe("plain ascii 123");
+  });
+});
+
+describe("looksRomanian heuristic (BIV-701)", () => {
+  test("accepts natural Romanian prose, with and without diacritics", () => {
+    expect(
+      looksRomanian(
+        "Guvernul a adoptat marți bugetul de stat pentru anul viitor, după o ședință tensionată.",
+      ),
+    ).toBe(true);
+    expect(
+      looksRomanian(
+        "Guvernul a adoptat marti bugetul de stat pentru anul viitor si a anuntat noi masuri.",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects English prose", () => {
+    expect(
+      looksRomanian(
+        "The government adopted the state budget for next year after a tense meeting.",
+      ),
+    ).toBe(false);
+    expect(
+      looksRomanian(
+        "Coverage is developing and sources have not yet confirmed the details.",
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects empty and neutral strings", () => {
+    expect(looksRomanian("")).toBe(false);
+    expect(looksRomanian("12345 --- !!!")).toBe(false);
   });
 });
 
