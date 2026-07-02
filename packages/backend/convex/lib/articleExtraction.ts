@@ -1,6 +1,7 @@
 "use node";
 
 import { normalizeRomanianDiacritics } from "./romanian";
+import { resolveGoogleNewsUrl } from "./googleNews";
 
 type ExtractionMethod =
   | "article"
@@ -39,9 +40,6 @@ const PRIORITY_PATTERNS = [
   /<main\b[\s\S]*?<\/main>/gi,
   /<(div|section)\b[^>]*(?:itemprop=["']articleBody["']|data-testid=["']article-body["']|class=["'][^"']*(?:article-body|story-body|entry-content|post-content|article__content|story-content)[^"']*["'])[^>]*>[\s\S]*?<\/\1>/gi,
 ];
-const GOOGLE_NEWS_HOST = "news.google.com";
-const GOOGLE_NEWS_BATCH_URL =
-  "https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je";
 const GOOGLE_REFERER = "https://news.google.com/";
 const GOOGLE_SEARCH_REFERER = "https://www.google.com/";
 const BLOCKED_PAGE_PATTERNS = [
@@ -1062,112 +1060,6 @@ async function fetchHtml(
   return lastHtmlResult ?? { ok: false };
 }
 
-function getGoogleNewsArticleId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname !== GOOGLE_NEWS_HOST) return null;
-
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    const markerIndex = parts.findIndex(
-      (part) => part === "articles" || part === "read",
-    );
-    if (markerIndex < 0) return null;
-    return parts[markerIndex + 1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveGoogleNewsUrl(url: string): Promise<string | null> {
-  const articleId = getGoogleNewsArticleId(url);
-  if (!articleId) return null;
-
-  const wrapperResponse = await fetchHtml(
-    `https://news.google.com/rss/articles/${articleId}`,
-  );
-  if (!wrapperResponse.ok || !wrapperResponse.html) return null;
-
-  const timestamp = wrapperResponse.html.match(/data-n-a-ts="(\d+)"/)?.[1];
-  const signature = wrapperResponse.html.match(/data-n-a-sg="([^"]+)"/)?.[1];
-  if (!timestamp || !signature) return null;
-
-  const payload = [[[
-    "Fbv4je",
-    JSON.stringify([
-      "garturlreq",
-      [
-        [
-          "en-US",
-          "US",
-          ["FINANCE_TOP_INDICES", "WEB_TEST_1_0_0"],
-          null,
-          null,
-          1,
-          1,
-          "US:en",
-          null,
-          1,
-          null,
-          null,
-          null,
-          null,
-          null,
-          0,
-          1,
-        ],
-        "en-US",
-        "US",
-        1,
-        [2, 3, 4, 8],
-        1,
-        0,
-        "655000234",
-        0,
-        0,
-        null,
-        0,
-      ],
-      articleId,
-      Number(timestamp),
-      signature,
-    ]),
-    null,
-    "generic",
-  ]]];
-
-  try {
-    const response = await fetch(GOOGLE_NEWS_BATCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        "User-Agent": EXTRACTION_USER_AGENT,
-        Referer: "https://news.google.com/",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      body: `f.req=${encodeURIComponent(JSON.stringify(payload))}`,
-    });
-
-    if (!response.ok) return null;
-
-    const text = await response.text();
-    const decodedChunk = text.split("\n\n")[1];
-    if (!decodedChunk) return null;
-
-    const parsed = JSON.parse(decodedChunk) as any[];
-    const wrappedResult = parsed.find(
-      (entry) => Array.isArray(entry) && entry[0] === "wrb.fr",
-    );
-    const rawPayload = wrappedResult?.[2];
-    if (typeof rawPayload !== "string") return null;
-
-    const decoded = JSON.parse(rawPayload) as unknown[];
-    const resolvedUrl = typeof decoded[1] === "string" ? decoded[1] : null;
-    return resolvedUrl;
-  } catch {
-    return null;
-  }
-}
-
 export async function extractArticleContentForEmbedding(args: {
   title: string;
   url: string;
@@ -1179,7 +1071,8 @@ export async function extractArticleContentForEmbedding(args: {
     args.rssSnippet,
   );
   const fallbackSummary = summarizeBody(args.rssSnippet);
-  const resolvedUrl = (await resolveGoogleNewsUrl(args.url)) ?? args.url;
+  const resolvedUrl =
+    (await resolveGoogleNewsUrl(args.url, EXTRACTION_USER_AGENT)) ?? args.url;
   const fetched = await fetchHtml(resolvedUrl, resolvedUrl !== args.url);
 
   if (!fetched.ok || !fetched.html) {

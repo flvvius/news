@@ -28,6 +28,10 @@ import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
 import { namedAxisBias } from "./lib/biasAxis";
+import {
+  GOOGLE_NEWS_RO_FEED_URL,
+  resolveGoogleNewsUrl,
+} from "./lib/googleNews";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1679,6 +1683,14 @@ export const ingestAllFeeds = internalAction({
         );
       }
 
+      // Discovery overlay (BIV-103) — no-ops unless the flag is on. Runs
+      // outside this action's lock window via the scheduler.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.ingestion.ingestGoogleNewsOverlay,
+        {},
+      );
+
       const finishedAt = Date.now();
       await ctx.runMutation(internal.pipeline.insertRunLog, {
         jobName: "ingestAllFeeds",
@@ -1736,6 +1748,216 @@ export const ingestAllFeeds = internalAction({
           `[ingestion] Failed to release ingestAllFeeds lock: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Google News RO discovery overlay (BIV-103) — optional, feature-flagged
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest the Google News Romania catch-all feed as a discovery overlay.
+ * Off by default (google_news_overlay_enabled). Wrapper links are resolved
+ * to canonical publisher URLs BEFORE dedup, and only articles whose domain
+ * matches an existing source row (curated feeds + the reputation seed) are
+ * ingested — unknown domains are counted and skipped, never given default
+ * ratings.
+ */
+export const ingestGoogleNewsOverlay = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    inserted: number;
+    resolved: number;
+    unresolved: number;
+    unmatchedDomains: number;
+    skipped: boolean;
+  }> => {
+    const startedAt = Date.now();
+    const runId = `ingestGoogleNewsOverlay-${startedAt}`;
+
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["google_news_overlay_enabled", "google_news_overlay_max_items"],
+    });
+    if (cfg.google_news_overlay_enabled !== true) {
+      return {
+        inserted: 0,
+        resolved: 0,
+        unresolved: 0,
+        unmatchedDomains: 0,
+        skipped: true,
+      };
+    }
+
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      return {
+        inserted: 0,
+        resolved: 0,
+        unresolved: 0,
+        unmatchedDomains: 0,
+        skipped: true,
+      };
+    }
+
+    const maxItems = Math.min(
+      Math.max(Math.floor(Number(cfg.google_news_overlay_max_items) || 25), 1),
+      50,
+    );
+
+    let inserted = 0;
+    let resolved = 0;
+    let unresolved = 0;
+    let unmatchedDomains = 0;
+
+    try {
+      const response = await fetch(GOOGLE_NEWS_RO_FEED_URL, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const xml = await response.text();
+      const cutoffMs = Date.now() - 72 * 60 * 60 * 1000;
+      const parsed = parseRSSXml(xml)
+        .map((article) => ({
+          ...article,
+          parsedPublishedAt: parsePublishedAt(article.publishedAt),
+        }))
+        .filter(
+          (article) =>
+            !article.publishedAt ||
+            (article.parsedPublishedAt !== undefined &&
+              article.parsedPublishedAt > cutoffMs),
+        )
+        .slice(0, maxItems);
+
+      for (const item of parsed) {
+        // Resolve the Google wrapper to the canonical publisher URL BEFORE
+        // any dedup — the wrapper URL is unique per Google item and would
+        // defeat canonical-URL dedup entirely.
+        const publisherUrl = await resolveGoogleNewsUrl(item.url, USER_AGENT);
+        if (!publisherUrl) {
+          unresolved++;
+          continue;
+        }
+        resolved++;
+
+        let domain: string;
+        try {
+          // Same host normalization as canonical-URL dedup, so mobile/AMP
+          // hosts (m.digi24.ro, amp.hotnews.ro) match their curated source.
+          domain = normalizeCanonicalHostname(new URL(publisherUrl).hostname);
+        } catch {
+          unresolved++;
+          continue;
+        }
+
+        const source = await ctx.runQuery(internal.ingestion.getSourceByDomain, {
+          domain,
+        });
+        if (!source) {
+          unmatchedDomains++;
+          continue;
+        }
+
+        const canonicalUrl = canonicalizeUrl(publisherUrl);
+        const contentFingerprint = articleContentFingerprint(item);
+        const existingUrls = await ctx.runQuery(
+          internal.ingestion.findExistingCanonicalUrls,
+          { urls: [canonicalUrl] },
+        );
+        if (existingUrls.length > 0) continue;
+        const existingFingerprints = await ctx.runQuery(
+          internal.ingestion.findExistingContentFingerprints,
+          { sourceId: source._id, fingerprints: [contentFingerprint] },
+        );
+        if (existingFingerprints.length > 0) continue;
+
+        const insertedIds = await ctx.runMutation(
+          internal.ingestion.insertArticles,
+          {
+            articles: [
+              {
+                sourceId: source._id,
+                title: item.title,
+                url: publisherUrl,
+                canonicalUrl,
+                contentFingerprint,
+                rssSnippet: item.snippet || undefined,
+                status: "unprocessed" as const,
+                publishedAt: item.parsedPublishedAt ?? Date.now(),
+              },
+            ],
+          },
+        );
+        inserted += insertedIds.length;
+      }
+
+      if (inserted > 0) {
+        await ctx.scheduler.runAfter(
+          60_000,
+          internal.enrichmentNode.enrichUnprocessedArticles,
+          {},
+        );
+      }
+
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestGoogleNewsOverlay",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: "ok",
+        counters: {
+          itemsConsidered: parsed.length,
+          resolved,
+          unresolved,
+          unmatchedDomains,
+          insertedArticles: inserted,
+        },
+        gauges: {},
+        metadata: {},
+      });
+
+      console.log(
+        `[ingestion] Google News RO overlay: ${inserted} inserted, ${resolved} resolved, ${unresolved} unresolved, ${unmatchedDomains} unmatched domains`,
+      );
+      return { inserted, resolved, unresolved, unmatchedDomains, skipped: false };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestGoogleNewsOverlay",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        errorMessage,
+        counters: {
+          resolved,
+          unresolved,
+          unmatchedDomains,
+          insertedArticles: inserted,
+        },
+        gauges: {},
+        metadata: {},
+      });
+      console.error(
+        `[ingestion] Google News RO overlay failed: ${errorMessage}`,
+      );
+      return { inserted, resolved, unresolved, unmatchedDomains, skipped: false };
     }
   },
 });

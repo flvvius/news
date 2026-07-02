@@ -1094,6 +1094,18 @@ export const seedDefaults = internalMutation({
           'How stale singleton articles are handled during cleanup. Valid values: "archive" or "requeue"; default archive keeps historical eventId references.',
       },
       {
+        key: "google_news_overlay_enabled",
+        value: false,
+        description:
+          "When true, ingestion also pulls the Google News Romania catch-all RSS feed as a discovery overlay (BIV-103). Items are unwrapped to canonical publisher URLs and only known source domains are ingested.",
+      },
+      {
+        key: "google_news_overlay_max_items",
+        value: 25,
+        description:
+          "Maximum Google News overlay items considered per run (each item costs up to two resolution fetches).",
+      },
+      {
         key: "pipeline_run_log_retention_days",
         value: 14,
         description:
