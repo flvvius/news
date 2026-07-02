@@ -16,6 +16,7 @@ import {
   loadLocalFollowedTopics,
   saveLocalFollowedTopics,
 } from "@/lib/followed-topics";
+import { reportError } from "@/lib/error-monitoring";
 
 type FollowedTopicsContextType = {
   /** Effective followed topics: the account's when signed in, else local. */
@@ -48,11 +49,12 @@ export function FollowedTopicsProvider({ children }: { children: ReactNode }) {
     loadLocalFollowedTopics()
       .then((ids) => {
         if (!cancelled) {
-          setLocalTopicIds(ids as Id<"topics">[]);
+          setLocalTopicIds(ids);
           setLocalLoaded(true);
         }
       })
-      .catch(() => {
+      .catch((error) => {
+        reportError(error, { scope: "followed-topics.loadContext" });
         if (!cancelled) setLocalLoaded(true);
       });
     return () => {
@@ -60,9 +62,7 @@ export function FollowedTopicsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const accountTopicIds = currentUser?.followedTopicIds as
-    | Id<"topics">[]
-    | undefined;
+  const accountTopicIds = currentUser?.followedTopicIds;
 
   // The account selection wins once it exists. A signed-in user with an empty
   // account selection (e.g. the gap right after signup, before the step-7
@@ -81,11 +81,13 @@ export function FollowedTopicsProvider({ children }: { children: ReactNode }) {
   const setFollowedTopics = useCallback(
     (topicIds: Id<"topics">[]) => {
       setLocalTopicIds(topicIds);
-      saveLocalFollowedTopics(topicIds).catch(() => {
+      saveLocalFollowedTopics(topicIds).catch((error) => {
+        reportError(error, { scope: "followed-topics.saveLocal" });
         // Best-effort; the in-session value still drives the feed boost.
       });
       if (isAuthenticated) {
-        setFollowedTopicsMutation({ topicIds }).catch(() => {
+        setFollowedTopicsMutation({ topicIds }).catch((error) => {
+          reportError(error, { scope: "followed-topics.saveAccount" });
           // Account sync is best-effort; the local value still applies.
         });
       }
@@ -95,7 +97,8 @@ export function FollowedTopicsProvider({ children }: { children: ReactNode }) {
 
   const resetLocal = useCallback(() => {
     setLocalTopicIds([]);
-    clearLocalFollowedTopics().catch(() => {
+    clearLocalFollowedTopics().catch((error) => {
+      reportError(error, { scope: "followed-topics.clearLocal" });
       // Best-effort.
     });
   }, []);

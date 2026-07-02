@@ -1,3 +1,4 @@
+import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import * as SecureStore from "expo-secure-store";
 
 import type { GateReason } from "@/lib/analytics";
@@ -11,7 +12,7 @@ import type { GateReason } from "@/lib/analytics";
 export type PendingIntent = {
   gate: GateReason;
   /** Action to replay once authenticated. */
-  action?: { type: "bookmark"; eventId: string };
+  action?: { type: "bookmark"; eventId: Id<"events"> };
 };
 
 const PENDING_INTENT_KEY = "biviant.pending-intent";
@@ -23,6 +24,10 @@ const GATE_REASONS: GateReason[] = [
   "saved",
 ];
 
+function isEventId(value: unknown): value is Id<"events"> {
+  return typeof value === "string";
+}
+
 function isPendingIntent(value: unknown): value is PendingIntent {
   if (typeof value !== "object" || value === null) return false;
   const intent = value as PendingIntent;
@@ -30,7 +35,7 @@ function isPendingIntent(value: unknown): value is PendingIntent {
   if (intent.action !== undefined) {
     if (
       intent.action.type !== "bookmark" ||
-      typeof intent.action.eventId !== "string"
+      !isEventId(intent.action.eventId)
     ) {
       return false;
     }

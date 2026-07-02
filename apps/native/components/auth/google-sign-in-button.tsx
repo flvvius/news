@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { useT } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
+import { reportError } from "@/lib/error-monitoring";
 
 export function AuthDivider() {
   const t = useT();
@@ -54,6 +55,7 @@ export function GoogleSignInButton({
       }
     } catch (error) {
       console.error(error);
+      reportError(error, { scope: "auth.googleSignIn" });
       onError(t("auth.googleError"));
     } finally {
       setIsLoading(false);

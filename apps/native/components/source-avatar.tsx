@@ -24,6 +24,7 @@ export function SourceAvatar({
 }: SourceAvatarProps) {
   return (
     <View
+      accessibilityLabel={logoUrl ? undefined : name}
       className={cn(
         "items-center justify-center overflow-hidden rounded-full border border-border bg-background",
         sizeClassName,
@@ -56,8 +57,14 @@ type SourceAvatarStackProps = {
 
 /** Overlapping avatar row, mirrors the web `-space-x-3` stack. */
 export function SourceAvatarStack({ sources, max = 5 }: SourceAvatarStackProps) {
+  const visibleCount = sources.slice(0, max).length;
+
   return (
-    <View className="flex-row">
+    <View
+      accessibilityRole="list"
+      accessibilityLabel={`${visibleCount} sources`}
+      className="flex-row"
+    >
       {sources.slice(0, max).map((source, index) => (
         <SourceAvatar
           key={source._id}

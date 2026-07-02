@@ -8,6 +8,7 @@
  */
 export type VisitCommit = {
   timeSpentSeconds: number;
+  /** Legacy field name: stored as a 0-1 scroll-depth ratio, not 0-100. */
   scrollDepthPercentage: number;
 };
 

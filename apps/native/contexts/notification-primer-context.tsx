@@ -23,6 +23,7 @@ import {
   savePrimerState,
   type PrimerState,
 } from "@/lib/notification-primer";
+import { reportError } from "@/lib/error-monitoring";
 import { savePushToken } from "@/lib/push-token";
 
 type NotificationPrimerContextType = {
@@ -56,6 +57,22 @@ function resolvePlatform(): "ios" | "android" | undefined {
   return undefined;
 }
 
+function notificationsEnabled(): boolean {
+  const value = process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABLED;
+  return ["1", "true", "yes", "on"].includes(
+    value?.trim().toLowerCase() ?? "",
+  );
+}
+
+function getEasProjectId(): string | undefined {
+  const extra = Constants.expoConfig?.extra;
+  if (typeof extra !== "object" || extra === null) return undefined;
+  const eas = (extra as Record<string, unknown>).eas;
+  if (typeof eas !== "object" || eas === null) return undefined;
+  const projectId = (eas as Record<string, unknown>).projectId;
+  return typeof projectId === "string" ? projectId : undefined;
+}
+
 export function NotificationPrimerProvider({
   children,
 }: {
@@ -82,11 +99,7 @@ export function NotificationPrimerProvider({
           importance: Notifications.AndroidImportance.DEFAULT,
         });
       }
-      const projectId = (
-        Constants.expoConfig?.extra as
-          | { eas?: { projectId?: string } }
-          | undefined
-      )?.eas?.projectId;
+      const projectId = getEasProjectId();
       const tokenResponse = await Notifications.getExpoPushTokenAsync(
         projectId ? { projectId } : undefined,
       );
@@ -96,7 +109,8 @@ export function NotificationPrimerProvider({
       if (isAuthenticated) {
         await registerPushToken({ token, platform: resolvePlatform() });
       }
-    } catch {
+    } catch (error) {
+      reportError(error, { scope: "notification-primer.registerForPush" });
       // Token fetch requires a dev/EAS build with a projectId — skip cleanly
       // (we still recorded the permission result).
     }
@@ -108,7 +122,7 @@ export function NotificationPrimerProvider({
       // dormant until the briefing cron (T19) can actually send, and it must
       // never burn the one-shot iOS grant for a guest who can't be messaged.
       // Flip EXPO_PUBLIC_NOTIFICATIONS_ENABLED on once the cron delivers.
-      if (process.env.EXPO_PUBLIC_NOTIFICATIONS_ENABLED !== "true") return;
+      if (!notificationsEnabled()) return;
       if (!isAuthenticated) return;
 
       if (presentedThisSessionRef.current) return;
@@ -116,7 +130,13 @@ export function NotificationPrimerProvider({
       // If the OS already has an answer (or can't be asked again), there's
       // nothing the primer can do — mark resolved and never show it.
       const permission = await Notifications.getPermissionsAsync();
-      if (permission.granted || !permission.canAskAgain) {
+      if (permission.granted) {
+        await registerForPush();
+        const state = await loadPrimerState();
+        await markResolved(state);
+        return;
+      }
+      if (!permission.canAskAgain) {
         const state = await loadPrimerState();
         await markResolved(state);
         return;
@@ -134,7 +154,7 @@ export function NotificationPrimerProvider({
       track({ name: "primer_shown" });
       sheetRef.current?.present();
     })();
-  }, [markResolved, track, isAuthenticated]);
+  }, [markResolved, track, isAuthenticated, registerForPush]);
 
   const dismiss = () => sheetRef.current?.dismiss();
 

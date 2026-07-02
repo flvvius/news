@@ -29,7 +29,15 @@ export function AuthField({ label, error, ...inputProps }: AuthFieldProps) {
         autoCorrect={false}
         {...inputProps}
       />
-      {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
+      {error ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          className="text-sm text-destructive"
+        >
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

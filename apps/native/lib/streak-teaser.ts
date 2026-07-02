@@ -64,13 +64,17 @@ export async function loadStreakTeaserState(): Promise<StreakTeaserState> {
   try {
     const raw = await SecureStore.getItemAsync(STREAK_TEASER_STATE_KEY);
     if (!raw) return { ...DEFAULT_STATE };
-    const parsed = JSON.parse(raw) as Partial<StreakTeaserState>;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return { ...DEFAULT_STATE };
+    }
+    const state = parsed as Partial<StreakTeaserState>;
     return {
       impressions:
-        typeof parsed.impressions === "number" ? parsed.impressions : 0,
+        typeof state.impressions === "number" ? state.impressions : 0,
       lastImpressionAt:
-        typeof parsed.lastImpressionAt === "number"
-          ? parsed.lastImpressionAt
+        typeof state.lastImpressionAt === "number"
+          ? state.lastImpressionAt
           : null,
     };
   } catch {

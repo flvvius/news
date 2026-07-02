@@ -50,11 +50,17 @@ export function ShareEventButton({
           type: "share",
           context: interactionContext,
           metadata: { deviceType: NATIVE_DEVICE_TYPE },
-        }).catch(() => {
+        }).catch((error) => {
+          if (__DEV__) {
+            console.warn("[ShareEventButton] Failed to log share", error);
+          }
           // Analytics logging must never surface to the user.
         });
       }
-    } catch {
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("[ShareEventButton] Share sheet failed", error);
+      }
       // User dismissed the share sheet or sharing is unavailable.
     }
   }, [slug, title, isAuthenticated, logInteraction, eventId, interactionContext]);

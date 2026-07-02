@@ -24,9 +24,18 @@ export const ABOUT_PAGES: AboutPage[] = [
 ];
 
 export function aboutPageUrl(page: AboutPage): string {
-  return new URL(page.path, SITE_URL).toString();
+  try {
+    return new URL(page.path, SITE_URL).toString();
+  } catch {
+    const path = page.path.startsWith("/") ? page.path : `/${page.path}`;
+    return `${SITE_URL}${path}`;
+  }
 }
 
 export function eventShareUrl(slug: string): string {
-  return new URL(`/event/${slug}`, SITE_URL).toString();
+  try {
+    return new URL(`/event/${slug}`, SITE_URL).toString();
+  } catch {
+    return `${SITE_URL}/event/${encodeURIComponent(slug)}`;
+  }
 }

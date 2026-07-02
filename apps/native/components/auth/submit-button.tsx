@@ -18,7 +18,7 @@ export function SubmitButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={isLoading ? loadingLabel : label}
       accessibilityState={{ disabled: isLoading, busy: isLoading }}
       disabled={isLoading}
       onPress={onPress}

@@ -15,6 +15,20 @@ export type ApplePendingIdentity = {
   email?: string;
 };
 
+function isApplePendingIdentity(
+  value: unknown,
+): value is ApplePendingIdentity {
+  if (typeof value !== "object" || value === null) return false;
+  const identity = value as ApplePendingIdentity;
+  return (
+    (identity.firstName === undefined ||
+      typeof identity.firstName === "string") &&
+    (identity.lastName === undefined ||
+      typeof identity.lastName === "string") &&
+    (identity.email === undefined || typeof identity.email === "string")
+  );
+}
+
 export async function savePendingAppleIdentity(
   identity: ApplePendingIdentity,
 ): Promise<void> {
@@ -32,8 +46,8 @@ export async function loadPendingAppleIdentity(): Promise<ApplePendingIdentity |
   try {
     const raw = await SecureStore.getItemAsync(APPLE_PENDING_IDENTITY_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as ApplePendingIdentity;
-    return parsed;
+    const parsed: unknown = JSON.parse(raw);
+    return isApplePendingIdentity(parsed) ? parsed : null;
   } catch {
     return null;
   }

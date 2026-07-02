@@ -15,6 +15,7 @@ import {
   markOnboardingComplete,
   rotateDeviceId as rotateStoredDeviceId,
 } from "@/lib/device-identity";
+import { reportError } from "@/lib/error-monitoring";
 import { rotateIdentity } from "@/lib/rotate-identity";
 
 type DeviceIdentityContextType = {
@@ -58,7 +59,8 @@ export function DeviceIdentityProvider({ children }: { children: ReactNode }) {
         // Anonymous, pre-signup events now carry the device uuid.
         registerDeviceId(id);
       })
-      .catch(() => {
+      .catch((error) => {
+        reportError(error, { scope: "device-identity.init" });
         // Never block the app on identity load — proceed as a fresh guest.
         if (!cancelled) setIsReady(true);
       });

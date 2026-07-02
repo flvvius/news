@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
+import { reportError } from "@/lib/error-monitoring";
+
 /**
  * Device-local state for the notification pre-permission primer. The primer is
  * the *custom* ask shown before the OS prompt; declining it must never fire the
@@ -38,7 +40,8 @@ export async function loadPrimerState(): Promise<PrimerState> {
         typeof parsed.lastShownAt === "number" ? parsed.lastShownAt : null,
       resolved: parsed.resolved === true,
     };
-  } catch {
+  } catch (error) {
+    reportError(error, { scope: "notification-primer.load" });
     return { ...DEFAULT_STATE };
   }
 }

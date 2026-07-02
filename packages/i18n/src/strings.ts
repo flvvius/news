@@ -712,6 +712,8 @@ const ro = {
   "native.privacy.clearDataConfirmAction": "Șterge datele",
   "native.privacy.clearDataConfirmCancel": "Anulează",
   "native.privacy.clearDataDone": "Datele tale au fost șterse de pe acest dispozitiv.",
+  "native.privacy.clearDataError":
+    "Nu am putut șterge datele de pe acest dispozitiv. Încearcă din nou.",
   "native.auth.close": "Închide",
   "native.auth.signInBody":
     "Autentifică-te pentru a salva evenimente și a-ți păstra lectura echilibrată.",
@@ -1439,6 +1441,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.privacy.clearDataConfirmAction": "Clear data",
   "native.privacy.clearDataConfirmCancel": "Cancel",
   "native.privacy.clearDataDone": "Your data was cleared from this device.",
+  "native.privacy.clearDataError":
+    "We couldn't clear your data from this device. Try again.",
   "native.auth.close": "Close",
   "native.auth.signInBody":
     "Sign in to bookmark events and keep your reading balanced.",

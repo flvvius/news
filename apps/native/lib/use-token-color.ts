@@ -9,5 +9,6 @@ import { useCSSVariable } from "uniwind";
 export function useTokenColor(name: `--color-${string}`): ColorValue | undefined {
   const value = useCSSVariable(name);
   if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
   return value as ColorValue;
 }

@@ -11,7 +11,9 @@ describe("privacy policy reachability (Ticket 5d)", () => {
   });
 
   test("the privacy page resolves to an absolute biviant.com URL", () => {
-    const privacy = ABOUT_PAGES.find((page) => page.slug === "privacy")!;
+    const privacy = ABOUT_PAGES.find((page) => page.slug === "privacy");
+    expect(privacy).toBeDefined();
+    if (!privacy) return;
     expect(aboutPageUrl(privacy)).toBe(
       "https://biviant.com/politica-confidentialitate",
     );

@@ -1,5 +1,4 @@
 import { api } from "@news-app/backend/convex/_generated/api";
-import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvex, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef } from "react";
 
@@ -62,14 +61,14 @@ export function SessionSync() {
           const result = await mergeGuestActivity({
             deviceId: devId,
             reads: reads.map((read) => ({
-              eventId: read.eventId as Id<"events">,
+              eventId: read.eventId,
               timestamp: read.timestamp,
               timeSpentSeconds: read.timeSpentSeconds,
               scrollDepthPercentage: read.scrollDepthPercentage,
               biasRating: read.biasRating,
               sourceReliability: read.sourceReliability,
             })),
-            followedTopicIds: followedTopics as Id<"topics">[],
+            followedTopicIds: followedTopics,
             // Ticket 7: the merged streak must never drop below the teaser.
             guestStreak: guestStreak.currentStreak,
           });
@@ -122,7 +121,7 @@ export function SessionSync() {
         if (intent.action?.type === "bookmark") {
           try {
             await toggleBookmark({
-              eventId: intent.action.eventId as Id<"events">,
+              eventId: intent.action.eventId,
             });
           } catch {
             // The bookmark can be retried by hand; never block on it.

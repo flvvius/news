@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 
 // In-memory file system shared with the mock below. `control` injects failures
 // at the exact points a real crash/transient error would hit.
@@ -51,7 +52,7 @@ const TEMP = `${PRIMARY}.tmp`;
 const CORRUPT = `${PRIMARY}.corrupt`;
 
 function read(eventId: string, timestamp: number): GuestRead {
-  return { eventId, timestamp, timeSpentSeconds: 45 };
+  return { eventId: eventId as Id<"events">, timestamp, timeSpentSeconds: 45 };
 }
 
 const readA = read("eventA", 1000);

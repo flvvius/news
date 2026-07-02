@@ -16,6 +16,7 @@ import {
   type GuestRead,
   type GuestStreak,
 } from "@/lib/guest-activity-queue";
+import { reportError } from "@/lib/error-monitoring";
 
 type GuestActivityContextType = {
   /** Guest reading streak derived from the local queue (qualified reads). */
@@ -39,7 +40,8 @@ export function GuestActivityProvider({ children }: { children: ReactNode }) {
       .then((loaded) => {
         if (!cancelled) setReads(loaded);
       })
-      .catch(() => {
+      .catch((error) => {
+        reportError(error, { scope: "guest-activity.load" });
         // An unreadable queue simply means "no guest history yet".
       });
     return () => {

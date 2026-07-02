@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { useLocale, useT } from "@/contexts/locale-context";
@@ -33,6 +34,17 @@ export function StreakActivityCalendar({ days }: StreakActivityCalendarProps) {
   const t = useT();
   const locale = useLocale();
   const intlLocale = locale === "ro" ? "ro-RO" : "en-US";
+  const { monthFormatter, fullDateFormatter } = useMemo(
+    () => ({
+      monthFormatter: new Intl.DateTimeFormat(intlLocale, {
+        month: "short",
+      }),
+      fullDateFormatter: new Intl.DateTimeFormat(intlLocale, {
+        dateStyle: "medium",
+      }),
+    }),
+    [intlLocale],
+  );
   const sortedDays = [...days].sort((a, b) => a.timestamp - b.timestamp);
   const firstDay = sortedDays[0];
   const leadingBlankCount = firstDay
@@ -43,12 +55,6 @@ export function StreakActivityCalendar({ days }: StreakActivityCalendarProps) {
     ...sortedDays,
   ];
   const weeks = chunkWeeks(paddedDays);
-  const monthFormatter = new Intl.DateTimeFormat(intlLocale, {
-    month: "short",
-  });
-  const fullDateFormatter = new Intl.DateTimeFormat(intlLocale, {
-    dateStyle: "medium",
-  });
   const weekdayRows = [
     t("calendar.weekday.mon"),
     t("calendar.weekday.tue"),

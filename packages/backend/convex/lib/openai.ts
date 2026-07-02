@@ -34,7 +34,7 @@ function getPostHogClient(): PostHog | null {
   if (!apiKey) return null;
 
   _phClient = new PostHog(apiKey, {
-    host: process.env.POSTHOG_HOST ?? "https://us.i.posthog.com",
+    host: process.env.POSTHOG_HOST ?? "https://eu.i.posthog.com",
     // Flush quickly — Convex actions are short-lived
     flushAt: 5,
     flushInterval: 2000,

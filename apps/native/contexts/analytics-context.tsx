@@ -64,6 +64,7 @@ const AnalyticsConsentContext = createContext<AnalyticsConsent | undefined>(
 export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const [optedOut, setOptedOutState] = useState(false);
   const [consentLoaded, setConsentLoaded] = useState(false);
+  const [client, setClient] = useState<PostHog | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,17 +88,19 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     void saveAnalyticsOptOut(value);
   }, []);
 
-  const client = useMemo(() => {
+  useEffect(() => {
     if (
+      !apiKey ||
       !shouldEnableAnalytics({
-        hasApiKey: Boolean(apiKey),
+        hasApiKey: true,
         consentLoaded,
         optedOut,
       })
     ) {
-      return null;
+      setClient(null);
+      return;
     }
-    const created = new PostHog(apiKey as string, { host });
+    const created = new PostHog(apiKey, { host });
     try {
       // Ticket 16: tag dev/internal devices so funnels can exclude them. A
       // super property rides on every event for filtering/cohorts in PostHog.
@@ -111,7 +114,12 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     } catch {
       // Best-effort.
     }
-    return created;
+    setClient(created);
+    return () => {
+      void created._shutdown().catch(() => {
+        // Best-effort cleanup.
+      });
+    };
   }, [consentLoaded, optedOut]);
 
   const consent = useMemo<AnalyticsConsent>(

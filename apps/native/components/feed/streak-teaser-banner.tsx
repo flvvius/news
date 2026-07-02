@@ -10,6 +10,7 @@ import { useAnalytics } from "@/contexts/analytics-context";
 import { useGuestActivity } from "@/contexts/guest-activity-context";
 import { useT } from "@/contexts/locale-context";
 import { markFiredOncePerSession } from "@/lib/analytics-session";
+import { reportError } from "@/lib/error-monitoring";
 import { clearPendingIntent, savePendingIntent } from "@/lib/pending-intent";
 import {
   loadStreakTeaserState,
@@ -98,7 +99,9 @@ export function StreakTeaserBanner() {
 
   const handleCreateAccount = () => {
     // Source attribution for signup_completed; consumed in session-sync.
-    savePendingIntent({ gate: "streak_teaser" }).catch(() => {});
+    savePendingIntent({ gate: "streak_teaser" }).catch((error) => {
+      reportError(error, { scope: "streak-teaser.savePendingIntent" });
+    });
     suppress();
     sheetRef.current?.present();
   };
@@ -151,7 +154,9 @@ export function StreakTeaserBanner() {
             name: "gate_dismissed",
             properties: { reason: "streak_teaser" },
           });
-          clearPendingIntent().catch(() => {});
+          clearPendingIntent().catch((error) => {
+            reportError(error, { scope: "streak-teaser.clearPendingIntent" });
+          });
         }}
       />
     </>

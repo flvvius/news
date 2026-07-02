@@ -84,9 +84,15 @@ export function SwipeToRemoveRow({
 
   return (
     <View
-      accessibilityActions={[{ name: "magicTap", label: actionLabel }]}
+      accessibilityActions={[
+        { name: "activate", label: actionLabel },
+        { name: "magicTap", label: actionLabel },
+      ]}
       onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === "magicTap") {
+        if (
+          event.nativeEvent.actionName === "activate" ||
+          event.nativeEvent.actionName === "magicTap"
+        ) {
           onRemove();
         }
       }}

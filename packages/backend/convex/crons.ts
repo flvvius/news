@@ -137,12 +137,12 @@ crons.daily(
 // ---------------------------------------------------------------------------
 // Computes rolling per-source article bias stats and flags articles that are
 // unusually partisan for their outlet.
-crons.daily(
-  "flag-bias-outliers",
-  { hourUTC: 5, minuteUTC: 0 },
-  internal.bias.flagBiasOutliers,
-  {},
-);
+// crons.daily(
+//   "flag-bias-outliers",
+//   { hourUTC: 5, minuteUTC: 0 },
+//   internal.bias.flagBiasOutliers,
+//   {},
+// );
 
 // ---------------------------------------------------------------------------
 // AI Budget Reservation Cleanup — Hourly

@@ -84,6 +84,7 @@ export function Toast({
         entering={FadeInDown.duration(250).easing(EASE_OUT)}
         exiting={FadeOutDown.duration(200)}
         style={dragStyle}
+        accessibilityRole="alert"
         accessibilityLiveRegion="polite"
         className="absolute bottom-4 left-5 right-5 flex-row items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-2"
       >

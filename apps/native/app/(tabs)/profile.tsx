@@ -46,6 +46,7 @@ import {
 } from "@/contexts/locale-context";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
+import { reportError } from "@/lib/error-monitoring";
 import { ABOUT_PAGES, aboutPageUrl } from "@/lib/site";
 
 export default function ProfileScreen() {
@@ -404,15 +405,20 @@ function ProfileContent() {
 
   const handleClearGuestData = () => {
     void (async () => {
-      // Erase every device-local guest store, then become a fresh anonymous
-      // identity: reset the analytics person and rotate the device id (which
-      // re-registers the new device_uuid super property). Ticket 5c.
-      await clearLocalGuestData();
-      await clearGuestActivity();
-      resetFollowedTopics();
-      // rotateDeviceId owns the analytics reset + new device_uuid (Ticket 10).
-      await rotateDeviceId();
-      Alert.alert(t("native.privacy.clearDataDone"));
+      try {
+        // Erase every device-local guest store, then become a fresh anonymous
+        // identity: reset the analytics person and rotate the device id (which
+        // re-registers the new device_uuid super property). Ticket 5c.
+        await clearLocalGuestData();
+        await clearGuestActivity();
+        resetFollowedTopics();
+        // rotateDeviceId owns the analytics reset + new device_uuid (Ticket 10).
+        await rotateDeviceId();
+        Alert.alert(t("native.privacy.clearDataDone"));
+      } catch (error) {
+        reportError(error, { scope: "profile.clearGuestData" });
+        Alert.alert(t("native.privacy.clearDataError"));
+      }
     })();
   };
 

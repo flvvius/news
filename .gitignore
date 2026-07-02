@@ -51,3 +51,7 @@ temp
 
 # Personal planning docs
 roadmap.md
+# eval local secrets
+eval/.env.local
+eval
+claim-overrides

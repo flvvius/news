@@ -2,7 +2,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   Text,
@@ -272,18 +272,16 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   // 30s dwell OR ≥60% scroll, whichever first, once per visit. The primer
   // itself self-gates on cooldown / lifetime cap / OS state.
   const primerTriggeredRef = useRef(false);
-  const triggerPrimer = () => {
+  const triggerPrimer = useCallback(() => {
     if (primerTriggeredRef.current) return;
     primerTriggeredRef.current = true;
     maybeShowPrimer();
-  };
+  }, [maybeShowPrimer]);
 
   useEffect(() => {
     const id = setTimeout(triggerPrimer, QUALIFIED_READ_MIN_SECONDS * 1000);
     return () => clearTimeout(id);
-    // Fires once per visit; triggerPrimer reads only stable refs/context.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [triggerPrimer]);
 
   const handleScroll = (
     nativeEvent: NativeSyntheticEvent<NativeScrollEvent>,

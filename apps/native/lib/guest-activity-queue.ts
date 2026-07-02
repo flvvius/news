@@ -1,4 +1,5 @@
 import { computeStreakUpdate } from "@news-app/backend/convex/lib/streaks";
+import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import {
   deleteAsync,
   documentDirectory,
@@ -21,7 +22,7 @@ import { reportError } from "./error-monitoring";
  * the append-only read log, which also yields the guest reading streak.
  */
 export type GuestRead = {
-  eventId: string;
+  eventId: Id<"events">;
   slug?: string;
   timestamp: number;
   timeSpentSeconds?: number;
