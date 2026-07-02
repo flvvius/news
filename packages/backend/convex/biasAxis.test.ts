@@ -6,6 +6,7 @@ import {
   biasScoreOf,
   clampBiasScore,
   namedAxisBias,
+  normalizedPerspectives,
 } from "./lib/biasAxis";
 import schema from "./schema";
 import { api } from "./_generated/api";
@@ -36,6 +37,68 @@ describe("namedAxisBias helpers (BIV-302)", () => {
     expect(biasScoreOf({ axis: BIAS_AXIS, score: 2 }, 0)).toBe(2);
     expect(biasScoreOf(undefined, -1)).toBe(-1);
     expect(biasScoreOf(null, 4)).toBe(4);
+  });
+});
+
+describe("normalizedPerspectives (BIV-303)", () => {
+  test("passes canonical keys through", () => {
+    expect(
+      normalizedPerspectives({ neutral: "n", reformist: "r", suveranist: "s" }),
+    ).toEqual({ neutral: "n", reformist: "r", suveranist: "s" });
+  });
+
+  test("falls back to legacy center/left/right keys", () => {
+    expect(
+      normalizedPerspectives({ center: "c", left: "l", right: "r" }),
+    ).toEqual({ neutral: "c", reformist: "l", suveranist: "r" });
+  });
+
+  test("prefers canonical keys over legacy on mixed rows", () => {
+    expect(normalizedPerspectives({ neutral: "new", center: "old" })).toEqual({
+      neutral: "new",
+    });
+  });
+
+  test("returns undefined for empty or missing input", () => {
+    expect(normalizedPerspectives(undefined)).toBeUndefined();
+    expect(normalizedPerspectives({})).toBeUndefined();
+  });
+});
+
+describe("backfillPerspectiveAxisKeys migration (BIV-303)", () => {
+  test("converts legacy event and preview rows to axis keys", async () => {
+    const t = convexTest(schema, modules);
+    const eventId = await t.run(async (ctx) => {
+      return await ctx.db.insert("events", {
+        title: "Legacy event",
+        slug: "legacy-event",
+        status: "published",
+        firstPublishedAt: Date.now(),
+        perspectiveSummaries: { center: "c", left: "l", right: "r" },
+      });
+    });
+
+    const result = await t.mutation(
+      api.migrations.backfillPerspectiveAxisKeys,
+      {},
+    );
+    expect(result.updatedEvents).toBe(1);
+
+    await t.run(async (ctx) => {
+      const event = await ctx.db.get(eventId);
+      expect(event?.perspectiveSummaries).toEqual({
+        neutral: "c",
+        reformist: "l",
+        suveranist: "r",
+      });
+    });
+
+    // Second run is a no-op.
+    const second = await t.mutation(
+      api.migrations.backfillPerspectiveAxisKeys,
+      {},
+    );
+    expect(second.updatedEvents).toBe(0);
   });
 });
 

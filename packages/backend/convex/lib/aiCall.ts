@@ -39,7 +39,7 @@ type ChatMessage = {
   content: string;
 };
 
-type ChatArgs<T> = {
+type ChatArgs = {
   kind: "chat";
   model: string;
   messages: ChatMessage[];
@@ -55,7 +55,7 @@ type ChatArgs<T> = {
   maxRetries?: number;
 };
 
-type EmbeddingArgs<T> = {
+type EmbeddingArgs = {
   kind: "embedding";
   model: string;
   input: string[];
@@ -131,7 +131,7 @@ function estimateEmbeddingInputTokens(input: string[]): number {
 }
 
 function estimateCallCostUsd(
-  args: ChatArgs<unknown> | EmbeddingArgs<unknown>,
+  args: ChatArgs | EmbeddingArgs,
 ): {
   inputTokens: number;
   outputTokens: number;
@@ -220,11 +220,9 @@ async function reserveBudget(
 }
 
 export async function callLLM<T>(
-  args: ChatArgs<T> | EmbeddingArgs<T>,
+  args: ChatArgs | EmbeddingArgs,
 ): Promise<AICallResult<T>> {
-  const estimate = estimateCallCostUsd(
-    args as ChatArgs<unknown> | EmbeddingArgs<unknown>,
-  );
+  const estimate = estimateCallCostUsd(args);
   const reservation = await reserveBudget(
     args.runtime,
     args.context,

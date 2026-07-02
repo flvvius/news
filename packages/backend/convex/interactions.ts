@@ -14,6 +14,7 @@ import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
 } from "./lib/userProfile";
+import { normalizedPerspectives } from "./lib/biasAxis";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -429,7 +430,7 @@ async function buildDashboardEventPreview(
       title: preview.title,
       imageUrl: preview.imageUrl,
       summary:
-        preview.perspectiveSummaries?.center ??
+        preview.perspectiveSummaries?.neutral ??
         preview.globalImpact ??
         "Open the event to compare coverage from multiple sources.",
       firstPublishedAt: preview.firstPublishedAt,
@@ -472,7 +473,7 @@ async function buildDashboardEventPreview(
     title: event.title,
     imageUrl: event.imageUrl,
     summary:
-      event.perspectiveSummaries?.center ??
+      event.perspectiveSummaries?.neutral ??
       event.globalImpact ??
       "Open the event to compare coverage from multiple sources.",
     firstPublishedAt: event.firstPublishedAt,
@@ -560,7 +561,9 @@ export const getBookmarkedEvents = query({
             title: preview.title,
             imageUrl: preview.imageUrl,
             imageAlt: preview.imageAlt,
-            perspectiveSummaries: preview.perspectiveSummaries,
+            perspectiveSummaries: normalizedPerspectives(
+              preview.perspectiveSummaries,
+            ),
             globalImpact: preview.globalImpact,
             firstPublishedAt: preview.firstPublishedAt,
             lastUpdatedAt: preview.lastUpdatedAt,

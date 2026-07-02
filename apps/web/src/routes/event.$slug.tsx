@@ -79,7 +79,7 @@ export const Route = createFileRoute("/event/$slug")({
       ? `${loaderData.event.title} — ${SITE.name}`
       : getString(locale, "event.metaTitle");
     const description =
-      loaderData?.event?.perspectiveSummaries?.center?.slice(0, 155) ??
+      loaderData?.event?.perspectiveSummaries?.neutral?.slice(0, 155) ??
       loaderData?.event?.globalImpact?.slice(0, 155) ??
       getString(locale, "event.metaDescription");
     const imageUrl =
@@ -248,14 +248,14 @@ function EventDetailPage() {
   type Article = (typeof articles)[number];
   type Source = Article["source"];
   const hasPerspectives =
-    event.perspectiveSummaries?.left || event.perspectiveSummaries?.right;
+    event.perspectiveSummaries?.reformist || event.perspectiveSummaries?.suveranist;
   const sourceCount = new Set(
     articles.map((article: Article) => article.source?._id).filter(Boolean),
   ).size;
   const tabCount = [
-    event.perspectiveSummaries?.left ? "left" : null,
+    event.perspectiveSummaries?.reformist ? "left" : null,
     "center",
-    event.perspectiveSummaries?.right ? "right" : null,
+    event.perspectiveSummaries?.suveranist ? "right" : null,
   ].filter(Boolean).length;
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const interactionContext = buildInteractionContextFromSources(
@@ -310,7 +310,7 @@ function EventDetailPage() {
                       slug={event.slug}
                       title={event.title}
                       summary={
-                        event.perspectiveSummaries?.center ?? event.globalImpact
+                        event.perspectiveSummaries?.neutral ?? event.globalImpact
                       }
                       className="rounded-full border border-border/80 bg-background/80"
                     />
@@ -418,7 +418,7 @@ function EventDetailPage() {
                       <TabsList
                         className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
                       >
-                        {event.perspectiveSummaries?.left && (
+                        {event.perspectiveSummaries?.reformist && (
                           <TabsTrigger value="left">
                             {t("event.left")}
                           </TabsTrigger>
@@ -426,32 +426,32 @@ function EventDetailPage() {
                         <TabsTrigger value="center">
                           {t("event.centerTab")}
                         </TabsTrigger>
-                        {event.perspectiveSummaries?.right && (
+                        {event.perspectiveSummaries?.suveranist && (
                           <TabsTrigger value="right">
                             {t("event.right")}
                           </TabsTrigger>
                         )}
                       </TabsList>
 
-                      {event.perspectiveSummaries?.left && (
+                      {event.perspectiveSummaries?.reformist && (
                         <TabsContent value="left">
                           <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                            {event.perspectiveSummaries.left}
+                            {event.perspectiveSummaries.reformist}
                           </p>
                         </TabsContent>
                       )}
 
                       <TabsContent value="center">
                         <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                          {event.perspectiveSummaries?.center ??
+                          {event.perspectiveSummaries?.neutral ??
                             t("event.summaryPending")}
                         </p>
                       </TabsContent>
 
-                      {event.perspectiveSummaries?.right && (
+                      {event.perspectiveSummaries?.suveranist && (
                         <TabsContent value="right">
                           <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                            {event.perspectiveSummaries.right}
+                            {event.perspectiveSummaries.suveranist}
                           </p>
                         </TabsContent>
                       )}
@@ -467,7 +467,7 @@ function EventDetailPage() {
                   </CardHeader>
                   <CardContent className="px-6 pt-3 pb-4 sm:px-8 sm:pt-4 sm:pb-5">
                     <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.perspectiveSummaries?.center ??
+                      {event.perspectiveSummaries?.neutral ??
                         t("event.compareOriginal")}
                     </p>
                   </CardContent>

@@ -7,7 +7,9 @@ type EventCardProps = {
     slug: string;
     title: string;
     perspectiveSummaries?: {
-      center?: string;
+      neutral?: string;
+      reformist?: string;
+      suveranist?: string;
     };
     topicIds: Id<"topics">[];
   };
@@ -37,7 +39,7 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
       <h2 className="mt-3 text-lg font-semibold leading-snug">{event.title}</h2>
 
       <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-        {event.perspectiveSummaries?.center ?? t("event.summaryPending")}
+        {event.perspectiveSummaries?.neutral ?? t("event.summaryPending")}
       </p>
     </div>
   );

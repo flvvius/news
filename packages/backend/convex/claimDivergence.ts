@@ -5,7 +5,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { getConfig } from "./config";

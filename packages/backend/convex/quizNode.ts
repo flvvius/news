@@ -123,9 +123,9 @@ type QuizGenerationInput = {
       title: string;
       slug: string;
       perspectiveSummaries?: {
-        center?: string;
-        left?: string;
-        right?: string;
+        neutral?: string;
+        reformist?: string;
+        suveranist?: string;
       };
       globalImpact?: string;
       sourceBiasCounts: {

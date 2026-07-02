@@ -47,3 +47,61 @@ export function biasScoreOf(
 ): number {
   return bias ? bias.score : fallback;
 }
+
+// ---------------------------------------------------------------------------
+// Perspective summaries (BIV-303): neutral / reformist / suveranist
+// ---------------------------------------------------------------------------
+
+export type PerspectiveSummaries = {
+  neutral?: string;
+  reformist?: string;
+  suveranist?: string;
+  /** @deprecated pre-BIV-303 key — read-only until backfillPerspectiveAxisKeys runs */
+  center?: string;
+  /** @deprecated pre-BIV-303 key — read-only until backfillPerspectiveAxisKeys runs */
+  left?: string;
+  /** @deprecated pre-BIV-303 key — read-only until backfillPerspectiveAxisKeys runs */
+  right?: string;
+};
+
+/**
+ * Convex validator for event perspective summaries on the
+ * reformist↔suveranist axis. The legacy center/left/right keys stay
+ * accepted so pre-migration rows still validate; no code writes them.
+ */
+export const perspectiveSummariesValidator = v.object({
+  neutral: v.optional(v.string()),
+  reformist: v.optional(v.string()),
+  suveranist: v.optional(v.string()),
+  center: v.optional(v.string()),
+  left: v.optional(v.string()),
+  right: v.optional(v.string()),
+});
+
+/**
+ * Collapse a stored perspective object to the canonical axis keys,
+ * falling back to the legacy keys for pre-migration rows.
+ * Returns undefined when nothing is set.
+ */
+export function normalizedPerspectives(
+  summaries: PerspectiveSummaries | undefined | null,
+):
+  | { neutral?: string; reformist?: string; suveranist?: string }
+  | undefined {
+  if (!summaries) return undefined;
+  const neutral = summaries.neutral ?? summaries.center;
+  const reformist = summaries.reformist ?? summaries.left;
+  const suveranist = summaries.suveranist ?? summaries.right;
+  if (
+    neutral === undefined &&
+    reformist === undefined &&
+    suveranist === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(neutral !== undefined ? { neutral } : {}),
+    ...(reformist !== undefined ? { reformist } : {}),
+    ...(suveranist !== undefined ? { suveranist } : {}),
+  };
+}

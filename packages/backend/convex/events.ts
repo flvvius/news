@@ -14,6 +14,7 @@ import {
   type PublicPreviewRow,
 } from "./lib/feedSerialization";
 import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
+import { normalizedPerspectives } from "./lib/biasAxis";
 
 const TRENDING_SCAN_LIMIT = 250;
 const TOPIC_SCAN_LIMIT = 500;
@@ -446,7 +447,9 @@ export const getEventBySlug = query({
         title: event.title,
         imageUrl: event.imageUrl,
         imageAlt: event.imageAlt,
-        perspectiveSummaries: event.perspectiveSummaries,
+        perspectiveSummaries: normalizedPerspectives(
+          event.perspectiveSummaries,
+        ),
         globalImpact: event.globalImpact,
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,

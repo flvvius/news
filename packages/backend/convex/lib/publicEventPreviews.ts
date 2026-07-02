@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { encodeRankedCursor, toFeedEvent } from "./feedSerialization";
+import { normalizedPerspectives } from "./biasAxis";
 
 export const MAX_PREVIEW_SOURCES = 5;
 const FEED_SNAPSHOT_PAGE_SIZE = 24;
@@ -206,19 +207,11 @@ export async function syncPublicEventPreview(
   }
 
   const existing = await getPublicPreviewByEventId(ctx, eventId);
-  const perspectiveSummaries = event.perspectiveSummaries
-    ? {
-        ...(event.perspectiveSummaries.center !== undefined
-          ? { center: event.perspectiveSummaries.center }
-          : {}),
-        ...(event.perspectiveSummaries.left !== undefined
-          ? { left: event.perspectiveSummaries.left }
-          : {}),
-        ...(event.perspectiveSummaries.right !== undefined
-          ? { right: event.perspectiveSummaries.right }
-          : {}),
-      }
-    : undefined;
+  // Collapses to the canonical axis keys (falling back to legacy
+  // center/left/right for pre-BIV-303 rows) or undefined when empty.
+  const perspectiveSummaries = normalizedPerspectives(
+    event.perspectiveSummaries,
+  );
   const now = Date.now();
   const payload = {
     eventId,
@@ -226,10 +219,7 @@ export async function syncPublicEventPreview(
     title: event.title,
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
-    perspectiveSummaries:
-      perspectiveSummaries && Object.keys(perspectiveSummaries).length > 0
-        ? perspectiveSummaries
-        : undefined,
+    perspectiveSummaries,
     globalImpact: event.globalImpact,
     firstPublishedAt: event.firstPublishedAt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

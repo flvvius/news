@@ -16,7 +16,9 @@ type EventCardProps = {
     title: string;
     imageUrl?: string;
     perspectiveSummaries?: {
-      center?: string;
+      neutral?: string;
+      reformist?: string;
+      suveranist?: string;
     };
     globalImpact?: string;
     firstPublishedAt: number;
@@ -121,7 +123,7 @@ const EventCard = ({
     .filter(Boolean);
   const primaryTopic = topics[0] ?? t("event.general");
   const summaryPreview =
-    event.perspectiveSummaries?.center ??
+    event.perspectiveSummaries?.neutral ??
     event.globalImpact ??
     t("event.coveragePreview");
   const isFeature = variant === "feature";

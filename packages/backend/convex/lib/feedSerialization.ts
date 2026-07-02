@@ -1,4 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
+import { normalizedPerspectives } from "./biasAxis";
 
 // Single source of truth for the public feed-card shape and ranked pagination
 // cursors. Both the live feed queries (events.ts) and the anonymous first-page
@@ -99,7 +100,7 @@ export function toFeedEvent(row: PublicPreviewRow) {
     title: row.title,
     imageUrl: row.imageUrl,
     imageAlt: row.imageAlt,
-    perspectiveSummaries: row.perspectiveSummaries,
+    perspectiveSummaries: normalizedPerspectives(row.perspectiveSummaries),
     globalImpact: row.globalImpact,
     firstPublishedAt: row.firstPublishedAt,
     lastUpdatedAt: row.lastUpdatedAt,

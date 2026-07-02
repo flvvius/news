@@ -1,6 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { namedAxisBiasValidator } from "./lib/biasAxis";
+import {
+  namedAxisBiasValidator,
+  perspectiveSummariesValidator,
+} from "./lib/biasAxis";
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -84,13 +87,9 @@ export default defineSchema({
     imageHeight: v.optional(v.number()),
     imageAlt: v.optional(v.string()),
 
-    perspectiveSummaries: v.optional(
-      v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
-      }),
-    ),
+    // neutral / reformist / suveranist framing summaries (BIV-303);
+    // legacy center/left/right keys remain readable pre-migration.
+    perspectiveSummaries: v.optional(perspectiveSummariesValidator),
     perspectiveSource: v.optional(
       v.union(v.literal("heuristic"), v.literal("ai")),
     ),
@@ -230,13 +229,7 @@ export default defineSchema({
     title: v.string(),
     imageUrl: v.optional(v.string()),
     imageAlt: v.optional(v.string()),
-    perspectiveSummaries: v.optional(
-      v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
-      }),
-    ),
+    perspectiveSummaries: v.optional(perspectiveSummariesValidator),
     globalImpact: v.optional(v.string()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.number(),

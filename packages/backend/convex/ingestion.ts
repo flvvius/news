@@ -23,7 +23,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { ALL_FEEDS, type FeedEntry } from "./feeds";
+import { ALL_FEEDS } from "./feeds";
 import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
@@ -599,17 +599,6 @@ async function syncHotEventEmbedding(
     eventId: args.eventId,
     ...payload,
   });
-}
-
-/** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
-function extractDomain(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    // Strip "www." prefix
-    return host.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }
 
 // ---------------------------------------------------------------------------

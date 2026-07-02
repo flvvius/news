@@ -140,10 +140,10 @@ export const seedDB = internalMutation({
       imageUrl:
         "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
-        center:
+        neutral:
           "The Federal Reserve raised interest rates by 0.25% to combat persistent inflation, bringing the federal funds rate to 5.5%. This marks the highest level in over two decades.",
-        left: "Critics argue the rate hike disproportionately affects working-class Americans and small businesses, while large corporations can absorb the costs. Housing affordability continues to decline.",
-        right:
+        reformist: "Critics argue the rate hike disproportionately affects working-class Americans and small businesses, while large corporations can absorb the costs. Housing affordability continues to decline.",
+        suveranist:
           "The Fed's decisive action demonstrates fiscal responsibility. Controlling inflation is essential for long-term economic stability, and markets have responded positively to the measured approach.",
       },
       globalImpact:
@@ -159,10 +159,10 @@ export const seedDB = internalMutation({
       imageUrl:
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
-        center:
+        neutral:
           "A bipartisan bill introduced in Congress aims to establish the first comprehensive regulatory framework for AI systems, requiring transparency in training data and mandatory safety audits for high-risk applications.",
-        left: "The bill doesn't go far enough in protecting workers from AI displacement. Stronger provisions are needed for algorithmic bias prevention and union consultation rights.",
-        right:
+        reformist: "The bill doesn't go far enough in protecting workers from AI displacement. Stronger provisions are needed for algorithmic bias prevention and union consultation rights.",
+        suveranist:
           "While some oversight is reasonable, excessive regulation could stifle American innovation and hand competitive advantage to China. The free market should primarily guide AI development.",
       },
       globalImpact:

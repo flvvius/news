@@ -15,7 +15,7 @@ import type { Doc } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
-import { namedAxisBias } from "./lib/biasAxis";
+import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -194,14 +194,17 @@ export const normalizeStoredArticleText = mutation({
 
     for (const event of events) {
       const nextTitle = normalizeArticleTitle(event.title);
-      const nextCenter = event.perspectiveSummaries?.center
-        ? normalizeArticleSnippet(event.perspectiveSummaries.center)
+      // Fall back to legacy center/left/right keys so pre-BIV-303 rows keep
+      // their summaries when this migration rewrites the object.
+      const perspectives = normalizedPerspectives(event.perspectiveSummaries);
+      const nextCenter = perspectives?.neutral
+        ? normalizeArticleSnippet(perspectives.neutral)
         : undefined;
-      const nextLeft = event.perspectiveSummaries?.left
-        ? normalizeArticleSnippet(event.perspectiveSummaries.left)
+      const nextLeft = perspectives?.reformist
+        ? normalizeArticleSnippet(perspectives.reformist)
         : undefined;
-      const nextRight = event.perspectiveSummaries?.right
-        ? normalizeArticleSnippet(event.perspectiveSummaries.right)
+      const nextRight = perspectives?.suveranist
+        ? normalizeArticleSnippet(perspectives.suveranist)
         : undefined;
       const nextGlobalImpact = event.globalImpact
         ? normalizeArticleSnippet(event.globalImpact)
@@ -209,18 +212,18 @@ export const normalizeStoredArticleText = mutation({
 
       if (
         nextTitle !== event.title ||
-        nextCenter !== event.perspectiveSummaries?.center ||
-        nextLeft !== event.perspectiveSummaries?.left ||
-        nextRight !== event.perspectiveSummaries?.right ||
+        nextCenter !== perspectives?.neutral ||
+        nextLeft !== perspectives?.reformist ||
+        nextRight !== perspectives?.suveranist ||
         nextGlobalImpact !== event.globalImpact
       ) {
         await ctx.db.patch(event._id, {
           title: nextTitle,
           perspectiveSummaries: event.perspectiveSummaries
             ? {
-                center: nextCenter,
-                left: nextLeft,
-                right: nextRight,
+                neutral: nextCenter,
+                reformist: nextLeft,
+                suveranist: nextRight,
               }
             : undefined,
           globalImpact: nextGlobalImpact,
@@ -532,6 +535,56 @@ export const queueEventShareAssetsBackfill = mutation({
       scheduledContinuation,
       remainingPages,
     };
+  },
+});
+
+/**
+ * BIV-303: convert perspectiveSummaries from the legacy center/left/right
+ * keys to neutral/reformist/suveranist on events and publicEventPreviews.
+ * Idempotent — rows already on the new keys are rewritten identically and
+ * skipped by the change check.
+ */
+export const backfillPerspectiveAxisKeys = mutation({
+  args: {},
+  handler: async (ctx) => {
+    let updatedEvents = 0;
+    let updatedPreviews = 0;
+
+    const events = await ctx.db.query("events").collect();
+    for (const event of events) {
+      if (!event.perspectiveSummaries) continue;
+      const legacy = event.perspectiveSummaries;
+      if (
+        legacy.center === undefined &&
+        legacy.left === undefined &&
+        legacy.right === undefined
+      ) {
+        continue;
+      }
+      await ctx.db.patch(event._id, {
+        perspectiveSummaries: normalizedPerspectives(legacy),
+      });
+      updatedEvents++;
+    }
+
+    const previews = await ctx.db.query("publicEventPreviews").collect();
+    for (const preview of previews) {
+      if (!preview.perspectiveSummaries) continue;
+      const legacy = preview.perspectiveSummaries;
+      if (
+        legacy.center === undefined &&
+        legacy.left === undefined &&
+        legacy.right === undefined
+      ) {
+        continue;
+      }
+      await ctx.db.patch(preview._id, {
+        perspectiveSummaries: normalizedPerspectives(legacy),
+      });
+      updatedPreviews++;
+    }
+
+    return { updatedEvents, updatedPreviews };
   },
 });
 

@@ -29,6 +29,7 @@ import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { foldDiacriticsToAscii } from "./lib/romanian";
+import { normalizedPerspectives } from "./lib/biasAxis";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import {
@@ -543,13 +544,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-function maxCrossEventSimilarity(
-  a: { embedding: number[] },
-  b: { embedding: number[] },
-): number {
-  return cosineSimilarity(a.embedding, b.embedding);
-}
-
 function normalizeText(text: string): string {
   // Fold diacritics first so Romanian titles written with and without
   // diacritics ("ședință" vs "sedinta") produce the same tokens instead of
@@ -855,9 +849,9 @@ type ClusterCandidate = {
   topicSlugs: Set<string>;
   sourceIds: Set<Id<"sources">>;
   perspectiveSummaries?: {
-    center?: string;
-    left?: string;
-    right?: string;
+    neutral?: string;
+    reformist?: string;
+    suveranist?: string;
   };
   globalImpact?: string;
   imageUrl?: string;
@@ -884,9 +878,9 @@ type ClusterCandidateQueryResult = {
   entityTokens: string[];
   topicSlugs: string[];
   perspectiveSummaries?: {
-    center?: string;
-    left?: string;
-    right?: string;
+    neutral?: string;
+    reformist?: string;
+    suveranist?: string;
   };
   globalImpact?: string;
   imageUrl?: string;
@@ -1306,21 +1300,29 @@ function buildMergedPerspectiveSummaries(
   primary: ClusterCandidate,
   secondary: ClusterCandidate,
 ) {
-  const center = preferLongerString(
-    primary.perspectiveSummaries?.center,
-    secondary.perspectiveSummaries?.center,
+  // Normalize first so pre-BIV-303 rows still on center/left/right keys
+  // contribute their summaries instead of being dropped by the merge.
+  const primaryPerspectives = normalizedPerspectives(
+    primary.perspectiveSummaries,
   );
-  const left = preferLongerString(
-    primary.perspectiveSummaries?.left,
-    secondary.perspectiveSummaries?.left,
+  const secondaryPerspectives = normalizedPerspectives(
+    secondary.perspectiveSummaries,
   );
-  const right = preferLongerString(
-    primary.perspectiveSummaries?.right,
-    secondary.perspectiveSummaries?.right,
+  const neutral = preferLongerString(
+    primaryPerspectives?.neutral,
+    secondaryPerspectives?.neutral,
+  );
+  const reformist = preferLongerString(
+    primaryPerspectives?.reformist,
+    secondaryPerspectives?.reformist,
+  );
+  const suveranist = preferLongerString(
+    primaryPerspectives?.suveranist,
+    secondaryPerspectives?.suveranist,
   );
 
-  if (!center && !left && !right) return undefined;
-  return { center, left, right };
+  if (!neutral && !reformist && !suveranist) return undefined;
+  return { neutral, reformist, suveranist };
 }
 
 function pickMergedSummaryMetadata(
@@ -1621,15 +1623,16 @@ async function refreshEventPresentation(
   const isAiAuthored =
     event.perspectiveSource === "ai" || Boolean(event.lastSummarizedAt);
 
+  const eventPerspectives = normalizedPerspectives(event.perspectiveSummaries);
   const nextPerspectiveSummaries = isAiAuthored
-    ? event.perspectiveSummaries
+    ? eventPerspectives
     : centerSummary
       ? {
-          center: centerSummary,
-          left: event.perspectiveSummaries?.left,
-          right: event.perspectiveSummaries?.right,
+          neutral: centerSummary,
+          reformist: eventPerspectives?.reformist,
+          suveranist: eventPerspectives?.suveranist,
         }
-      : event.perspectiveSummaries;
+      : eventPerspectives;
   const nextPerspectiveSource = isAiAuthored
     ? "ai"
     : centerSummary
@@ -1638,12 +1641,12 @@ async function refreshEventPresentation(
   const nextGlobalImpact = isAiAuthored ? event.globalImpact : globalImpact;
 
   const summariesUnchanged =
-    (nextPerspectiveSummaries?.center ?? null) ===
-      (event.perspectiveSummaries?.center ?? null) &&
-    (nextPerspectiveSummaries?.left ?? null) ===
-      (event.perspectiveSummaries?.left ?? null) &&
-    (nextPerspectiveSummaries?.right ?? null) ===
-      (event.perspectiveSummaries?.right ?? null);
+    (nextPerspectiveSummaries?.neutral ?? null) ===
+      (event.perspectiveSummaries?.neutral ?? null) &&
+    (nextPerspectiveSummaries?.reformist ?? null) ===
+      (event.perspectiveSummaries?.reformist ?? null) &&
+    (nextPerspectiveSummaries?.suveranist ?? null) ===
+      (event.perspectiveSummaries?.suveranist ?? null);
   const imageUnchanged =
     resolvedImageUrl === event.imageUrl &&
     nextImageAlt === event.imageAlt &&
@@ -1687,7 +1690,7 @@ async function refreshEventPresentation(
     renderSignature: buildEventShareRenderSignature({
       title: event.title,
       summary: isAiAuthored
-        ? (nextPerspectiveSummaries?.center ?? nextGlobalImpact)
+        ? (nextPerspectiveSummaries?.neutral ?? nextGlobalImpact)
         : (centerSummary ?? globalImpact),
       imageUrl: resolvedImageUrl,
       imageAlt: nextImageAlt,
@@ -2088,7 +2091,7 @@ async function getTopicInferenceSettingsForQuery(
 function isWeakEventPresentation(
   event: Pick<Doc<"events">, "perspectiveSummaries" | "globalImpact">,
 ): boolean {
-  const center = event.perspectiveSummaries?.center?.trim() ?? "";
+  const center = event.perspectiveSummaries?.neutral?.trim() ?? "";
   const globalImpact = event.globalImpact?.trim() ?? "";
   return center.length < 120 || globalImpact.length < 60;
 }
@@ -3233,7 +3236,7 @@ export const createEventFromArticle = internalMutation({
       title,
       slug,
       perspectiveSummaries: centerSummary
-        ? { center: centerSummary }
+        ? { neutral: centerSummary }
         : undefined,
       perspectiveSource: centerSummary ? "heuristic" : undefined,
       status: initialStatus,
@@ -4691,9 +4694,9 @@ export const mergeEvents = internalMutation({
     mergedTitle: v.string(),
     mergedPerspectiveSummaries: v.optional(
       v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
+        neutral: v.optional(v.string()),
+        reformist: v.optional(v.string()),
+        suveranist: v.optional(v.string()),
       }),
     ),
     mergedPerspectiveSource: v.optional(
@@ -5020,30 +5023,36 @@ export const mergeEvents = internalMutation({
     const removeHasAiPerspective =
       removeEvent.perspectiveSource === "ai" ||
       Boolean(removeEvent.lastSummarizedAt);
+    const keepPerspectives = normalizedPerspectives(
+      keepEvent.perspectiveSummaries,
+    );
+    const removePerspectives = normalizedPerspectives(
+      removeEvent.perspectiveSummaries,
+    );
     const resolvedMergedPerspectiveSummaries =
       mergedPerspectiveSummaries ??
       (keepHasAiPerspective && !removeHasAiPerspective
-        ? keepEvent.perspectiveSummaries
+        ? keepPerspectives
         : removeHasAiPerspective && !keepHasAiPerspective
-          ? removeEvent.perspectiveSummaries
+          ? removePerspectives
           : {
-              center: preferLongerString(
-                keepEvent.perspectiveSummaries?.center,
-                removeEvent.perspectiveSummaries?.center,
+              neutral: preferLongerString(
+                keepPerspectives?.neutral,
+                removePerspectives?.neutral,
               ),
-              left: preferLongerString(
-                keepEvent.perspectiveSummaries?.left,
-                removeEvent.perspectiveSummaries?.left,
+              reformist: preferLongerString(
+                keepPerspectives?.reformist,
+                removePerspectives?.reformist,
               ),
-              right: preferLongerString(
-                keepEvent.perspectiveSummaries?.right,
-                removeEvent.perspectiveSummaries?.right,
+              suveranist: preferLongerString(
+                keepPerspectives?.suveranist,
+                removePerspectives?.suveranist,
               ),
             });
     const normalizedMergedPerspectiveSummaries =
-      resolvedMergedPerspectiveSummaries?.center ||
-      resolvedMergedPerspectiveSummaries?.left ||
-      resolvedMergedPerspectiveSummaries?.right
+      resolvedMergedPerspectiveSummaries?.neutral ||
+      resolvedMergedPerspectiveSummaries?.reformist ||
+      resolvedMergedPerspectiveSummaries?.suveranist
         ? resolvedMergedPerspectiveSummaries
         : undefined;
     const resolvedMergedPerspectiveSource =
@@ -6555,7 +6564,7 @@ export const clusterEnrichedArticles = internalAction({
           topicSlugs: new Set(topicSlugs),
           sourceIds: new Set([article.sourceId]),
           perspectiveSummaries: centerSummary
-            ? { center: centerSummary }
+            ? { neutral: centerSummary }
             : undefined,
           perspectiveSource: centerSummary ? "heuristic" : undefined,
           globalImpact: undefined,
