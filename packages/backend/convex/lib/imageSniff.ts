@@ -72,19 +72,26 @@ export function sniffImageFormat(bytes: Uint8Array): SniffedImageFormat | null {
     return "bmp";
   }
 
-  // SVG: text document whose first non-whitespace content opens an <svg> or
-  // XML/doctype prologue. Skip a UTF-8 BOM if present.
+  // SVG: text document whose first non-whitespace content opens an <svg>,
+  // an XML prologue, or an SVG doctype. Skip a UTF-8 BOM if present.
+  // HTML pages routinely inline <svg> icons near the top, so an html
+  // doctype or <html> tag in the head window always disqualifies —
+  // otherwise a photo-detail page would pass as a "verified" SVG image.
   let offset = 0;
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) offset = 3;
   const head = ascii(bytes, offset, Math.min(256, bytes.length - offset))
     .trimStart()
     .toLowerCase();
-  if (
-    head.startsWith("<svg") ||
-    ((head.startsWith("<?xml") || head.startsWith("<!doctype")) &&
-      head.includes("<svg"))
-  ) {
-    return "svg";
+  const looksLikeHtml =
+    head.startsWith("<!doctype html") || head.includes("<html");
+  if (!looksLikeHtml) {
+    if (head.startsWith("<svg")) return "svg";
+    if (
+      (head.startsWith("<?xml") || head.startsWith("<!doctype svg")) &&
+      head.includes("<svg")
+    ) {
+      return "svg";
+    }
   }
 
   return null;

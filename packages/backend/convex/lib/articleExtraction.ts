@@ -2,6 +2,7 @@
 
 import { normalizeRomanianDiacritics } from "./romanian";
 import { resolveGoogleNewsUrl } from "./googleNews";
+import { verifyImageUrl, type ImageUrlVerdict } from "./imageVerification";
 
 type ExtractionMethod =
   | "article"
@@ -857,17 +858,27 @@ function extractFirstInlineImage(html: string): {
   return {};
 }
 
-function extractImageMetadata(
-  html: string,
-  baseUrl: string,
-  fallbackAlt: string,
-): {
+export type ExtractedImageMetadata = {
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   imageAlt?: string;
   imageSource?: "og" | "twitter" | "jsonld" | "inline";
-} {
+};
+
+export function collectImageMetadataCandidates(
+  html: string,
+  baseUrl: string,
+  fallbackAlt: string,
+): ExtractedImageMetadata[] {
+  const candidates: ExtractedImageMetadata[] = [];
+  const seenUrls = new Set<string>();
+  const addCandidate = (candidate: ExtractedImageMetadata) => {
+    if (!candidate.imageUrl || seenUrls.has(candidate.imageUrl)) return;
+    seenUrls.add(candidate.imageUrl);
+    candidates.push(candidate);
+  };
+
   const ogImage = absolutizeUrl(
     getMetaContent(html, "property", "og:image"),
     baseUrl,
@@ -878,7 +889,7 @@ function extractImageMetadata(
   );
   const normalizedOgImage = ogImage ?? ogImageUrl;
   if (isLikelyValidImageUrl(normalizedOgImage)) {
-    return {
+    addCandidate({
       imageUrl: normalizedOgImage,
       imageWidth: parseOptionalInteger(
         getMetaContent(html, "property", "og:image:width"),
@@ -891,7 +902,7 @@ function extractImageMetadata(
         getMetaContent(html, "property", "og:title") ??
         fallbackAlt,
       imageSource: "og",
-    };
+    });
   }
 
   const twitterImage = absolutizeUrl(
@@ -904,49 +915,75 @@ function extractImageMetadata(
   );
   const normalizedTwitterImage = twitterImage ?? twitterImageSrc;
   if (isLikelyValidImageUrl(normalizedTwitterImage)) {
-    return {
+    addCandidate({
       imageUrl: normalizedTwitterImage,
       imageAlt:
         getMetaContent(html, "name", "twitter:image:alt") ??
         getMetaContent(html, "name", "twitter:title") ??
         fallbackAlt,
       imageSource: "twitter",
-    };
+    });
   }
 
   const jsonLdImage = extractJsonLdImage(html);
   const jsonLdUrl = absolutizeUrl(jsonLdImage.imageUrl, baseUrl);
   if (isLikelyValidImageUrl(jsonLdUrl)) {
-    return {
+    addCandidate({
       imageUrl: jsonLdUrl,
       imageWidth: jsonLdImage.imageWidth,
       imageHeight: jsonLdImage.imageHeight,
       imageAlt: jsonLdImage.imageAlt ?? fallbackAlt,
       imageSource: "jsonld",
-    };
+    });
   }
 
   const inlineImage = extractFirstInlineImage(html);
   const inlineUrl = absolutizeUrl(inlineImage.imageUrl, baseUrl);
   if (isLikelyValidImageUrl(inlineUrl)) {
-    return {
+    addCandidate({
       imageUrl: inlineUrl,
       imageWidth: inlineImage.imageWidth,
       imageHeight: inlineImage.imageHeight,
       imageAlt: inlineImage.imageAlt ?? fallbackAlt,
       imageSource: "inline",
-    };
+    });
   }
 
   const rawCandidate = extractRawImageCandidates(html, baseUrl)[0];
   if (isLikelyValidImageUrl(rawCandidate)) {
-    return {
+    addCandidate({
       imageUrl: rawCandidate,
       imageAlt: fallbackAlt,
       imageSource: "inline",
-    };
+    });
   }
 
+  return candidates;
+}
+
+// Publishers lie in image slots (Agerpres og:image links an HTML photo page
+// when the article has no photo), so the winning candidate must prove it
+// serves image bytes before we store it. Capped so one pathological page
+// can't trigger a fetch storm.
+const MAX_IMAGE_VERIFICATION_ATTEMPTS = 3;
+
+export type ImageUrlVerifier = (url: string) => Promise<ImageUrlVerdict>;
+
+export async function resolveVerifiedImageMetadata(
+  html: string,
+  baseUrl: string,
+  fallbackAlt: string,
+  verifier: ImageUrlVerifier = verifyImageUrl,
+): Promise<ExtractedImageMetadata> {
+  const candidates = collectImageMetadataCandidates(html, baseUrl, fallbackAlt);
+  for (const candidate of candidates.slice(
+    0,
+    MAX_IMAGE_VERIFICATION_ATTEMPTS,
+  )) {
+    if ((await verifier(candidate.imageUrl!)) === "image") {
+      return candidate;
+    }
+  }
   return {};
 }
 
@@ -1080,7 +1117,7 @@ export async function extractArticleContentForEmbedding(args: {
       ? extractMetaDescription(fetched.html)
       : undefined;
     const blockedImage = fetched.html
-      ? extractImageMetadata(
+      ? await resolveVerifiedImageMetadata(
           fetched.html,
           fetched.finalUrl ?? resolvedUrl,
           args.title,
@@ -1118,7 +1155,11 @@ export async function extractArticleContentForEmbedding(args: {
         : resolvedUrl !== args.url
           ? resolvedUrl
           : args.url;
-    const image = extractImageMetadata(fetched.html, effectiveUrl, args.title);
+    const image = await resolveVerifiedImageMetadata(
+      fetched.html,
+      effectiveUrl,
+      args.title,
+    );
 
     const normalizedBody = normalizeWhitespace(extractedText).slice(0, MAX_BODY_CHARS);
     const bodyChars = normalizedBody.length;

@@ -58,9 +58,32 @@ describe("sniffImageFormat", () => {
     ).toBe("svg");
   });
 
+  test("detects SVG with its own doctype", () => {
+    expect(
+      sniffImageFormat(
+        bytes('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"><svg>'),
+      ),
+    ).toBe("svg");
+  });
+
   test("rejects HTML error pages and garbage", () => {
     expect(sniffImageFormat(bytes("<!doctype html><html></html>"))).toBeNull();
     expect(sniffImageFormat(bytes("hello world, not an image"))).toBeNull();
     expect(sniffImageFormat(Uint8Array.from([1, 2, 3]))).toBeNull();
+  });
+
+  test("rejects HTML pages that inline an early <svg> icon", () => {
+    expect(
+      sniffImageFormat(
+        bytes('<!doctype html><html><head><svg viewBox="0 0 16 16">'),
+      ),
+    ).toBeNull();
+    expect(
+      sniffImageFormat(
+        bytes(
+          '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><svg>',
+        ),
+      ),
+    ).toBeNull();
   });
 });
