@@ -35,7 +35,7 @@ export const seedRomanianSources = internalMutation({
       } else {
         await ctx.db.insert("sources", {
           domain: entry.domain,
-          logoUrl: `https://logo.clearbit.com/${entry.domain}`,
+          logoUrl: `https://icons.duckduckgo.com/ip3/${entry.domain}.ico`,
           ...values,
         });
         created++;
@@ -96,7 +96,7 @@ export const seedDB = internalMutation({
       name: "CNN",
       baseBias: -4,
       reliabilityScore: 7,
-      logoUrl: "https://logo.clearbit.com/cnn.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/cnn.com.ico",
       mbfcCategory: "left",
       mbfcFactual: "mostly-factual",
       mbfcCredibility: "medium",
@@ -108,7 +108,7 @@ export const seedDB = internalMutation({
       name: "Fox News",
       baseBias: 4,
       reliabilityScore: 5,
-      logoUrl: "https://logo.clearbit.com/foxnews.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/foxnews.com.ico",
       mbfcCategory: "right",
       mbfcFactual: "mixed",
       mbfcCredibility: "medium",
@@ -120,7 +120,7 @@ export const seedDB = internalMutation({
       name: "Reuters",
       baseBias: 0,
       reliabilityScore: 9,
-      logoUrl: "https://logo.clearbit.com/reuters.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/reuters.com.ico",
       mbfcCategory: "center",
       mbfcFactual: "very-high",
       mbfcCredibility: "high",
