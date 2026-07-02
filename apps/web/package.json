@@ -5,7 +5,8 @@
 	"scripts": {
 		"build": "vite build",
 		"serve": "vite preview",
-		"dev": "vite dev --port=3001"
+		"dev": "vite dev --port=3001",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:",
@@ -48,6 +49,7 @@
 		"jsdom": "^26.0.0",
 		"typescript": "catalog:",
 		"vite": "^7.0.2",
+		"vitest": "^4.1.8",
 		"web-vitals": "^5.0.3"
 	}
 }

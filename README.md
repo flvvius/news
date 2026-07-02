@@ -509,8 +509,16 @@ Required or commonly expected by the current code:
 
 - `CONVEX_URL`
 - `CONVEX_SITE_URL`
-- `SITE_URL`
+- `SITE_URL` — Better Auth `baseURL`; on a **dev** deployment set it to
+  `http://localhost:3001` so OAuth redirects and email links point at the
+  local web app (`npx convex env set SITE_URL http://localhost:3001`)
+- `DEPLOY_ENV` — set to `development` on dev Convex deployments
+  (`npx convex env set DEPLOY_ENV development`). The Convex runtime reports
+  `NODE_ENV=production` on *every* deployment, dev included, so without this
+  flag a dev deployment behaves like production: localhost origins are not
+  trusted and all localhost auth fails with "Invalid origin" (BIV-808/809)
 - `ALLOWED_ORIGINS` (optional, comma-separated origins allowed for verification links)
+- `CONVEX_ALLOW_LOCALHOST` (optional escape hatch: trust localhost origins even in production)
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`

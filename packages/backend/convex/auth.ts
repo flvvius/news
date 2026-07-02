@@ -59,13 +59,33 @@ export function parseAppleAudiences(raw: string | undefined): string[] {
   return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
 }
 
-function isProductionDeployment() {
-  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+type EnvRecord = Record<string, string | undefined>;
+
+/**
+ * BIV-809: the Convex runtime reports NODE_ENV="production" on EVERY
+ * deployment, including dev ones (verified empirically on the dev
+ * deployment), so NODE_ENV alone cannot distinguish dev from prod. That made
+ * dev deployments behave like production: localhost origins were never
+ * trusted (login → "Invalid origin", signup → generic error) and the
+ * missing-RESEND_API_KEY email guard threw instead of skipping.
+ *
+ * DEPLOY_ENV is the explicit per-deployment override:
+ *   npx convex env set DEPLOY_ENV development   (on dev deployments)
+ * When unset we fall back to NODE_ENV, which keeps the safe (production)
+ * behavior on Convex deployments and the permissive behavior in local tests.
+ */
+export function isProductionDeployment(env: EnvRecord = process.env) {
+  const deployEnv = env.DEPLOY_ENV?.trim().toLowerCase();
+  if (deployEnv) {
+    return deployEnv.startsWith("prod");
+  }
+
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase();
   if (nodeEnv === "production") {
     return true;
   }
 
-  const convexDeployment = process.env.CONVEX_DEPLOYMENT?.trim().toLowerCase();
+  const convexDeployment = env.CONVEX_DEPLOYMENT?.trim().toLowerCase();
   return convexDeployment?.startsWith("prod:") ?? false;
 }
 
@@ -86,7 +106,6 @@ const appleAudiences = parseAppleAudiences(
   process.env.APPLE_APP_BUNDLE_IDENTIFIER,
 );
 const appleClientSecret = process.env.APPLE_CLIENT_SECRET?.trim() || null;
-const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 const isProduction = isProductionDeployment();
@@ -137,27 +156,29 @@ function addTrustedOriginVariant(
   }
 }
 
-function collectTrustedOrigins() {
+export function collectTrustedOrigins(env: EnvRecord = process.env) {
   const configuredOrigins = new Set<string>();
-  addTrustedOriginVariant(configuredOrigins, siteUrl);
+  addTrustedOriginVariant(configuredOrigins, env.SITE_URL);
+  // BIV-809: this must use isProductionDeployment (DEPLOY_ENV-aware), not raw
+  // NODE_ENV — on Convex dev deployments NODE_ENV is "production", which
+  // silently dropped the localhost origins and broke all localhost auth.
   const allowLocalhostOrigins =
-    process.env.NODE_ENV !== "production" ||
-    process.env.CONVEX_ALLOW_LOCALHOST === "true";
+    !isProductionDeployment(env) || env.CONVEX_ALLOW_LOCALHOST === "true";
 
   if (allowLocalhostOrigins) {
     configuredOrigins.add("http://localhost:3001");
     configuredOrigins.add("http://127.0.0.1:3001");
   }
 
-  if (process.env.CONVEX_SITE_URL?.trim()) {
-    addTrustedOriginVariant(configuredOrigins, process.env.CONVEX_SITE_URL);
+  if (env.CONVEX_SITE_URL?.trim()) {
+    addTrustedOriginVariant(configuredOrigins, env.CONVEX_SITE_URL);
   }
 
-  for (const value of (process.env.ALLOWED_ORIGINS || "").split(",")) {
+  for (const value of (env.ALLOWED_ORIGINS || "").split(",")) {
     addTrustedOriginVariant(configuredOrigins, value);
   }
 
-  return [...configuredOrigins, nativeAppUrl];
+  return [...configuredOrigins, env.NATIVE_APP_URL?.trim() || "news-app://"];
 }
 
 function normalizeAuthActionUrl(url: string) {
