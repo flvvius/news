@@ -95,9 +95,20 @@ export const LIMITED_COVERAGE_FALLBACK: Record<
   "reformist" | "suveranist",
   string
 > = {
-  reformist: "Acoperire limitată din partea surselor cu cadrare reformistă.",
-  suveranist: "Acoperire limitată din partea surselor cu cadrare suveranistă.",
+  // BIV-805: user-visible fallback (stored as the perspective summary) — uses
+  // "orientare", not the "cadrare" calque; the LLM-internal prompt vocabulary
+  // is unchanged on purpose (model-facing, covered by the eval harness).
+  reformist: "Acoperire limitată din partea surselor cu orientare reformistă.",
+  suveranist: "Acoperire limitată din partea surselor cu orientare suveranistă.",
 };
+
+/**
+ * User-visible fallback stored when the model omits a perspective field
+ * (BIV-805: "perspectivă", not the "cadrare" calque). Lives here rather than
+ * in summarizationNode.ts so the non-Node test suite can lint its wording.
+ */
+export const SIDE_COVERAGE_FALLBACK =
+  "Acoperirea disponibilă nu oferă încă o perspectivă distinctă din această parte.";
 
 /**
  * Map a source's stored bias label (left/left-center/center/right-center/

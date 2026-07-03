@@ -40,7 +40,7 @@ const ro = {
     "Nu am putut trimite linkul de resetare. Încearcă din nou.",
   "auth.resetLinkSent":
     "Dacă acel e-mail există, am trimis un link de resetare a parolei.",
-  "auth.resetSendingStatus": "Trimitem emailul pentru resetarea parolei...",
+  "auth.resetSendingStatus": "Trimitem e-mailul pentru resetarea parolei...",
   "auth.checkEmailVerify": "Verifică e-mailul pentru a-ți confirma contul.",
   "auth.checkEmailVerifyDev":
     "Verifică e-mailul pentru a-ți confirma contul. Dacă nu apare nimic, folosește linkul de verificare afișat în logurile serverului.",
@@ -66,7 +66,7 @@ const ro = {
     "Accesează salvările, preferințele și experiența ta personalizată.",
   "auth.signUpTitle": "Creează-ți contul",
   "auth.signUpSubtitle":
-    "Contul gratuit deblochează salvările, feed-ul personalizat și notificările viitoare.",
+    "Contul gratuit deblochează salvările, feedul personalizat și notificările viitoare.",
   "auth.createAccount": "Creează cont",
   "auth.signingIn": "Te autentificăm...",
   "auth.creatingAccount": "Creăm contul...",
@@ -121,17 +121,17 @@ const ro = {
   "saved.none": "Nu ai salvări încă",
   "saved.noneBody":
     "Când găsești o poveste importantă, folosește iconița de salvare ca să o păstrezi aici.",
-  "saved.browseFeed": "Explorează feed-ul",
+  "saved.browseFeed": "Explorează feedul",
   "saved.summary.empty": "Articolele și evenimentele salvate vor apărea aici.",
   "saved.summary.one": "Ai 1 articol salvat pentru mai târziu.",
   "saved.summary.many": "Ai {count} articole salvate pentru mai târziu.",
   "saved.metaTitle": "Salvate — Biviant",
   "activity.empty.title": "Urmărește-ți obiceiurile de citire",
   "activity.empty.body":
-    "Vezi balanța de bias, streak-urile de citire și statisticile tale într-un singur loc.",
+    "Vezi balanța de bias, streakurile de citire și statisticile tale într-un singur loc.",
   "activity.loading.title": "Se încarcă activitatea",
   "activity.loading.body":
-    "Pregătim salvările, streak-urile și statisticile tale.",
+    "Pregătim salvările, streakurile și statisticile tale.",
   "activity.checking.title": "Verificăm sesiunea",
   "activity.checking.body":
     "Pregătim activitatea ta și verificăm starea contului.",
@@ -157,7 +157,7 @@ const ro = {
   "activity.readingHistoryEmpty": "Istoricul tău de lectură va apărea aici",
   "activity.sourcesOne": "1 sursă",
   "activity.sourcesMany": "{count} surse",
-  "activity.feedCard": "Explorează feed-ul",
+  "activity.feedCard": "Explorează feedul",
   "activity.feedCardBody": "Vezi subiectele de astăzi",
   "activity.savedCard": "Salvate",
   "activity.savedOne": "1 articol salvat",
@@ -330,7 +330,7 @@ const ro = {
   "onboarding.promise.cardTitle":
     "Liderii ajung la un acord provizoriu după negocieri de noapte",
   "onboarding.promise.cardSummary":
-    "Presa e împărțită în privința semnificației acordului — compară cum încadrează stânga, centrul și dreapta același rezultat.",
+    "Presa e împărțită în privința semnificației acordului — compară cum prezintă sursele reformiste, neutre și suveraniste același rezultat.",
   "onboarding.promise.continue": "Continuă",
   "onboarding.promise.privacyNotice":
     "Continuând, accepți că folosim analize anonime pentru a îmbunătăți Biviant. Poți renunța oricând în Setări.",
@@ -381,7 +381,7 @@ const ro = {
   "event.articles.other": "{count} articole",
   "event.follow": "Urmărește evenimentul",
   "event.biasDistribution":
-    "Distribuția cadrărilor surselor: {left} reformiste, {center} neutre, {right} suveraniste",
+    "Distribuția orientării surselor: {left} reformiste, {center} neutre, {right} suveraniste",
   "event.bias.left": "{count} reformiste",
   "event.bias.center": "{count} neutre",
   "event.bias.right": "{count} suveraniste",
@@ -401,9 +401,9 @@ const ro = {
   "event.meaning": "Ce înseamnă asta",
   "event.compareOriginal":
     "Acoperire grupată din mai multe surse. Compară mai jos articolele originale.",
-  "event.left": "Cadrare reformistă",
+  "event.left": "Formulare reformistă",
   "event.centerTab": "Neutru",
-  "event.right": "Cadrare suveranistă",
+  "event.right": "Formulare suveranistă",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -415,21 +415,21 @@ const ro = {
   "claim.divergences": "Divergențe",
   "claim.divergenceBody":
     "Afirmații unde sursele raportează detalii semnificativ diferite.",
-  "claim.framing": "Încadrare",
-  "claim.framings": "Diferențe de încadrare",
+  "claim.framing": "Formulare",
+  "claim.framings": "Diferențe de formulare",
   "claim.framingBody": "Fapte comune descrise cu limbaj semnificativ diferit.",
-  "claim.leftExclusive": "Exclusiv din stânga",
-  "claim.leftExclusives": "Exclusive din stânga",
+  "claim.leftExclusive": "Exclusiv reformist",
+  "claim.leftExclusives": "Exclusive reformiste",
   "claim.leftExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de stânga sau centru-stânga.",
-  "claim.rightExclusive": "Exclusiv din dreapta",
-  "claim.rightExclusives": "Exclusive din dreapta",
+    "Afirmații substanțiale găsite doar în surse reformiste sau apropiate de polul reformist.",
+  "claim.rightExclusive": "Exclusiv suveranist",
+  "claim.rightExclusives": "Exclusive suveraniste",
   "claim.rightExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de dreapta sau centru-dreapta.",
-  "claim.centerExclusive": "Exclusiv din centru",
-  "claim.centerExclusives": "Exclusive din centru",
+    "Afirmații substanțiale găsite doar în surse suveraniste sau apropiate de polul suveranist.",
+  "claim.centerExclusive": "Exclusiv neutru",
+  "claim.centerExclusives": "Exclusive neutre",
   "claim.centerExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de centru.",
+    "Afirmații substanțiale găsite doar în surse neutre.",
   "claim.unknownSource": "Sursă necunoscută",
   "claim.readSourceArticle": "Citește articolul sursă",
   "claim.importance": "importanță",
@@ -496,7 +496,7 @@ const ro = {
   "quiz.correct": "Corect",
   "quiz.incorrect": "Greșit",
   "quiz.type.claimAttribution": "Atribuirea afirmației",
-  "quiz.type.factCheck": "Fact check",
+  "quiz.type.factCheck": "Verificare factuală",
   "quiz.type.perspectiveMatch": "Potrivire de perspectivă",
   "quiz.type.coverageGap": "Lacună de acoperire",
   "quiz.type.question": "Întrebare",
@@ -570,11 +570,11 @@ const ro = {
   "unsubscribe.invalidTitle": "Link invalid",
   "unsubscribe.invalidBody":
     "Acest link de dezabonare nu conține adresa de e-mail. Folosește linkul primit în e-mail.",
-  "unsubscribe.goHome": "Mergi la început",
+  "unsubscribe.goHome": "Mergi la pagina principală",
   "unsubscribe.loading": "Te dezabonăm...",
   "unsubscribe.errorTitle": "Ceva nu a mers bine",
   "unsubscribe.errorBody":
-    "Nu am putut procesa cererea. Încearcă din nou sau răspunde la emailul nostru și te vom elimina manual.",
+    "Nu am putut procesa cererea. Încearcă din nou sau răspunde la e-mailul nostru și te vom elimina manual.",
   "unsubscribe.retry": "Încearcă din nou",
   "unsubscribe.successTitle": "Te-ai dezabonat",
   "unsubscribe.successBody":
@@ -609,13 +609,13 @@ const ro = {
   "source.mbfcCategory": "Categoria MBFC",
   "source.factualRating": "Scor factual",
   "source.credibilityLabel": "Credibilitate",
-  "source.rollingSample": "Eșantion AI rolling",
+  "source.rollingSample": "Eșantion AI glisant",
   "source.rollingArticles": "{count} articole",
   "source.mean": "Media {value}",
   "source.stddev": "Deviația standard {value}",
   "read.duration.seconds": "{count}s",
   "read.duration.minutes": "{count} min",
-  "scroll.depth": "{count}% profunzime",
+  "scroll.depth": "{count}% derulat",
   "source.recentReporting": "Relatări recente",
   "source.aiBias": "Bias AI {count}",
   "source.outlier": "Anomalie",
@@ -626,7 +626,7 @@ const ro = {
   "native.error.body":
     "Nu am putut încărca acest conținut. Verifică-ți conexiunea și încearcă din nou.",
   "native.error.retry": "Încearcă din nou",
-  "native.feed.errorTitle": "Nu am putut încărca feed-ul",
+  "native.feed.errorTitle": "Nu am putut încărca feedul",
   "native.feed.errorBody":
     "A apărut o problemă la încărcarea evenimentelor. Trage în jos pentru a reîncerca sau verifică-ți conexiunea.",
   "native.feed.searchEmpty":

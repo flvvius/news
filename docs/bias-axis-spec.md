@@ -80,10 +80,13 @@ equal visual weight.
 | Positive pole | Suveranist | Sovereigntist |
 | Center | Neutru | Neutral |
 | Perspective summary keys | `neutral` / `reformist` / `suveranist` | same |
-| Perspective display names | „Neutru" / „Cadrare reformistă" / „Cadrare suveranistă" | "Neutral" / "Reformist framing" / "Sovereigntist framing" |
+| Perspective display names | „Neutru" / „Formulare reformistă" / „Formulare suveranistă" | "Neutral" / "Reformist framing" / "Sovereigntist framing" |
 
 The perspective sections describe **framing**, not endorsement — copy must
-always say "cadrare/framing", never "the suveranist truth" or similar.
+always say "formulare/framing", never "the suveranist truth" or similar.
+(BIV-805: the earlier „cadrare" was a literal calque of "framing" and is not
+idiomatic Romanian in this sense; „formulare"/„mod de formulare" is the
+correct term and is banned-term-tested in the i18n catalog.)
 
 ## Explicitly out of scope for launch
 

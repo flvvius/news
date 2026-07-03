@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   GLOBAL_IMPACT_FALLBACK,
   LIMITED_COVERAGE_FALLBACK,
+  SIDE_COVERAGE_FALLBACK,
   buildArticleBiasScoringPrompt,
   buildEventSummaryPrompt,
 } from "./prompts";
@@ -59,6 +60,26 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
     expect(GLOBAL_IMPACT_FALLBACK).toMatch(/articolele furnizate/);
     expect(LIMITED_COVERAGE_FALLBACK.reformist).toMatch(/reformist/);
     expect(LIMITED_COVERAGE_FALLBACK.suveranist).toMatch(/suveranist/);
+  });
+
+  // BIV-805: these fallbacks are stored as perspective summaries and rendered
+  // to users, so they must not use the "cadrare" framing calque. The
+  // LLM-internal prompt vocabulary (cadrareaSursei etc.) is exempt — it is
+  // model-facing only.
+  test("user-visible fallbacks avoid the 'cadrare' calque (BIV-805)", () => {
+    const visible = [
+      GLOBAL_IMPACT_FALLBACK,
+      LIMITED_COVERAGE_FALLBACK.reformist,
+      LIMITED_COVERAGE_FALLBACK.suveranist,
+      SIDE_COVERAGE_FALLBACK,
+    ];
+    for (const text of visible) {
+      expect(text).not.toMatch(/cadrare|cadrăr|încadr/i);
+    }
+    expect(LIMITED_COVERAGE_FALLBACK.reformist).toContain(
+      "orientare reformistă",
+    );
+    expect(SIDE_COVERAGE_FALLBACK).toContain("perspectivă distinctă");
   });
 
   test("precomputed perspective counts count by framing group", () => {

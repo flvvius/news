@@ -8,7 +8,11 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
 import { callLLM } from "./lib/aiCall";
-import { buildEventSummaryPrompt, type EventSummaryOutput } from "./prompts";
+import {
+  buildEventSummaryPrompt,
+  SIDE_COVERAGE_FALLBACK,
+  type EventSummaryOutput,
+} from "./prompts";
 
 import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
 
@@ -143,8 +147,7 @@ function parseSummaryOutput(
 
   const record = parsed as Record<string, unknown>;
   const neutralFallback = `Acoperirea subiectului „${eventTitle}" este în curs de dezvoltare.`;
-  const sideFallback =
-    "Acoperirea disponibilă nu oferă încă o cadrare distinctă din această parte.";
+  const sideFallback = SIDE_COVERAGE_FALLBACK;
 
   return {
     neutral: cleanSummaryField(record.neutral, neutralFallback),
