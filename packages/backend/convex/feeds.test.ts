@@ -20,6 +20,63 @@ describe("Romanian feed list (BIV-101)", () => {
     expect(FEED_COUNT).toBeLessThanOrEqual(20);
   });
 
+  // BIV-806: suveranist balance additions must widen the mix without the
+  // ratio collapsing to 50/50, and reliability must stay honest.
+  test("bias mix is slightly more balanced, not equal (BIV-806)", () => {
+    const reformist = ALL_FEEDS.filter((f) => f.baseBias < 0).length;
+    const neutral = ALL_FEEDS.filter((f) => f.baseBias === 0).length;
+    const suveranist = ALL_FEEDS.filter((f) => f.baseBias > 0).length;
+    // Pinned to the BIV-806 outcome (8:5:6). A future deliberate rebalance
+    // must update this test AND docs/source-balance-biv806.md together.
+    expect({ reformist, neutral, suveranist }).toEqual({
+      reformist: 8,
+      neutral: 5,
+      suveranist: 6,
+    });
+    // Invariant behind the numbers: never equal or inverted.
+    expect(reformist).toBeGreaterThan(suveranist);
+  });
+
+  test("no Tier-C disinformation domain is ever ingested (BIV-806)", () => {
+    const tierC = ["flux24.ro", "solidnews.ro", "aznews.ro", "ortodoxinfo.ro"];
+    const feedDomains = new Set(ALL_FEEDS.map((f) => f.domain));
+    for (const domain of tierC) {
+      expect(feedDomains, `${domain} must never be a feed`).not.toContain(
+        domain,
+      );
+    }
+  });
+
+  test("reputation-only Tier-B domains stay out of the feed list (BIV-806)", () => {
+    // Low-volume/unstable outlets are rated but deliberately not ingested.
+    const reputationOnly = [
+      "napocanews.ro",
+      "certitudinea.ro",
+      "buciumul.ro",
+      "ziarulnatiunea.ro",
+    ];
+    const feedDomains = new Set(ALL_FEEDS.map((f) => f.domain));
+    for (const domain of reputationOnly) {
+      expect(feedDomains, `${domain} is reputation-only`).not.toContain(
+        domain,
+      );
+    }
+  });
+
+  test("tier-3 balance feeds carry honest (low/moderate) reliability (BIV-806)", () => {
+    const tier3 = ALL_FEEDS.filter((f) => f.tier === 3);
+    expect(tier3.length).toBeGreaterThanOrEqual(4);
+    for (const feed of tier3) {
+      expect(feed.baseBias, `${feed.domain} must be suveranist-leaning`)
+        .toBeGreaterThan(0);
+      expect(
+        feed.reliabilityScore,
+        `${feed.domain} must not carry a misleadingly high reliability`,
+      ).toBeLessThanOrEqual(4);
+      expect(feed.mbfc.credibility).toBe("low");
+    }
+  });
+
   test("contains the full verified-direct tier-1 set", () => {
     const domains = new Set(ALL_FEEDS.map((f) => f.domain));
     for (const domain of TIER_1_DOMAINS) {
@@ -28,10 +85,15 @@ describe("Romanian feed list (BIV-101)", () => {
   });
 
   test("contains only Romanian sources", () => {
+    // Romanian outlets that publish under a non-.ro domain.
+    const romanianNonRoDomains = new Set([
+      "romania.europalibera.org",
+      "realitatea.net",
+      "romaniatv.net",
+    ]);
     for (const feed of ALL_FEEDS) {
       const isRomanian =
-        feed.domain.endsWith(".ro") ||
-        feed.domain === "romania.europalibera.org";
+        feed.domain.endsWith(".ro") || romanianNonRoDomains.has(feed.domain);
       expect(isRomanian, `${feed.domain} is not a Romanian source`).toBe(true);
     }
   });
@@ -47,7 +109,7 @@ describe("Romanian feed list (BIV-101)", () => {
     for (const feed of ALL_FEEDS) {
       expect(feed.url).toMatch(/^https:\/\//);
       expect(feed.name.length).toBeGreaterThan(0);
-      expect([1, 2]).toContain(feed.tier);
+      expect([1, 2, 3]).toContain(feed.tier);
       expect(feed.baseBias).toBeGreaterThanOrEqual(-5);
       expect(feed.baseBias).toBeLessThanOrEqual(5);
       expect(feed.reliabilityScore).toBeGreaterThanOrEqual(1);

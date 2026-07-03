@@ -16,9 +16,9 @@ const modules = (
 ).glob("./**/!(*.*.*)*.*s");
 
 describe("Romanian source reputation seed (BIV-401)", () => {
-  test("covers 15-25 outlets, each well-formed with a provenance note", () => {
+  test("covers 15-40 outlets, each well-formed with a provenance note", () => {
     expect(ROMANIAN_SOURCE_REPUTATION.length).toBeGreaterThanOrEqual(15);
-    expect(ROMANIAN_SOURCE_REPUTATION.length).toBeLessThanOrEqual(25);
+    expect(ROMANIAN_SOURCE_REPUTATION.length).toBeLessThanOrEqual(40);
 
     for (const entry of ROMANIAN_SOURCE_REPUTATION) {
       expect(entry.biasScore).toBeGreaterThanOrEqual(-5);
@@ -65,6 +65,49 @@ describe("Romanian source reputation seed (BIV-401)", () => {
       const entry = getSourceReputation(domain);
       expect(entry, `${domain} must be seeded`).toBeDefined();
       expect(entry!.reliabilityScore).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  // BIV-806: the balance additions carry BOTH an axis score and an
+  // independently-assigned reliability score, and no Tier-C disinformation
+  // node ever rises above bottom reliability.
+  test("BIV-806 balance additions have axis + honest reliability scores", () => {
+    const additions: Record<string, { maxReliability: number }> = {
+      // Tier A — mainstream suveranist-leaning, moderate(-low) reliability
+      "romaniatv.net": { maxReliability: 4 },
+      "realitatea.net": { maxReliability: 4 },
+      // Tier B — hard nationalist, low reliability
+      "activenews.ro": { maxReliability: 3 },
+      "national.ro": { maxReliability: 3 },
+      "napocanews.ro": { maxReliability: 3 },
+      "certitudinea.ro": { maxReliability: 3 },
+      "buciumul.ro": { maxReliability: 3 },
+      "ziarulnatiunea.ro": { maxReliability: 3 },
+    };
+    for (const [domain, { maxReliability }] of Object.entries(additions)) {
+      const entry = getSourceReputation(domain);
+      expect(entry, `${domain} must be seeded`).toBeDefined();
+      expect(entry!.biasScore, `${domain} must be suveranist-leaning`)
+        .toBeGreaterThan(0);
+      expect(entry!.biasScore).toBeLessThanOrEqual(5);
+      expect(entry!.reliabilityScore).toBeGreaterThanOrEqual(1);
+      expect(
+        entry!.reliabilityScore,
+        `${domain} reliability must stay honest`,
+      ).toBeLessThanOrEqual(maxReliability);
+    }
+  });
+
+  test("Tier-C disinformation nodes never exceed bottom reliability (BIV-806)", () => {
+    const tierC = ["flux24.ro", "solidnews.ro", "aznews.ro", "ortodoxinfo.ro"];
+    for (const domain of tierC) {
+      const entry = getSourceReputation(domain);
+      expect(entry, `${domain} must be seeded (rated LOW, not neutral)`)
+        .toBeDefined();
+      expect(
+        entry!.reliabilityScore,
+        `${domain} must sit at bottom reliability`,
+      ).toBeLessThanOrEqual(1);
     }
   });
 

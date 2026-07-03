@@ -36,8 +36,12 @@ export interface FeedEntry {
   name: string;
   /** Primary domain (used for source lookup + dedup) */
   domain: string;
-  /** Ramp tier: 1 = verified-direct launch core, 2 = mainstream reach */
-  tier: 1 | 2;
+  /**
+   * Ramp tier: 1 = verified-direct launch core, 2 = mainstream reach,
+   * 3 = suveranist balance additions (BIV-806) — included for axis balance,
+   * never for credibility; their reliability scores stay honest and low-ish.
+   */
+  tier: 1 | 2 | 3;
   /** Curated ratings (MBFC where rated; otherwise editor-curated equivalent) */
   mbfc: MBFCData;
   /** Numeric bias from the reputation seed: -5 (reformist) to +5 (suveranist) */
@@ -179,6 +183,52 @@ const TIER_2: FeedDefinition[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Tier 3 — suveranist balance additions (BIV-806)
+//
+// The launch mix skewed reformist (8 reformist / 5 neutral / 2 suveranist
+// feeds). These four move the ratio to 8:5:6 — "slightly more balanced, not
+// equal" — while reliability stays independently honest (3/3/2/3). Each feed
+// fetch-verified live 2026-07-03. Candidates that failed verification or are
+// too low-volume (Buciumul — intermittently empty feed; Certitudinea, Napoca
+// News, Națiunea — low-volume opinion/republication) are rated in
+// sourceReputation.ts but NOT ingested. Tier C disinformation nodes (Flux24,
+// SolidNews, AzNews, OrtodoxINFO) are never ingested — reputation rows with
+// bottom reliability only. See docs/source-balance-biv806.md.
+// ---------------------------------------------------------------------------
+const TIER_3: FeedDefinition[] = [
+  {
+    // /rss 301s here; use the canonical endpoint (origin is slow — ~7s).
+    url: "https://www.romaniatv.net/feed",
+    name: "România TV",
+    domain: "romaniatv.net",
+    tier: 3,
+    mbfc: { category: "right", factual: "mixed", credibility: "low" },
+  },
+  {
+    // Canonical homepage feed advertised in the site <head> (no /rss route).
+    url: "https://www.realitatea.net/access/share/feeds/rss/homepage.xml",
+    name: "Realitatea Plus",
+    domain: "realitatea.net",
+    tier: 3,
+    mbfc: { category: "right", factual: "mixed", credibility: "low" },
+  },
+  {
+    url: "https://www.activenews.ro/rss",
+    name: "ActiveNews",
+    domain: "activenews.ro",
+    tier: 3,
+    mbfc: { category: "right", factual: "low", credibility: "low" },
+  },
+  {
+    url: "https://www.national.ro/feed",
+    name: "Național",
+    domain: "national.ro",
+    tier: 3,
+    mbfc: { category: "right", factual: "mixed", credibility: "low" },
+  },
+];
+
 function withReputation(definition: FeedDefinition): FeedEntry {
   const reputation = getSourceReputation(definition.domain);
   if (!reputation) {
@@ -199,7 +249,7 @@ function withReputation(definition: FeedDefinition): FeedEntry {
 // ---------------------------------------------------------------------------
 // All feeds — single export
 // ---------------------------------------------------------------------------
-export const ALL_FEEDS: FeedEntry[] = [...TIER_1, ...TIER_2].map(
+export const ALL_FEEDS: FeedEntry[] = [...TIER_1, ...TIER_2, ...TIER_3].map(
   withReputation,
 );
 

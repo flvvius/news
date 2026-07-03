@@ -217,9 +217,9 @@ export const ROMANIAN_SOURCE_REPUTATION: SourceReputationEntry[] = [
     domain: "solidnews.ro",
     name: "SolidNews",
     biasScore: 4,
-    reliabilityScore: 2,
+    reliabilityScore: 1,
     provenance:
-      "Veridica top fake-news list; suveranist disinformation narratives. Hand-scored 2026-07.",
+      "Veridica top fake-news list; pro-Kremlin disinformation node (Tier C, BIV-806) — bottom reliability. Hand-scored 2026-07.",
   },
   {
     domain: "realitatea.net",
@@ -228,6 +228,70 @@ export const ROMANIAN_SOURCE_REPUTATION: SourceReputationEntry[] = [
     reliabilityScore: 3,
     provenance:
       "Veridica-flagged narratives; strongly suveranist-aligned TV framing. Hand-scored 2026-07.",
+  },
+  // ── BIV-806: suveranist balance additions ─────────────────────────────
+  // Bias balance must never degrade reliability integrity: axis score and
+  // reliabilityScore are assigned independently. Tier A = mainstream
+  // suveranist-leaning (moderate-low reliability); Tier B = hard
+  // nationalist (low reliability, capped ≤3); Tier C = documented
+  // disinformation nodes (bottom reliability 1, never ingested as feeds —
+  // rated here only so overlay/discovery articles resolve to a rated LOW
+  // source instead of a neutral default).
+  {
+    domain: "romaniatv.net",
+    name: "România TV",
+    biasScore: 3,
+    reliabilityScore: 3,
+    provenance:
+      "Tier A balance addition (BIV-806): mainstream suveranist-leaning TV; repeated CNA sanctions for accuracy/sensationalism. Hand-scored 2026-07.",
+  },
+  {
+    domain: "napocanews.ro",
+    name: "Napoca News",
+    biasScore: 4,
+    reliabilityScore: 2,
+    provenance:
+      "Tier B balance addition (BIV-806): hard nationalist/suveranist framing (glasul.info suveranist list); weak sourcing standards. Hand-scored 2026-07.",
+  },
+  {
+    domain: "certitudinea.ro",
+    name: "Certitudinea",
+    biasScore: 5,
+    reliabilityScore: 2,
+    provenance:
+      "Tier B balance addition (BIV-806): nationalist-conspiracist framing, opinion-heavy, low publication volume. Hand-scored 2026-07.",
+  },
+  {
+    domain: "buciumul.ro",
+    name: "Buciumul",
+    biasScore: 4,
+    reliabilityScore: 2,
+    provenance:
+      "Tier B balance addition (BIV-806): traditionalist-nationalist framing; RSS unstable (empty responses at verification 2026-07-03), not ingested. Hand-scored 2026-07.",
+  },
+  {
+    domain: "ziarulnatiunea.ro",
+    name: "Națiunea",
+    biasScore: 4,
+    reliabilityScore: 2,
+    provenance:
+      "Tier B balance addition (BIV-806): nationalist framing, largely opinion/republication, low volume. Hand-scored 2026-07.",
+  },
+  {
+    domain: "flux24.ro",
+    name: "Flux24",
+    biasScore: 5,
+    reliabilityScore: 1,
+    provenance:
+      "Tier C (BIV-806): identified as a pro-Kremlin narrative relay (universul.net network investigation); never ingest as credible. Hand-scored 2026-07.",
+  },
+  {
+    domain: "aznews.ro",
+    name: "AzNews",
+    biasScore: 5,
+    reliabilityScore: 1,
+    provenance:
+      "Tier C (BIV-806): identified as a pro-Kremlin narrative relay (universul.net network investigation); never ingest as credible. Hand-scored 2026-07.",
   },
 ];
 
