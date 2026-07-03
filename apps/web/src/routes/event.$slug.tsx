@@ -4,12 +4,9 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { z } from "zod";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
-import EventClaimComparison from "@/components/feed/event-claim-comparison";
-import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
+import { EventDetailTabs } from "@/components/feed/event-detail-tabs";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import {
@@ -247,16 +244,9 @@ function EventDetailPage() {
   const { event, articles } = eventData;
   type Article = (typeof articles)[number];
   type Source = Article["source"];
-  const hasPerspectives =
-    event.perspectiveSummaries?.reformist || event.perspectiveSummaries?.suveranist;
   const sourceCount = new Set(
     articles.map((article: Article) => article.source?._id).filter(Boolean),
   ).size;
-  const tabCount = [
-    event.perspectiveSummaries?.reformist ? "left" : null,
-    "center",
-    event.perspectiveSummaries?.suveranist ? "right" : null,
-  ].filter(Boolean).length;
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const interactionContext = buildInteractionContextFromSources(
     articles.map((article: Article) => article.source),
@@ -386,116 +376,12 @@ function EventDetailPage() {
             </div>
           </section>
 
-          <Tabs defaultValue="perspectives" className="gap-5">
-            <TabsList className="grid h-11 w-full grid-cols-2 rounded-full bg-muted/70 p-1">
-              <TabsTrigger
-                className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
-                value="perspectives"
-              >
-                {t("event.perspectives")}
-              </TabsTrigger>
-              <TabsTrigger
-                className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
-                value="claims"
-              >
-                {t("event.claimBreakdown")}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent
-              value="perspectives"
-              className="space-y-5 sm:space-y-8"
-            >
-              {hasPerspectives ? (
-                <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
-                    <CardTitle className="text-xl tracking-tight">
-                      {t("event.multiplePerspectives")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
-                    <Tabs defaultValue="center" className="w-full gap-5">
-                      <TabsList
-                        className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
-                      >
-                        {event.perspectiveSummaries?.reformist && (
-                          <TabsTrigger value="left">
-                            {t("event.left")}
-                          </TabsTrigger>
-                        )}
-                        <TabsTrigger value="center">
-                          {t("event.centerTab")}
-                        </TabsTrigger>
-                        {event.perspectiveSummaries?.suveranist && (
-                          <TabsTrigger value="right">
-                            {t("event.right")}
-                          </TabsTrigger>
-                        )}
-                      </TabsList>
-
-                      {event.perspectiveSummaries?.reformist && (
-                        <TabsContent value="left">
-                          <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                            {event.perspectiveSummaries.reformist}
-                          </p>
-                        </TabsContent>
-                      )}
-
-                      <TabsContent value="center">
-                        <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                          {event.perspectiveSummaries?.neutral ??
-                            t("event.summaryPending")}
-                        </p>
-                      </TabsContent>
-
-                      {event.perspectiveSummaries?.suveranist && (
-                        <TabsContent value="right">
-                          <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                            {event.perspectiveSummaries.suveranist}
-                          </p>
-                        </TabsContent>
-                      )}
-                    </Tabs>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 py-3 sm:py-4">
-                    <CardTitle className="text-xl tracking-tight">
-                      {t("event.summary")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-6 pt-3 pb-4 sm:px-8 sm:pt-4 sm:pb-5">
-                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.perspectiveSummaries?.neutral ??
-                        t("event.compareOriginal")}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {event.globalImpact && (
-                <Card className="overflow-hidden border-border/80 py-0">
-                  <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
-                    <CardTitle className="text-xl tracking-tight">
-                      {t("event.meaning")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
-                    <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                      {event.globalImpact}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              <SourceCoverageSummary articles={articles} />
-            </TabsContent>
-
-            <TabsContent value="claims">
-              <EventClaimComparison eventId={event._id} articles={articles} />
-            </TabsContent>
-          </Tabs>
+          <EventDetailTabs
+            eventId={event._id}
+            perspectiveSummaries={event.perspectiveSummaries}
+            globalImpact={event.globalImpact}
+            articles={articles}
+          />
 
           <ArticlesList eventId={event._id} articles={articles} />
         </div>

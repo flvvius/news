@@ -7,6 +7,11 @@ import { redirect } from "@tanstack/react-router";
 export const FEATURE_FLAGS = {
   /** Quiz screen + every quiz CTA. Off for the Romanian launch (BIV-802). */
   quiz: false,
+  /**
+   * "Analiza afirmațiilor" claims tab on event detail. The claim-analysis
+   * pipeline is paused (BIV-602), so its UI must not ship (BIV-804).
+   */
+  claimAnalysis: false,
 } as const;
 
 /**
