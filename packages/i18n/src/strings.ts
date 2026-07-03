@@ -266,28 +266,6 @@ const ro = {
   "footer.terms": "Termeni",
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
-  "placeholder.inProgress": "Pagina este în lucru.",
-  "page.about.title": "Despre noi",
-  "page.about.body":
-    "Pagina este în lucru. Pregătim o prezentare scurtă despre Biviant și misiunea noastră.",
-  "page.contact.title": "Contact",
-  "page.contact.body":
-    "Pagina este în lucru. Vom adăuga în curând detaliile de contact și canalele prin care ne poți scrie.",
-  "page.partners.title": "Parteneri",
-  "page.partners.body":
-    "Pagina este în lucru. Aici vor apărea partenerii, colaborările și inițiativele susținute de Biviant.",
-  "page.how.title": "Cum funcționează",
-  "page.how.body":
-    "Pagina este în lucru. Pregătim o explicație simplă despre feed, analiza biasului și comparația dintre surse.",
-  "page.privacy.title": "Politica de confidențialitate",
-  "page.privacy.body":
-    "Pagina este în lucru. Vom publica aici informațiile despre datele colectate, utilizare și drepturile tale.",
-  "page.terms.title": "Termeni",
-  "page.terms.body":
-    "Pagina este în lucru. Urmează să adăugăm termenii și condițiile de utilizare pentru Biviant.",
-  "page.sources.title": "Sursele noastre",
-  "page.sources.body":
-    "Pagina este în lucru. În curând vei vedea cum selectăm sursele și cum construim perspectivele din feed.",
   "feed.meta.title": "Feed — Biviant",
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
@@ -998,28 +976,6 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.terms": "Terms",
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
-  "placeholder.inProgress": "Page under construction.",
-  "page.about.title": "About us",
-  "page.about.body":
-    "Page under construction. We are preparing a short introduction to Biviant and our mission.",
-  "page.contact.title": "Contact",
-  "page.contact.body":
-    "Page under construction. We will add contact details and ways to reach us soon.",
-  "page.partners.title": "Partners",
-  "page.partners.body":
-    "Page under construction. This is where Biviant partners, collaborations, and supported initiatives will appear.",
-  "page.how.title": "How it works",
-  "page.how.body":
-    "Page under construction. We are preparing a simple explanation of the feed, bias analysis, and source comparison.",
-  "page.privacy.title": "Privacy policy",
-  "page.privacy.body":
-    "Page under construction. We will publish information here about collected data, usage, and your rights.",
-  "page.terms.title": "Terms",
-  "page.terms.body":
-    "Page under construction. We will add Biviant’s terms and conditions here soon.",
-  "page.sources.title": "Our sources",
-  "page.sources.body":
-    "Page under construction. Soon you will see how we select sources and build perspectives in the feed.",
   "feed.meta.title": "Feed — Biviant",
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
