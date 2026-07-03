@@ -18,7 +18,7 @@ export default function AuthPromptBanner({
   const resolvedTitle = title ?? t("auth.promptTitle");
 
   return (
-    <section className="rounded-[1.2rem] border border-border/70 bg-card/80 p-5 shadow-sm">
+    <section className="rounded-lg border border-border p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-semibold tracking-tight">

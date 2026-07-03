@@ -8,6 +8,11 @@ type SignInPromptProps = {
   title: string;
   description: string;
   redirectTo: AuthRedirectPath;
+  /**
+   * Kept for API compatibility but ignored (BIV-807): the native DESIGN_LOG
+   * deleted icon-circle illustrations from empty/prompt states — the state
+   * is typographic, one message + actions.
+   */
   illustration?: ReactNode;
 };
 
@@ -15,18 +20,14 @@ export function SignInPrompt({
   title,
   description,
   redirectTo,
-  illustration,
 }: SignInPromptProps) {
   const t = useT();
 
   return (
-    <div className="bg-linear-to-b from-background via-background to-muted/35">
+    <div className="bg-background">
       <div className="container mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center px-4 py-10 sm:py-14">
-        <div className="mx-auto w-full max-w-xl rounded-[1.75rem] border border-border/70 bg-card/80 p-8 text-center shadow-sm sm:p-10">
-          {illustration ? (
-            <div className="mb-6 flex justify-center">{illustration}</div>
-          ) : null}
-          <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <div className="mx-auto w-full max-w-xl text-center">
+          <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
             {description}
           </p>
