@@ -20,6 +20,7 @@ import { SignInPrompt } from "@/components/SignInPrompt";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { guardQuizRoute } from "@/lib/feature-flags";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -76,6 +77,11 @@ type GradeQuestionVariables = {
 };
 
 export const Route = createFileRoute("/quiz")({
+  // BIV-802: quiz is feature-flagged off for launch — direct navigation
+  // redirects to the feed instead of rendering a hidden screen.
+  beforeLoad: () => {
+    guardQuizRoute();
+  },
   head: ({ matches }) => {
     const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "quiz.metaTitle");

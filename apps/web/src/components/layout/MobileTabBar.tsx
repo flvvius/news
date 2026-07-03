@@ -2,6 +2,7 @@ import { Bookmark, BarChart3, BrainCircuit, Newspaper, User } from "lucide-react
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ComponentType, MouseEvent } from "react";
 import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +21,7 @@ type TabKey =
 
 type TabDefinition = TabItem & { key: TabKey };
 
-const tabDefinitions: readonly TabDefinition[] = [
+const allTabDefinitions: readonly TabDefinition[] = [
   {
     to: "/feed",
     key: "tabs.feed",
@@ -35,6 +36,17 @@ const tabDefinitions: readonly TabDefinition[] = [
   { to: "/activitate", key: "tabs.activity", icon: BarChart3 },
   { to: "/profil", key: "tabs.profile", icon: User },
 ];
+
+// Quiz tab hidden while its feature flag is off (BIV-802). Exported so tests
+// can assert the visible set without rendering the router.
+export const tabDefinitions = allTabDefinitions.filter(
+  (tab) => tab.to !== "/quiz" || FEATURE_FLAGS.quiz,
+);
+
+// Tailwind needs literal class names, so pick the column class explicitly
+// instead of interpolating the tab count.
+const gridColsClass =
+  tabDefinitions.length === 5 ? "grid-cols-5" : "grid-cols-4";
 
 function matchesPath(pathname: string, to: string, allowPrefix = false) {
   return pathname === to || (allowPrefix && pathname.startsWith(`${to}/`));
@@ -70,7 +82,7 @@ export function MobileTabBar() {
       style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="mx-auto max-w-md rounded-[1.4rem] border border-border bg-background/92 p-2 shadow-lg shadow-foreground/5 backdrop-blur-xl">
-        <div className="grid grid-cols-5 gap-1">
+        <div className={cn("grid gap-1", gridColsClass)}>
         {tabDefinitions.map(({ to, key, icon: Icon, isActive: customIsActive }) => {
           const isActive = customIsActive
             ? customIsActive(pathname)

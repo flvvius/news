@@ -13,12 +13,12 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { formatRelativeTimestamp } from "@/lib/dates";
 import {
   Bookmark,
-  BrainCircuit,
   ChevronRight,
   Flame,
   Newspaper,
   Sparkles,
 } from "lucide-react";
+import { QuizCta } from "@/components/quiz-cta";
 
 function formatReadDuration(
   t: ReturnType<typeof useT>,
@@ -259,22 +259,7 @@ function AuthorizedDashboard({
             </div>
           </div>
 
-          <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <BrainCircuit className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-semibold">{t("quiz.cta.activityTitle")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("quiz.cta.activityBody")}
-                </p>
-              </div>
-            </div>
-            <Button asChild size="sm" className="shrink-0">
-              <Link to="/quiz">{t("quiz.cta.action")}</Link>
-            </Button>
-          </section>
+          <QuizCta variant="activity" />
 
           {/* Activity + Bias Row */}
           <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">

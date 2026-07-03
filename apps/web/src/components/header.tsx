@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import {
@@ -20,13 +21,19 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-const links = [
+const allLinks = [
   { to: "/feed", key: "tabs.feed", icon: Newspaper },
   { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },
   { to: "/activitate", key: "tabs.activity", icon: LayoutDashboard },
   { to: "/profil", key: "tabs.profile", icon: User },
 ] as const;
+
+// Quiz stays out of the nav while its feature flag is off (BIV-802).
+// Exported so tests can assert the visible set without rendering the router.
+export const links = allLinks.filter(
+  (link) => link.to !== "/quiz" || FEATURE_FLAGS.quiz,
+);
 
 export default function Header() {
   const [open, setOpen] = useState(false);
