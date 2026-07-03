@@ -4,7 +4,6 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BiasIndicator from "@/components/bias-indicator";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { useT } from "@/lib/i18n/LocaleContext";
@@ -72,45 +71,21 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
   };
 
   return (
-    <Card className="overflow-hidden border-border/80 py-0">
-      <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-        <CardTitle className="text-xl tracking-tight">
-          {t("articles.originalReporting")} ({articles.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
-        <div className="space-y-4">
-          {articles.map((article) => (
-            <div
-              key={article._id}
-              className="overflow-hidden rounded-[1rem] border border-border/70 bg-card"
-            >
-              <div className="grid gap-0 md:grid-cols-[minmax(0,0.34fr)_minmax(0,1fr)]">
-                <div className="aspect-[4/3] overflow-hidden border-b border-border/70 bg-muted/40 md:aspect-auto md:border-r md:border-b-0">
-                  {article.imageUrl ? (
-                    <img
-                      src={article.imageUrl}
-                      alt={article.imageAlt ?? article.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
-                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        {article.source?.name ?? t("articles.source")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex min-w-0 flex-col gap-4 p-5">
+    <section className="space-y-2 border-t border-border pt-6">
+      <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {t("articles.originalReporting")} ({articles.length})
+      </h2>
+      <div className="flex flex-col divide-y divide-border">
+        {articles.map((article) => (
+          <div key={article._id} className="py-5">
+            <div className="flex min-w-0 flex-col gap-3">
                   <div className="flex flex-wrap items-center gap-3">
                     {article.source && (
                       <>
                         <Link
                           to="/source/$sourceId"
                           params={{ sourceId: article.source._id }}
-                          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background transition-colors hover:bg-muted"
+                          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-background transition-colors hover:bg-muted"
                           aria-label={t("articles.viewSource").replace(
                             "{name}",
                             article.source.name,
@@ -133,7 +108,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                           <Link
                             to="/source/$sourceId"
                             params={{ sourceId: article.source._id }}
-                            className="text-sm font-medium text-card-foreground hover:underline"
+                            className="text-sm font-medium text-foreground hover:underline"
                             onClick={() => logSourceClick(article)}
                           >
                             {article.source.name}
@@ -152,7 +127,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                   </div>
 
                   <div className="space-y-2">
-                    <h3 className="text-lg font-semibold leading-snug tracking-tight text-card-foreground">
+                    <h3 className="text-base font-semibold leading-snug tracking-tight text-foreground">
                       {article.title}
                     </h3>
 
@@ -188,14 +163,12 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                         />
                       </svg>
                     </a>
-                  </div>
-                </div>
               </div>
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 };
 

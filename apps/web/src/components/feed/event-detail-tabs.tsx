@@ -1,5 +1,4 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
@@ -50,95 +49,92 @@ export function EventDetailTabs({
   const hasPerspectives = Boolean(
     perspectiveSummaries?.reformist || perspectiveSummaries?.suveranist,
   );
-  const tabCount = [
-    perspectiveSummaries?.reformist ? "left" : null,
-    "center",
-    perspectiveSummaries?.suveranist ? "right" : null,
-  ].filter(Boolean).length;
+
+  // Zone label + section rhythm from the native DESIGN_LOG: hierarchy runs
+  // label → content (uppercase tracked label, not competing headlines), and
+  // sections separate with mt-8 + hairline + pt-6.
+  const zoneLabel = "text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground";
+  const sectionBreak = "mt-8 border-t border-border pt-6";
+  const bodyText =
+    "max-w-[65ch] text-[15px] leading-relaxed text-foreground sm:text-base";
+  // Perspective tabs: bias-token underline instead of pill chrome.
+  const underlineTrigger =
+    "flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0 pb-2 pt-1 text-sm font-medium text-muted-foreground shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent dark:data-[state=active]:border-b-2";
 
   const perspectivesPanel = (
     <>
       {hasPerspectives ? (
-        <Card className="overflow-hidden border-border/80 py-0">
-          <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
-            <CardTitle className="text-xl tracking-tight">
-              {t("event.multiplePerspectives")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
-            <Tabs defaultValue="center" className="w-full gap-5">
-              <TabsList
-                className={`grid w-full ${({ 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" } as Record<number, string>)[tabCount] ?? "grid-cols-3"}`}
-              >
-                {perspectiveSummaries?.reformist && (
-                  <TabsTrigger value="left">{t("event.left")}</TabsTrigger>
-                )}
-                <TabsTrigger value="center">{t("event.centerTab")}</TabsTrigger>
-                {perspectiveSummaries?.suveranist && (
-                  <TabsTrigger value="right">{t("event.right")}</TabsTrigger>
-                )}
-              </TabsList>
-
+        <section className="space-y-4">
+          <h2 className={zoneLabel}>{t("event.multiplePerspectives")}</h2>
+          <Tabs defaultValue="center" className="w-full gap-4">
+            <TabsList className="flex h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
               {perspectiveSummaries?.reformist && (
-                <TabsContent value="left">
-                  <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                    {perspectiveSummaries.reformist}
-                  </p>
-                </TabsContent>
+                <TabsTrigger
+                  value="left"
+                  className={`${underlineTrigger} data-[state=active]:border-bias-left dark:data-[state=active]:border-bias-left`}
+                >
+                  {t("event.left")}
+                </TabsTrigger>
               )}
-
-              <TabsContent value="center">
-                <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                  {perspectiveSummaries?.neutral ?? t("event.summaryPending")}
-                </p>
-              </TabsContent>
-
+              <TabsTrigger
+                value="center"
+                className={`${underlineTrigger} data-[state=active]:border-bias-center dark:data-[state=active]:border-bias-center`}
+              >
+                {t("event.centerTab")}
+              </TabsTrigger>
               {perspectiveSummaries?.suveranist && (
-                <TabsContent value="right">
-                  <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-                    {perspectiveSummaries.suveranist}
-                  </p>
-                </TabsContent>
+                <TabsTrigger
+                  value="right"
+                  className={`${underlineTrigger} data-[state=active]:border-bias-right dark:data-[state=active]:border-bias-right`}
+                >
+                  {t("event.right")}
+                </TabsTrigger>
               )}
-            </Tabs>
-          </CardContent>
-        </Card>
+            </TabsList>
+
+            {perspectiveSummaries?.reformist && (
+              <TabsContent value="left">
+                <p className={bodyText}>{perspectiveSummaries.reformist}</p>
+              </TabsContent>
+            )}
+
+            <TabsContent value="center">
+              <p className={bodyText}>
+                {perspectiveSummaries?.neutral ?? t("event.summaryPending")}
+              </p>
+            </TabsContent>
+
+            {perspectiveSummaries?.suveranist && (
+              <TabsContent value="right">
+                <p className={bodyText}>{perspectiveSummaries.suveranist}</p>
+              </TabsContent>
+            )}
+          </Tabs>
+        </section>
       ) : (
-        <Card className="overflow-hidden border-border/80 py-0">
-          <CardHeader className="border-b border-border/70 bg-muted/30 py-3 sm:py-4">
-            <CardTitle className="text-xl tracking-tight">
-              {t("event.summary")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pt-3 pb-4 sm:px-8 sm:pt-4 sm:pb-5">
-            <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-              {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
-            </p>
-          </CardContent>
-        </Card>
+        <section className="space-y-4">
+          <h2 className={zoneLabel}>{t("event.summary")}</h2>
+          <p className={bodyText}>
+            {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
+          </p>
+        </section>
       )}
 
       {globalImpact && (
-        <Card className="overflow-hidden border-border/80 py-0">
-          <CardHeader className="border-b border-border/70 bg-muted/30 pt-3 sm:pt-4">
-            <CardTitle className="text-xl tracking-tight">
-              {t("event.meaning")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4 sm:px-8 sm:pb-5">
-            <p className="max-w-[65ch] text-sm text-card-foreground sm:text-base">
-              {globalImpact}
-            </p>
-          </CardContent>
-        </Card>
+        <section className={`${sectionBreak} space-y-4`}>
+          <h2 className={zoneLabel}>{t("event.meaning")}</h2>
+          <p className={bodyText}>{globalImpact}</p>
+        </section>
       )}
 
-      <SourceCoverageSummary articles={articles} />
+      <div className={sectionBreak}>
+        <SourceCoverageSummary articles={articles} />
+      </div>
     </>
   );
 
   if (!FEATURE_FLAGS.claimAnalysis) {
-    return <div className="space-y-5 sm:space-y-8">{perspectivesPanel}</div>;
+    return <div>{perspectivesPanel}</div>;
   }
 
   return (

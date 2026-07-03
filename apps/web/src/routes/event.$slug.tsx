@@ -243,7 +243,6 @@ function EventDetailPage() {
 
   const { event, articles } = eventData;
   type Article = (typeof articles)[number];
-  type Source = Article["source"];
   const sourceCount = new Set(
     articles.map((article: Article) => article.source?._id).filter(Boolean),
   ).size;
@@ -253,127 +252,70 @@ function EventDetailPage() {
   );
 
   return (
-    <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-4xl px-3 py-4 sm:px-4 sm:py-10">
-        <div className="flex flex-col gap-5 sm:gap-8">
+    <div className="bg-background">
+      <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
+        <div className="flex flex-col gap-6 sm:gap-8">
           <button
             type="button"
             onClick={handleBackToFeed}
-            className="inline-flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center self-start text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             &larr; {t("event.backToFeed")}
           </button>
 
-          <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
-            <div className="aspect-video overflow-hidden border-b border-border/70 bg-muted/40">
-              {event.imageUrl ? (
+          {/* Editorial-calm hero (BIV-807, native DESIGN_LOG): typographic,
+              no card shell; 3:2 content-width photo with hairline border;
+              header actions are plain icon buttons. */}
+          <section className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {t("event.overview")}
+              </p>
+              <div className="flex items-center gap-1">
+                <BookmarkButton
+                  eventId={event._id}
+                  interactionContext={interactionContext}
+                  redirectTo={`/event/${event.slug}`}
+                />
+                <ShareEventButton
+                  eventId={event._id}
+                  interactionContext={interactionContext}
+                  slug={event.slug}
+                  title={event.title}
+                  summary={
+                    event.perspectiveSummaries?.neutral ?? event.globalImpact
+                  }
+                />
+              </div>
+            </div>
+
+            <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
+              {event.title}
+            </h1>
+
+            <p
+              className="text-xs text-muted-foreground"
+              title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
+            >
+              {t("event.updated").replace(
+                "{time}",
+                formatRelativeTimestamp(lastUpdatedAt, locale),
+              )}
+              {" · "}
+              {getPluralizedCountLabel(locale, "event.sourceCount", sourceCount)}
+              {" · "}
+              {getPluralizedCountLabel(locale, "event.articles", articles.length)}
+            </p>
+
+            {event.imageUrl && (
+              <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
                 <img
                   src={event.imageUrl}
                   alt={event.imageAlt ?? event.title}
                   className="h-full w-full object-cover"
                 />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
-                  <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
-                    {t("event.cardLabel")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-5 px-4 py-5 sm:space-y-6 sm:px-8 sm:py-8">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    {t("event.overview")}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <BookmarkButton
-                      eventId={event._id}
-                      interactionContext={interactionContext}
-                      redirectTo={`/event/${event.slug}`}
-                      className="rounded-full border border-border/80 bg-background/80"
-                    />
-                    <ShareEventButton
-                      eventId={event._id}
-                      interactionContext={interactionContext}
-                      slug={event.slug}
-                      title={event.title}
-                      summary={
-                        event.perspectiveSummaries?.neutral ?? event.globalImpact
-                      }
-                      className="rounded-full border border-border/80 bg-background/80"
-                    />
-                  </div>
-                </div>
-                <h1 className="max-w-3xl text-2xl font-bold leading-[1.12] tracking-tight text-foreground text-balance sm:text-4xl sm:leading-tight">
-                  {event.title}
-                </h1>
               </div>
-
-              <div className="grid gap-3 border-t border-border/70 pt-4 sm:flex sm:flex-wrap sm:items-center">
-                <div
-                  className="w-fit rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground"
-                  title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
-                >
-                  {t("event.updated").replace(
-                    "{time}",
-                    formatRelativeTimestamp(lastUpdatedAt, locale),
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/45 px-3 py-3 sm:border-0 sm:bg-transparent sm:p-0">
-                  <div className="flex -space-x-3">
-                    {articles
-                      .map((article: Article) => article.source)
-                      .filter(
-                        (source: Source, index: number, array: Source[]) =>
-                          source &&
-                          array.findIndex(
-                            (candidate: Source) =>
-                              candidate?._id === source._id,
-                          ) === index,
-                      )
-                      .slice(0, 5)
-                      .map((source: Source) => (
-                        <div
-                          key={source!._id}
-                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm sm:h-11 sm:w-11"
-                          title={source!.name}
-                        >
-                          {source?.logoUrl ? (
-                            <img
-                              src={source.logoUrl}
-                              alt={source.name}
-                              className="h-full w-full object-contain p-1.5"
-                            />
-                          ) : (
-                            <span className="text-xs font-medium text-foreground">
-                              {source?.name.charAt(0)}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
-                    <span className="font-medium text-card-foreground">
-                      {getPluralizedCountLabel(
-                        locale,
-                        "event.articles",
-                        articles.length,
-                      )}
-                    </span>
-                    <span>•</span>
-                    <span>
-                      {getPluralizedCountLabel(
-                        locale,
-                        "event.sourceCount",
-                        sourceCount,
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </section>
 
           <EventDetailTabs
