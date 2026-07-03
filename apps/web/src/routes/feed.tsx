@@ -7,9 +7,7 @@ import { buildFeedQueryArgs } from "@/lib/feed-query";
 import {
   CheckIcon,
   ChevronDownIcon,
-  ClockIcon,
   FilterIcon,
-  TrendingUpIcon,
   XIcon,
 } from "lucide-react";
 import AuthPromptBanner from "@/components/auth-prompt-banner";
@@ -40,7 +38,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useIsMobile } from "@/components/ui/use-mobile";
-import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -254,7 +251,6 @@ function FeedComponent() {
 
 function FeedContent() {
   const t = useT();
-  const isMobile = useIsMobile();
   const { isAuthenticated } = useConvexAuth();
   const topics = useQuery(api.topics.getTopics);
   const currentUser = useQuery(
@@ -268,12 +264,6 @@ function FeedContent() {
     ? Math.min(MAX_FEED_PAGE_SIZE, Math.max(1, Math.floor(rawPageSize)))
     : 6;
 
-  const rawMaxSources = Number(runtimeConfig?.eventCardMaxSources);
-  const MAX_EVENT_CARD_SOURCES = 10;
-  const maxSources = Number.isFinite(rawMaxSources)
-    ? Math.min(MAX_EVENT_CARD_SOURCES, Math.max(0, Math.floor(rawMaxSources)))
-    : 5;
-
   const [selectedTopic, setSelectedTopic] = useState<Id<"topics"> | "all">(
     "all",
   );
@@ -284,12 +274,8 @@ function FeedContent() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const controlsRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const isLoadingMoreRef = useRef(false);
-  const areControlsVisible = useScrollVisibility();
-  const [controlsHeight, setControlsHeight] = useState(0);
-  const hiddenControlsOffset = controlsHeight + (isMobile ? 12 : 80);
 
   useEffect(() => {
     try {
@@ -339,45 +325,6 @@ function FeedContent() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  useEffect(() => {
-    const element = controlsRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateHeight = () => {
-      const nextHeight = Math.round(element.getBoundingClientRect().height);
-      setControlsHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
-      );
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateHeight);
-      return () => {
-        window.removeEventListener("resize", updateHeight);
-      };
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateHeight();
-    });
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [
-    isSearchFocused,
-    recentSearches.length,
-    searchInput.length,
-    selectedTopic,
-    feedSort,
-    isSearching,
-  ]);
 
   const {
     results: events,
@@ -523,158 +470,119 @@ function FeedContent() {
     recentSearches.length > 0;
 
   return (
-    <div className="bg-linear-to-b from-background via-background to-muted/35">
+    <div className="bg-background">
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <div className="flex flex-col gap-6 sm:gap-8">
-          <div
-            aria-hidden="true"
-            className="shrink-0"
-            style={{
-              height: controlsHeight > 0 ? `${controlsHeight}px` : undefined,
-            }}
-          />
-
-          <div
-            className="fixed inset-x-0 top-0 z-40 px-4 pt-3 transition-transform duration-300 ease-out md:top-14 md:pt-4"
-            style={{
-              transform: areControlsVisible
-                ? "translateY(0)"
-                : `translateY(-${Math.max(hiddenControlsOffset, 0)}px)`,
-            }}
-          >
-            <div className="mx-auto max-w-4xl">
-              <header
-                ref={controlsRef}
-                className="overflow-hidden rounded-[1.35rem] border border-border/70 bg-card/88 shadow-lg shadow-foreground/5 backdrop-blur-xl sm:rounded-[1.6rem]"
-              >
-                <div className="bg-linear-to-br from-background via-card to-muted/50 px-3 py-3 sm:px-4 sm:py-5">
-                  <div className="flex flex-col gap-2.5 sm:gap-3">
-                    <div className="flex flex-col gap-3">
-                      <div className="relative flex-1">
-                        <Input
-                          ref={searchInputRef}
-                          type="search"
-                          value={searchInput}
-                          onChange={(event) =>
-                            setSearchInput(event.target.value)
-                          }
-                          onFocus={() => setIsSearchFocused(true)}
-                          onBlur={() => {
-                            window.setTimeout(
-                              () => setIsSearchFocused(false),
-                              100,
-                            );
-                          }}
-                          placeholder={t("feed.search.placeholder")}
-                          className="h-10 rounded-full border-border/80 bg-background/75 pr-11 text-base sm:h-11 sm:pr-12"
-                          aria-label={t("feed.search.label")}
-                        />
-                        {searchInput.length > 0 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-1 top-1 size-8 rounded-full sm:size-9"
-                            onClick={() => {
-                              setSearchInput("");
-                              setDebouncedSearch("");
-                            }}
-                            aria-label={t("feed.search.clear")}
-                          >
-                            <XIcon className="size-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="border-t border-border/60 pt-2.5 sm:pt-3">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="min-w-0 w-full max-w-52 sm:max-w-60 md:max-w-64">
-                          <TopicFilter
-                            topics={topics}
-                            selectedTopic={selectedTopic}
-                            onSelect={setSelectedTopic}
-                          />
-                        </div>
-                        {!isSearching && (
-                          <div className="inline-grid h-8 shrink-0 grid-cols-2 rounded-full bg-muted/70 p-1 sm:h-9">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className={cn(
-                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
-                                feedSort === "recent" &&
-                                  "bg-background text-foreground shadow-sm",
-                              )}
-                              onClick={() => setFeedSort("recent")}
-                              aria-pressed={feedSort === "recent"}
-                            >
-                              <ClockIcon className="size-3.5" />
-                              {t("feed.sort.recent")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className={cn(
-                                "h-6 rounded-full px-2 text-xs sm:h-7 sm:px-3",
-                                feedSort === "trending" &&
-                                  "bg-background text-foreground shadow-sm",
-                              )}
-                              onClick={() => setFeedSort("trending")}
-                              aria-pressed={feedSort === "trending"}
-                            >
-                              <TrendingUpIcon className="size-3.5" />
-                              {t("feed.sort.trending")}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {shouldShowThresholdHint && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("feed.search.threshold")}
-                      </p>
-                    )}
-                    {shouldShowRecentSearches && (
-                      <div className="flex flex-wrap gap-2">
-                        {recentSearches.map((recentSearch) => (
-                          <Button
-                            key={recentSearch}
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              setSearchInput(recentSearch);
-                              setDebouncedSearch(recentSearch);
-                              searchInputRef.current?.focus();
-                            }}
-                          >
-                            {recentSearch}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
-                    {isSearching && (
-                      <p
-                        className="text-xs text-muted-foreground"
-                        role="status"
-                        aria-live="polite"
-                        aria-atomic="true"
-                      >
-                        {t("feed.search.indexed").replace(
-                          "{query}",
-                          debouncedSearch,
-                        )}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </header>
+          {/* Feed controls: flat, in-flow — no floating glass, no
+              scroll-linked motion (BIV-807, native DESIGN_LOG). */}
+          <header className="flex flex-col gap-3 border-b border-border pb-4">
+            <div className="relative">
+              <Input
+                ref={searchInputRef}
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setIsSearchFocused(false), 100);
+                }}
+                placeholder={t("feed.search.placeholder")}
+                className="h-10 pr-11 text-base"
+                aria-label={t("feed.search.label")}
+              />
+              {searchInput.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1 size-8"
+                  onClick={() => {
+                    setSearchInput("");
+                    setDebouncedSearch("");
+                  }}
+                  aria-label={t("feed.search.clear")}
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              )}
             </div>
-          </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 w-full max-w-52 sm:max-w-60 md:max-w-64">
+                <TopicFilter
+                  topics={topics}
+                  selectedTopic={selectedTopic}
+                  onSelect={setSelectedTopic}
+                />
+              </div>
+              {!isSearching && (
+                /* Plain-text segmented control: weight + color, not pills. */
+                <div className="flex shrink-0 items-center gap-4 text-sm">
+                  <button
+                    type="button"
+                    className={cn(
+                      "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                      feedSort === "recent"
+                        ? "font-semibold text-foreground"
+                        : "font-medium text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setFeedSort("recent")}
+                    aria-pressed={feedSort === "recent"}
+                  >
+                    {t("feed.sort.recent")}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                      feedSort === "trending"
+                        ? "font-semibold text-foreground"
+                        : "font-medium text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setFeedSort("trending")}
+                    aria-pressed={feedSort === "trending"}
+                  >
+                    {t("feed.sort.trending")}
+                  </button>
+                </div>
+              )}
+            </div>
+            {shouldShowThresholdHint && (
+              <p className="text-xs text-muted-foreground">
+                {t("feed.search.threshold")}
+              </p>
+            )}
+            {shouldShowRecentSearches && (
+              <div className="flex flex-wrap gap-2">
+                {recentSearches.map((recentSearch) => (
+                  <Button
+                    key={recentSearch}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setSearchInput(recentSearch);
+                      setDebouncedSearch(recentSearch);
+                      searchInputRef.current?.focus();
+                    }}
+                  >
+                    {recentSearch}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {isSearching && (
+              <p
+                className="text-xs text-muted-foreground"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {t("feed.search.indexed").replace("{query}", debouncedSearch)}
+              </p>
+            )}
+          </header>
 
           {!isAuthenticated && (
             <AuthPromptBanner
@@ -686,39 +594,36 @@ function FeedContent() {
 
           {!isSearching && <QuizCta variant="feed" />}
 
-          <div className="grid gap-6">
+          <div className="flex flex-col gap-8">
             {isSearching && searchResults === undefined && (
-              <div
+              <p
                 role="status"
                 aria-live="polite"
-                className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+                className="py-8 text-sm text-muted-foreground"
               >
                 {t("feed.searching")}
-              </div>
+              </p>
             )}
             {status === "LoadingFirstPage" && (
-              <div
+              <p
                 role="status"
                 aria-live="polite"
-                className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
+                className="py-8 text-sm text-muted-foreground"
               >
                 {t("feed.loading")}
-              </div>
+              </p>
             )}
 
             {!isSearching && featuredEvent ? (
-              <section className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {feedSort === "recent"
-                      ? t("feed.leadStory")
-                      : t("feed.trendingStory")}
-                  </h2>
-                </div>
+              <section className="flex flex-col gap-4 border-b border-border pb-8">
+                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {feedSort === "recent"
+                    ? t("feed.leadStory")
+                    : t("feed.trendingStory")}
+                </h2>
                 <EventCard
                   event={featuredEvent}
                   topicNamesById={topicNamesById}
-                  maxSources={maxSources}
                   variant="feature"
                   returnToFeed
                 />
@@ -726,19 +631,13 @@ function FeedContent() {
             ) : null}
 
             {isSearching && featuredSearchEvent ? (
-              <section className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {t("feed.topSearch")}
-                  </h2>
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {t("feed.searchTag")}
-                  </p>
-                </div>
+              <section className="flex flex-col gap-4 border-b border-border pb-8">
+                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {t("feed.topSearch")}
+                </h2>
                 <EventCard
                   event={featuredSearchEvent}
                   topicNamesById={topicNamesById}
-                  maxSources={maxSources}
                   variant="feature"
                   searchQuery={debouncedSearch}
                   returnToFeed
@@ -750,28 +649,23 @@ function FeedContent() {
             (isSearching &&
               remainingSearchEvents &&
               remainingSearchEvents.length > 0) ? (
-              <section className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    {isSearching ? t("feed.moreSearch") : t("feed.moreEvents")}
-                  </h2>
-                  {isSearching ? (
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      {t("feed.bestMatches")}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="grid gap-5">
+              <section className="flex flex-col gap-2">
+                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {isSearching ? t("feed.moreSearch") : t("feed.moreEvents")}
+                </h2>
+                <div className="flex flex-col divide-y divide-border">
                   {(isSearching ? remainingSearchEvents : remainingEvents)?.map(
                     (event) => (
-                      <EventCard
-                        key={event._id}
-                        event={event}
-                        topicNamesById={topicNamesById}
-                        maxSources={maxSources}
-                        searchQuery={isSearching ? debouncedSearch : undefined}
-                        returnToFeed
-                      />
+                      <div key={event._id} className="py-5">
+                        <EventCard
+                          event={event}
+                          topicNamesById={topicNamesById}
+                          searchQuery={
+                            isSearching ? debouncedSearch : undefined
+                          }
+                          returnToFeed
+                        />
+                      </div>
                     ),
                   )}
                 </div>
@@ -779,30 +673,25 @@ function FeedContent() {
             ) : null}
 
             {isSearching && searchResults?.length === 0 && (
-              <section className="flex flex-col gap-4">
-                <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+              <section className="flex flex-col gap-6">
+                <div className="py-4 text-sm text-muted-foreground">
                   <p>{t("feed.noMatch").replace("{query}", debouncedSearch)}</p>
                   <p className="mt-2">{t("feed.tryFewer")}</p>
                 </div>
                 {fallbackEvents && fallbackEvents.length > 0 && (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                        {t("feed.preferredTopics")}
-                      </h2>
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        {t("feed.latestFive")}
-                      </p>
-                    </div>
-                    <div className="grid gap-5">
+                  <div className="flex flex-col gap-2">
+                    <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {t("feed.preferredTopics")}
+                    </h2>
+                    <div className="flex flex-col divide-y divide-border">
                       {fallbackEvents.map((event) => (
-                        <EventCard
-                          key={event._id}
-                          event={event}
-                          topicNamesById={topicNamesById}
-                          maxSources={maxSources}
-                          returnToFeed
-                        />
+                        <div key={event._id} className="py-5">
+                          <EventCard
+                            event={event}
+                            topicNamesById={topicNamesById}
+                            returnToFeed
+                          />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -813,9 +702,9 @@ function FeedContent() {
             {!isSearching &&
               status !== "LoadingFirstPage" &&
               (!events || events.length === 0) && (
-                <div className="rounded-[1.2rem] border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground">
+                <p className="py-8 text-sm text-muted-foreground">
                   {t("feed.none")}
-                </div>
+                </p>
               )}
           </div>
 

@@ -10,11 +10,6 @@ import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 
-function safePositiveInt(raw: unknown, fallback: number): number {
-  const n = Number(raw);
-  return Number.isFinite(n) ? Math.max(1, Math.floor(n)) : fallback;
-}
-
 export const Route = createFileRoute("/salvate")({
   head: ({ matches }) => {
     const locale = getLocaleFromMatches(matches);
@@ -85,8 +80,6 @@ function SalvateContent() {
   const t = useT();
   const bookmarks = useQuery(api.interactions.getBookmarkedEvents);
   const topics = useQuery(api.topics.getTopics);
-  const runtimeConfig = useQuery(api.config.getPublicRuntimeConfig);
-  const maxSources = safePositiveInt(runtimeConfig?.eventCardMaxSources, 5);
 
   const topicNamesById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -107,74 +100,55 @@ function SalvateContent() {
   }
 
   return (
-    <div className="bg-gradient-to-b from-background via-background to-muted/35">
+    <div className="bg-background">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
-          <header className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/80 shadow-sm">
-            <div className="bg-gradient-to-br from-background via-card to-muted/50 px-6 py-8 sm:px-8 sm:py-10">
-              <div className="flex flex-col gap-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  {t("saved.section")}
-                </p>
-                <div className="flex max-w-[65ch] flex-col gap-3">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-                    {t("saved.heading")}
-                  </h1>
-                  <p className="max-w-[55ch] text-sm text-muted-foreground sm:text-base">
-                    {bookmarks.length === 0
-                      ? t("saved.summary.empty")
-                      : bookmarks.length === 1
-                        ? t("saved.summary.one")
-                        : t("saved.summary.many").replace(
-                            "{count}",
-                            String(bookmarks.length),
-                          )}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <header className="flex flex-col gap-3 border-b border-border pb-6">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              {t("saved.section")}
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              {t("saved.heading")}
+            </h1>
+            <p className="max-w-[55ch] text-sm text-muted-foreground">
+              {bookmarks.length === 0
+                ? t("saved.summary.empty")
+                : bookmarks.length === 1
+                  ? t("saved.summary.one")
+                  : t("saved.summary.many").replace(
+                      "{count}",
+                      String(bookmarks.length),
+                    )}
+            </p>
           </header>
 
           {bookmarks.length === 0 ? (
-            <div className="rounded-[1.6rem] border border-border/70 bg-card/80 p-8 sm:p-12">
-              <div className="flex flex-col items-center justify-center gap-6 text-center">
-                <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-                  <svg
-                    className="size-8 text-muted-foreground"
-                    aria-hidden="true"
-                    focusable="false"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="mb-2 text-lg font-semibold">{t("saved.none")}</h2>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    {t("saved.noneBody")}
-                  </p>
-                </div>
-                <Button asChild variant="outline" className="rounded-full">
-                  <Link to="/feed">{t("saved.browseFeed")}</Link>
-                </Button>
+            /* Typographic empty state: one line + one action (native
+               DESIGN_LOG — dashed boxes and icon circles deleted). */
+            <div className="flex flex-col items-start gap-4 py-4">
+              <div>
+                <h2 className="mb-1 text-lg font-semibold">
+                  {t("saved.none")}
+                </h2>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  {t("saved.noneBody")}
+                </p>
               </div>
+              <Button asChild variant="outline">
+                <Link to="/feed">{t("saved.browseFeed")}</Link>
+              </Button>
             </div>
           ) : (
-            <div className="grid gap-5">
+            /* Same row anatomy as the feed — recognition over novelty. */
+            <div className="flex flex-col divide-y divide-border">
               {bookmarks.map((event) => (
-                <EventCard
-                  key={event._id}
-                  event={event}
-                  topicNamesById={topicNamesById}
-                  maxSources={maxSources}
-                />
+                <div key={event._id} className="py-5">
+                  <EventCard
+                    event={event}
+                    topicNamesById={topicNamesById}
+                    showBookmark
+                  />
+                </div>
               ))}
             </div>
           )}
