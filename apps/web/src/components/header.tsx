@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
@@ -35,29 +34,33 @@ export const links = allLinks.filter(
   (link) => link.to !== "/quiz" || FEATURE_FLAGS.quiz,
 );
 
+/**
+ * Editorial-calm masthead (BIV-807, mirrors the native DESIGN_LOG): flat
+ * bg-background + bottom hairline, holds still on scroll (no scroll-linked
+ * chrome on the most-visited surface), active nav state is typographic
+ * (weight + color) instead of pill chrome.
+ */
 export default function Header() {
   const [open, setOpen] = useState(false);
-  const isVisible = useScrollVisibility();
   const t = useT();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   return (
-    <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 border-b border-border bg-background/88 backdrop-blur-xl transition-transform duration-300 ease-out",
-        isVisible ? "translate-y-0" : "-translate-y-full",
-      )}
-    >
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background">
       <div className="container mx-auto max-w-6xl">
-        <div className="flex h-16 items-center justify-between px-4">
+        <div className="flex h-14 items-center justify-between px-4">
           {/* Logo */}
-          <Link to="/feed" className="flex items-center gap-2 group">
-            <div className="relative flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground font-bold text-lg transition-transform group-hover:scale-105">
+          <Link
+            to="/feed"
+            className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
               B
-              <div className="absolute inset-0 rounded-lg bg-primary/20 blur-md -z-10" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Biviant</span>
+            <span className="text-lg font-semibold tracking-tight">
+              Biviant
+            </span>
           </Link>
 
           {/* Desktop nav */}
@@ -66,20 +69,25 @@ export default function Header() {
             className="hidden md:flex items-center gap-1"
           >
             {links.map(({ to, key, icon: Icon }) => {
-              const isActive = currentPath === to || currentPath.startsWith(`${to}/`);
+              const isActive =
+                currentPath === to || currentPath.startsWith(`${to}/`);
               return (
                 <Link
                   key={to}
                   to={to}
-                  className={`
-                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                    ${isActive 
-                      ? "bg-primary/10 text-primary" 
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    }
-                  `}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    isActive
+                      ? "font-semibold text-foreground"
+                      : "font-medium text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <Icon className="size-4" />
+                  <Icon
+                    className="size-4"
+                    strokeWidth={isActive ? 2.5 : 2}
+                    aria-hidden="true"
+                  />
                   {t(key)}
                 </Link>
               );
@@ -104,17 +112,17 @@ export default function Header() {
             </SheetTrigger>
             <SheetContent side="right" className="w-72 p-0">
               <div className="flex flex-col h-full">
-                <div className="p-6 border-b border-border">
+                <div className="border-b border-border p-6">
                   <SheetTitle className="flex items-center gap-2">
-                    <div className="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground font-bold">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
                       B
                     </div>
-                    <span className="font-bold">Biviant</span>
+                    <span className="font-semibold">Biviant</span>
                   </SheetTitle>
                 </div>
                 <nav
                   aria-label={t("header.mobileNav")}
-                  className="flex flex-col gap-1 p-4"
+                  className="flex flex-col p-4"
                 >
                   {links.map(({ to, key, icon: Icon }) => {
                     const isActive =
@@ -123,16 +131,20 @@ export default function Header() {
                       <Link
                         key={to}
                         to={to}
-                        className={`
-                          flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-all
-                          ${isActive 
-                            ? "bg-primary/10 text-primary" 
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                          }
-                        `}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md px-3 py-3 text-base transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                          isActive
+                            ? "font-semibold text-foreground"
+                            : "font-medium text-muted-foreground hover:text-foreground",
+                        )}
                         onClick={() => setOpen(false)}
                       >
-                        <Icon className="size-5" />
+                        <Icon
+                          className="size-5"
+                          strokeWidth={isActive ? 2.5 : 2}
+                          aria-hidden="true"
+                        />
                         {t(key)}
                       </Link>
                     );

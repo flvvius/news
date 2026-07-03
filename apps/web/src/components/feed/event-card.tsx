@@ -171,7 +171,7 @@ const EventCard = ({
             .map((topic) => (
               <span
                 key={topic}
-                className="inline-flex h-7 items-center rounded-full border border-white/20 bg-black/45 px-3 text-xs font-medium text-white shadow-sm backdrop-blur-md"
+                className="inline-flex h-7 items-center rounded-full border border-overlay-foreground/20 bg-overlay px-3 text-xs font-medium text-overlay-foreground shadow-sm backdrop-blur-md"
               >
                 {topic}
               </span>

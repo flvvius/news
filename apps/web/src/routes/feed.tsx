@@ -535,7 +535,7 @@ function FeedContent() {
           />
 
           <div
-            className="fixed inset-x-0 top-0 z-40 px-4 pt-3 transition-transform duration-300 ease-out md:top-16 md:pt-4"
+            className="fixed inset-x-0 top-0 z-40 px-4 pt-3 transition-transform duration-300 ease-out md:top-14 md:pt-4"
             style={{
               transform: areControlsVisible
                 ? "translateY(0)"

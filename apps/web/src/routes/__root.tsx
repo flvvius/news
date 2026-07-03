@@ -215,10 +215,10 @@ function RootDocument() {
             <HeadContent />
           </head>
           <body className="min-h-svh flex flex-col antialiased">
-            <div className="hidden h-16 md:block">
+            <div className="hidden h-14 md:block">
               <Header />
             </div>
-            <main className="flex-1 pb-20 md:pb-0">
+            <main className="flex-1 pb-16 md:pb-0">
               <Outlet />
             </main>
             <Footer />
