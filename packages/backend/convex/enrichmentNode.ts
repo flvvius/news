@@ -19,7 +19,10 @@ import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
-import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
+import {
+  demoteRepeatedSourceBodies,
+  extractArticleContentForEmbedding,
+} from "./lib/articleExtraction";
 import { v } from "convex/values";
 import { callLLM } from "./lib/aiCall";
 import {
@@ -823,7 +826,7 @@ async function runEnrichmentBatch(
         extractionQuality: extracted.extractionQuality,
       };
     },
-  );
+  ).then(demoteRepeatedSourceBodies);
   const texts = preparedArticles.map((article) => article.embeddingText);
   const extractedCount = preparedArticles.filter(
     (article) => article.extractionMethod !== "rss_fallback",

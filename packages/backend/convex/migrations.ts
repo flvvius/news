@@ -21,6 +21,7 @@ import {
   getUserProfileByAuthUserId,
   type AuthUserForProfile,
 } from "./lib/userProfile";
+import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -141,6 +142,101 @@ export const backfillMissingUserProfiles = internalMutation({
       created,
       isDone: result.isDone,
       continueCursor: result.isDone ? null : result.continueCursor,
+    };
+  },
+});
+
+/**
+ * BIV-813: dissolve an event whose articles were false-merged (the zf.ro
+ * boilerplate-body bug) and requeue its articles for full re-enrichment, so
+ * the fixed extractor rebuilds their embeddings/entities and clustering
+ * re-assigns them to correct, separate events.
+ *
+ * Operational notes:
+ * - Enrichment claims articles newest-first (by publishedAt), so requeued
+ *   older articles can sit behind fresh intake. After dissolving, run
+ *   enrichmentNode:enrichUnprocessedArticles repeatedly until the queue is
+ *   drained, then trigger clustering.
+ * - Teardown also deletes the event's userInsights and interactions rows
+ *   (user saves/reads on the merged event). For a false-merged event those
+ *   rows point at a meaningless mixture, so deleting them is correct — but
+ *   it IS user-visible; don't reuse this for legitimate events.
+ *
+ *   npx convex run migrations:dissolveMisclusteredEvent '{"eventId": "..."}'
+ */
+export const dissolveMisclusteredEvent = internalMutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await ctx.db.get(eventId);
+    if (!event) {
+      return { dissolved: false, requeuedArticles: 0 };
+    }
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    for (const article of articles) {
+      await ctx.db.patch(article._id, {
+        status: "unprocessed",
+        eventId: undefined,
+        archivedAt: undefined,
+        archivedReason: undefined,
+        // Drop the summary derived from the bad extraction: re-enrichment
+        // keeps the previous summary when the new run produces none
+        // (storeArticleEnrichment: `summary ?? article.summary`), which
+        // would leave boilerplate teaser text on screen indefinitely.
+        summary: undefined,
+      });
+    }
+
+    // Same child-row teardown as singletonCleanup's event dissolution.
+    for (const table of EVENT_CHILD_TABLES) {
+      await deleteByEventIndex(ctx, table, eventId);
+    }
+
+    await ctx.db.delete(eventId);
+
+    return { dissolved: true, requeuedArticles: articles.length };
+  },
+});
+
+/**
+ * BIV-813 cleanup: articles that extracted the zf.ro teaser widget as their
+ * body kept that text as their stored summary even after re-enrichment
+ * (storeArticleEnrichment retains the old summary when the new run has
+ * none). Clear summaries matching the boilerplate prefix so the UI stops
+ * showing an unrelated teaser.
+ *
+ *   npx convex run migrations:clearArticleSummariesByPrefix '{"prefix": "..."}'
+ */
+export const clearArticleSummariesByPrefix = internalMutation({
+  args: {
+    prefix: v.string(),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.prefix.trim().length < 20) {
+      throw new Error("Refusing to clear with a short/ambiguous prefix");
+    }
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: 500,
+    });
+
+    let cleared = 0;
+    for (const article of page.page) {
+      if (article.summary?.startsWith(args.prefix)) {
+        await ctx.db.patch(article._id, { summary: undefined });
+        cleared++;
+      }
+    }
+
+    return {
+      cleared,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
     };
   },
 });

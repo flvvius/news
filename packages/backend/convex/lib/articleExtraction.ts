@@ -492,12 +492,45 @@ function stripTags(html: string): string {
   );
 }
 
-function extractJsonLdText(html: string): string | undefined {
+function parseJsonLdScripts(html: string): unknown[] {
   const scripts = Array.from(
     html.matchAll(
       /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
     ),
   );
+  const parsed: unknown[] = [];
+
+  for (const script of scripts) {
+    const raw = decodeHtmlEntities(script[1] ?? "").trim();
+    if (!raw) continue;
+
+    try {
+      parsed.push(JSON.parse(raw));
+      continue;
+    } catch {
+      // Fall through to the sanitized retry.
+    }
+
+    // BIV-813: zf.ro (and others) emit raw newlines/tabs inside JSON string
+    // literals — legal in HTML, illegal in JSON — so the NewsArticle block
+    // holding the real articleBody failed to parse and extraction fell back
+    // to a site-wide teaser widget shared by every page. Control characters
+    // cannot appear in valid JSON strings, so replacing them with spaces is
+    // lossless for well-formed documents and recovers the malformed ones.
+    try {
+      parsed.push(JSON.parse(raw.replace(/[\u0000-\u001f]+/g, " ")));
+    } catch {
+      continue;
+    }
+  }
+
+  return parsed;
+}
+
+function collectJsonLdFields(
+  documents: unknown[],
+  keys: readonly string[],
+): string[] {
   const collected: string[] = [];
 
   const collectFields = (value: unknown) => {
@@ -508,7 +541,7 @@ function extractJsonLdText(html: string): string | undefined {
     }
 
     const record = value as Record<string, unknown>;
-    for (const key of ["articleBody", "description", "abstract"]) {
+    for (const key of keys) {
       const field = record[key];
       if (typeof field === "string") {
         const cleaned = stripTags(field);
@@ -522,23 +555,48 @@ function extractJsonLdText(html: string): string | undefined {
     if (record.mainEntity) collectFields(record.mainEntity);
   };
 
-  for (const script of scripts) {
-    const raw = decodeHtmlEntities(script[1] ?? "").trim();
-    if (!raw) continue;
+  for (const doc of documents) collectFields(doc);
+  return collected;
+}
 
-    try {
-      collectFields(JSON.parse(raw));
-    } catch {
-      continue;
-    }
-  }
-
-  const best = collected.sort((a, b) => b.length - a.length)[0];
+function longestOrUndefined(values: string[]): string | undefined {
+  const best = values.sort((a, b) => b.length - a.length)[0];
   return best ? normalizeWhitespace(best) : undefined;
+}
+
+/**
+ * The publisher-declared article body. Trustworthy when present: unlike
+ * description/abstract (which can be site-wide marketing text), articleBody
+ * is per-article by definition, so it may outrank generic block scoring.
+ */
+function extractJsonLdArticleBody(documents: unknown[]): string | undefined {
+  return longestOrUndefined(collectJsonLdFields(documents, ["articleBody"]));
+}
+
+function extractJsonLdText(documents: unknown[]): string | undefined {
+  return longestOrUndefined(
+    collectJsonLdFields(documents, ["articleBody", "description", "abstract"]),
+  );
+}
+
+/**
+ * BIV-813: text living inside <a> tags is navigation, not prose. zf.ro's
+ * "Articole recomandate" carousel renders every teaser as
+ * <p><a class="title">headline…</a></p>, so by raw text volume it looked
+ * like the article body on every page whose real body is script-rendered.
+ */
+function linkTextRatio(html: string): number {
+  const total = stripTags(html);
+  if (!total) return 0;
+  const linkText = stripTags(
+    (html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? []).join(" "),
+  );
+  return linkText.length / total.length;
 }
 
 function extractParagraphText(html: string): string {
   const paragraphs = Array.from(html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+    .filter((match) => linkTextRatio(match[1] ?? "") <= 0.7)
     .map((match) => stripTags(match[1] ?? ""))
     .filter((text) => text.length >= 40);
 
@@ -547,7 +605,9 @@ function extractParagraphText(html: string): string {
     return deduped.join("\n\n");
   }
 
-  return stripTags(html);
+  // Blocks without usable <p> prose fall back to their whole text — but only
+  // when that text isn't mostly link labels (menus, teaser carousels).
+  return linkTextRatio(html) > 0.5 ? "" : stripTags(html);
 }
 
 function scoreHtmlBlock(html: string): number {
@@ -1011,6 +1071,12 @@ function chooseBestContentBlock(html: string): {
     }
   }
 
+  // BIV-813: parsed ONCE from the ORIGINAL html — stripNoise removes
+  // <script> blocks, which also made the old post-scoring JSON-LD fallback
+  // unreachable.
+  const jsonLdDocs = parseJsonLdScripts(html);
+  const jsonLdBody = extractJsonLdArticleBody(jsonLdDocs);
+
   const candidates = Array.from(
     cleanedHtml.matchAll(/<(article|main|section|div)\b[\s\S]*?<\/\1>/gi),
   )
@@ -1019,6 +1085,27 @@ function chooseBestContentBlock(html: string): {
 
   const best = candidates[0]?.html ?? cleanedHtml;
   const bestText = extractParagraphText(best);
+
+  // BIV-813: the publisher-declared JSON-LD articleBody outranks generic
+  // block scoring. On zf.ro the real body is script-rendered, so the
+  // best-scored <div> was a site-wide teaser widget — identical across every
+  // ZF page — which embedded as a near-identical vector and merged unrelated
+  // articles into one event. articleBody is per-article by definition, so it
+  // can't repeat that failure. Exception (longer-wins): some publishers put
+  // only a lede/teaser in articleBody; when the DOM prose is substantially
+  // fuller, it is the real body and the JSON-LD field is the excerpt.
+  if (jsonLdBody && jsonLdBody.length >= MIN_EXTRACTED_BODY_CHARS) {
+    const domIsSubstantiallyFuller =
+      bestText.length >= MIN_EXTRACTED_BODY_CHARS &&
+      bestText.length >= jsonLdBody.length * 1.5;
+    if (!domIsSubstantiallyFuller) {
+      return {
+        text: jsonLdBody,
+        method: "jsonld",
+      };
+    }
+  }
+
   if (bestText.length >= MIN_EXTRACTED_BODY_CHARS) {
     return {
       text: bestText,
@@ -1026,7 +1113,7 @@ function chooseBestContentBlock(html: string): {
     };
   }
 
-  const jsonLdText = extractJsonLdText(cleanedHtml);
+  const jsonLdText = extractJsonLdText(jsonLdDocs);
   if (jsonLdText && jsonLdText.length >= MIN_EXTRACTED_BODY_CHARS) {
     return {
       text: jsonLdText,
@@ -1212,4 +1299,117 @@ export async function extractArticleContentForEmbedding(args: {
       extractionQuality: "weak",
     };
   }
+}
+
+/**
+ * Fixture-testable seam over the body-selection pipeline (no network).
+ * Exercises exactly what extractArticleContentForEmbedding does with a
+ * fetched page: choose the body block, including the JSON-LD articleBody
+ * preference (BIV-813).
+ */
+export function extractBodyFromHtml(html: string): {
+  text: string;
+  method: ExtractionMethod;
+} {
+  return chooseBestContentBlock(html);
+}
+
+export type PreparedEmbeddingArticle = {
+  sourceName?: string;
+  title: string;
+  rssSnippet?: string | null;
+  embeddingText: string;
+  extractedSummary?: string;
+  extractionMethod: string;
+  bodyChars: number;
+  extractionQuality?: "strong" | "weak";
+  entities?: string[];
+};
+
+/**
+ * BIV-813 guard: when several articles from the same source in a batch carry
+ * an IDENTICAL extracted body under different titles, that body is site
+ * furniture (paywall teaser widget, promo block), not article content —
+ * zf.ro served the same 3.9k-char teaser list as the "body" of 38 unrelated
+ * articles, which embedded as near-identical vectors and merged them all
+ * into one event. Demote those articles to title+snippet embeddings and
+ * re-derive summary/entities so no downstream signal (embedding similarity,
+ * entity overlap) is built from the shared boilerplate.
+ *
+ * Known tradeoff: a legitimate article the same source republishes under a
+ * retitled headline within one batch gets demoted too. It still embeds via
+ * title+snippet (and clusters on those signals), which we accept over the
+ * alternative — boilerplate bodies silently merging unrelated events.
+ */
+export function demoteRepeatedSourceBodies<
+  T extends PreparedEmbeddingArticle,
+>(articles: T[]): T[] {
+  const bodyOf = (article: T) => {
+    const separator = article.embeddingText.indexOf("\n\n");
+    return separator >= 0 ? article.embeddingText.slice(separator + 2) : "";
+  };
+
+  const bySourceBody = new Map<string, Map<string, number[]>>();
+  articles.forEach((article, index) => {
+    if (!article.sourceName) return;
+    const body = bodyOf(article);
+    if (body.length < MIN_EXTRACTED_BODY_CHARS) return;
+
+    // Group on a fixed-length prefix: buildEmbeddingText truncates
+    // title+body at MAX_EMBEDDING_CHARS, so the SAME boilerplate body ends
+    // up with different tail lengths under different-length titles — an
+    // exact-match key would miss exactly the repeats this guard exists for.
+    const bodyKey = body.slice(0, 2000);
+
+    const bodies =
+      bySourceBody.get(article.sourceName) ?? new Map<string, number[]>();
+    bySourceBody.set(article.sourceName, bodies);
+    bodies.set(bodyKey, [...(bodies.get(bodyKey) ?? []), index]);
+  });
+
+  const demoted = new Set<number>();
+  for (const bodies of bySourceBody.values()) {
+    for (const indexes of bodies.values()) {
+      // The same body under one title is a re-syndicated duplicate (fine);
+      // under two or more DIFFERENT titles it can only be boilerplate.
+      const distinctTitles = new Set(
+        indexes.map((index) =>
+          normalizeWhitespace(articles[index]!.title).toLowerCase(),
+        ),
+      );
+      if (distinctTitles.size >= 2) {
+        for (const index of indexes) demoted.add(index);
+      }
+    }
+  }
+
+  if (demoted.size === 0) return articles;
+
+  console.warn(
+    `[extraction] BIV-813 boilerplate guard: demoted ${demoted.size} article(s) whose extracted body repeats across different titles from the same source`,
+    {
+      sources: [
+        ...new Set(
+          [...demoted].map((index) => articles[index]!.sourceName ?? "?"),
+        ),
+      ],
+    },
+  );
+
+  return articles.map((article, index) => {
+    if (!demoted.has(index)) return article;
+    const snippet = article.rssSnippet ?? "";
+    // The overridden fields stay within T's property types (rss_fallback is
+    // a valid ExtractionMethod); the cast is needed because TS can't prove
+    // that for an arbitrary T extends PreparedEmbeddingArticle.
+    return {
+      ...article,
+      embeddingText: buildEmbeddingText(article.title, "", snippet),
+      extractedSummary: summarizeBody(snippet),
+      extractionMethod: "rss_fallback",
+      bodyChars: 0,
+      extractionQuality: "weak",
+      entities: extractEntityCandidates(article.title, snippet),
+    } as T;
+  });
 }
