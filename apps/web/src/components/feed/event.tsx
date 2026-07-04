@@ -36,9 +36,9 @@ const EventCard = ({ event, topicNamesById }: EventCardProps) => {
         )}
       </div>
 
-      <h2 className="mt-3 text-lg font-semibold leading-snug">{event.title}</h2>
+      <h2 className="mt-3 break-words text-lg font-semibold leading-snug">{event.title}</h2>
 
-      <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
+      <p className="mt-2 break-words text-sm text-muted-foreground line-clamp-3">
         {event.perspectiveSummaries?.neutral ?? t("event.summaryPending")}
       </p>
     </div>

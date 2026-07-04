@@ -34,8 +34,11 @@ describe("Romanian i18n catalog (BIV-805)", () => {
   });
 
   test("the framing term is corrected on the perspective labels", () => {
-    expect(getString("ro", "event.left")).toBe("Formulare reformistă");
-    expect(getString("ro", "event.right")).toBe("Formulare suveranistă");
+    // Single words (BIV-811): the two-word labels overflowed the tab row on
+    // 360px viewports.
+    expect(getString("ro", "event.left")).toBe("Reformistă");
+    expect(getString("ro", "event.right")).toBe("Suveranistă");
+    expect(getString("ro", "event.centerTab")).toBe("Neutră");
     expect(getString("ro", "claim.framing")).toBe("Formulare");
     expect(getString("ro", "claim.framings")).toBe("Diferențe de formulare");
   });

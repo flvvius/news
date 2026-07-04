@@ -204,7 +204,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                         {t("source.profile")}
                       </p>
-                      <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
+                      <h1 className="mt-2 break-words text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
                         {source.name}
                       </h1>
                     </div>
@@ -313,11 +313,11 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                                 {formatRelativeTimestamp(article.publishedAt, locale)}
                               </span>
                             </div>
-                            <h2 className="text-base font-semibold leading-snug tracking-tight text-card-foreground">
+                            <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-card-foreground">
                               {article.title}
                             </h2>
                             {shownText && (
-                              <p className="line-clamp-2 text-sm text-muted-foreground">
+                              <p className="line-clamp-2 break-words text-sm text-muted-foreground">
                                 {shownText}
                               </p>
                             )}

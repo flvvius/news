@@ -221,10 +221,10 @@ const EventCard = ({
         </div>
       )}
       {kicker}
-      <h3 className="text-2xl font-semibold leading-tight tracking-tight text-foreground transition-colors group-hover:text-primary">
+      <h3 className="break-words text-2xl font-semibold leading-tight tracking-tight text-foreground transition-colors group-hover:text-primary">
         {highlightTitle(event.title, searchQuery)}
       </h3>
-      <p className="line-clamp-2 max-w-[65ch] text-sm text-muted-foreground">
+      <p className="line-clamp-2 max-w-[65ch] break-words text-sm text-muted-foreground">
         {summaryPreview}
       </p>
       {biasBar}
@@ -234,7 +234,7 @@ const EventCard = ({
     <article className="flex gap-4">
       <div className="min-w-0 flex-1 space-y-2">
         {kicker}
-        <h3 className="line-clamp-3 text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
+        <h3 className="line-clamp-3 break-words text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
           {highlightTitle(event.title, searchQuery)}
         </h3>
         {biasBar}

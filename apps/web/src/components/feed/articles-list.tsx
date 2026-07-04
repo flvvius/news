@@ -129,12 +129,12 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-base font-semibold leading-snug tracking-tight text-foreground">
+                <h3 className="break-words text-base font-semibold leading-snug tracking-tight text-foreground">
                   {article.title}
                 </h3>
 
                 {(article.summary || article.rssSnippet) && (
-                  <p className="max-w-full text-sm text-muted-foreground">
+                  <p className="max-w-full break-words text-sm text-muted-foreground">
                     {article.summary ?? article.rssSnippet}
                   </p>
                 )}

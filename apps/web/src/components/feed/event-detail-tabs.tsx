@@ -56,7 +56,7 @@ export function EventDetailTabs({
   const zoneLabel = "text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground";
   const sectionBreak = "mt-8 border-t border-border pt-6";
   const bodyText =
-    "max-w-[65ch] text-[15px] leading-relaxed text-foreground sm:text-base";
+    "max-w-[65ch] break-words text-[15px] leading-relaxed text-foreground sm:text-base";
   // Perspective tabs: bias-token underline instead of pill chrome.
   const underlineTrigger =
     "flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0 pb-2 pt-1 text-sm font-medium text-muted-foreground shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent dark:data-[state=active]:border-b-2";
@@ -67,7 +67,9 @@ export function EventDetailTabs({
         <section className="space-y-4">
           <h2 className={zoneLabel}>{t("event.multiplePerspectives")}</h2>
           <Tabs defaultValue="center" className="w-full gap-4">
-            <TabsList className="flex h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
+            {/* overflow-x-auto: labels that outgrow 360px scroll inside the
+                row instead of making the whole page x-scrollable (BIV-811). */}
+            <TabsList className="flex h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0">
               {perspectiveSummaries?.reformist && (
                 <TabsTrigger
                   value="left"

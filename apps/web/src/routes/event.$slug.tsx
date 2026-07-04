@@ -272,7 +272,7 @@ function EventDetailPage() {
               no card shell; 3:2 content-width photo with hairline border;
               header actions are plain icon buttons. */}
           <section className="flex flex-col gap-4">
-            <h1 className="max-w-full text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
+            <h1 className="max-w-full break-words text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
               {event.title}
             </h1>
             <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
