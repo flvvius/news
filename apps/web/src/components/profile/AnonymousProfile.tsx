@@ -1,4 +1,6 @@
 import { Link } from "@tanstack/react-router";
+import { Palette } from "lucide-react";
+import { ThemePicker } from "@/components/theme/ThemePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +57,26 @@ export function AnonymousProfile() {
           </div>
 
           <div className="space-y-6">
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>{t("profile.settings")}</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
+                      <Palette className="size-4 text-primary" />
+                      <span>{t("profile.theme")}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {t("profile.themeBody")}
+                    </p>
+                  </div>
+                  <ThemePicker />
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader className="border-b">
                 <CardTitle>{t("auth.account")}</CardTitle>

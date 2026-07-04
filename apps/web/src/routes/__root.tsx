@@ -7,6 +7,8 @@ import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
 import { getString, type Locale } from "@/lib/i18n/strings";
+import { themeNoFlashScript } from "@/lib/theme";
+import { ThemeProvider } from "@/lib/theme/ThemeProvider";
 import { api } from "@news-app/backend/convex/_generated/api";
 
 import {
@@ -216,32 +218,42 @@ function RootDocument() {
       initialToken={context.token}
     >
       <LocaleProvider locale={locale}>
-        <html lang={locale} className="dark bg-background">
+        <html
+          lang={locale}
+          className="bg-background"
+          suppressHydrationWarning
+        >
           <head>
+            <script
+              dangerouslySetInnerHTML={{ __html: themeNoFlashScript }}
+              suppressHydrationWarning
+            />
             <HeadContent />
           </head>
           <body className="min-h-svh flex flex-col antialiased">
-            <div className="hidden h-14 md:block">
-              <Header />
-            </div>
-            {/* 4rem clears the ~3.5rem mobile tab bar plus breathing room;
-                the safe-area term matches the bar's own inset padding. */}
-            <main className="flex-1 pb-[calc(4rem+var(--safe-area-bottom))] md:pb-0">
-              <Outlet />
-            </main>
-            <Footer />
-            <MobileTabBar />
-            {/* Lift mobile toasts above the fixed tab bar + home indicator. */}
-            <Toaster
-              richColors
-              mobileOffset={{ bottom: "calc(4rem + var(--safe-area-bottom))" }}
-            />
-            <PostHogAnalytics />
-            {TanStackRouterDevtools && (
-              <Suspense fallback={null}>
-                <TanStackRouterDevtools position="bottom-left" />
-              </Suspense>
-            )}
+            <ThemeProvider>
+              <div className="hidden h-14 md:block">
+                <Header />
+              </div>
+              {/* 4rem clears the ~3.5rem mobile tab bar plus breathing room;
+                  the safe-area term matches the bar's own inset padding. */}
+              <main className="flex-1 pb-[calc(4rem+var(--safe-area-bottom))] md:pb-0">
+                <Outlet />
+              </main>
+              <Footer />
+              <MobileTabBar />
+              {/* Lift mobile toasts above the fixed tab bar + home indicator. */}
+              <Toaster
+                richColors
+                mobileOffset={{ bottom: "calc(4rem + var(--safe-area-bottom))" }}
+              />
+              <PostHogAnalytics />
+              {TanStackRouterDevtools && (
+                <Suspense fallback={null}>
+                  <TanStackRouterDevtools position="bottom-left" />
+                </Suspense>
+              )}
+            </ThemeProvider>
             <Scripts />
           </body>
         </html>

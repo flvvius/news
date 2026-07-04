@@ -211,7 +211,8 @@ const ro = {
   "profile.settings": "Setări",
   "profile.settingsBody": "Opțiuni rapide pentru preferințele tale.",
   "profile.theme": "Temă",
-  "profile.themeBody": "Selectorul de temă va fi disponibil în curând.",
+  "profile.themeBody":
+    "Alege între tema sistemului, modul luminos sau modul întunecat.",
   "profile.notifications": "Notificări",
   "profile.notificationsBody":
     "Preferințele pentru alerte și rezumate vor apărea aici.",
@@ -248,6 +249,10 @@ const ro = {
   "settings.language": "Limbă",
   "settings.language.ro": "Română",
   "settings.language.en": "Engleză",
+  "settings.theme": "Temă",
+  "settings.theme.system": "Sistem",
+  "settings.theme.light": "Luminoasă",
+  "settings.theme.dark": "Întunecată",
   "user.menu": "Meniul utilizatorului",
   "user.account": "Cont",
   "user.streakOne": "1 zi consecutivă",
@@ -909,7 +914,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.settings": "Settings",
   "profile.settingsBody": "Quick options for your preferences.",
   "profile.theme": "Theme",
-  "profile.themeBody": "The theme selector will be available soon.",
+  "profile.themeBody":
+    "Choose between your system theme, light mode, or dark mode.",
   "profile.notifications": "Notifications",
   "profile.notificationsBody":
     "Preferences for alerts and digests will appear here.",
@@ -946,6 +952,10 @@ const en: { [K in keyof BaseStrings]: string } = {
   "settings.language": "Language",
   "settings.language.ro": "Romanian",
   "settings.language.en": "English",
+  "settings.theme": "Theme",
+  "settings.theme.system": "System",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark",
   "user.menu": "User menu",
   "user.account": "Account",
   "user.streakOne": "1 day streak",

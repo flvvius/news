@@ -36,10 +36,14 @@
 html,
 body {
   @apply bg-background text-foreground;
+}
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
+html {
+  color-scheme: light;
+}
+
+html:where(.dark) {
+  color-scheme: dark;
 }
 
 /* viewport-fit=cover (BIV-810) lets the layout extend under the notch,
