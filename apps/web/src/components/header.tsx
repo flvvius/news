@@ -47,7 +47,7 @@ export default function Header() {
   const currentPath = routerState.location.pathname;
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background pt-[var(--safe-area-top)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)]">
       <div className="container mx-auto max-w-6xl">
         <div className="flex h-14 items-center justify-between px-4">
           {/* Logo */}

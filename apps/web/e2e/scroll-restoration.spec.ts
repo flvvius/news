@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoHydrated } from "./helpers";
 
 /**
  * BIV-815 regression: navigating to a new route used to keep the current
@@ -8,15 +9,8 @@ import { expect, test } from "@playwright/test";
 
 /** Scrolls the feed down and returns the resulting scrollY. */
 async function scrollFeedDown(page: import("@playwright/test").Page) {
-  await page.goto("/feed");
+  await gotoHydrated(page, "/feed");
   await page.locator('a[href^="/event/"]').first().waitFor();
-  // TanStack Router's scroll handling flips history.scrollRestoration to
-  // "manual" when it initializes on the client. Waiting for it both avoids
-  // racing hydration (interacting earlier skips the scroll-to-top) and
-  // fails fast if the router's scrollRestoration option is ever removed.
-  await page.waitForFunction(
-    () => window.history.scrollRestoration === "manual",
-  );
   await page.mouse.wheel(0, 1500);
   await expect
     .poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 })

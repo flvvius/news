@@ -42,6 +42,29 @@ body {
   }
 }
 
+/* viewport-fit=cover (BIV-810) lets the layout extend under the notch,
+   status bar, and home indicator. Single source of truth for the device
+   insets — every consumer (tab bar, drawer, sheet, header, clearances)
+   reads these variables so the fallback lives in one place. (On `html`
+   rather than `:root` so the design-token test's :root parser only sees
+   color tokens.) */
+html {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+}
+
+/* Keep flowing content out of the unsafe areas. Fixed elements don't
+   inherit body padding and pad themselves with the same variables. Known
+   tradeoff: full-bleed backgrounds (e.g. the footer band) stop at the
+   padding edge on notched devices in landscape. */
+body {
+  padding-top: var(--safe-area-top);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+
 /* ──────────────────────────────────────────────
    Design tokens — warm neutrals + desaturated brand
    ────────────────────────────────────────────── */
