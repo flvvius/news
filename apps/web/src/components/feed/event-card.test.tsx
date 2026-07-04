@@ -85,9 +85,65 @@ describe("EventCard editorial row (BIV-807)", () => {
     ).toBeTruthy();
   });
 
+  test("non-highlighted feed row keeps a larger reserved image beside the text", () => {
+    const { container } = renderCard();
+    const row = container.querySelector('[data-slot="event-card-list-row"]');
+    const copy = container.querySelector('[data-slot="event-card-list-copy"]');
+    const thumbnail = container.querySelector(
+      '[data-slot="event-card-list-thumbnail"]',
+    );
+    const image = thumbnail?.querySelector("img");
+
+    expect(row?.className).toContain("flex gap-4");
+    expect(copy?.className).toContain("min-w-0 flex-1");
+    expect(thumbnail?.className).toContain("h-24 w-32 shrink-0");
+    expect(image?.getAttribute("width")).toBe("128");
+    expect(image?.getAttribute("height")).toBe("96");
+    expect(row?.children[0]).toBe(copy);
+    expect(row?.children[1]).toBe(thumbnail);
+  });
+
+  test("saved page row keeps the same side-by-side thumbnail with bookmark action", () => {
+    const { container } = renderCard({ showBookmark: true });
+    const row = container.querySelector('[data-slot="event-card-list-row"]');
+    const thumbnail = container.querySelector(
+      '[data-slot="event-card-list-thumbnail"]',
+    );
+
+    expect(screen.getByRole("button", { name: "bookmark" })).toBeTruthy();
+    expect(row?.className).toContain("flex gap-4");
+    expect(thumbnail?.className).toContain("h-24 w-32 shrink-0");
+  });
+
+  test("feature row keeps the full-width image treatment unchanged", () => {
+    const { container } = renderCard({ variant: "feature" });
+
+    expect(
+      container.querySelector('[data-slot="event-card-list-thumbnail"]'),
+    ).toBeNull();
+    expect(container.querySelector(".aspect-3\\/2.w-full")).toBeTruthy();
+  });
+
   test("no card chrome classes on the row", () => {
     const { container } = renderCard();
     expect(container.innerHTML).not.toContain("shadow-lg");
     expect(container.innerHTML).not.toContain("backdrop-blur");
+  });
+});
+
+describe("EventCard mobile layout guard (BIV-819)", () => {
+  test("list rows keep min-width and shrink constraints that prevent mobile overflow", () => {
+    const { container } = renderCard({ showBookmark: true });
+    const shell = container.firstElementChild;
+    const link = container.querySelector("a");
+    const copy = container.querySelector('[data-slot="event-card-list-copy"]');
+    const thumbnail = container.querySelector(
+      '[data-slot="event-card-list-thumbnail"]',
+    );
+
+    expect(shell?.className).toContain("flex gap-3");
+    expect(link?.className).toContain("min-w-0 flex-1");
+    expect(copy?.className).toContain("min-w-0 flex-1");
+    expect(thumbnail?.className).toContain("shrink-0");
   });
 });

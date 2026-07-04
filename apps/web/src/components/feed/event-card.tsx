@@ -231,8 +231,8 @@ const EventCard = ({
       {meta}
     </article>
   ) : (
-    <article className="flex gap-4">
-      <div className="min-w-0 flex-1 space-y-2">
+    <article data-slot="event-card-list-row" className="flex gap-4">
+      <div data-slot="event-card-list-copy" className="min-w-0 flex-1 space-y-2">
         {kicker}
         <h3 className="line-clamp-3 break-words text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
           {highlightTitle(event.title, searchQuery)}
@@ -241,11 +241,16 @@ const EventCard = ({
         {meta}
       </div>
       {event.imageUrl && (
-        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+        <div
+          data-slot="event-card-list-thumbnail"
+          className="h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-border bg-muted"
+        >
           <img
             src={event.imageUrl}
             alt=""
             aria-hidden="true"
+            width={128}
+            height={96}
             className="h-full w-full object-cover"
             loading="lazy"
           />
