@@ -167,10 +167,6 @@ function EventDetailPage() {
   };
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [slug]);
-
-  useEffect(() => {
     if (!isAuthenticated || !eventData?.event?._id) return;
 
     const startedAt = Date.now();
