@@ -11,6 +11,11 @@ import type { MutationCtx } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+  type AuthUserForProfile,
+} from "./lib/userProfile";
 import { Resend } from "resend";
 
 function requireEnv(name: string) {
@@ -471,29 +476,66 @@ See every side of the story.
 ${siteUrl}`;
 }
 
+/**
+ * BIV-814: heal a missing app profile row whenever a session is created.
+ *
+ * Root cause of the "Google sign-in bounces at /activitate" bug: the OAuth
+ * callback succeeded, the session cookie was stored and valid, and
+ * `convex/token` issued a JWT — but `getCurrentUser` returned null because
+ * the auth user predated the `users`-table onCreate trigger, so no app
+ * profile row existed. Every profile-gated surface then rendered the
+ * signed-out state, which looked exactly like a session-persistence failure.
+ * Queries can't insert the row, so the durable fix is to ensure it exists at
+ * sign-in time (session creation), which covers every legacy auth user on
+ * their next sign-in. `getAuthUserById` is injected so tests can exercise
+ * this without instantiating the Better Auth component.
+ *
+ * Runs inside the component's session-create mutation, so it is strictly
+ * best-effort: a throw here would abort session creation and turn the soft
+ * profile bounce into a hard sign-in outage for everyone. The cheap indexed
+ * profile check runs first so the steady state (profile exists) costs one
+ * read and skips the cross-component user lookup entirely.
+ */
+export async function healUserProfileForSession(
+  ctx: MutationCtx,
+  session: { userId: string },
+  getAuthUserById: (id: string) => Promise<AuthUserForProfile | null>,
+) {
+  try {
+    const existing = await getUserProfileByAuthUserId(ctx, session.userId);
+    if (existing) return;
+
+    const authUser = await getAuthUserById(session.userId);
+    if (!authUser) return;
+    await ensureUserProfileForAuthUser(ctx, authUser);
+  } catch (error) {
+    console.error(
+      "[auth] BIV-814 profile heal failed; sign-in continues without it",
+      { authUserId: session.userId, error },
+    );
+  }
+}
+
 export const authComponent = createClient<DataModel>(components.betterAuth, {
   authFunctions,
   triggers: {
+    session: {
+      onCreate: async (ctx, session) => {
+        await healUserProfileForSession(ctx, session, async (id) => {
+          // Direct adapter lookup instead of authComponent.getAnyUserById:
+          // referencing authComponent inside its own initializer would make
+          // its type circular.
+          return (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+            model: "user",
+            where: [{ field: "_id", value: id }],
+          })) as AuthUserForProfile | null;
+        });
+      },
+    },
     user: {
       onCreate: async (ctx, authUser) => {
         const normalizedEmail = normalizeEmail(authUser.email);
-        const userId = await ctx.db.insert("users", {
-          authUserId: authUser._id,
-          email: normalizedEmail,
-          profile: {
-            name: authUser.name ?? undefined,
-            avatar: authUser.image ?? undefined,
-          },
-        });
-
-        // Initialize stats in the separate userStats table
-        await ctx.db.insert("userStats", {
-          userId,
-          currentStreak: 0,
-          longestStreak: 0,
-          articlesRead: 0,
-          biasBalance: 0,
-        });
+        await ensureUserProfileForAuthUser(ctx, authUser);
 
         // Ticket 14: an unconditional signup signal, independent of the gate
         // funnel's signup_completed, so total signups are measurable. Scheduled

@@ -8,14 +8,19 @@
  * All legacy migrations were removed after the dev DB wipe on 2026-03-05.
  */
 
-import { mutation } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internalMutation, mutation } from "./_generated/server";
+import { api, components, internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
 import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+  type AuthUserForProfile,
+} from "./lib/userProfile";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -91,6 +96,54 @@ function pickLatestArticleEmbeddingRow(rows: Doc<"articleEmbeddings">[]) {
     return row._creationTime > latest._creationTime ? row : latest;
   }, null);
 }
+
+/**
+ * BIV-814: create the missing app `users` (+ `userStats`) rows for Better
+ * Auth users that predate the user onCreate trigger. Without the row,
+ * `getCurrentUser` returns null for a fully valid session and every
+ * profile-gated page renders as signed out. The session onCreate trigger in
+ * auth.ts heals accounts on their next sign-in; this backfill heals accounts
+ * with live sessions that won't sign in again.
+ *
+ *   npx convex run migrations:backfillMissingUserProfiles
+ *
+ * Internal (unlike the older migrations here) because it walks the auth
+ * component's user table — `npx convex run` can invoke internal functions.
+ */
+export const backfillMissingUserProfiles = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: {
+        numItems: args.numItems ?? 200,
+        cursor: args.cursor ?? null,
+      },
+    })) as {
+      page: AuthUserForProfile[];
+      isDone: boolean;
+      continueCursor: string;
+    };
+
+    let created = 0;
+    for (const authUser of result.page) {
+      const existing = await getUserProfileByAuthUserId(ctx, authUser._id);
+      if (existing) continue;
+      await ensureUserProfileForAuthUser(ctx, authUser);
+      created++;
+    }
+
+    return {
+      scanned: result.page.length,
+      created,
+      isDone: result.isDone,
+      continueCursor: result.isDone ? null : result.continueCursor,
+    };
+  },
+});
 
 export const syncTopicCatalogMigration = mutation({
   args: {},

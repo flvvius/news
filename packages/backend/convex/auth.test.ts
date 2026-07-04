@@ -1,10 +1,24 @@
+import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, test } from "vitest";
 
 import {
   collectTrustedOrigins,
+  healUserProfileForSession,
   isProductionDeployment,
   parseAppleAudiences,
 } from "./auth";
+import schema from "./schema";
+
+// Same documented convex-test glob as interactions.test.ts: drops
+// `convex.config.ts` (no Better Auth component instantiation) plus test/d.ts
+// files.
+const modules = (
+  import.meta as unknown as {
+    glob: (pattern: string) => Record<string, () => Promise<unknown>>;
+  }
+).glob("./**/!(*.*.*)*.*s");
+
+type ConvexT = TestConvex<typeof schema>;
 
 // Ticket 4: idToken `aud` must accept BOTH bundle ids (dev com.biviant.dev,
 // prod com.biviant.app). The bug class is parsing the Convex env value in the
@@ -148,5 +162,166 @@ describe("collectTrustedOrigins (BIV-809: localhost trusted in dev)", () => {
 
   test("native scheme defaults when NATIVE_APP_URL is unset", () => {
     expect(collectTrustedOrigins(devEnv)).toContain("news-app://");
+  });
+});
+
+// BIV-814 regression: Google OAuth completed, the session cookie was stored
+// and valid, convex/token issued a JWT — yet /activitate bounced to the
+// sign-in prompt. Cause: the auth user predated the users-table onCreate
+// trigger, so no app profile row existed and getCurrentUser (a query, cannot
+// insert) returned null. The session onCreate trigger must heal that state.
+describe("healUserProfileForSession (BIV-814: sign-in bounce)", () => {
+  const legacyAuthUser = {
+    _id: "authuser_legacy_1",
+    email: "  Legacy.User@Gmail.com ",
+    name: "Legacy User",
+    image: "https://example.com/avatar.png",
+  };
+
+  async function readProfile(t: ConvexT, authUserId: string) {
+    return await t.run(async (ctx) => {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_auth_user_id", (q) => q.eq("authUserId", authUserId))
+        .unique();
+      const stats = user
+        ? await ctx.db
+            .query("userStats")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .unique()
+        : null;
+      return { user, stats };
+    });
+  }
+
+  test("regression: session creation heals the missing profile row", async () => {
+    const t = convexTest(schema, modules);
+
+    // Reproduce the broken state: the auth user exists (sign-in succeeds,
+    // session row is written) but there is NO app users row.
+    await t.run(async (ctx) => {
+      await healUserProfileForSession(
+        ctx,
+        { userId: legacyAuthUser._id },
+        async (id) => (id === legacyAuthUser._id ? legacyAuthUser : null),
+      );
+    });
+
+    const { user, stats } = await readProfile(t, legacyAuthUser._id);
+    expect(user).not.toBeNull();
+    // Email is normalized exactly like the user onCreate trigger does.
+    expect(user!.email).toBe("legacy.user@gmail.com");
+    expect(user!.profile.name).toBe("Legacy User");
+    expect(user!.profile.avatar).toBe("https://example.com/avatar.png");
+    // Stats row must exist too — dashboards read it.
+    expect(stats).not.toBeNull();
+    expect(stats!.currentStreak).toBe(0);
+  });
+
+  test("idempotent: repeat sign-ins never duplicate profile or stats rows", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 3; i++) {
+        await healUserProfileForSession(
+          ctx,
+          { userId: legacyAuthUser._id },
+          async () => legacyAuthUser,
+        );
+      }
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const users = await ctx.db.query("users").collect();
+      const stats = await ctx.db.query("userStats").collect();
+      return { users, stats };
+    });
+    expect(rows.users).toHaveLength(1);
+    expect(rows.stats).toHaveLength(1);
+  });
+
+  test("keeps an existing profile untouched (no clobbering on sign-in)", async () => {
+    const t = convexTest(schema, modules);
+
+    const existingId = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        authUserId: legacyAuthUser._id,
+        email: "legacy.user@gmail.com",
+        profile: { name: "Customized Name" },
+      });
+      await ctx.db.insert("userStats", {
+        userId,
+        currentStreak: 4,
+        longestStreak: 9,
+        articlesRead: 42,
+        biasBalance: -10,
+      });
+      return userId;
+    });
+
+    await t.run(async (ctx) => {
+      await healUserProfileForSession(
+        ctx,
+        { userId: legacyAuthUser._id },
+        async () => legacyAuthUser,
+      );
+    });
+
+    const { user, stats } = await readProfile(t, legacyAuthUser._id);
+    expect(user!._id).toBe(existingId);
+    expect(user!.profile.name).toBe("Customized Name");
+    expect(stats!.articlesRead).toBe(42);
+  });
+
+  test("best-effort: a throwing lookup never propagates (would abort sign-in)", async () => {
+    const t = convexTest(schema, modules);
+
+    // The trigger runs inside the component's session-create mutation; if
+    // this rejected, session creation (= every sign-in) would fail.
+    await t.run(async (ctx) => {
+      await expect(
+        healUserProfileForSession(ctx, { userId: "authuser_boom" }, async () => {
+          throw new Error("transient adapter failure");
+        }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  test("skips the auth-user lookup entirely when the profile already exists", async () => {
+    const t = convexTest(schema, modules);
+    let lookups = 0;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        authUserId: legacyAuthUser._id,
+        email: "legacy.user@gmail.com",
+        profile: {},
+      });
+      await healUserProfileForSession(
+        ctx,
+        { userId: legacyAuthUser._id },
+        async () => {
+          lookups++;
+          return legacyAuthUser;
+        },
+      );
+    });
+
+    expect(lookups).toBe(0);
+  });
+
+  test("no-op when the auth user lookup misses (nothing to heal)", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await healUserProfileForSession(
+        ctx,
+        { userId: "authuser_ghost" },
+        async () => null,
+      );
+    });
+
+    const users = await t.run(async (ctx) => ctx.db.query("users").collect());
+    expect(users).toHaveLength(0);
   });
 });
