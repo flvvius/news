@@ -17,7 +17,12 @@ import {
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
-import { getString, STRINGS, type Locale, type StringKey } from "@/lib/i18n/strings";
+import {
+  getString,
+  STRINGS,
+  type Locale,
+  type StringKey,
+} from "@/lib/i18n/strings";
 import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 const searchSchema = z.object({
@@ -38,8 +43,7 @@ function getPluralizedCountLabel(
 
   const resolvedKey =
     candidates.find(
-      (candidate) =>
-        candidate in STRINGS[locale] || candidate in STRINGS.en,
+      (candidate) => candidate in STRINGS[locale] || candidate in STRINGS.en,
     ) ?? `${baseKey}.many`;
 
   return getString(locale, resolvedKey as StringKey).replace(
@@ -90,7 +94,10 @@ export const Route = createFileRoute("/event/$slug")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:description", content: description },
         { property: "og:type", content: "article" },
-        { property: "og:url", content: absoluteSiteUrl(`/event/${params.slug}`) },
+        {
+          property: "og:url",
+          content: absoluteSiteUrl(`/event/${params.slug}`),
+        },
         ...(loaderData?.event?.firstPublishedAt
           ? [
               {
@@ -139,7 +146,9 @@ export const Route = createFileRoute("/event/$slug")({
             ]
           : []),
       ],
-      links: [{ rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) }],
+      links: [
+        { rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) },
+      ],
     };
   },
   component: EventDetailPage,
@@ -263,11 +272,33 @@ function EventDetailPage() {
               no card shell; 3:2 content-width photo with hairline border;
               header actions are plain icon buttons. */}
           <section className="flex flex-col gap-4">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                {t("event.overview")}
+            <h1 className="max-w-full text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
+              {event.title}
+            </h1>
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <p
+                className="text-sm sm:text-md text-muted-foreground"
+                title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
+              >
+                {t("event.updated").replace(
+                  "{time}",
+                  formatRelativeTimestamp(lastUpdatedAt, locale),
+                )}
+                {" · "}
+                {getPluralizedCountLabel(
+                  locale,
+                  "event.sourceCount",
+                  sourceCount,
+                )}
+                {" · "}
+                {getPluralizedCountLabel(
+                  locale,
+                  "event.articles",
+                  articles.length,
+                )}
               </p>
-              <div className="flex items-center gap-1">
+
+              <div className="ml-auto flex gap-1 sm:justify-end">
                 <BookmarkButton
                   eventId={event._id}
                   interactionContext={interactionContext}
@@ -284,24 +315,6 @@ function EventDetailPage() {
                 />
               </div>
             </div>
-
-            <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
-              {event.title}
-            </h1>
-
-            <p
-              className="text-xs text-muted-foreground"
-              title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
-            >
-              {t("event.updated").replace(
-                "{time}",
-                formatRelativeTimestamp(lastUpdatedAt, locale),
-              )}
-              {" · "}
-              {getPluralizedCountLabel(locale, "event.sourceCount", sourceCount)}
-              {" · "}
-              {getPluralizedCountLabel(locale, "event.articles", articles.length)}
-            </p>
 
             {event.imageUrl && (
               <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
