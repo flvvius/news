@@ -6,6 +6,7 @@ import { SignInPrompt } from "@/components/SignInPrompt";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { SectionTitle } from "@/components/ui/section-title";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -104,9 +105,9 @@ function SalvateContent() {
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div className="flex flex-col gap-8">
           <header className="flex flex-col gap-3 border-b border-border pb-6">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <SectionTitle as="p">
               {t("saved.section")}
-            </p>
+            </SectionTitle>
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">
               {t("saved.heading")}
             </h1>

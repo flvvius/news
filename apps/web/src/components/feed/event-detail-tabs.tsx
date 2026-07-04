@@ -2,6 +2,7 @@ import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
+import { SectionTitle } from "@/components/ui/section-title";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
 
@@ -50,10 +51,8 @@ export function EventDetailTabs({
     perspectiveSummaries?.reformist || perspectiveSummaries?.suveranist,
   );
 
-  // Zone label + section rhythm from the native DESIGN_LOG: hierarchy runs
-  // label → content (uppercase tracked label, not competing headlines), and
-  // sections separate with mt-8 + hairline + pt-6.
-  const zoneLabel = "text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground";
+  // Section rhythm from the native DESIGN_LOG: zones separate with mt-8 +
+  // hairline + pt-6 while titles stay readable and content-first.
   const sectionBreak = "mt-8 border-t border-border pt-6";
   const bodyText =
     "max-w-[65ch] break-words text-[15px] leading-relaxed text-foreground sm:text-base";
@@ -65,7 +64,7 @@ export function EventDetailTabs({
     <>
       {hasPerspectives ? (
         <section className="space-y-4">
-          <h2 className={zoneLabel}>{t("event.multiplePerspectives")}</h2>
+          <SectionTitle>{t("event.multiplePerspectives")}</SectionTitle>
           <Tabs defaultValue="center" className="w-full gap-4">
             {/* overflow-x-auto: labels that outgrow 360px scroll inside the
                 row instead of making the whole page x-scrollable (BIV-811). */}
@@ -115,7 +114,7 @@ export function EventDetailTabs({
         </section>
       ) : (
         <section className="space-y-4">
-          <h2 className={zoneLabel}>{t("event.summary")}</h2>
+          <SectionTitle>{t("event.summary")}</SectionTitle>
           <p className={bodyText}>
             {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
           </p>
@@ -124,7 +123,7 @@ export function EventDetailTabs({
 
       {globalImpact && (
         <section className={`${sectionBreak} space-y-4`}>
-          <h2 className={zoneLabel}>{t("event.meaning")}</h2>
+          <SectionTitle>{t("event.meaning")}</SectionTitle>
           <p className={bodyText}>{globalImpact}</p>
         </section>
       )}

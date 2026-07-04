@@ -15,6 +15,7 @@ import { QuizCta } from "@/components/quiz-cta";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SectionTitle } from "@/components/ui/section-title";
 import {
   Command,
   CommandEmpty,
@@ -616,11 +617,11 @@ function FeedContent() {
 
             {!isSearching && featuredEvent ? (
               <section className="flex flex-col gap-4 border-b border-border pb-8">
-                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <SectionTitle>
                   {feedSort === "recent"
                     ? t("feed.leadStory")
                     : t("feed.trendingStory")}
-                </h2>
+                </SectionTitle>
                 <EventCard
                   event={featuredEvent}
                   topicNamesById={topicNamesById}
@@ -632,9 +633,7 @@ function FeedContent() {
 
             {isSearching && featuredSearchEvent ? (
               <section className="flex flex-col gap-4 border-b border-border pb-8">
-                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  {t("feed.topSearch")}
-                </h2>
+                <SectionTitle>{t("feed.topSearch")}</SectionTitle>
                 <EventCard
                   event={featuredSearchEvent}
                   topicNamesById={topicNamesById}
@@ -650,9 +649,9 @@ function FeedContent() {
               remainingSearchEvents &&
               remainingSearchEvents.length > 0) ? (
               <section className="flex flex-col gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <SectionTitle>
                   {isSearching ? t("feed.moreSearch") : t("feed.moreEvents")}
-                </h2>
+                </SectionTitle>
                 <div className="flex flex-col divide-y divide-border">
                   {(isSearching ? remainingSearchEvents : remainingEvents)?.map(
                     (event) => (
@@ -680,9 +679,9 @@ function FeedContent() {
                 </div>
                 {fallbackEvents && fallbackEvents.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    <SectionTitle>
                       {t("feed.preferredTopics")}
-                    </h2>
+                    </SectionTitle>
                     <div className="flex flex-col divide-y divide-border">
                       {fallbackEvents.map((event) => (
                         <div key={event._id} className="py-5">

@@ -1,6 +1,7 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
 import BiasIndicator from "@/components/bias-indicator";
+import { SectionTitle } from "@/components/ui/section-title";
 import { useT } from "@/lib/i18n/LocaleContext";
 
 type SourceCoverageArticle = {
@@ -75,9 +76,7 @@ export default function SourceCoverageSummary({
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-        {t("coverage.title")}
-      </h2>
+      <SectionTitle>{t("coverage.title")}</SectionTitle>
       <div className="space-y-5">
         <div className="space-y-3">
           <div className="flex h-2 overflow-hidden rounded-full bg-muted">

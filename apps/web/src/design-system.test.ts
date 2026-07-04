@@ -84,3 +84,24 @@ describe("design-system enforcement (BIV-807)", () => {
     }
   });
 });
+
+describe("section-title typography enforcement (BIV-818)", () => {
+  test("section headings do not use the old all-caps tracked label treatment", () => {
+    const offenders: string[] = [];
+    const oldTrackedHeading =
+      /<h[2-6][^>]*className=["'`][^"'`]*\buppercase\b[^"'`]*\btracking-(?:\[|wide|widest)/g;
+    const oldSectionTitleCombo =
+      /text-xs\s+font-medium\s+uppercase\s+tracking-\[0\.14em\]\s+text-muted-foreground/g;
+
+    for (const file of collectSourceFiles(SRC_DIR)) {
+      const content = readFileSync(file, "utf8");
+      if (oldTrackedHeading.test(content) || oldSectionTitleCombo.test(content)) {
+        offenders.push(relative(SRC_DIR, file));
+      }
+      oldTrackedHeading.lastIndex = 0;
+      oldSectionTitleCombo.lastIndex = 0;
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});

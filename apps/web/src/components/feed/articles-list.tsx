@@ -5,6 +5,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
 import BiasIndicator from "@/components/bias-indicator";
+import { SectionTitle } from "@/components/ui/section-title";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { useT } from "@/lib/i18n/LocaleContext";
 
@@ -74,9 +75,9 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
 
   return (
     <section className="space-y-2 border-t border-border pt-6">
-      <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <SectionTitle>
         {t("articles.originalReporting")} ({articles.length})
-      </h2>
+      </SectionTitle>
       <div className="flex flex-col divide-y divide-border">
         {articles.map((article) => (
           <div key={article._id} className="py-5">
