@@ -140,8 +140,12 @@ describe("events.getPublishedEvents sort arg (BIV-801)", () => {
       sort: "trending",
     });
 
-    const recentTitles = recent.page.map((event) => event.title);
-    const trendingTitles = trending.page.map((event) => event.title);
+    const recentTitles = recent.page.map(
+      (event: { title: string }) => event.title,
+    );
+    const trendingTitles = trending.page.map(
+      (event: { title: string }) => event.title,
+    );
 
     expect(recentTitles).toEqual(["fresh thin", "middle", "older corroborated"]);
     expect(trendingTitles).toEqual([
@@ -159,8 +163,8 @@ describe("events.getPublishedEvents sort arg (BIV-801)", () => {
       paginationOpts: { numItems: 10, cursor: null },
     });
 
-    expect(defaulted.page.map((event) => event.title)[0]).toBe(
-      "older corroborated",
-    );
+    expect(
+      defaulted.page.map((event: { title: string }) => event.title)[0],
+    ).toBe("older corroborated");
   });
 });

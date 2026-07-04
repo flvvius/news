@@ -20,6 +20,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  action,
   mutation,
   query,
 } from "./_generated/server";
@@ -37,6 +38,7 @@ import {
   syncPublicEventPreview,
 } from "./lib/publicEventPreviews";
 import { buildEventShareRenderSignature } from "./shareAssets";
+import { TOPIC_CATALOG_SLUGS } from "./topicCatalog";
 import { estimateVectorSearchQgbRead } from "./vectorSearchBudget";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
@@ -967,7 +969,7 @@ type ClusterSettings = {
   weakExtractionStrongSimilarity: number;
 };
 
-type TopicInferenceSettings = {
+export type TopicInferenceSettings = {
   minScore: number;
   confidenceRatio: number;
   maxTopics: number;
@@ -989,7 +991,7 @@ type ReclusterSettings = {
   windowHours: number;
 };
 
-type TopicInferenceTopic = Pick<
+export type TopicInferenceTopic = Pick<
   Doc<"topics">,
   | "_id"
   | "slug"
@@ -1010,7 +1012,7 @@ type CompiledTopicInferenceTopic = {
   displayNameTokens: Set<string>;
 };
 
-type TopicArticleContext = {
+export type TopicArticleContext = {
   title: string;
   rssSnippet: string;
   summary: string;
@@ -1032,7 +1034,7 @@ type TopicInferenceFieldContexts = {
   combined: NormalizedTopicField;
 };
 
-type TopicInferenceCandidate = {
+export type TopicInferenceCandidate = {
   slug: string;
   score: number;
   signalCount: number;
@@ -1195,7 +1197,7 @@ function compileTopicForInference(
   };
 }
 
-function evaluateTopicInference(
+export function evaluateTopicInference(
   article: TopicArticleContext,
   topics: TopicInferenceTopic[],
   settings: TopicInferenceSettings,
@@ -1304,7 +1306,7 @@ function evaluateTopicInference(
     .sort((a, b) => b.score - a.score);
 }
 
-function inferTopicSlugs(
+export function inferTopicSlugs(
   article: TopicArticleContext,
   topics: TopicInferenceTopic[],
   settings: TopicInferenceSettings,
@@ -3709,10 +3711,13 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
     await requireAdminUser(ctx);
 
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 20), 1), 50);
-    const [topicsForInference, settings] = await Promise.all([
+    const [topicRows, settings] = await Promise.all([
       ctx.db.query("topics").collect(),
       getTopicInferenceSettingsForQuery(ctx),
     ]);
+    const topicsForInference = topicRows.filter((topic) =>
+      TOPIC_CATALOG_SLUGS.has(topic.slug),
+    );
     const topicBySlug = new Map(
       topicsForInference.map((topic) => [topic.slug, topic]),
     );
@@ -3813,6 +3818,206 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
         };
       }),
     );
+  },
+});
+
+export const backfillEventTopicBatch = internalMutation({
+  args: {
+    limit: v.number(),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, { limit, cursor }) => {
+    const pageSize = Math.min(Math.max(Math.floor(limit), 1), 200);
+    const page = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .paginate({
+        cursor: cursor ?? null,
+        numItems: pageSize,
+      });
+    const events = page.page;
+
+    const topicsForInference = (await ctx.db.query("topics").collect()).filter(
+      (topic) => TOPIC_CATALOG_SLUGS.has(topic.slug),
+    );
+    const topicBySlug = new Map(
+      topicsForInference.map((topic) => [topic.slug, topic]),
+    );
+    const settings = await getTopicInferenceSettingsForQuery(ctx);
+
+    let updatedEvents = 0;
+    let insertedLinks = 0;
+    let removedLinks = 0;
+    let updatedCandidacyRows = 0;
+
+    for (const event of events) {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      const inferredSlugs = inferTopicSlugs(
+        buildEventTopicInferenceContext(event, articles),
+        topicsForInference,
+        settings,
+      );
+      const inferredSlugSet = new Set(inferredSlugs);
+      const inferredTopicIds = new Set(
+        inferredSlugs
+          .map((slug) => topicBySlug.get(slug)?._id)
+          .filter((topicId): topicId is Id<"topics"> => topicId !== undefined)
+          .map((topicId) => String(topicId)),
+      );
+
+      const existingRows = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      const existingTopicIds = new Set<string>();
+
+      for (const row of existingRows) {
+        const topic = await ctx.db.get(row.topicId);
+        const shouldKeep =
+          topic !== null &&
+          inferredSlugSet.has(topic.slug) &&
+          inferredTopicIds.has(String(topic._id));
+        if (shouldKeep) {
+          existingTopicIds.add(String(row.topicId));
+          continue;
+        }
+        await ctx.db.delete(row._id);
+        removedLinks++;
+      }
+
+      for (const slug of inferredSlugs) {
+        const topic = topicBySlug.get(slug);
+        if (!topic || existingTopicIds.has(String(topic._id))) continue;
+        await ctx.db.insert("eventTopics", {
+          eventId: event._id,
+          topicId: topic._id,
+        });
+        insertedLinks++;
+      }
+
+      const candidacy = await ctx.db
+        .query("eventCandidacy")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .first();
+      if (
+        candidacy &&
+        (candidacy.topicSlugs.length !== inferredSlugs.length ||
+          candidacy.topicSlugs.some((slug, index) => slug !== inferredSlugs[index]))
+      ) {
+        await ctx.db.patch(candidacy._id, {
+          topicSlugs: inferredSlugs,
+          updatedAt: Date.now(),
+        });
+        updatedCandidacyRows++;
+      }
+
+      await syncPublicEventPreview(ctx, event._id);
+      updatedEvents++;
+    }
+
+    return {
+      processed: events.length,
+      updatedEvents,
+      insertedLinks,
+      removedLinks,
+      updatedCandidacyRows,
+      continueCursor: page.continueCursor ?? null,
+      isDone: page.isDone,
+    };
+  },
+});
+
+export const requireTopicBackfillAdmin = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminUser(ctx);
+    return { ok: true };
+  },
+});
+
+type BackfillEventTopicsResult = {
+  syncResult: {
+    created: number;
+    updated: number;
+    deleted: number;
+    removedEventTopicLinks: number;
+    removedFollowedTopicRefs: number;
+    totalCatalogTopics: number;
+  };
+  pages: number;
+  processed: number;
+  insertedLinks: number;
+  removedLinks: number;
+  updatedCandidacyRows: number;
+  continueCursor: string | null;
+  isDone: boolean;
+};
+
+export const backfillEventTopics = action({
+  args: {
+    pageSize: v.optional(v.number()),
+    maxPages: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    { pageSize, maxPages, cursor: initialCursor },
+  ): Promise<BackfillEventTopicsResult> => {
+    await ctx.runQuery(internal.clustering.requireTopicBackfillAdmin, {});
+    let syncResult: BackfillEventTopicsResult["syncResult"] =
+      await ctx.runMutation(internal.topics.syncTopicCatalog, {});
+    const limit = Math.min(Math.max(Math.floor(pageSize ?? 100), 1), 200);
+    const pageLimit = Math.min(Math.max(Math.floor(maxPages ?? 20), 1), 100);
+    let cursor = initialCursor ?? null;
+    let pages = 0;
+    let processed = 0;
+    let insertedLinks = 0;
+    let removedLinks = 0;
+    let updatedCandidacyRows = 0;
+    let isDone = false;
+
+    while (pages < pageLimit && !isDone) {
+      const result: {
+        processed: number;
+        insertedLinks: number;
+        removedLinks: number;
+        updatedCandidacyRows: number;
+        continueCursor: string | null;
+        isDone: boolean;
+      } = await ctx.runMutation(internal.clustering.backfillEventTopicBatch, {
+        limit,
+        cursor: cursor ?? undefined,
+      });
+      pages++;
+      processed += result.processed;
+      insertedLinks += result.insertedLinks;
+      removedLinks += result.removedLinks;
+      updatedCandidacyRows += result.updatedCandidacyRows;
+      isDone = result.isDone;
+      cursor = result.continueCursor;
+    }
+
+    if (isDone) {
+      syncResult = await ctx.runMutation(internal.topics.syncTopicCatalog, {
+        pruneStale: true,
+      });
+      await ctx.runMutation(internal.events.rebuildPublicFeedSnapshotsJob, {});
+    }
+
+    return {
+      syncResult,
+      pages,
+      processed,
+      insertedLinks,
+      removedLinks,
+      updatedCandidacyRows,
+      continueCursor: isDone ? null : cursor,
+      isDone,
+    };
   },
 });
 

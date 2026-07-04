@@ -12,7 +12,7 @@ import { internalMutation, mutation } from "./_generated/server";
 import { api, components, internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { TOPIC_CATALOG } from "./topicCatalog";
+import { syncTopicCatalogRows } from "./topics";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
 import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
@@ -244,57 +244,7 @@ export const clearArticleSummariesByPrefix = internalMutation({
 export const syncTopicCatalogMigration = mutation({
   args: {},
   handler: async (ctx) => {
-    const sameStringArray = (
-      a: string[] | undefined,
-      b: string[] | undefined,
-    ): boolean =>
-      (a ?? []).length === (b ?? []).length &&
-      (a ?? []).every((value, index) => value === (b ?? [])[index]);
-
-    let created = 0;
-    let updated = 0;
-
-    for (const topic of TOPIC_CATALOG) {
-      const existing = await ctx.db
-        .query("topics")
-        .withIndex("by_slug", (q) => q.eq("slug", topic.slug))
-        .unique();
-
-      const nextValues = {
-        slug: topic.slug,
-        displayName: topic.displayName,
-        description: topic.description,
-        aliases: topic.aliases,
-        keywords: topic.keywords,
-        keyPhrases: topic.keyPhrases,
-        excludePhrases: topic.excludePhrases,
-      };
-
-      if (!existing) {
-        await ctx.db.insert("topics", nextValues);
-        created++;
-        continue;
-      }
-
-      const hasChanges =
-        existing.displayName !== nextValues.displayName ||
-        existing.description !== nextValues.description ||
-        !sameStringArray(existing.aliases, nextValues.aliases) ||
-        !sameStringArray(existing.keywords, nextValues.keywords) ||
-        !sameStringArray(existing.keyPhrases, nextValues.keyPhrases) ||
-        !sameStringArray(existing.excludePhrases, nextValues.excludePhrases);
-
-      if (hasChanges) {
-        await ctx.db.patch(existing._id, nextValues);
-        updated++;
-      }
-    }
-
-    return {
-      created,
-      updated,
-      totalCatalogTopics: TOPIC_CATALOG.length,
-    };
+    return await syncTopicCatalogRows(ctx);
   },
 });
 

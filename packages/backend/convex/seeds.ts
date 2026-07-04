@@ -80,10 +80,12 @@ export const seedDB = internalMutation({
       topicIdsBySlug.set(topic.slug, topicId);
     }
 
-    const topicEconomy = topicIdsBySlug.get("economy");
-    const topicTech = topicIdsBySlug.get("tech");
+    const topicEconomy = topicIdsBySlug.get("economie");
+    const topicTech = topicIdsBySlug.get("tehnologie");
     if (!topicEconomy || !topicTech) {
-      throw new Error("Seed topic catalog is missing required economy/tech topics");
+      throw new Error(
+        "Seed topic catalog is missing required economie/tehnologie topics",
+      );
     }
 
     console.log(`✅ Created ${TOPIC_CATALOG.length} topics`);
