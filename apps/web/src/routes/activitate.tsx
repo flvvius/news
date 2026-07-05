@@ -1,7 +1,7 @@
 import { SignInPrompt } from "@/components/SignInPrompt";
 import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
-import StreakActivityCalendar from "@/components/streak-activity-calendar";
+import { CurrentMonthReadingCalendar } from "@/components/current-month-reading-calendar";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -150,8 +150,8 @@ function AuthorizedDashboard({
   const eventsExplored = dashboardOverview?.stats.eventsExplored ?? 0;
   const recentHistory = dashboardOverview?.recentHistory ?? [];
   const recentBookmarks = dashboardOverview?.recentBookmarks ?? [];
-  const streakDays = dashboardOverview?.streakCalendar.days ?? [];
-  const activeDays = dashboardOverview?.streakCalendar.activeDays ?? 0;
+  const readingCalendarDays = dashboardOverview?.readingCalendar.days ?? [];
+  const activeReadingDays = dashboardOverview?.readingCalendar.activeDays ?? 0;
   const weeklyBiasReads = dashboardOverview?.weeklyBiasSummary.reads ?? 0;
   const weeklyBiasBalance = dashboardOverview?.weeklyBiasSummary.balance ?? 0;
   const nextStreakMilestone = getNextStreakMilestone(readingStreak);
@@ -269,7 +269,7 @@ function AuthorizedDashboard({
                 <div>
                   <h2 className="font-semibold">{t("activity.section")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    {t("activity.last12Weeks")}
+                    {t("activity.currentMonthReading")}
                   </p>
                 </div>
                 <div className="flex gap-6 text-center">
@@ -291,16 +291,16 @@ function AuthorizedDashboard({
                   </div>
                   <div>
                     <p className="text-lg font-bold tabular-nums">
-                      {activeDays}
+                      {activeReadingDays}
                     </p>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {t("activity.active")}
+                      {t("activity.activeReadingDays")}
                     </p>
                   </div>
                 </div>
               </div>
               <div className="mt-5">
-                <StreakActivityCalendar days={streakDays} />
+                <CurrentMonthReadingCalendar days={readingCalendarDays} />
               </div>
             </div>
 
