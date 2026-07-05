@@ -2,6 +2,7 @@ import { SignInPrompt } from "@/components/SignInPrompt";
 import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
 import { CurrentMonthReadingCalendar } from "@/components/current-month-reading-calendar";
+import { RecentReadingItem } from "@/components/activity/recent-reading-item";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -19,29 +20,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { QuizCta } from "@/components/quiz-cta";
-
-function formatReadDuration(
-  t: ReturnType<typeof useT>,
-  seconds?: number,
-) {
-  if (!seconds || seconds <= 0) return null;
-  if (seconds < 60) {
-    return t("read.duration.seconds").replace("{count}", String(seconds));
-  }
-  const minutes = Math.round(seconds / 60);
-  return t("read.duration.minutes").replace("{count}", String(minutes));
-}
-
-function formatScrollDepth(
-  t: ReturnType<typeof useT>,
-  percentage?: number,
-) {
-  if (percentage === undefined) return null;
-  return t("scroll.depth").replace(
-    "{count}",
-    String(Math.round(percentage * 100)),
-  );
-}
 
 function getBiasSnapshotLabel(
   balance: number,
@@ -350,62 +328,9 @@ function AuthorizedDashboard({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {recentHistory.slice(0, 4).map((entry) => {
-                      const durationLabel = formatReadDuration(
-                        t,
-                        entry.metadata.timeSpentSeconds,
-                      );
-                      const scrollLabel = formatScrollDepth(
-                        t,
-                        entry.metadata.scrollDepthPercentage,
-                      );
-                      const detailBits = [durationLabel, scrollLabel].filter(
-                        Boolean,
-                      );
-
-                      return (
-                        <Link
-                          key={entry.event._id}
-                          to="/event/$slug"
-                          params={{ slug: entry.event.slug }}
-                          className="group flex gap-3 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
-                        >
-                          <div className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                            {entry.event.imageUrl ? (
-                              <img
-                                src={entry.event.imageUrl}
-                                alt=""
-                                className="size-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
-                                <Newspaper className="size-5" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
-                              {entry.event.title}
-                            </p>
-                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>
-                                {formatRelativeTimestamp(
-                                  entry.lastViewedAt,
-                                  locale,
-                                )}
-                              </span>
-                              {detailBits.length > 0 && (
-                                <>
-                                  <span>·</span>
-                                  <span>{detailBits.join(" · ")}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </Link>
-                      );
-                    })}
+                    {recentHistory.slice(0, 4).map((entry) => (
+                      <RecentReadingItem key={entry.event._id} entry={entry} />
+                    ))}
                   </div>
                 )}
               </div>
