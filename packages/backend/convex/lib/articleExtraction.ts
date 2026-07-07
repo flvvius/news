@@ -1027,13 +1027,22 @@ export function collectImageMetadataCandidates(
 // can't trigger a fetch storm.
 const MAX_IMAGE_VERIFICATION_ATTEMPTS = 3;
 
+// This best-effort hero check runs inline in the content-fetch worker and
+// probes up to MAX_IMAGE_VERIFICATION_ATTEMPTS candidates sequentially, so
+// each probe uses a tighter timeout than verifyImageUrl's default to bound
+// worst-case blocking (3 × 4s instead of 3 × 8s).
+const HERO_IMAGE_VERIFY_TIMEOUT_MS = 4000;
+
 export type ImageUrlVerifier = (url: string) => Promise<ImageUrlVerdict>;
+
+const defaultHeroImageVerifier: ImageUrlVerifier = (url) =>
+  verifyImageUrl(url, { timeoutMs: HERO_IMAGE_VERIFY_TIMEOUT_MS });
 
 export async function resolveVerifiedImageMetadata(
   html: string,
   baseUrl: string,
   fallbackAlt: string,
-  verifier: ImageUrlVerifier = verifyImageUrl,
+  verifier: ImageUrlVerifier = defaultHeroImageVerifier,
 ): Promise<ExtractedImageMetadata> {
   const candidates = collectImageMetadataCandidates(html, baseUrl, fallbackAlt);
   for (const candidate of candidates.slice(

@@ -8,7 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { BRAND_NAME, getString } from "@/lib/i18n/strings";
+import { getString } from "@/lib/i18n/strings";
+import { BrandLogo } from "@/components/BrandLogo";
 import {
   AlertCircle,
   CheckCircle,
@@ -154,12 +155,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       <Card className="border-border shadow-lg max-w-md w-full">
         <CardContent className="flex flex-col items-center text-center p-10">
           {/* Logo */}
-          <div className="flex items-center gap-2 mb-8">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-              {BRAND_NAME.charAt(0)}
-            </div>
-            <span className="text-xl font-bold">{BRAND_NAME}</span>
-          </div>
+          <BrandLogo className="h-8 mb-8" />
           {children}
         </CardContent>
       </Card>

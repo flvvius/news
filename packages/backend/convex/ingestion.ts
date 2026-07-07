@@ -689,91 +689,66 @@ export const getIngestionMeta = internalQuery({
 // Internal Mutations
 // ---------------------------------------------------------------------------
 
+// Shared curated-source args, kept identical between createSource and
+// getOrCreateSource so a new field only has to be added in one validator.
+const sourceSeedArgs = {
+  domain: v.string(),
+  name: v.string(),
+  baseBias: v.number(),
+  reliabilityScore: v.number(),
+  provenance: v.optional(v.string()),
+  mbfcCategory: v.string(),
+  mbfcFactual: v.optional(v.string()),
+  mbfcCredibility: v.optional(v.string()),
+} as const;
+
+type SourceSeed = {
+  domain: string;
+  name: string;
+  baseBias: number;
+  reliabilityScore: number;
+  provenance?: string;
+  mbfcCategory: string;
+  mbfcFactual?: string;
+  mbfcCredibility?: string;
+};
+
+/** Build the full `sources` insert payload from curated feed data. */
+function buildSourceDoc(seed: SourceSeed) {
+  return {
+    domain: seed.domain,
+    name: seed.name,
+    bias: namedAxisBias(seed.baseBias),
+    baseBias: seed.baseBias,
+    reliabilityScore: seed.reliabilityScore,
+    provenance: seed.provenance,
+    logoUrl: `https://icons.duckduckgo.com/ip3/${seed.domain}.ico`,
+    mbfcCategory: seed.mbfcCategory,
+    mbfcFactual: seed.mbfcFactual,
+    mbfcCredibility: seed.mbfcCredibility,
+    mbfcLastChecked: Date.now(),
+  };
+}
+
 /** Create a source record for a new domain, using curated data from feeds.ts. */
 export const createSource = internalMutation({
-  args: {
-    domain: v.string(),
-    name: v.string(),
-    baseBias: v.number(),
-    reliabilityScore: v.number(),
-    provenance: v.optional(v.string()),
-    mbfcCategory: v.string(),
-    mbfcFactual: v.optional(v.string()),
-    mbfcCredibility: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      provenance,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-    },
-  ): Promise<Id<"sources">> => {
-    return ctx.db.insert("sources", {
-      domain,
-      name,
-      bias: namedAxisBias(baseBias),
-      baseBias,
-      reliabilityScore,
-      provenance,
-      logoUrl: `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-      mbfcLastChecked: Date.now(),
-    });
+  args: sourceSeedArgs,
+  handler: async (ctx, args): Promise<Id<"sources">> => {
+    return ctx.db.insert("sources", buildSourceDoc(args));
   },
 });
 
 /** Atomically find or create a source for a feed domain. */
 export const getOrCreateSource = internalMutation({
-  args: {
-    domain: v.string(),
-    name: v.string(),
-    baseBias: v.number(),
-    reliabilityScore: v.number(),
-    provenance: v.optional(v.string()),
-    mbfcCategory: v.string(),
-    mbfcFactual: v.optional(v.string()),
-    mbfcCredibility: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      provenance,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-    },
-  ): Promise<Id<"sources">> => {
+  args: sourceSeedArgs,
+  handler: async (ctx, args): Promise<Id<"sources">> => {
     const existing = await ctx.db
       .query("sources")
-      .withIndex("by_domain", (q) => q.eq("domain", domain))
+      .withIndex("by_domain", (q) => q.eq("domain", args.domain))
       .first();
     if (existing) return existing._id;
 
-    return ctx.db.insert("sources", {
-      domain,
-      name,
-      bias: namedAxisBias(baseBias),
-      baseBias,
-      reliabilityScore,
-      provenance,
-      logoUrl: `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-      mbfcLastChecked: Date.now(),
-    });
+    return ctx.db.insert("sources", buildSourceDoc(args));
   },
 });
 

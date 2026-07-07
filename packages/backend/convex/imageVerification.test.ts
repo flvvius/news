@@ -88,6 +88,63 @@ describe("verifyImageUrl (BIV broken event photos)", () => {
     });
     expect(verdict).toBe("unreachable");
   });
+
+  test("refuses to fetch private/loopback targets (SSRF guard)", async () => {
+    for (const url of [
+      "http://127.0.0.1/photo.png",
+      "http://169.254.169.254/latest/meta-data",
+      "http://localhost:8080/x.jpg",
+      "http://10.0.0.5/x.jpg",
+      "http://192.168.1.1/x.jpg",
+    ]) {
+      let fetched = false;
+      const verdict = await verifyImageUrl(url, {
+        fetchImpl: async () => {
+          fetched = true;
+          return new Response(PNG_BYTES, { status: 200 });
+        },
+      });
+      expect(verdict).toBe("unreachable");
+      expect(fetched).toBe(false);
+    }
+  });
+
+  test("re-validates the host on each redirect hop", async () => {
+    // A public og:image that 302s to an internal metadata endpoint must be
+    // rejected without ever fetching the internal target.
+    let internalFetched = false;
+    const verdict = await verifyImageUrl("https://cdn.example.com/photo.png", {
+      fetchImpl: async (input) => {
+        const target = typeof input === "string" ? input : input.toString();
+        if (target === "https://cdn.example.com/photo.png") {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://169.254.169.254/latest/meta-data" },
+          });
+        }
+        internalFetched = true;
+        return new Response(PNG_BYTES, { status: 200 });
+      },
+    });
+    expect(verdict).toBe("unreachable");
+    expect(internalFetched).toBe(false);
+  });
+
+  test("follows a redirect to another public image", async () => {
+    const verdict = await verifyImageUrl("https://cdn.example.com/a.png", {
+      fetchImpl: async (input) => {
+        const target = typeof input === "string" ? input : input.toString();
+        if (target === "https://cdn.example.com/a.png") {
+          return new Response(null, {
+            status: 301,
+            headers: { location: "https://static.example.com/b.png" },
+          });
+        }
+        return new Response(PNG_BYTES, { status: 200 });
+      },
+    });
+    expect(verdict).toBe("image");
+  });
 });
 
 // Reduced version of the real Agerpres markup that produced the bug: the

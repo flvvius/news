@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
 import { useT } from "@/lib/i18n/LocaleContext";
@@ -8,12 +7,6 @@ type SignInPromptProps = {
   title: string;
   description: string;
   redirectTo: AuthRedirectPath;
-  /**
-   * Kept for API compatibility but ignored (BIV-807): the native DESIGN_LOG
-   * deleted icon-circle illustrations from empty/prompt states — the state
-   * is typographic, one message + actions.
-   */
-  illustration?: ReactNode;
 };
 
 export function SignInPrompt({

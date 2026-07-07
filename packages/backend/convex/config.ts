@@ -760,9 +760,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_bias_detection_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call.",
+          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call. Paused for the Romanian launch (BIV-602); operators re-enable explicitly via config:set.",
       },
       {
         key: "article_bias_detection_model",
@@ -1124,6 +1124,7 @@ export const seedDefaults = internalMutation({
       // BIV-602: claim analysis paused — force the off state onto existing
       // deployments; operators re-enable explicitly via config:set.
       "article_fact_extraction_enabled",
+      "article_bias_detection_enabled",
       "claim_analysis_enabled",
       "clustering_same_source_min_similarity",
       "clustering_min_similarity",

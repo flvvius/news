@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { BrandLogo } from "@/components/BrandLogo";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { BRAND_NAME } from "@/lib/i18n/strings";
 import { useT } from "@/lib/i18n/LocaleContext";
@@ -54,14 +56,10 @@ export default function Header() {
           {/* Logo */}
           <Link
             to="/feed"
-            className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            aria-label={BRAND_NAME}
+            className="flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
-              {BRAND_NAME.charAt(0)}
-            </div>
-            <span className="text-lg font-semibold tracking-tight">
-              {BRAND_NAME}
-            </span>
+            <BrandLogo className="h-7" />
           </Link>
 
           {/* Desktop nav */}
@@ -96,7 +94,7 @@ export default function Header() {
           </nav>
 
           <div className="hidden md:flex items-center">
-            <LanguagePicker compact />
+            <ThemeToggle />
           </div>
 
           {/* Mobile burger */}
@@ -115,10 +113,11 @@ export default function Header() {
               <div className="flex flex-col h-full">
                 <div className="border-b border-border p-6">
                   <SheetTitle className="flex items-center gap-2">
-                    <div className="flex size-8 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
-                      {BRAND_NAME.charAt(0)}
-                    </div>
-                    <span className="font-semibold">{BRAND_NAME}</span>
+                    {/* Logo is decorative here; the accessible name must
+                        describe the dialog's purpose, so the sr-only label
+                        carries it and the lockup is hidden from a11y. */}
+                    <span className="sr-only">{t("header.mobileNav")}</span>
+                    <BrandLogo className="h-7" />
                   </SheetTitle>
                 </div>
                 <nav

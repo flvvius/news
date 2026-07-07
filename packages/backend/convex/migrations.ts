@@ -375,7 +375,7 @@ function isHtmlPageImageUrl(url: string | undefined): boolean {
   return HTML_PAGE_IMAGE_URL_PATTERNS.some((pattern) => url.includes(pattern));
 }
 
-export const clearHtmlPageImageUrls = mutation({
+export const clearHtmlPageImageUrls = internalMutation({
   args: {
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
@@ -442,7 +442,7 @@ export const clearHtmlPageImageUrls = mutation({
 // Targeted variant of clearHtmlPageImageUrls for a single event, e.g. when a
 // user reports one broken event photo. Only touches rows whose imageUrl
 // matches a known HTML-page pattern, so it is safe to re-run.
-export const clearHtmlPageImageForEventSlug = mutation({
+export const clearHtmlPageImageForEventSlug = internalMutation({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
     const event = await ctx.db

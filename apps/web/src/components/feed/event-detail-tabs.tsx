@@ -135,7 +135,7 @@ export function EventDetailTabs({
   );
 
   if (!FEATURE_FLAGS.claimAnalysis) {
-    return <div>{perspectivesPanel}</div>;
+    return perspectivesPanel;
   }
 
   return (

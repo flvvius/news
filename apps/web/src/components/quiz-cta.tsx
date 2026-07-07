@@ -32,7 +32,7 @@ export function QuizCta({ variant }: { variant: "feed" | "activity" }) {
     >
       <div className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <BrainCircuit className="size-5" />
+          <BrainCircuit className="size-5" aria-hidden="true" />
         </div>
         <div>
           <h2

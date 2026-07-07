@@ -267,6 +267,8 @@ const ro = {
   "header.primaryNav": "Navigație principală",
   "header.mobileNav": "Navigație mobilă",
   "header.openMenu": "Deschide meniul",
+  "header.switchToDark": "Comută pe tema întunecată",
+  "header.switchToLight": "Comută pe tema luminoasă",
   "footer.aboutSection": "Despre",
   "footer.resourcesSection": "Resurse",
   "footer.legalSection": "Legal",
@@ -982,6 +984,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "header.primaryNav": "Primary navigation",
   "header.mobileNav": "Mobile navigation",
   "header.openMenu": "Open menu",
+  "header.switchToDark": "Switch to dark theme",
+  "header.switchToLight": "Switch to light theme",
   "footer.aboutSection": "About",
   "footer.resourcesSection": "Resources",
   "footer.legalSection": "Legal",
@@ -1022,7 +1026,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "onboarding.promise.cardTitle":
     "Leaders reach a tentative deal after late-night talks",
   "onboarding.promise.cardSummary":
-    "Coverage splits on what the agreement means — compare how the left, center, and right frame the same outcome.",
+    "Coverage splits on what the agreement means — compare how reformist, neutral, and sovereigntist sources frame the same outcome.",
   "onboarding.promise.continue": "Continue",
   "onboarding.promise.privacyNotice":
     `By continuing you accept that we use anonymous analytics to improve ${BRAND_NAME}. You can opt out anytime in Settings.`,
@@ -1110,18 +1114,18 @@ const en: { [K in keyof BaseStrings]: string } = {
   "claim.framings": "Framing differences",
   "claim.framingBody":
     "Shared facts described with meaningfully different language.",
-  "claim.leftExclusive": "Left-only claims",
-  "claim.leftExclusives": "Left-side exclusives",
+  "claim.leftExclusive": "Reformist-only claims",
+  "claim.leftExclusives": "Reformist exclusives",
   "claim.leftExclusiveBody":
-    "Substantive claims only found in left or left-center coverage.",
-  "claim.rightExclusive": "Right-only claims",
-  "claim.rightExclusives": "Right-side exclusives",
+    "Substantive claims only found in reformist or reformist-leaning coverage.",
+  "claim.rightExclusive": "Sovereigntist-only claims",
+  "claim.rightExclusives": "Sovereigntist exclusives",
   "claim.rightExclusiveBody":
-    "Substantive claims only found in right or right-center coverage.",
-  "claim.centerExclusive": "Center-only claims",
-  "claim.centerExclusives": "Center exclusives",
+    "Substantive claims only found in sovereigntist or sovereigntist-leaning coverage.",
+  "claim.centerExclusive": "Neutral-only claims",
+  "claim.centerExclusives": "Neutral exclusives",
   "claim.centerExclusiveBody":
-    "Substantive claims only found in center coverage.",
+    "Substantive claims only found in neutral coverage.",
   "claim.unknownSource": "Unknown source",
   "claim.readSourceArticle": "Read source article",
   "claim.importance": "importance",
