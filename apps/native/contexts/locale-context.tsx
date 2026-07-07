@@ -1,7 +1,6 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import { getString, type Locale, type StringKey } from "@news-app/i18n";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { getLocales } from "expo-localization";
 import * as SecureStore from "expo-secure-store";
 import {
   createContext,
@@ -34,10 +33,10 @@ function isLanguagePreference(
   return value === "system" || value === "ro" || value === "en";
 }
 
-function getDeviceLocale(): Locale {
-  const languageCode = getLocales()[0]?.languageCode;
-  return languageCode === "ro" ? "ro" : "en";
-}
+// Romanian-first product: default everyone to Romanian on first open. English
+// is opt-in only, via an explicit account preference. A non-Romanian device
+// locale does NOT pull the user into English.
+const DEFAULT_LOCALE: Locale = "ro";
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
@@ -69,11 +68,11 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<LocaleContextType>(() => {
     // Resolution mirrors the web's resolveLocale priorities, adapted to
-    // native inputs: explicit choice → account preference → device locale.
+    // native inputs: explicit choice → account preference → Romanian default.
     const locale: Locale =
       preference !== "system"
         ? preference
-        : (profileLanguage ?? getDeviceLocale());
+        : (profileLanguage ?? DEFAULT_LOCALE);
 
     return {
       locale,

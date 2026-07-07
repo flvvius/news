@@ -1,9 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import {
-  getCookie,
-  getRequestHeader,
-  getRequestUrl,
-} from "@tanstack/react-start/server";
+import { getCookie, getRequestUrl } from "@tanstack/react-start/server";
 import { resolveLocale } from "./resolveLocale";
 import type { Locale } from "./strings";
 
@@ -35,10 +31,5 @@ export const getServerLocale = createServerFn({ method: "GET" })
       searchParam: requestUrl.searchParams.get("lang"),
       cookieValue: getCookie("bv_locale") ?? null,
       userPreference: data.userPreference ?? null,
-      countryCode:
-        getRequestHeader("x-vercel-ip-country") ??
-        getRequestHeader("cf-ipcountry") ??
-        null,
-      acceptLanguage: getRequestHeader("accept-language") ?? null,
     });
   });
