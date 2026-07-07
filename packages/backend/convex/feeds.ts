@@ -90,10 +90,14 @@ const TIER_1: FeedDefinition[] = [
     mbfc: { category: "left-center", factual: "very-high", credibility: "high" },
   },
   {
-    // NOTE: endpoint returned 520/522 at verification time while the homepage
-    // was healthy — kept because Agerpres is the national wire service; the
-    // ingestion quarantine covers it if the RSS endpoint stays broken.
-    url: "https://www.agerpres.ro/rss/stiri",
+    // Agerpres has no native RSS: www.agerpres.ro/rss/stiri 301-redirects to an
+    // allorigins.win proxy wrapper that returns 520/522 (dead), which kept the
+    // feed permanently quarantined. The underlying bazqux "createfeed" extractor
+    // over the Agerpres widget returns valid RSS directly, so we point at it
+    // without the broken proxy layer. If this third-party extractor ever fails,
+    // the ingestion quarantine covers it. Kept because Agerpres is the national
+    // wire service.
+    url: "https://createfeed.bazqux.com/extract.php?url=https%3A%2F%2Fagerpres.ro%2Fwidget&max=50&order=document&guid=0",
     name: "Agerpres",
     domain: "agerpres.ro",
     tier: 1,

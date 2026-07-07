@@ -952,6 +952,13 @@ export const checkPipelineAlerts = internalAction({
 
       const byJob = new Map<string, { total: number; ok: number }>();
       for (const log of logs as Array<Doc<"pipelineRunLogs">>) {
+        // A "skipped" run is a deliberate no-op (e.g. a job yielding to a
+        // pipeline lock, or short-circuiting because it was already running).
+        // It did no work, so it must not count as a failure toward the
+        // error-rate SLO — otherwise jobs that intentionally yield (like the
+        // stale-singleton archive) flap below 80%. The "job stuck skipping"
+        // failure mode is still caught by the per-job absent-ok-run checks.
+        if (log.status === "skipped") continue;
         const row = byJob.get(log.jobName) ?? { total: 0, ok: 0 };
         row.total++;
         if (log.status === "ok") row.ok++;
