@@ -21,13 +21,14 @@ crons.interval(
 // automated refresh is ever wanted again.
 
 // ---------------------------------------------------------------------------
-// Article Enrichment (Embeddings) — Every 40 minutes
+// Article Enrichment (Embeddings) — Every 30 minutes
 // ---------------------------------------------------------------------------
 // Generates embeddings for unprocessed articles.
-// Runs more frequently than ingestion to keep the pipeline flowing.
+// Runs more frequently than ingestion to keep the pipeline flowing and to work
+// down the unprocessed-article backlog faster.
 crons.interval(
   "enrich-articles",
-  { minutes: 40 },
+  { minutes: 30 },
   internal.enrichmentNode.enrichUnprocessedArticles,
 );
 
@@ -68,12 +69,20 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Stale Singleton Archive — Hourly
+// Stale Singleton Archive — Every 53 minutes (drifting)
 // ---------------------------------------------------------------------------
 // Archives stale processing singletons so they stop inflating the vector index.
+// The job yields (skips) whenever a clustering job holds a pipeline lock to
+// avoid concurrent mutation of hot event/embedding rows. Convex interval crons
+// are epoch-phase-aligned, so an *hourly* cadence is an exact multiple of the
+// 20-min merge and 30-min recluster cadences and fired in lockstep with them
+// every single time — guaranteeing a blocking lock and a 100% skip rate. A
+// 53-minute cadence is coprime with 20/30/40/60, so archive drifts across
+// phases and regularly lands in quiet windows without ever starving the core
+// clustering pipeline (which keeps priority).
 crons.interval(
   "archive-stale-singleton-events",
-  { hours: 1 },
+  { minutes: 53 },
   internal.singletonCleanup.archiveStaleSingletonEvents,
   {},
 );
