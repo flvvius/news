@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { BRAND_NAME } from "./brand";
 import {
   query,
   mutation,
@@ -624,7 +625,7 @@ export const seedDefaults = internalMutation({
       // Email settings
       {
         key: "email_from_address",
-        value: "Biviant <hello@biviant.com>",
+        value: `${BRAND_NAME} <hello@biviant.com>`,
         description:
           'Sender address for transactional emails (RFC 5322 "From" header).',
       },
@@ -635,7 +636,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "email_physical_address",
-        value: "Biviant, Bucharest, Romania",
+        value: `${BRAND_NAME}, Bucharest, Romania`,
         description:
           "CAN-SPAM required physical address shown in email footers.",
       },
@@ -682,8 +683,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_model",
-        value: "gpt-5-nano",
-        description: "OpenAI chat model used for event perspective summaries.",
+        value: "gemini-3.1-flash-lite",
+        description:
+          "Chat model used for event perspective summaries (gemini-* routes via Gemini's OpenAI-compatible API; anything else via OpenAI).",
       },
       {
         key: "event_summary_enqueue_limit",
@@ -729,15 +731,15 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, enrichment extracts structured atomic facts from article text using the configured chat model.",
+          "When true, enrichment extracts structured atomic facts from article text using the configured chat model. Paused for the Romanian launch (BIV-602).",
       },
       {
         key: "article_fact_extraction_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used to extract atomic facts from articles during enrichment.",
+          "Chat model used to extract atomic facts from articles during enrichment.",
       },
       {
         key: "article_fact_extraction_max_articles_per_run",
@@ -758,15 +760,15 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_bias_detection_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call.",
+          "When true, enrichment scores article-level political lean and bias intensity using a strict JSON model call. Paused for the Romanian launch (BIV-602); operators re-enable explicitly via config:set.",
       },
       {
         key: "article_bias_detection_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used for per-article bias component scoring during enrichment.",
+          "Chat model used for per-article bias component scoring during enrichment.",
       },
       {
         key: "article_bias_detection_max_articles_per_run",
@@ -812,15 +814,15 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "claim_analysis_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims.",
+          "When true, the claim divergence worker analyzes event-level atomic facts and stores agreement/divergence/exclusive claims, and the claim UI renders. Paused for the Romanian launch (BIV-602).",
       },
       {
         key: "claim_analysis_model",
-        value: "gpt-5-nano",
+        value: "gemini-3.1-flash-lite",
         description:
-          "OpenAI chat model used for event-level claim divergence analysis.",
+          "Chat model used for event-level claim divergence analysis.",
       },
       {
         key: "claim_analysis_batch_size",
@@ -1093,6 +1095,18 @@ export const seedDefaults = internalMutation({
           'How stale singleton articles are handled during cleanup. Valid values: "archive" or "requeue"; default archive keeps historical eventId references.',
       },
       {
+        key: "google_news_overlay_enabled",
+        value: false,
+        description:
+          "When true, ingestion also pulls the Google News Romania catch-all RSS feed as a discovery overlay (BIV-103). Items are unwrapped to canonical publisher URLs and only known source domains are ingested.",
+      },
+      {
+        key: "google_news_overlay_max_items",
+        value: 25,
+        description:
+          "Maximum Google News overlay items considered per run (each item costs up to two resolution fetches).",
+      },
+      {
         key: "pipeline_run_log_retention_days",
         value: 14,
         description:
@@ -1107,6 +1121,11 @@ export const seedDefaults = internalMutation({
     ];
 
     const forcedDefaultKeys = new Set([
+      // BIV-602: claim analysis paused — force the off state onto existing
+      // deployments; operators re-enable explicitly via config:set.
+      "article_fact_extraction_enabled",
+      "article_bias_detection_enabled",
+      "claim_analysis_enabled",
       "clustering_same_source_min_similarity",
       "clustering_min_similarity",
       "clustering_weak_extraction_min_similarity",
@@ -1135,6 +1154,15 @@ export const seedDefaults = internalMutation({
       "pipeline_alert_check_interval_minutes",
     ]);
 
+    // BIV-201: rows still holding a stale prior default are migrated to the
+    // new default; explicit operator overrides (any other value) are kept.
+    const staleValueMigrations: Record<string, string[]> = {
+      event_summary_model: ['"gpt-5-nano"'],
+      article_fact_extraction_model: ['"gpt-5-nano"'],
+      article_bias_detection_model: ['"gpt-5-nano"'],
+      claim_analysis_model: ['"gpt-5-nano"'],
+    };
+
     let created = 0;
     let updated = 0;
     for (const { key, value, description } of defaults) {
@@ -1145,6 +1173,18 @@ export const seedDefaults = internalMutation({
       const nextValue = JSON.stringify(value);
 
       if (existing) {
+        const staleValues = staleValueMigrations[key];
+        if (staleValues?.includes(existing.value)) {
+          if (existing.value !== nextValue) {
+            await ctx.db.patch(existing._id, {
+              value: nextValue,
+              description,
+              updatedAt: Date.now(),
+            });
+            updated++;
+          }
+          continue;
+        }
         if (!forcedDefaultKeys.has(key)) continue;
 
         if (

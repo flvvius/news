@@ -9,8 +9,10 @@ export type EventArticle = EventDetail["articles"][number];
 
 export type EventSource = NonNullable<EventArticle["source"]>;
 
-export type EventClaim = FunctionReturnType<
-  typeof api.claimDivergence.getEventClaims
+// getEventClaims returns null when claim analysis is feature-flagged off
+// (BIV-602), so unwrap before indexing.
+export type EventClaim = NonNullable<
+  FunctionReturnType<typeof api.claimDivergence.getEventClaims>
 >[number];
 
 export type ClaimStatus = EventClaim["status"];

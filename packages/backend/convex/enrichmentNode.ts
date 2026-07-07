@@ -19,13 +19,20 @@ import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { shutdownPostHog } from "./lib/openai";
 import { randomUUID } from "node:crypto";
-import { extractArticleContentForEmbedding } from "./lib/articleExtraction";
+import {
+  demoteRepeatedSourceBodies,
+  extractArticleContentForEmbedding,
+} from "./lib/articleExtraction";
 import { v } from "convex/values";
-import { callOpenAI } from "./lib/aiCall";
+import { callLLM } from "./lib/aiCall";
 import {
   buildArticleBiasScoringPrompt,
   buildArticleFactExtractionPrompt,
 } from "./prompts";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_EMBEDDING_MODEL,
+} from "./lib/modelRouting";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,14 +45,18 @@ const BATCH_SIZE = 40;
 const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 
 /** OpenAI embedding model — cheap & effective for clustering */
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const DEFAULT_FACT_EXTRACTION_MODEL = "gpt-5-nano";
-const DEFAULT_FACT_EXTRACTION_ENABLED = true;
+const EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL;
+const DEFAULT_FACT_EXTRACTION_MODEL = DEFAULT_CHAT_MODEL;
+// Atomic-fact extraction is paused with claim analysis (BIV-602); flip the
+// article_fact_extraction_enabled config key to re-enable.
+const DEFAULT_FACT_EXTRACTION_ENABLED = false;
 const DEFAULT_FACT_EXTRACTION_MAX_ARTICLES = 20;
 const DEFAULT_FACT_EXTRACTION_MAX_FACTS = 8;
 const DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS = 2600;
-const DEFAULT_BIAS_DETECTION_ENABLED = true;
-const DEFAULT_BIAS_DETECTION_MODEL = "gpt-5-nano";
+// Per-article bias detection is paused with claim analysis (BIV-602); flip the
+// article_bias_detection_enabled config key to re-enable.
+const DEFAULT_BIAS_DETECTION_ENABLED = false;
+const DEFAULT_BIAS_DETECTION_MODEL = DEFAULT_CHAT_MODEL;
 const DEFAULT_BIAS_DETECTION_MAX_ARTICLES = 20;
 const DEFAULT_BIAS_DETECTION_MAX_INPUT_CHARS = 6000;
 const DEFAULT_BIAS_SOURCE_DELTA_THRESHOLD = 2;
@@ -100,7 +111,15 @@ const ARTICLE_BIAS_JSON_SCHEMA = {
           additionalProperties: false,
           properties: {
             id: { type: "string" },
-            politicalLean: { type: "integer", minimum: -5, maximum: 5 },
+            bias: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                axis: { type: "string", enum: ["reformist_suveranist"] },
+                score: { type: "integer", minimum: -5, maximum: 5 },
+              },
+              required: ["axis", "score"],
+            },
             emotionalLanguage: { type: "integer", minimum: 0, maximum: 5 },
             sourceDiversity: { type: "integer", minimum: 0, maximum: 5 },
             factOpinionRatio: { type: "integer", minimum: 0, maximum: 5 },
@@ -108,7 +127,7 @@ const ARTICLE_BIAS_JSON_SCHEMA = {
           },
           required: [
             "id",
-            "politicalLean",
+            "bias",
             "emotionalLanguage",
             "sourceDiversity",
             "factOpinionRatio",
@@ -237,7 +256,7 @@ async function generateEmbeddings(
   ctx: ActionCtx,
   texts: string[],
 ): Promise<{ embeddings: Array<number[] | null>; tokensUsed: number }> {
-  const response = await callOpenAI<
+  const response = await callLLM<
     Array<{ index: number; embedding: number[] }>
   >({
     kind: "embedding",
@@ -391,8 +410,18 @@ function sanitizeBiasComponents(raw: unknown): BiasComponents | null {
   const rationale = safeString(row.rationale, "").replace(/\s+/g, " ");
   if (rationale.length === 0) return null;
 
+  // The model outputs the named-axis object { axis, score } (BIV-302). The
+  // score is stored under the legacy biasComponents.politicalLean field name,
+  // which now carries the reformist(−)↔suveranist(+) axis score.
+  const biasObject =
+    row.bias && typeof row.bias === "object"
+      ? (row.bias as Record<string, unknown>)
+      : null;
+  const axisScore =
+    biasObject !== null ? biasObject.score : row.politicalLean;
+
   return {
-    politicalLean: safeInteger(row.politicalLean, 0, -5, 5),
+    politicalLean: safeInteger(axisScore, 0, -5, 5),
     emotionalLanguage: safeInteger(row.emotionalLanguage, 0, 0, 5),
     sourceDiversity: safeInteger(row.sourceDiversity, 0, 0, 5),
     factOpinionRatio: safeInteger(row.factOpinionRatio, 0, 0, 5),
@@ -527,7 +556,7 @@ async function scoreBiasForArticles(
     });
 
     try {
-      const response = await callOpenAI<unknown>({
+      const response = await callLLM<unknown>({
         kind: "chat",
         model: settings.model,
         temperature: 0,
@@ -648,7 +677,7 @@ async function extractAtomicFactsForArticles(
     });
 
     try {
-      const response = await callOpenAI<unknown>({
+      const response = await callLLM<unknown>({
         kind: "chat",
         model: settings.model,
         temperature: 0,
@@ -799,7 +828,7 @@ async function runEnrichmentBatch(
         extractionQuality: extracted.extractionQuality,
       };
     },
-  );
+  ).then(demoteRepeatedSourceBodies);
   const texts = preparedArticles.map((article) => article.embeddingText);
   const extractedCount = preparedArticles.filter(
     (article) => article.extractionMethod !== "rss_fallback",

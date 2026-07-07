@@ -51,7 +51,11 @@ temp
 
 # Personal planning docs
 roadmap.md
-# eval local secrets
-eval/.env.local
-eval
+# eval local secrets + local-only gold-set work; the committed Romanian
+# harness (BIV-701) is carved out, with its working dirs still ignored.
+eval/*
+!eval/romanian/
+eval/romanian/data/
+eval/romanian/out/
+eval/romanian/.env.local
 claim-overrides

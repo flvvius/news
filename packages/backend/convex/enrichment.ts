@@ -11,6 +11,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { sourceBiasLabel } from "./lib/sourceBias";
+import { namedAxisBias } from "./lib/biasAxis";
 
 const ARTICLE_FACT_STATUS_VALIDATOR = v.union(
   v.literal("pending"),
@@ -729,6 +730,8 @@ export const markArticleEnriched = internalMutation({
     // Update article status & bias score (no embedding on the article itself)
     const nextArticlePatch = {
       aiBiasScore: aiBiasScore ?? article.aiBiasScore,
+      aiBias:
+        aiBiasScore !== undefined ? namedAxisBias(aiBiasScore) : article.aiBias,
       biasComponents: biasComponents ?? article.biasComponents,
       sourceBiasDelta: sourceBiasDelta ?? article.sourceBiasDelta,
       sourceBiasOutlierFlag:

@@ -31,7 +31,7 @@ export type EventRowEvent = {
   title: string;
   imageUrl?: string;
   imageAlt?: string;
-  perspectiveSummaries?: { center?: string };
+  perspectiveSummaries?: { neutral?: string };
   globalImpact?: string;
   firstPublishedAt: number;
   lastUpdatedAt?: number;
@@ -99,7 +99,7 @@ export function EventRow({
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const meta = `${getPluralizedCountLabel(locale, "event.sourceCount", totalSources)} · ${formatRelativeTimestamp(lastUpdatedAt, locale)}`;
   const summaryPreview = isLead
-    ? (event.perspectiveSummaries?.center ?? event.globalImpact)
+    ? (event.perspectiveSummaries?.neutral ?? event.globalImpact)
     : undefined;
 
   return (

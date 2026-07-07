@@ -1,5 +1,6 @@
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import { BRAND_NAME } from "@news-app/i18n";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -239,7 +240,7 @@ function FeedContent() {
           <>
             <View className="flex-row items-center justify-between px-5 pt-2">
               <Text className="text-3xl font-semibold tracking-tight text-foreground">
-                Biviant
+                {BRAND_NAME}
               </Text>
               <Pressable
                 accessibilityRole="button"

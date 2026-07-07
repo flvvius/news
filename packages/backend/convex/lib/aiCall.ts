@@ -4,7 +4,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { calculateCost, calculateCostWithCachedInput } from "../aiBudget";
-import { getOpenAI } from "./openai";
+import { getLLMClient, isPostHogInstrumented } from "./openai";
+import { buildChatTuningParams, providerForModel } from "./modelRouting";
 
 export type AICallType =
   | "fact_extraction"
@@ -38,7 +39,7 @@ type ChatMessage = {
   content: string;
 };
 
-type ChatArgs<T> = {
+type ChatArgs = {
   kind: "chat";
   model: string;
   messages: ChatMessage[];
@@ -54,7 +55,7 @@ type ChatArgs<T> = {
   maxRetries?: number;
 };
 
-type EmbeddingArgs<T> = {
+type EmbeddingArgs = {
   kind: "embedding";
   model: string;
   input: string[];
@@ -107,10 +108,6 @@ function isFatalError(error: unknown): boolean {
   return status === 401 || status === 403 || status === 404;
 }
 
-function isGpt5FamilyModel(model: string): boolean {
-  return model.startsWith("gpt-5");
-}
-
 function retryDelayMs(attempt: number): number {
   const baseDelay = 500 * 3 ** attempt;
   const jitter = 0.75 + Math.random() * 0.5;
@@ -134,7 +131,7 @@ function estimateEmbeddingInputTokens(input: string[]): number {
 }
 
 function estimateCallCostUsd(
-  args: ChatArgs<unknown> | EmbeddingArgs<unknown>,
+  args: ChatArgs | EmbeddingArgs,
 ): {
   inputTokens: number;
   outputTokens: number;
@@ -222,12 +219,10 @@ async function reserveBudget(
   return { reservationId: reservation.reservationId };
 }
 
-export async function callOpenAI<T>(
-  args: ChatArgs<T> | EmbeddingArgs<T>,
+export async function callLLM<T>(
+  args: ChatArgs | EmbeddingArgs,
 ): Promise<AICallResult<T>> {
-  const estimate = estimateCallCostUsd(
-    args as ChatArgs<unknown> | EmbeddingArgs<unknown>,
-  );
+  const estimate = estimateCallCostUsd(args);
   const reservation = await reserveBudget(
     args.runtime,
     args.context,
@@ -251,11 +246,13 @@ export async function callOpenAI<T>(
   try {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const openai = await getOpenAI();
+        const client = await getLLMClient(
+          args.kind === "embedding" ? "openai" : providerForModel(args.model),
+        );
         const startedAt = Date.now();
 
         if (args.kind === "embedding") {
-          const response = await openai.embeddings.create({
+          const response = await client.embeddings.create({
             model: args.model,
             input: args.input,
             ...(args.dimensions ? { dimensions: args.dimensions } : {}),
@@ -282,23 +279,31 @@ export async function callOpenAI<T>(
           return { result: response.data as T, usage };
         }
 
-        const response = await openai.chat.completions.create({
+        // The PostHog wrapper defaults $ai_provider to "openai"; label routed
+        // Gemini traffic so provider analytics stay accurate. Only the
+        // wrapped client strips posthog* params before sending, so never
+        // attach them to a plain client.
+        const provider = providerForModel(args.model);
+        const response = await client.chat.completions.create({
           model: args.model,
-          ...(!isGpt5FamilyModel(args.model)
-            ? { temperature: args.temperature ?? 0.1 }
-            : { reasoning_effort: args.reasoningEffort ?? "minimal" }),
-          ...(args.maxTokens
-            ? isGpt5FamilyModel(args.model)
-              ? { max_completion_tokens: args.maxTokens }
-              : { max_tokens: args.maxTokens }
+          ...(provider === "gemini" && isPostHogInstrumented()
+            ? {
+                posthogProperties: {
+                  $ai_provider: "gemini",
+                  llm_provider: "gemini",
+                },
+              }
             : {}),
+          ...buildChatTuningParams(args.model, {
+            maxTokens: args.maxTokens,
+            temperature: args.temperature,
+            reasoningEffort: args.reasoningEffort,
+            promptCacheKey:
+              args.promptCacheKey ?? `biviant:${args.context.callType}`,
+            promptCacheRetention: args.promptCacheRetention,
+          }),
           ...(args.responseFormat
             ? { response_format: args.responseFormat as never }
-            : {}),
-          prompt_cache_key:
-            args.promptCacheKey ?? `biviant:${args.context.callType}`,
-          ...(args.promptCacheRetention
-            ? { prompt_cache_retention: args.promptCacheRetention }
             : {}),
           messages: args.messages,
         } as never);
@@ -336,7 +341,7 @@ export async function callOpenAI<T>(
         }
 
         const content = response.choices[0]?.message?.content;
-        if (!content) throw new Error("OpenAI returned empty response content");
+        if (!content) throw new Error("LLM returned empty response content");
 
         const shouldParseJson = args.parseJson ?? Boolean(args.responseFormat);
         const result = shouldParseJson ? JSON.parse(content) : content;
@@ -370,7 +375,7 @@ export async function callOpenAI<T>(
   }
 
   const message =
-    lastError instanceof Error ? lastError.message : "Unknown OpenAI error";
+    lastError instanceof Error ? lastError.message : "Unknown LLM error";
   console.error(`[aiCall] ${args.context.callType} failed: ${message}`);
   return {
     result: null,

@@ -1,3 +1,4 @@
+export { BRAND_NAME } from "./brand";
 export { getString, STRINGS, type Locale, type StringKey } from "./strings";
 export { resolveLocale, type LocaleResolutionInput } from "./resolveLocale";
 export { getPluralizedCountLabel } from "./plurals";

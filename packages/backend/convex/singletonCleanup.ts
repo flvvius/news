@@ -255,19 +255,29 @@ export const getStaleProcessingCandidates = internalQuery({
   },
 });
 
-async function deleteByEventIndex(
+/**
+ * Every child table holding rows keyed to an event via a `by_event` index.
+ * The single source of truth for event teardown — dissolving an event
+ * (here and in migrations) must clear all of these.
+ */
+export const EVENT_CHILD_TABLES = [
+  "eventEmbeddings",
+  "eventEmbeddingHot",
+  "eventCandidacy",
+  "publicEventPreviews",
+  "eventTopics",
+  "eventShareAssets",
+  "eventSummaryJobs",
+  "eventClaims",
+  "userInsights",
+  "interactions",
+] as const;
+
+export type EventChildTable = (typeof EVENT_CHILD_TABLES)[number];
+
+export async function deleteByEventIndex(
   ctx: MutationCtx,
-  tableName:
-    | "eventTopics"
-    | "eventEmbeddings"
-    | "eventEmbeddingHot"
-    | "eventCandidacy"
-    | "publicEventPreviews"
-    | "eventShareAssets"
-    | "eventSummaryJobs"
-    | "eventClaims"
-    | "userInsights"
-    | "interactions",
+  tableName: EventChildTable,
   eventId: Id<"events">,
 ) {
   const rows = await ctx.db

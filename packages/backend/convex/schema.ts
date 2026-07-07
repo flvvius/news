@@ -1,5 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  namedAxisBiasValidator,
+  perspectiveSummariesValidator,
+} from "./lib/biasAxis";
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -42,13 +46,20 @@ export default defineSchema({
   // 2. SOURCES (Reputation Layer)
   // =========================================================================
   sources: defineTable({
-    domain: v.string(), // "nytimes.com"
-    name: v.string(), // "The New York Times"
-    baseBias: v.number(), // -5 (Left) to +5 (Right)
-    reliabilityScore: v.number(), // 1-10 (10 = Academic/Reuters, 1 = Tabloid)
+    domain: v.string(), // "digi24.ro"
+    name: v.string(), // "Digi24"
+    // Canonical named-axis bias (BIV-302); baseBias is the derived
+    // single-score mirror consumed by the UI and must stay in sync.
+    bias: v.optional(namedAxisBiasValidator),
+    baseBias: v.number(), // -5 (reformist) to +5 (suveranist) — see docs/bias-axis-spec.md
+    reliabilityScore: v.number(), // 1-10 (10 = wire service, 1 = tabloid)
+    // One-line provenance for the manual bias/reliability ratings (BIV-401).
+    provenance: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
 
-    // MBFC (Media Bias/Fact Check) enrichment — populated via RapidAPI
+    // Legacy MBFC (Media Bias/Fact Check) metadata. The RapidAPI integration
+    // was removed (BIV-402); these fields remain readable for existing rows
+    // and are seeded from feeds.ts curated data where available.
     mbfcCategory: v.optional(v.string()), // "left", "left-center", "center", "right-center", "right", "unrated"
     mbfcFactual: v.optional(v.string()), // "very-high", "high", "mostly-factual", "mixed", "low", "very-low"
     mbfcCredibility: v.optional(v.string()), // "high", "medium", "low"
@@ -76,13 +87,9 @@ export default defineSchema({
     imageHeight: v.optional(v.number()),
     imageAlt: v.optional(v.string()),
 
-    perspectiveSummaries: v.optional(
-      v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
-      }),
-    ),
+    // neutral / reformist / suveranist framing summaries (BIV-303);
+    // legacy center/left/right keys remain readable pre-migration.
+    perspectiveSummaries: v.optional(perspectiveSummariesValidator),
     perspectiveSource: v.optional(
       v.union(v.literal("heuristic"), v.literal("ai")),
     ),
@@ -222,13 +229,7 @@ export default defineSchema({
     title: v.string(),
     imageUrl: v.optional(v.string()),
     imageAlt: v.optional(v.string()),
-    perspectiveSummaries: v.optional(
-      v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
-      }),
-    ),
+    perspectiveSummaries: v.optional(perspectiveSummariesValidator),
     globalImpact: v.optional(v.string()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.number(),
@@ -533,10 +534,15 @@ export default defineSchema({
     factExtractionLastAttemptAt: v.optional(v.number()),
     needsFactExtraction: v.optional(v.boolean()),
 
-    // Populated by enrichment pipeline (AI bias detection)
+    // Populated by enrichment pipeline (AI bias detection).
+    // aiBias is the canonical named-axis object (BIV-302); aiBiasScore is the
+    // derived single-score mirror consumed by the UI.
+    aiBias: v.optional(namedAxisBiasValidator),
     aiBiasScore: v.optional(v.number()),
     biasComponents: v.optional(
       v.object({
+        // Legacy field name; since BIV-202 this carries the model's
+        // reformist(−)↔suveranist(+) axis score.
         politicalLean: v.number(),
         emotionalLanguage: v.number(),
         sourceDiversity: v.number(),
@@ -851,7 +857,7 @@ export default defineSchema({
   // Budget limit stored in config table: key="ai_daily_budget_usd"
   aiUsage: defineTable({
     date: v.string(), // "YYYY-MM-DD" for daily grouping
-    model: v.string(), // "gpt-4o-mini", "text-embedding-3-small"
+    model: v.string(), // "gemini-3.1-flash-lite", "text-embedding-3-small"
     operation: v.string(), // "summarize_event", "generate_embedding", "bias_detection"
     callType: v.optional(v.string()),
     eventId: v.optional(v.id("events")),

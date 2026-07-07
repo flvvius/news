@@ -23,8 +23,15 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { ALL_FEEDS, type FeedEntry } from "./feeds";
+import { ALL_FEEDS } from "./feeds";
+import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+import { normalizeRomanianDiacritics } from "./lib/romanian";
+import { namedAxisBias } from "./lib/biasAxis";
+import {
+  GOOGLE_NEWS_RO_FEED_URL,
+  resolveGoogleNewsUrl,
+} from "./lib/googleNews";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,6 +48,35 @@ const USER_AGENT =
 const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
 const INGEST_ALL_FEEDS_LOCK_TTL_MS = 20 * 60 * 1000;
 const EVENT_EMBEDDING_DIMENSIONS = 512;
+
+/**
+ * Feed quarantine (BIV-101): after this many consecutive failures a feed is
+ * skipped by the batch run, but retried once per backoff interval so it can
+ * recover on its own. Quarantined feeds stay visible in ingestionMeta
+ * (consecutiveFailures + lastError) and in the run-log gauges.
+ */
+const QUARANTINE_CONSECUTIVE_FAILURES = 5;
+const QUARANTINE_RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/** Pure quarantine decision so the policy is unit-testable. */
+export function isFeedQuarantined(
+  meta: {
+    consecutiveFailures: number;
+    lastIngestedAt?: number;
+  } | null,
+  now: number,
+): boolean {
+  if (!meta) return false;
+  if (meta.consecutiveFailures < QUARANTINE_CONSECUTIVE_FAILURES) return false;
+  // Allow one probe attempt per backoff interval so a fixed feed recovers.
+  if (
+    meta.lastIngestedAt === undefined ||
+    now - meta.lastIngestedAt >= QUARANTINE_RETRY_INTERVAL_MS
+  ) {
+    return false;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,32 +95,30 @@ interface ParsedArticle {
 }
 
 const KNOWN_HEADLINE_SUFFIXES = [
-  "Reuters",
-  "AP News",
-  "Associated Press",
-  "BBC News",
-  "PBS NewsHour",
-  "ABC News",
-  "CBS News",
-  "NBC News",
-  "CNN",
-  "NPR",
-  "The Hill",
-  "Axios",
-  "Politico",
-  "Bloomberg",
-  "Bloomberg.com",
-  "CNBC",
-  "The Guardian",
-  "Fox News",
-  "Financial Times",
-  "The Wall Street Journal",
-  "Wall Street Journal",
-  "The New York Times",
-  "New York Times",
-  "The Washington Post",
-  "Washington Post",
-  "USA Today",
+  "Digi24",
+  "HotNews",
+  "HotNews.ro",
+  "G4Media",
+  "G4Media.ro",
+  "Recorder",
+  "Agerpres",
+  "AGERPRES",
+  "Ziarul Financiar",
+  "RISE Project",
+  "Europa Liberă România",
+  "Europa Liberă",
+  "Adevărul",
+  "Adevarul",
+  "Libertatea",
+  "Știrile ProTV",
+  "Stirileprotv.ro",
+  "Antena 3 CNN",
+  "Antena 3",
+  "Gândul",
+  "Gandul",
+  "Biziday",
+  "SpotMedia",
+  "SpotMedia.ro",
 ];
 
 // ---------------------------------------------------------------------------
@@ -332,7 +366,9 @@ function stripHtml(text: string): string {
 }
 
 export function normalizeArticleTitle(title: string): string {
-  const cleaned = stripHtml(title).replace(/\s+/g, " ").trim();
+  const cleaned = normalizeRomanianDiacritics(stripHtml(title))
+    .replace(/\s+/g, " ")
+    .trim();
   for (const suffix of KNOWN_HEADLINE_SUFFIXES) {
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const suffixPattern = new RegExp(`\\s+-\\s+${escapedSuffix}$`, "i");
@@ -344,7 +380,7 @@ export function normalizeArticleTitle(title: string): string {
 }
 
 export function normalizeArticleSnippet(snippet: string): string {
-  return stripHtml(snippet)
+  return normalizeRomanianDiacritics(stripHtml(snippet))
     .replace(/\s*[•·]\s*/g, " ")
     .replace(/\b[A-Z]{2,5}\s*-\s*/g, " ")
     .replace(/\s+/g, " ")
@@ -437,9 +473,11 @@ function normalizeCanonicalPath(pathname: string): string {
 }
 
 function normalizeFingerprintText(value: string): string {
+  // Unicode-aware so Romanian diacritics survive fingerprinting (ASCII-only
+  // stripping collapsed "Ședință" to "edin", inflating same-source collisions).
   return normalizeArticleSnippet(value)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -567,17 +605,6 @@ async function syncHotEventEmbedding(
   });
 }
 
-/** Extract domain from a URL (e.g. "nytimes.com" from "https://www.nytimes.com/...") */
-function extractDomain(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    // Strip "www." prefix
-    return host.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------
@@ -662,83 +689,66 @@ export const getIngestionMeta = internalQuery({
 // Internal Mutations
 // ---------------------------------------------------------------------------
 
-/** Create a source record for a new domain, using curated MBFC data from feeds.ts. */
+// Shared curated-source args, kept identical between createSource and
+// getOrCreateSource so a new field only has to be added in one validator.
+const sourceSeedArgs = {
+  domain: v.string(),
+  name: v.string(),
+  baseBias: v.number(),
+  reliabilityScore: v.number(),
+  provenance: v.optional(v.string()),
+  mbfcCategory: v.string(),
+  mbfcFactual: v.optional(v.string()),
+  mbfcCredibility: v.optional(v.string()),
+} as const;
+
+type SourceSeed = {
+  domain: string;
+  name: string;
+  baseBias: number;
+  reliabilityScore: number;
+  provenance?: string;
+  mbfcCategory: string;
+  mbfcFactual?: string;
+  mbfcCredibility?: string;
+};
+
+/** Build the full `sources` insert payload from curated feed data. */
+function buildSourceDoc(seed: SourceSeed) {
+  return {
+    domain: seed.domain,
+    name: seed.name,
+    bias: namedAxisBias(seed.baseBias),
+    baseBias: seed.baseBias,
+    reliabilityScore: seed.reliabilityScore,
+    provenance: seed.provenance,
+    logoUrl: `https://icons.duckduckgo.com/ip3/${seed.domain}.ico`,
+    mbfcCategory: seed.mbfcCategory,
+    mbfcFactual: seed.mbfcFactual,
+    mbfcCredibility: seed.mbfcCredibility,
+    mbfcLastChecked: Date.now(),
+  };
+}
+
+/** Create a source record for a new domain, using curated data from feeds.ts. */
 export const createSource = internalMutation({
-  args: {
-    domain: v.string(),
-    name: v.string(),
-    baseBias: v.number(),
-    reliabilityScore: v.number(),
-    mbfcCategory: v.string(),
-    mbfcFactual: v.optional(v.string()),
-    mbfcCredibility: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-    },
-  ): Promise<Id<"sources">> => {
-    return ctx.db.insert("sources", {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      logoUrl: `https://logo.clearbit.com/${domain}`,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-      mbfcLastChecked: Date.now(),
-    });
+  args: sourceSeedArgs,
+  handler: async (ctx, args): Promise<Id<"sources">> => {
+    return ctx.db.insert("sources", buildSourceDoc(args));
   },
 });
 
 /** Atomically find or create a source for a feed domain. */
 export const getOrCreateSource = internalMutation({
-  args: {
-    domain: v.string(),
-    name: v.string(),
-    baseBias: v.number(),
-    reliabilityScore: v.number(),
-    mbfcCategory: v.string(),
-    mbfcFactual: v.optional(v.string()),
-    mbfcCredibility: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-    },
-  ): Promise<Id<"sources">> => {
+  args: sourceSeedArgs,
+  handler: async (ctx, args): Promise<Id<"sources">> => {
     const existing = await ctx.db
       .query("sources")
-      .withIndex("by_domain", (q) => q.eq("domain", domain))
+      .withIndex("by_domain", (q) => q.eq("domain", args.domain))
       .first();
     if (existing) return existing._id;
 
-    return ctx.db.insert("sources", {
-      domain,
-      name,
-      baseBias,
-      reliabilityScore,
-      logoUrl: `https://logo.clearbit.com/${domain}`,
-      mbfcCategory,
-      mbfcFactual,
-      mbfcCredibility,
-      mbfcLastChecked: Date.now(),
-    });
+    return ctx.db.insert("sources", buildSourceDoc(args));
   },
 });
 
@@ -1297,6 +1307,7 @@ export const ingestSingleFeed = internalAction({
           name: feedName,
           baseBias,
           reliabilityScore,
+          provenance: getSourceReputation(feedDomain)?.provenance,
           mbfcCategory,
           mbfcFactual,
           mbfcCredibility,
@@ -1310,7 +1321,7 @@ export const ingestSingleFeed = internalAction({
           "User-Agent": USER_AGENT,
           Accept:
             "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
           Referer: "https://www.google.com/",
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
@@ -1551,8 +1562,20 @@ export const ingestAllFeeds = internalAction({
         inserted: number;
         error?: string;
       }> = [];
+      const quarantinedFeeds: string[] = [];
 
       for (const feed of ALL_FEEDS) {
+        const meta = await ctx.runQuery(internal.ingestion.getIngestionMeta, {
+          feedUrl: feed.url,
+        });
+        if (isFeedQuarantined(meta, Date.now())) {
+          quarantinedFeeds.push(feed.name);
+          console.warn(
+            `[ingestion] ${feed.name} quarantined (${meta!.consecutiveFailures} consecutive failures; last error: ${meta!.lastError ?? "unknown"})`,
+          );
+          continue;
+        }
+
         const result = await ctx.runAction(internal.ingestion.ingestSingleFeed, {
           feedUrl: feed.url,
           feedName: feed.name,
@@ -1575,7 +1598,7 @@ export const ingestAllFeeds = internalAction({
       let failedFeeds = results.filter((r) => r.error);
 
       console.log(
-        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed`,
+        `[ingestion] Batch complete: ${totalInserted} articles inserted, ${failedFeeds.length} feeds failed, ${quarantinedFeeds.length} quarantined`,
       );
 
       // Retry failed feeds once after a short delay (helps with transient errors)
@@ -1635,6 +1658,14 @@ export const ingestAllFeeds = internalAction({
         );
       }
 
+      // Discovery overlay (BIV-103) — no-ops unless the flag is on. Runs
+      // outside this action's lock window via the scheduler.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.ingestion.ingestGoogleNewsOverlay,
+        {},
+      );
+
       const finishedAt = Date.now();
       await ctx.runMutation(internal.pipeline.insertRunLog, {
         jobName: "ingestAllFeeds",
@@ -1642,15 +1673,20 @@ export const ingestAllFeeds = internalAction({
         startedAt,
         finishedAt,
         durationMs: finishedAt - startedAt,
-        status: failedFeeds.length > 0 ? "degraded" : "ok",
+        status:
+          failedFeeds.length > 0 || quarantinedFeeds.length > 0
+            ? "degraded"
+            : "ok",
         counters: {
           feedsProcessed: results.length,
           failedFeeds: failedFeeds.length,
+          quarantinedFeeds: quarantinedFeeds.length,
           insertedArticles: insertedTotal,
           retryInsertedArticles: retryInserted,
         },
         gauges: {
           scheduledEnrichment: insertedTotal > 0,
+          quarantinedFeedNames: quarantinedFeeds.join(", ") || null,
         },
         metadata: {},
       });
@@ -1687,6 +1723,216 @@ export const ingestAllFeeds = internalAction({
           `[ingestion] Failed to release ingestAllFeeds lock: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Google News RO discovery overlay (BIV-103) — optional, feature-flagged
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest the Google News Romania catch-all feed as a discovery overlay.
+ * Off by default (google_news_overlay_enabled). Wrapper links are resolved
+ * to canonical publisher URLs BEFORE dedup, and only articles whose domain
+ * matches an existing source row (curated feeds + the reputation seed) are
+ * ingested — unknown domains are counted and skipped, never given default
+ * ratings.
+ */
+export const ingestGoogleNewsOverlay = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    inserted: number;
+    resolved: number;
+    unresolved: number;
+    unmatchedDomains: number;
+    skipped: boolean;
+  }> => {
+    const startedAt = Date.now();
+    const runId = `ingestGoogleNewsOverlay-${startedAt}`;
+
+    const cfg = await ctx.runQuery(internal.config.getBatch, {
+      keys: ["google_news_overlay_enabled", "google_news_overlay_max_items"],
+    });
+    if (cfg.google_news_overlay_enabled !== true) {
+      return {
+        inserted: 0,
+        resolved: 0,
+        unresolved: 0,
+        unmatchedDomains: 0,
+        skipped: true,
+      };
+    }
+
+    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    if (paused) {
+      return {
+        inserted: 0,
+        resolved: 0,
+        unresolved: 0,
+        unmatchedDomains: 0,
+        skipped: true,
+      };
+    }
+
+    const maxItems = Math.min(
+      Math.max(Math.floor(Number(cfg.google_news_overlay_max_items) || 25), 1),
+      50,
+    );
+
+    let inserted = 0;
+    let resolved = 0;
+    let unresolved = 0;
+    let unmatchedDomains = 0;
+
+    try {
+      const response = await fetch(GOOGLE_NEWS_RO_FEED_URL, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const xml = await response.text();
+      const cutoffMs = Date.now() - 72 * 60 * 60 * 1000;
+      const parsed = parseRSSXml(xml)
+        .map((article) => ({
+          ...article,
+          parsedPublishedAt: parsePublishedAt(article.publishedAt),
+        }))
+        .filter(
+          (article) =>
+            !article.publishedAt ||
+            (article.parsedPublishedAt !== undefined &&
+              article.parsedPublishedAt > cutoffMs),
+        )
+        .slice(0, maxItems);
+
+      for (const item of parsed) {
+        // Resolve the Google wrapper to the canonical publisher URL BEFORE
+        // any dedup — the wrapper URL is unique per Google item and would
+        // defeat canonical-URL dedup entirely.
+        const publisherUrl = await resolveGoogleNewsUrl(item.url, USER_AGENT);
+        if (!publisherUrl) {
+          unresolved++;
+          continue;
+        }
+        resolved++;
+
+        let domain: string;
+        try {
+          // Same host normalization as canonical-URL dedup, so mobile/AMP
+          // hosts (m.digi24.ro, amp.hotnews.ro) match their curated source.
+          domain = normalizeCanonicalHostname(new URL(publisherUrl).hostname);
+        } catch {
+          unresolved++;
+          continue;
+        }
+
+        const source = await ctx.runQuery(internal.ingestion.getSourceByDomain, {
+          domain,
+        });
+        if (!source) {
+          unmatchedDomains++;
+          continue;
+        }
+
+        const canonicalUrl = canonicalizeUrl(publisherUrl);
+        const contentFingerprint = articleContentFingerprint(item);
+        const existingUrls = await ctx.runQuery(
+          internal.ingestion.findExistingCanonicalUrls,
+          { urls: [canonicalUrl] },
+        );
+        if (existingUrls.length > 0) continue;
+        const existingFingerprints = await ctx.runQuery(
+          internal.ingestion.findExistingContentFingerprints,
+          { sourceId: source._id, fingerprints: [contentFingerprint] },
+        );
+        if (existingFingerprints.length > 0) continue;
+
+        const insertedIds = await ctx.runMutation(
+          internal.ingestion.insertArticles,
+          {
+            articles: [
+              {
+                sourceId: source._id,
+                title: item.title,
+                url: publisherUrl,
+                canonicalUrl,
+                contentFingerprint,
+                rssSnippet: item.snippet || undefined,
+                status: "unprocessed" as const,
+                publishedAt: item.parsedPublishedAt ?? Date.now(),
+              },
+            ],
+          },
+        );
+        inserted += insertedIds.length;
+      }
+
+      if (inserted > 0) {
+        await ctx.scheduler.runAfter(
+          60_000,
+          internal.enrichmentNode.enrichUnprocessedArticles,
+          {},
+        );
+      }
+
+      const finishedAt = Date.now();
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestGoogleNewsOverlay",
+        runId,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+        status: "ok",
+        counters: {
+          itemsConsidered: parsed.length,
+          resolved,
+          unresolved,
+          unmatchedDomains,
+          insertedArticles: inserted,
+        },
+        gauges: {},
+        metadata: {},
+      });
+
+      console.log(
+        `[ingestion] Google News RO overlay: ${inserted} inserted, ${resolved} resolved, ${unresolved} unresolved, ${unmatchedDomains} unmatched domains`,
+      );
+      return { inserted, resolved, unresolved, unmatchedDomains, skipped: false };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.pipeline.insertRunLog, {
+        jobName: "ingestGoogleNewsOverlay",
+        runId,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        errorMessage,
+        counters: {
+          resolved,
+          unresolved,
+          unmatchedDomains,
+          insertedArticles: inserted,
+        },
+        gauges: {},
+        metadata: {},
+      });
+      console.error(
+        `[ingestion] Google News RO overlay failed: ${errorMessage}`,
+      );
+      return { inserted, resolved, unresolved, unmatchedDomains, skipped: false };
     }
   },
 });

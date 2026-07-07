@@ -15,8 +15,9 @@
     "dev:server": "turbo -F @news-app/backend dev",
     "dev:setup": "turbo -F @news-app/backend dev:setup"
   },
-  "dependencies": {},
   "devDependencies": {
+    "openai": "^6.25.0",
+    "tsx": "^4.22.4",
     "turbo": "^2.5.4"
   },
   "packageManager": "pnpm@10.6.1"

@@ -8,13 +8,20 @@
  * All legacy migrations were removed after the dev DB wipe on 2026-03-05.
  */
 
-import { mutation } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internalMutation, mutation } from "./_generated/server";
+import { api, components, internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { TOPIC_CATALOG } from "./topicCatalog";
+import { syncTopicCatalogRows } from "./topics";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
+import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+  type AuthUserForProfile,
+} from "./lib/userProfile";
+import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -91,60 +98,153 @@ function pickLatestArticleEmbeddingRow(rows: Doc<"articleEmbeddings">[]) {
   }, null);
 }
 
-export const syncTopicCatalogMigration = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const sameStringArray = (
-      a: string[] | undefined,
-      b: string[] | undefined,
-    ): boolean =>
-      (a ?? []).length === (b ?? []).length &&
-      (a ?? []).every((value, index) => value === (b ?? [])[index]);
+/**
+ * BIV-814: create the missing app `users` (+ `userStats`) rows for Better
+ * Auth users that predate the user onCreate trigger. Without the row,
+ * `getCurrentUser` returns null for a fully valid session and every
+ * profile-gated page renders as signed out. The session onCreate trigger in
+ * auth.ts heals accounts on their next sign-in; this backfill heals accounts
+ * with live sessions that won't sign in again.
+ *
+ *   npx convex run migrations:backfillMissingUserProfiles
+ *
+ * Internal (unlike the older migrations here) because it walks the auth
+ * component's user table — `npx convex run` can invoke internal functions.
+ */
+export const backfillMissingUserProfiles = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: {
+        numItems: args.numItems ?? 200,
+        cursor: args.cursor ?? null,
+      },
+    })) as {
+      page: AuthUserForProfile[];
+      isDone: boolean;
+      continueCursor: string;
+    };
 
     let created = 0;
-    let updated = 0;
+    for (const authUser of result.page) {
+      const existing = await getUserProfileByAuthUserId(ctx, authUser._id);
+      if (existing) continue;
+      await ensureUserProfileForAuthUser(ctx, authUser);
+      created++;
+    }
 
-    for (const topic of TOPIC_CATALOG) {
-      const existing = await ctx.db
-        .query("topics")
-        .withIndex("by_slug", (q) => q.eq("slug", topic.slug))
-        .unique();
+    return {
+      scanned: result.page.length,
+      created,
+      isDone: result.isDone,
+      continueCursor: result.isDone ? null : result.continueCursor,
+    };
+  },
+});
 
-      const nextValues = {
-        slug: topic.slug,
-        displayName: topic.displayName,
-        description: topic.description,
-        aliases: topic.aliases,
-        keywords: topic.keywords,
-        keyPhrases: topic.keyPhrases,
-        excludePhrases: topic.excludePhrases,
-      };
+/**
+ * BIV-813: dissolve an event whose articles were false-merged (the zf.ro
+ * boilerplate-body bug) and requeue its articles for full re-enrichment, so
+ * the fixed extractor rebuilds their embeddings/entities and clustering
+ * re-assigns them to correct, separate events.
+ *
+ * Operational notes:
+ * - Enrichment claims articles newest-first (by publishedAt), so requeued
+ *   older articles can sit behind fresh intake. After dissolving, run
+ *   enrichmentNode:enrichUnprocessedArticles repeatedly until the queue is
+ *   drained, then trigger clustering.
+ * - Teardown also deletes the event's userInsights and interactions rows
+ *   (user saves/reads on the merged event). For a false-merged event those
+ *   rows point at a meaningless mixture, so deleting them is correct — but
+ *   it IS user-visible; don't reuse this for legitimate events.
+ *
+ *   npx convex run migrations:dissolveMisclusteredEvent '{"eventId": "..."}'
+ */
+export const dissolveMisclusteredEvent = internalMutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await ctx.db.get(eventId);
+    if (!event) {
+      return { dissolved: false, requeuedArticles: 0 };
+    }
 
-      if (!existing) {
-        await ctx.db.insert("topics", nextValues);
-        created++;
-        continue;
-      }
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
 
-      const hasChanges =
-        existing.displayName !== nextValues.displayName ||
-        existing.description !== nextValues.description ||
-        !sameStringArray(existing.aliases, nextValues.aliases) ||
-        !sameStringArray(existing.keywords, nextValues.keywords) ||
-        !sameStringArray(existing.keyPhrases, nextValues.keyPhrases) ||
-        !sameStringArray(existing.excludePhrases, nextValues.excludePhrases);
+    for (const article of articles) {
+      await ctx.db.patch(article._id, {
+        status: "unprocessed",
+        eventId: undefined,
+        archivedAt: undefined,
+        archivedReason: undefined,
+        // Drop the summary derived from the bad extraction: re-enrichment
+        // keeps the previous summary when the new run produces none
+        // (storeArticleEnrichment: `summary ?? article.summary`), which
+        // would leave boilerplate teaser text on screen indefinitely.
+        summary: undefined,
+      });
+    }
 
-      if (hasChanges) {
-        await ctx.db.patch(existing._id, nextValues);
-        updated++;
+    // Same child-row teardown as singletonCleanup's event dissolution.
+    for (const table of EVENT_CHILD_TABLES) {
+      await deleteByEventIndex(ctx, table, eventId);
+    }
+
+    await ctx.db.delete(eventId);
+
+    return { dissolved: true, requeuedArticles: articles.length };
+  },
+});
+
+/**
+ * BIV-813 cleanup: articles that extracted the zf.ro teaser widget as their
+ * body kept that text as their stored summary even after re-enrichment
+ * (storeArticleEnrichment retains the old summary when the new run has
+ * none). Clear summaries matching the boilerplate prefix so the UI stops
+ * showing an unrelated teaser.
+ *
+ *   npx convex run migrations:clearArticleSummariesByPrefix '{"prefix": "..."}'
+ */
+export const clearArticleSummariesByPrefix = internalMutation({
+  args: {
+    prefix: v.string(),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.prefix.trim().length < 20) {
+      throw new Error("Refusing to clear with a short/ambiguous prefix");
+    }
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: 500,
+    });
+
+    let cleared = 0;
+    for (const article of page.page) {
+      if (article.summary?.startsWith(args.prefix)) {
+        await ctx.db.patch(article._id, { summary: undefined });
+        cleared++;
       }
     }
 
     return {
-      created,
-      updated,
-      totalCatalogTopics: TOPIC_CATALOG.length,
+      cleared,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
     };
+  },
+});
+
+export const syncTopicCatalogMigration = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await syncTopicCatalogRows(ctx);
   },
 });
 
@@ -193,14 +293,17 @@ export const normalizeStoredArticleText = mutation({
 
     for (const event of events) {
       const nextTitle = normalizeArticleTitle(event.title);
-      const nextCenter = event.perspectiveSummaries?.center
-        ? normalizeArticleSnippet(event.perspectiveSummaries.center)
+      // Fall back to legacy center/left/right keys so pre-BIV-303 rows keep
+      // their summaries when this migration rewrites the object.
+      const perspectives = normalizedPerspectives(event.perspectiveSummaries);
+      const nextCenter = perspectives?.neutral
+        ? normalizeArticleSnippet(perspectives.neutral)
         : undefined;
-      const nextLeft = event.perspectiveSummaries?.left
-        ? normalizeArticleSnippet(event.perspectiveSummaries.left)
+      const nextLeft = perspectives?.reformist
+        ? normalizeArticleSnippet(perspectives.reformist)
         : undefined;
-      const nextRight = event.perspectiveSummaries?.right
-        ? normalizeArticleSnippet(event.perspectiveSummaries.right)
+      const nextRight = perspectives?.suveranist
+        ? normalizeArticleSnippet(perspectives.suveranist)
         : undefined;
       const nextGlobalImpact = event.globalImpact
         ? normalizeArticleSnippet(event.globalImpact)
@@ -208,18 +311,18 @@ export const normalizeStoredArticleText = mutation({
 
       if (
         nextTitle !== event.title ||
-        nextCenter !== event.perspectiveSummaries?.center ||
-        nextLeft !== event.perspectiveSummaries?.left ||
-        nextRight !== event.perspectiveSummaries?.right ||
+        nextCenter !== perspectives?.neutral ||
+        nextLeft !== perspectives?.reformist ||
+        nextRight !== perspectives?.suveranist ||
         nextGlobalImpact !== event.globalImpact
       ) {
         await ctx.db.patch(event._id, {
           title: nextTitle,
           perspectiveSummaries: event.perspectiveSummaries
             ? {
-                center: nextCenter,
-                left: nextLeft,
-                right: nextRight,
+                neutral: nextCenter,
+                reformist: nextLeft,
+                suveranist: nextRight,
               }
             : undefined,
           globalImpact: nextGlobalImpact,
@@ -258,6 +361,132 @@ export const backfillLogoUrls = mutation({
     }
 
     return { totalSources: sources.length, updated };
+  },
+});
+
+// Known image URLs that are actually HTML pages: Agerpres articles without a
+// photo emit og:image pointing at their photo-detail page, which the
+// extractor stored verbatim before image-byte verification existed
+// (fixed in lib/imageVerification.ts).
+const HTML_PAGE_IMAGE_URL_PATTERNS = ["foto.agerpres.ro/foto/detaliu/"];
+
+function isHtmlPageImageUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return HTML_PAGE_IMAGE_URL_PATTERNS.some((pattern) => url.includes(pattern));
+}
+
+export const clearHtmlPageImageUrls = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      1000,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let clearedArticles = 0;
+    const affectedEventIds = new Set<Doc<"articles">["eventId"]>();
+
+    for (const article of page.page) {
+      if (!isHtmlPageImageUrl(article.imageUrl)) continue;
+      await ctx.db.patch(article._id, {
+        imageUrl: undefined,
+        imageWidth: undefined,
+        imageHeight: undefined,
+        imageAlt: undefined,
+        imageSource: undefined,
+      });
+      clearedArticles++;
+      if (article.eventId) affectedEventIds.add(article.eventId);
+    }
+
+    let clearedEvents = 0;
+    for (const eventId of affectedEventIds) {
+      if (!eventId) continue;
+      const event = await ctx.db.get(eventId);
+      if (!event) continue;
+      if (isHtmlPageImageUrl(event.imageUrl)) {
+        await ctx.db.patch(eventId, {
+          imageUrl: undefined,
+          imageWidth: undefined,
+          imageHeight: undefined,
+          imageAlt: undefined,
+        });
+        clearedEvents++;
+      }
+      // Re-pick presentation (including the image) from the remaining
+      // articles now that the broken candidate is gone.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.clustering.refreshEventPresentationById,
+        { eventId },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      clearedArticles,
+      clearedEvents,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+// Targeted variant of clearHtmlPageImageUrls for a single event, e.g. when a
+// user reports one broken event photo. Only touches rows whose imageUrl
+// matches a known HTML-page pattern, so it is safe to re-run.
+export const clearHtmlPageImageForEventSlug = internalMutation({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!event) return { found: false };
+
+    const articles = await ctx.db
+      .query("articles")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .collect();
+
+    let clearedArticles = 0;
+    for (const article of articles) {
+      if (!isHtmlPageImageUrl(article.imageUrl)) continue;
+      await ctx.db.patch(article._id, {
+        imageUrl: undefined,
+        imageWidth: undefined,
+        imageHeight: undefined,
+        imageAlt: undefined,
+        imageSource: undefined,
+      });
+      clearedArticles++;
+    }
+
+    let clearedEvent = false;
+    if (isHtmlPageImageUrl(event.imageUrl)) {
+      await ctx.db.patch(event._id, {
+        imageUrl: undefined,
+        imageWidth: undefined,
+        imageHeight: undefined,
+        imageAlt: undefined,
+      });
+      clearedEvent = true;
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.clustering.refreshEventPresentationById,
+      { eventId: event._id },
+    );
+
+    return { found: true, clearedArticles, clearedEvent };
   },
 });
 
@@ -526,6 +755,213 @@ export const queueEventShareAssetsBackfill = mutation({
     return {
       processed: page.page.length,
       queued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
+      remainingPages,
+    };
+  },
+});
+
+/**
+ * BIV-202: the bias axis changed from left↔right to reformist↔suveranist,
+ * so previously scored articles hold incomparable values. Requeue bias
+ * scoring on scored, non-archived articles by flagging them for
+ * re-enrichment and resetting the bias detection state. Paginated with
+ * auto-continue like the other backfills.
+ */
+export const requeueBiasScoringForAxisChange = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      200,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let requeued = 0;
+    for (const article of page.page) {
+      if (article.biasAnalyzedAt === undefined) continue;
+      if (article.status === "archived" || article.status === "discarded") {
+        continue;
+      }
+      await ctx.db.patch(article._id, {
+        needsReenrichment: true,
+        biasDetectionStatus: "deferred",
+        biasDetectionAttempts: 0,
+        biasAnalyzedAt: undefined,
+      });
+      requeued++;
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
+    const scheduledContinuation =
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        MIGRATION_CONTINUATION_DELAY_MS,
+        api.migrations.requeueBiasScoringForAxisChange,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+          remainingPages: remainingPages - 1,
+        },
+      );
+    }
+
+    return {
+      processed: page.page.length,
+      requeued,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      scheduledContinuation,
+      remainingPages,
+    };
+  },
+});
+
+/**
+ * BIV-303: convert perspectiveSummaries from the legacy center/left/right
+ * keys to neutral/reformist/suveranist on events and publicEventPreviews.
+ * Idempotent — rows already on the new keys are rewritten identically and
+ * skipped by the change check.
+ */
+export const backfillPerspectiveAxisKeys = mutation({
+  args: {},
+  handler: async (ctx) => {
+    let updatedEvents = 0;
+    let updatedPreviews = 0;
+
+    const events = await ctx.db.query("events").collect();
+    for (const event of events) {
+      if (!event.perspectiveSummaries) continue;
+      const legacy = event.perspectiveSummaries;
+      if (
+        legacy.center === undefined &&
+        legacy.left === undefined &&
+        legacy.right === undefined
+      ) {
+        continue;
+      }
+      await ctx.db.patch(event._id, {
+        perspectiveSummaries: normalizedPerspectives(legacy),
+      });
+      updatedEvents++;
+    }
+
+    const previews = await ctx.db.query("publicEventPreviews").collect();
+    for (const preview of previews) {
+      if (!preview.perspectiveSummaries) continue;
+      const legacy = preview.perspectiveSummaries;
+      if (
+        legacy.center === undefined &&
+        legacy.left === undefined &&
+        legacy.right === undefined
+      ) {
+        continue;
+      }
+      await ctx.db.patch(preview._id, {
+        perspectiveSummaries: normalizedPerspectives(legacy),
+      });
+      updatedPreviews++;
+    }
+
+    return { updatedEvents, updatedPreviews };
+  },
+});
+
+/**
+ * BIV-302: backfill the named-axis bias objects from the legacy single
+ * scores. Sources get `bias` from `baseBias`; articles with an
+ * `aiBiasScore` get `aiBias`. Idempotent — rows that already carry the
+ * object are skipped.
+ */
+export const backfillNamedAxisBias = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+    autoContinue: v.optional(v.boolean()),
+    remainingPages: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Sources are a small table — migrate them all on the first page.
+    let sourcesPatched = 0;
+    if (!args.cursor) {
+      const sources = await ctx.db.query("sources").collect();
+      for (const source of sources) {
+        if (source.bias) continue;
+        await ctx.db.patch(source._id, {
+          bias: namedAxisBias(source.baseBias),
+        });
+        sourcesPatched++;
+      }
+    }
+
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      200,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+
+    let articlesPatched = 0;
+    for (const article of page.page) {
+      if (article.aiBias || article.aiBiasScore === undefined) continue;
+      await ctx.db.patch(article._id, {
+        aiBias: namedAxisBias(article.aiBiasScore),
+      });
+      articlesPatched++;
+    }
+
+    const shouldAutoContinue = args.autoContinue ?? true;
+    const nextCursor = page.continueCursor ?? undefined;
+    const remainingPages = Math.max(
+      0,
+      Math.floor(args.remainingPages ?? DEFAULT_MIGRATION_REMAINING_PAGES),
+    );
+    const scheduledContinuation =
+      shouldAutoContinue &&
+      remainingPages > 0 &&
+      !page.isDone &&
+      Boolean(nextCursor);
+
+    if (scheduledContinuation && nextCursor) {
+      await ctx.scheduler.runAfter(
+        MIGRATION_CONTINUATION_DELAY_MS,
+        api.migrations.backfillNamedAxisBias,
+        {
+          cursor: nextCursor,
+          pageSize: safePageSize,
+          autoContinue: true,
+          remainingPages: remainingPages - 1,
+        },
+      );
+    }
+
+    return {
+      sourcesPatched,
+      articlesProcessed: page.page.length,
+      articlesPatched,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       scheduledContinuation,

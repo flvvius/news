@@ -1,3 +1,4 @@
+import { BRAND_NAME } from "./brand";
 import {
   createClient,
   type GenericCtx,
@@ -11,6 +12,11 @@ import type { MutationCtx } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import { getWaitlistRecordByEmail, normalizeEmail } from "./lib/betaAccess";
+import {
+  ensureUserProfileForAuthUser,
+  getUserProfileByAuthUserId,
+  type AuthUserForProfile,
+} from "./lib/userProfile";
 import { Resend } from "resend";
 
 function requireEnv(name: string) {
@@ -59,13 +65,33 @@ export function parseAppleAudiences(raw: string | undefined): string[] {
   return ids.length > 0 ? ids : [...DEFAULT_APPLE_AUDIENCES];
 }
 
-function isProductionDeployment() {
-  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+type EnvRecord = Record<string, string | undefined>;
+
+/**
+ * BIV-809: the Convex runtime reports NODE_ENV="production" on EVERY
+ * deployment, including dev ones (verified empirically on the dev
+ * deployment), so NODE_ENV alone cannot distinguish dev from prod. That made
+ * dev deployments behave like production: localhost origins were never
+ * trusted (login → "Invalid origin", signup → generic error) and the
+ * missing-RESEND_API_KEY email guard threw instead of skipping.
+ *
+ * DEPLOY_ENV is the explicit per-deployment override:
+ *   npx convex env set DEPLOY_ENV development   (on dev deployments)
+ * When unset we fall back to NODE_ENV, which keeps the safe (production)
+ * behavior on Convex deployments and the permissive behavior in local tests.
+ */
+export function isProductionDeployment(env: EnvRecord = process.env) {
+  const deployEnv = env.DEPLOY_ENV?.trim().toLowerCase();
+  if (deployEnv) {
+    return deployEnv.startsWith("prod");
+  }
+
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase();
   if (nodeEnv === "production") {
     return true;
   }
 
-  const convexDeployment = process.env.CONVEX_DEPLOYMENT?.trim().toLowerCase();
+  const convexDeployment = env.CONVEX_DEPLOYMENT?.trim().toLowerCase();
   return convexDeployment?.startsWith("prod:") ?? false;
 }
 
@@ -86,12 +112,11 @@ const appleAudiences = parseAppleAudiences(
   process.env.APPLE_APP_BUNDLE_IDENTIFIER,
 );
 const appleClientSecret = process.env.APPLE_CLIENT_SECRET?.trim() || null;
-const nativeAppUrl = process.env.NATIVE_APP_URL || "news-app://";
 const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 const isProduction = isProductionDeployment();
 const emailFromAddress =
-  process.env.EMAIL_FROM_ADDRESS?.trim() || "Biviant <hello@biviant.com>";
+  process.env.EMAIL_FROM_ADDRESS?.trim() || `${BRAND_NAME} <hello@biviant.com>`;
 const emailReplyTo =
   process.env.EMAIL_REPLY_TO?.trim() || "hello@biviant.com";
 
@@ -137,27 +162,29 @@ function addTrustedOriginVariant(
   }
 }
 
-function collectTrustedOrigins() {
+export function collectTrustedOrigins(env: EnvRecord = process.env) {
   const configuredOrigins = new Set<string>();
-  addTrustedOriginVariant(configuredOrigins, siteUrl);
+  addTrustedOriginVariant(configuredOrigins, env.SITE_URL);
+  // BIV-809: this must use isProductionDeployment (DEPLOY_ENV-aware), not raw
+  // NODE_ENV — on Convex dev deployments NODE_ENV is "production", which
+  // silently dropped the localhost origins and broke all localhost auth.
   const allowLocalhostOrigins =
-    process.env.NODE_ENV !== "production" ||
-    process.env.CONVEX_ALLOW_LOCALHOST === "true";
+    !isProductionDeployment(env) || env.CONVEX_ALLOW_LOCALHOST === "true";
 
   if (allowLocalhostOrigins) {
     configuredOrigins.add("http://localhost:3001");
     configuredOrigins.add("http://127.0.0.1:3001");
   }
 
-  if (process.env.CONVEX_SITE_URL?.trim()) {
-    addTrustedOriginVariant(configuredOrigins, process.env.CONVEX_SITE_URL);
+  if (env.CONVEX_SITE_URL?.trim()) {
+    addTrustedOriginVariant(configuredOrigins, env.CONVEX_SITE_URL);
   }
 
-  for (const value of (process.env.ALLOWED_ORIGINS || "").split(",")) {
+  for (const value of (env.ALLOWED_ORIGINS || "").split(",")) {
     addTrustedOriginVariant(configuredOrigins, value);
   }
 
-  return [...configuredOrigins, nativeAppUrl];
+  return [...configuredOrigins, env.NATIVE_APP_URL?.trim() || "news-app://"];
 }
 
 function normalizeAuthActionUrl(url: string) {
@@ -243,7 +270,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset your Biviant password</title>
+  <title>Reset your ${BRAND_NAME} password</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -256,7 +283,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   <div style="display:none; max-height:0; overflow:hidden;">
-    Reset your Biviant password and get back to the full story.
+    Reset your ${BRAND_NAME} password and get back to the full story.
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
@@ -265,7 +292,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; border:1px solid #e5e7eb; max-width:600px;">
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Reset Your Password</span>
             </td>
@@ -273,7 +300,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">We received a request to reset your Biviant password.</p>
+              <p style="margin:0 0 16px 0;">We received a request to reset your ${BRAND_NAME} password.</p>
               <p style="margin:0 0 24px 0;">Use the button below to choose a new password and get back into your account.</p>
             </td>
           </tr>
@@ -329,9 +356,9 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 }
 
 function getResetPasswordEmailText(resetUrl: string) {
-  return `Reset your Biviant password
+  return `Reset your ${BRAND_NAME} password
 
-We received a request to reset your Biviant password.
+We received a request to reset your ${BRAND_NAME} password.
 
 Choose a new password here:
 ${resetUrl}
@@ -349,7 +376,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify your Biviant email</title>
+  <title>Verify your ${BRAND_NAME} email</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -362,7 +389,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   <div style="display:none; max-height:0; overflow:hidden;">
-    Verify your Biviant email to activate your account and unlock synced features.
+    Verify your ${BRAND_NAME} email to activate your account and unlock synced features.
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
@@ -371,7 +398,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; border:1px solid #e5e7eb; max-width:600px;">
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Verify Your Email</span>
             </td>
@@ -379,7 +406,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">Thanks for creating your Biviant account.</p>
+              <p style="margin:0 0 16px 0;">Thanks for creating your ${BRAND_NAME} account.</p>
               <p style="margin:0 0 24px 0;">Confirm your email address to activate your account and unlock bookmarks, personalized ranking, and future notifications.</p>
             </td>
           </tr>
@@ -404,7 +431,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 
           <tr>
             <td style="padding:0 40px 32px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">If you didn’t create a Biviant account, you can safely ignore this email.</p>
+              <p style="margin:0 0 16px 0;">If you didn’t create a ${BRAND_NAME} account, you can safely ignore this email.</p>
               <p style="margin:0;">If the button doesn’t work, paste this link into your browser:</p>
               <p style="margin:12px 0 0 0; word-break:break-all;">
                 <a href="${verificationUrl}" target="_blank" style="color:#2563eb; text-decoration:underline;">${verificationUrl}</a>
@@ -435,44 +462,81 @@ function getVerificationEmailHTML(verificationUrl: string) {
 }
 
 function getVerificationEmailText(verificationUrl: string) {
-  return `Verify your Biviant email
+  return `Verify your ${BRAND_NAME} email
 
-Thanks for creating your Biviant account.
+Thanks for creating your ${BRAND_NAME} account.
 
 Confirm your email address here:
 ${verificationUrl}
 
 Once verified, you can sign in and unlock bookmarks, personalized ranking, and future notifications.
 
-If you didn't create a Biviant account, you can ignore this email.
+If you didn't create a ${BRAND_NAME} account, you can ignore this email.
 
 See every side of the story.
 ${siteUrl}`;
 }
 
+/**
+ * BIV-814: heal a missing app profile row whenever a session is created.
+ *
+ * Root cause of the "Google sign-in bounces at /activitate" bug: the OAuth
+ * callback succeeded, the session cookie was stored and valid, and
+ * `convex/token` issued a JWT — but `getCurrentUser` returned null because
+ * the auth user predated the `users`-table onCreate trigger, so no app
+ * profile row existed. Every profile-gated surface then rendered the
+ * signed-out state, which looked exactly like a session-persistence failure.
+ * Queries can't insert the row, so the durable fix is to ensure it exists at
+ * sign-in time (session creation), which covers every legacy auth user on
+ * their next sign-in. `getAuthUserById` is injected so tests can exercise
+ * this without instantiating the Better Auth component.
+ *
+ * Runs inside the component's session-create mutation, so it is strictly
+ * best-effort: a throw here would abort session creation and turn the soft
+ * profile bounce into a hard sign-in outage for everyone. The cheap indexed
+ * profile check runs first so the steady state (profile exists) costs one
+ * read and skips the cross-component user lookup entirely.
+ */
+export async function healUserProfileForSession(
+  ctx: MutationCtx,
+  session: { userId: string },
+  getAuthUserById: (id: string) => Promise<AuthUserForProfile | null>,
+) {
+  try {
+    const existing = await getUserProfileByAuthUserId(ctx, session.userId);
+    if (existing) return;
+
+    const authUser = await getAuthUserById(session.userId);
+    if (!authUser) return;
+    await ensureUserProfileForAuthUser(ctx, authUser);
+  } catch (error) {
+    console.error(
+      "[auth] BIV-814 profile heal failed; sign-in continues without it",
+      { authUserId: session.userId, error },
+    );
+  }
+}
+
 export const authComponent = createClient<DataModel>(components.betterAuth, {
   authFunctions,
   triggers: {
+    session: {
+      onCreate: async (ctx, session) => {
+        await healUserProfileForSession(ctx, session, async (id) => {
+          // Direct adapter lookup instead of authComponent.getAnyUserById:
+          // referencing authComponent inside its own initializer would make
+          // its type circular.
+          return (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+            model: "user",
+            where: [{ field: "_id", value: id }],
+          })) as AuthUserForProfile | null;
+        });
+      },
+    },
     user: {
       onCreate: async (ctx, authUser) => {
         const normalizedEmail = normalizeEmail(authUser.email);
-        const userId = await ctx.db.insert("users", {
-          authUserId: authUser._id,
-          email: normalizedEmail,
-          profile: {
-            name: authUser.name ?? undefined,
-            avatar: authUser.image ?? undefined,
-          },
-        });
-
-        // Initialize stats in the separate userStats table
-        await ctx.db.insert("userStats", {
-          userId,
-          currentStreak: 0,
-          longestStreak: 0,
-          articlesRead: 0,
-          biasBalance: 0,
-        });
+        await ensureUserProfileForAuthUser(ctx, authUser);
 
         // Ticket 14: an unconditional signup signal, independent of the gate
         // funnel's signup_completed, so total signups are measurable. Scheduled
@@ -624,7 +688,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         const normalizedUrl = normalizeAuthActionUrl(url);
         await sendAuthEmail({
           to: user.email,
-          subject: "Reset your Biviant password",
+          subject: `Reset your ${BRAND_NAME} password`,
           actionUrl: normalizedUrl,
           html: getResetPasswordEmailHTML(normalizedUrl),
           text: getResetPasswordEmailText(normalizedUrl),
@@ -639,7 +703,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         const normalizedUrl = normalizeAuthActionUrl(url);
         await sendAuthEmail({
           to: user.email,
-          subject: "Verify your Biviant email",
+          subject: `Verify your ${BRAND_NAME} email`,
           actionUrl: normalizedUrl,
           html: getVerificationEmailHTML(normalizedUrl),
           text: getVerificationEmailText(normalizedUrl),

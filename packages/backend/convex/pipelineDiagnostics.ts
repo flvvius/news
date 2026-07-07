@@ -13,9 +13,9 @@ function hasAtomicFacts(article: Doc<"articles">): boolean {
 function hasPerspectiveSummary(event: Doc<"events">): boolean {
   return Boolean(
     event.lastSummarizedAt &&
-      event.perspectiveSummaries?.center?.trim() &&
-      event.perspectiveSummaries?.left?.trim() &&
-      event.perspectiveSummaries?.right?.trim() &&
+      event.perspectiveSummaries?.neutral?.trim() &&
+      event.perspectiveSummaries?.reformist?.trim() &&
+      event.perspectiveSummaries?.suveranist?.trim() &&
       event.globalImpact?.trim(),
   );
 }

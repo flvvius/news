@@ -20,6 +20,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  action,
   mutation,
   query,
 } from "./_generated/server";
@@ -28,6 +29,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
+import { foldDiacriticsToAscii, romanianCount } from "./lib/romanian";
+import { normalizedPerspectives } from "./lib/biasAxis";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import {
@@ -35,6 +38,7 @@ import {
   syncPublicEventPreview,
 } from "./lib/publicEventPreviews";
 import { buildEventShareRenderSignature } from "./shareAssets";
+import { TOPIC_CATALOG_SLUGS } from "./topicCatalog";
 import { estimateVectorSearchQgbRead } from "./vectorSearchBudget";
 
 const CLUSTER_LOCK_KEY = "clusterEnrichedArticles";
@@ -168,6 +172,52 @@ const STOPWORDS = new Set([
   "who",
   "will",
   "with",
+  // Romanian stopwords (BIV-501). Title tokens pass through
+  // foldDiacriticsToAscii before this filter, so ASCII-folded forms only.
+  // Tokens under 3 chars are already dropped by the length filter.
+  "acest",
+  "aceasta",
+  "acestei",
+  "acestui",
+  "ani",
+  "anunta",
+  "asupra",
+  "care",
+  "catre",
+  "cand",
+  "cea",
+  "cel",
+  "cele",
+  "celor",
+  "cum",
+  "dar",
+  "despre",
+  "din",
+  "dintre",
+  "doar",
+  "dupa",
+  "este",
+  "fara",
+  "fata",
+  "fiind",
+  "fost",
+  "iar",
+  "intre",
+  "mai",
+  "noi",
+  "nou",
+  "noua",
+  "pentru",
+  "peste",
+  "prin",
+  "sau",
+  "spre",
+  "spune",
+  "sunt",
+  "toate",
+  "unde",
+  "unei",
+  "unui",
 ]);
 
 function toEventEmbedding(articleEmbedding: number[]): number[] {
@@ -542,22 +592,18 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-function maxCrossEventSimilarity(
-  a: { embedding: number[] },
-  b: { embedding: number[] },
-): number {
-  return cosineSimilarity(a.embedding, b.embedding);
-}
-
 function normalizeText(text: string): string {
-  return text
+  // Fold diacritics first so Romanian titles written with and without
+  // diacritics ("ședință" vs "sedinta") produce the same tokens instead of
+  // being gutted by the ASCII filter.
+  return foldDiacriticsToAscii(text)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function normalizeTitleTokens(text: string): Set<string> {
+export function normalizeTitleTokens(text: string): Set<string> {
   return new Set(
     normalizeText(text)
       .split(" ")
@@ -796,7 +842,7 @@ function normalizeTitleForClustering(text: string): string {
 }
 
 function slugify(value: string): string {
-  const slug = value
+  const slug = foldDiacriticsToAscii(value)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
@@ -851,9 +897,9 @@ type ClusterCandidate = {
   topicSlugs: Set<string>;
   sourceIds: Set<Id<"sources">>;
   perspectiveSummaries?: {
-    center?: string;
-    left?: string;
-    right?: string;
+    neutral?: string;
+    reformist?: string;
+    suveranist?: string;
   };
   globalImpact?: string;
   imageUrl?: string;
@@ -880,9 +926,9 @@ type ClusterCandidateQueryResult = {
   entityTokens: string[];
   topicSlugs: string[];
   perspectiveSummaries?: {
-    center?: string;
-    left?: string;
-    right?: string;
+    neutral?: string;
+    reformist?: string;
+    suveranist?: string;
   };
   globalImpact?: string;
   imageUrl?: string;
@@ -923,7 +969,7 @@ type ClusterSettings = {
   weakExtractionStrongSimilarity: number;
 };
 
-type TopicInferenceSettings = {
+export type TopicInferenceSettings = {
   minScore: number;
   confidenceRatio: number;
   maxTopics: number;
@@ -945,7 +991,7 @@ type ReclusterSettings = {
   windowHours: number;
 };
 
-type TopicInferenceTopic = Pick<
+export type TopicInferenceTopic = Pick<
   Doc<"topics">,
   | "_id"
   | "slug"
@@ -966,7 +1012,7 @@ type CompiledTopicInferenceTopic = {
   displayNameTokens: Set<string>;
 };
 
-type TopicArticleContext = {
+export type TopicArticleContext = {
   title: string;
   rssSnippet: string;
   summary: string;
@@ -988,7 +1034,7 @@ type TopicInferenceFieldContexts = {
   combined: NormalizedTopicField;
 };
 
-type TopicInferenceCandidate = {
+export type TopicInferenceCandidate = {
   slug: string;
   score: number;
   signalCount: number;
@@ -1151,7 +1197,7 @@ function compileTopicForInference(
   };
 }
 
-function evaluateTopicInference(
+export function evaluateTopicInference(
   article: TopicArticleContext,
   topics: TopicInferenceTopic[],
   settings: TopicInferenceSettings,
@@ -1260,7 +1306,7 @@ function evaluateTopicInference(
     .sort((a, b) => b.score - a.score);
 }
 
-function inferTopicSlugs(
+export function inferTopicSlugs(
   article: TopicArticleContext,
   topics: TopicInferenceTopic[],
   settings: TopicInferenceSettings,
@@ -1302,21 +1348,29 @@ function buildMergedPerspectiveSummaries(
   primary: ClusterCandidate,
   secondary: ClusterCandidate,
 ) {
-  const center = preferLongerString(
-    primary.perspectiveSummaries?.center,
-    secondary.perspectiveSummaries?.center,
+  // Normalize first so pre-BIV-303 rows still on center/left/right keys
+  // contribute their summaries instead of being dropped by the merge.
+  const primaryPerspectives = normalizedPerspectives(
+    primary.perspectiveSummaries,
   );
-  const left = preferLongerString(
-    primary.perspectiveSummaries?.left,
-    secondary.perspectiveSummaries?.left,
+  const secondaryPerspectives = normalizedPerspectives(
+    secondary.perspectiveSummaries,
   );
-  const right = preferLongerString(
-    primary.perspectiveSummaries?.right,
-    secondary.perspectiveSummaries?.right,
+  const neutral = preferLongerString(
+    primaryPerspectives?.neutral,
+    secondaryPerspectives?.neutral,
+  );
+  const reformist = preferLongerString(
+    primaryPerspectives?.reformist,
+    secondaryPerspectives?.reformist,
+  );
+  const suveranist = preferLongerString(
+    primaryPerspectives?.suveranist,
+    secondaryPerspectives?.suveranist,
   );
 
-  if (!center && !left && !right) return undefined;
-  return { center, left, right };
+  if (!neutral && !reformist && !suveranist) return undefined;
+  return { neutral, reformist, suveranist };
 }
 
 function pickMergedSummaryMetadata(
@@ -1576,12 +1630,12 @@ async function refreshEventPresentation(
       220,
     ) ??
     summarizeText(normalizeTitleForClustering(best.article.title), 160) ??
-    "Coverage is still being assembled from multiple sources.";
+    "Acoperirea este încă în curs de agregare din mai multe surse.";
 
   const coverageLine =
     resolvedSourceCount > 1
-      ? `This cluster currently includes ${resolvedArticleCount} articles from ${resolvedSourceCount} sources.`
-      : `This cluster currently includes ${resolvedArticleCount} article${resolvedArticleCount === 1 ? "" : "s"}.`;
+      ? `Acest eveniment include ${romanianCount(resolvedArticleCount, "articol", "articole")} din ${romanianCount(resolvedSourceCount, "sursă", "surse")}.`
+      : `Acest eveniment include ${romanianCount(resolvedArticleCount, "articol", "articole")}.`;
 
   const centerSummary = summarizeText(
     `${representativeSnippet} ${coverageLine}`,
@@ -1591,7 +1645,7 @@ async function refreshEventPresentation(
   const sourceNames = Array.from(uniqueSources).slice(0, 3);
   const sourceLine =
     sourceNames.length > 0
-      ? `Sources in this event include ${sourceNames.join(", ")}${resolvedSourceCount > sourceNames.length ? ", and others" : ""}.`
+      ? `Printre sursele acestui eveniment se numără ${sourceNames.join(", ")}${resolvedSourceCount > sourceNames.length ? " și altele" : ""}.`
       : undefined;
   const globalImpact = summarizeText(
     `${coverageLine} ${sourceLine ?? ""}`.trim(),
@@ -1617,15 +1671,16 @@ async function refreshEventPresentation(
   const isAiAuthored =
     event.perspectiveSource === "ai" || Boolean(event.lastSummarizedAt);
 
+  const eventPerspectives = normalizedPerspectives(event.perspectiveSummaries);
   const nextPerspectiveSummaries = isAiAuthored
-    ? event.perspectiveSummaries
+    ? eventPerspectives
     : centerSummary
       ? {
-          center: centerSummary,
-          left: event.perspectiveSummaries?.left,
-          right: event.perspectiveSummaries?.right,
+          neutral: centerSummary,
+          reformist: eventPerspectives?.reformist,
+          suveranist: eventPerspectives?.suveranist,
         }
-      : event.perspectiveSummaries;
+      : eventPerspectives;
   const nextPerspectiveSource = isAiAuthored
     ? "ai"
     : centerSummary
@@ -1634,12 +1689,12 @@ async function refreshEventPresentation(
   const nextGlobalImpact = isAiAuthored ? event.globalImpact : globalImpact;
 
   const summariesUnchanged =
-    (nextPerspectiveSummaries?.center ?? null) ===
-      (event.perspectiveSummaries?.center ?? null) &&
-    (nextPerspectiveSummaries?.left ?? null) ===
-      (event.perspectiveSummaries?.left ?? null) &&
-    (nextPerspectiveSummaries?.right ?? null) ===
-      (event.perspectiveSummaries?.right ?? null);
+    (nextPerspectiveSummaries?.neutral ?? null) ===
+      (event.perspectiveSummaries?.neutral ?? null) &&
+    (nextPerspectiveSummaries?.reformist ?? null) ===
+      (event.perspectiveSummaries?.reformist ?? null) &&
+    (nextPerspectiveSummaries?.suveranist ?? null) ===
+      (event.perspectiveSummaries?.suveranist ?? null);
   const imageUnchanged =
     resolvedImageUrl === event.imageUrl &&
     nextImageAlt === event.imageAlt &&
@@ -1683,7 +1738,7 @@ async function refreshEventPresentation(
     renderSignature: buildEventShareRenderSignature({
       title: event.title,
       summary: isAiAuthored
-        ? (nextPerspectiveSummaries?.center ?? nextGlobalImpact)
+        ? (nextPerspectiveSummaries?.neutral ?? nextGlobalImpact)
         : (centerSummary ?? globalImpact),
       imageUrl: resolvedImageUrl,
       imageAlt: nextImageAlt,
@@ -2084,7 +2139,7 @@ async function getTopicInferenceSettingsForQuery(
 function isWeakEventPresentation(
   event: Pick<Doc<"events">, "perspectiveSummaries" | "globalImpact">,
 ): boolean {
-  const center = event.perspectiveSummaries?.center?.trim() ?? "";
+  const center = event.perspectiveSummaries?.neutral?.trim() ?? "";
   const globalImpact = event.globalImpact?.trim() ?? "";
   return center.length < 120 || globalImpact.length < 60;
 }
@@ -3229,7 +3284,7 @@ export const createEventFromArticle = internalMutation({
       title,
       slug,
       perspectiveSummaries: centerSummary
-        ? { center: centerSummary }
+        ? { neutral: centerSummary }
         : undefined,
       perspectiveSource: centerSummary ? "heuristic" : undefined,
       status: initialStatus,
@@ -3656,10 +3711,13 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
     await requireAdminUser(ctx);
 
     const pageSize = Math.min(Math.max(Math.floor(limit ?? 20), 1), 50);
-    const [topicsForInference, settings] = await Promise.all([
+    const [topicRows, settings] = await Promise.all([
       ctx.db.query("topics").collect(),
       getTopicInferenceSettingsForQuery(ctx),
     ]);
+    const topicsForInference = topicRows.filter((topic) =>
+      TOPIC_CATALOG_SLUGS.has(topic.slug),
+    );
     const topicBySlug = new Map(
       topicsForInference.map((topic) => [topic.slug, topic]),
     );
@@ -3760,6 +3818,206 @@ export const getRecentTopicInferenceDiagnosticsForAdmin = query({
         };
       }),
     );
+  },
+});
+
+export const backfillEventTopicBatch = internalMutation({
+  args: {
+    limit: v.number(),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, { limit, cursor }) => {
+    const pageSize = Math.min(Math.max(Math.floor(limit), 1), 200);
+    const page = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .paginate({
+        cursor: cursor ?? null,
+        numItems: pageSize,
+      });
+    const events = page.page;
+
+    const topicsForInference = (await ctx.db.query("topics").collect()).filter(
+      (topic) => TOPIC_CATALOG_SLUGS.has(topic.slug),
+    );
+    const topicBySlug = new Map(
+      topicsForInference.map((topic) => [topic.slug, topic]),
+    );
+    const settings = await getTopicInferenceSettingsForQuery(ctx);
+
+    let updatedEvents = 0;
+    let insertedLinks = 0;
+    let removedLinks = 0;
+    let updatedCandidacyRows = 0;
+
+    for (const event of events) {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      const inferredSlugs = inferTopicSlugs(
+        buildEventTopicInferenceContext(event, articles),
+        topicsForInference,
+        settings,
+      );
+      const inferredSlugSet = new Set(inferredSlugs);
+      const inferredTopicIds = new Set(
+        inferredSlugs
+          .map((slug) => topicBySlug.get(slug)?._id)
+          .filter((topicId): topicId is Id<"topics"> => topicId !== undefined)
+          .map((topicId) => String(topicId)),
+      );
+
+      const existingRows = await ctx.db
+        .query("eventTopics")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      const existingTopicIds = new Set<string>();
+
+      for (const row of existingRows) {
+        const topic = await ctx.db.get(row.topicId);
+        const shouldKeep =
+          topic !== null &&
+          inferredSlugSet.has(topic.slug) &&
+          inferredTopicIds.has(String(topic._id));
+        if (shouldKeep) {
+          existingTopicIds.add(String(row.topicId));
+          continue;
+        }
+        await ctx.db.delete(row._id);
+        removedLinks++;
+      }
+
+      for (const slug of inferredSlugs) {
+        const topic = topicBySlug.get(slug);
+        if (!topic || existingTopicIds.has(String(topic._id))) continue;
+        await ctx.db.insert("eventTopics", {
+          eventId: event._id,
+          topicId: topic._id,
+        });
+        insertedLinks++;
+      }
+
+      const candidacy = await ctx.db
+        .query("eventCandidacy")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .first();
+      if (
+        candidacy &&
+        (candidacy.topicSlugs.length !== inferredSlugs.length ||
+          candidacy.topicSlugs.some((slug, index) => slug !== inferredSlugs[index]))
+      ) {
+        await ctx.db.patch(candidacy._id, {
+          topicSlugs: inferredSlugs,
+          updatedAt: Date.now(),
+        });
+        updatedCandidacyRows++;
+      }
+
+      await syncPublicEventPreview(ctx, event._id);
+      updatedEvents++;
+    }
+
+    return {
+      processed: events.length,
+      updatedEvents,
+      insertedLinks,
+      removedLinks,
+      updatedCandidacyRows,
+      continueCursor: page.continueCursor ?? null,
+      isDone: page.isDone,
+    };
+  },
+});
+
+export const requireTopicBackfillAdmin = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminUser(ctx);
+    return { ok: true };
+  },
+});
+
+type BackfillEventTopicsResult = {
+  syncResult: {
+    created: number;
+    updated: number;
+    deleted: number;
+    removedEventTopicLinks: number;
+    removedFollowedTopicRefs: number;
+    totalCatalogTopics: number;
+  };
+  pages: number;
+  processed: number;
+  insertedLinks: number;
+  removedLinks: number;
+  updatedCandidacyRows: number;
+  continueCursor: string | null;
+  isDone: boolean;
+};
+
+export const backfillEventTopics = action({
+  args: {
+    pageSize: v.optional(v.number()),
+    maxPages: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    { pageSize, maxPages, cursor: initialCursor },
+  ): Promise<BackfillEventTopicsResult> => {
+    await ctx.runQuery(internal.clustering.requireTopicBackfillAdmin, {});
+    let syncResult: BackfillEventTopicsResult["syncResult"] =
+      await ctx.runMutation(internal.topics.syncTopicCatalog, {});
+    const limit = Math.min(Math.max(Math.floor(pageSize ?? 100), 1), 200);
+    const pageLimit = Math.min(Math.max(Math.floor(maxPages ?? 20), 1), 100);
+    let cursor = initialCursor ?? null;
+    let pages = 0;
+    let processed = 0;
+    let insertedLinks = 0;
+    let removedLinks = 0;
+    let updatedCandidacyRows = 0;
+    let isDone = false;
+
+    while (pages < pageLimit && !isDone) {
+      const result: {
+        processed: number;
+        insertedLinks: number;
+        removedLinks: number;
+        updatedCandidacyRows: number;
+        continueCursor: string | null;
+        isDone: boolean;
+      } = await ctx.runMutation(internal.clustering.backfillEventTopicBatch, {
+        limit,
+        cursor: cursor ?? undefined,
+      });
+      pages++;
+      processed += result.processed;
+      insertedLinks += result.insertedLinks;
+      removedLinks += result.removedLinks;
+      updatedCandidacyRows += result.updatedCandidacyRows;
+      isDone = result.isDone;
+      cursor = result.continueCursor;
+    }
+
+    if (isDone) {
+      syncResult = await ctx.runMutation(internal.topics.syncTopicCatalog, {
+        pruneStale: true,
+      });
+      await ctx.runMutation(internal.events.rebuildPublicFeedSnapshotsJob, {});
+    }
+
+    return {
+      syncResult,
+      pages,
+      processed,
+      insertedLinks,
+      removedLinks,
+      updatedCandidacyRows,
+      continueCursor: isDone ? null : cursor,
+      isDone,
+    };
   },
 });
 
@@ -4687,9 +4945,9 @@ export const mergeEvents = internalMutation({
     mergedTitle: v.string(),
     mergedPerspectiveSummaries: v.optional(
       v.object({
-        center: v.optional(v.string()),
-        left: v.optional(v.string()),
-        right: v.optional(v.string()),
+        neutral: v.optional(v.string()),
+        reformist: v.optional(v.string()),
+        suveranist: v.optional(v.string()),
       }),
     ),
     mergedPerspectiveSource: v.optional(
@@ -5016,30 +5274,36 @@ export const mergeEvents = internalMutation({
     const removeHasAiPerspective =
       removeEvent.perspectiveSource === "ai" ||
       Boolean(removeEvent.lastSummarizedAt);
+    const keepPerspectives = normalizedPerspectives(
+      keepEvent.perspectiveSummaries,
+    );
+    const removePerspectives = normalizedPerspectives(
+      removeEvent.perspectiveSummaries,
+    );
     const resolvedMergedPerspectiveSummaries =
       mergedPerspectiveSummaries ??
       (keepHasAiPerspective && !removeHasAiPerspective
-        ? keepEvent.perspectiveSummaries
+        ? keepPerspectives
         : removeHasAiPerspective && !keepHasAiPerspective
-          ? removeEvent.perspectiveSummaries
+          ? removePerspectives
           : {
-              center: preferLongerString(
-                keepEvent.perspectiveSummaries?.center,
-                removeEvent.perspectiveSummaries?.center,
+              neutral: preferLongerString(
+                keepPerspectives?.neutral,
+                removePerspectives?.neutral,
               ),
-              left: preferLongerString(
-                keepEvent.perspectiveSummaries?.left,
-                removeEvent.perspectiveSummaries?.left,
+              reformist: preferLongerString(
+                keepPerspectives?.reformist,
+                removePerspectives?.reformist,
               ),
-              right: preferLongerString(
-                keepEvent.perspectiveSummaries?.right,
-                removeEvent.perspectiveSummaries?.right,
+              suveranist: preferLongerString(
+                keepPerspectives?.suveranist,
+                removePerspectives?.suveranist,
               ),
             });
     const normalizedMergedPerspectiveSummaries =
-      resolvedMergedPerspectiveSummaries?.center ||
-      resolvedMergedPerspectiveSummaries?.left ||
-      resolvedMergedPerspectiveSummaries?.right
+      resolvedMergedPerspectiveSummaries?.neutral ||
+      resolvedMergedPerspectiveSummaries?.reformist ||
+      resolvedMergedPerspectiveSummaries?.suveranist
         ? resolvedMergedPerspectiveSummaries
         : undefined;
     const resolvedMergedPerspectiveSource =
@@ -6551,7 +6815,7 @@ export const clusterEnrichedArticles = internalAction({
           topicSlugs: new Set(topicSlugs),
           sourceIds: new Set([article.sourceId]),
           perspectiveSummaries: centerSummary
-            ? { center: centerSummary }
+            ? { neutral: centerSummary }
             : undefined,
           perspectiveSource: centerSummary ? "heuristic" : undefined,
           globalImpact: undefined,

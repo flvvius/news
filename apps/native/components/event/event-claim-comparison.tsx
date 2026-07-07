@@ -247,6 +247,11 @@ export function EventClaimComparison({
     [articles],
   );
 
+  // Claim analysis feature-flagged off (BIV-602) — hide the section entirely.
+  if (claims === null) {
+    return null;
+  }
+
   if (claims === undefined) {
     return (
       <View className="gap-4">

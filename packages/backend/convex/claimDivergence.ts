@@ -5,7 +5,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { getConfig } from "./config";
@@ -425,6 +425,17 @@ export const getEventClaims = query({
     const event = await ctx.db.get(args.eventId);
     if (!event || event.status !== "published") {
       throw new ConvexError("Event is not readable");
+    }
+
+    // BIV-602: claim analysis is feature-flagged. `null` tells clients the
+    // feature is off (hide the section); `[]` means enabled-but-pending.
+    const claimAnalysisEnabled = await getConfig(
+      ctx,
+      "claim_analysis_enabled",
+      false,
+    );
+    if (!claimAnalysisEnabled) {
+      return null;
     }
 
     const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 20)));

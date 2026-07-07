@@ -1,7 +1,8 @@
 "use node";
 
-import winkNLP from "wink-nlp";
-import model from "wink-eng-lite-web-model";
+import { normalizeRomanianDiacritics } from "./romanian";
+import { resolveGoogleNewsUrl } from "./googleNews";
+import { verifyImageUrl, type ImageUrlVerdict } from "./imageVerification";
 
 type ExtractionMethod =
   | "article"
@@ -40,9 +41,6 @@ const PRIORITY_PATTERNS = [
   /<main\b[\s\S]*?<\/main>/gi,
   /<(div|section)\b[^>]*(?:itemprop=["']articleBody["']|data-testid=["']article-body["']|class=["'][^"']*(?:article-body|story-body|entry-content|post-content|article__content|story-content)[^"']*["'])[^>]*>[\s\S]*?<\/\1>/gi,
 ];
-const GOOGLE_NEWS_HOST = "news.google.com";
-const GOOGLE_NEWS_BATCH_URL =
-  "https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je";
 const GOOGLE_REFERER = "https://news.google.com/";
 const GOOGLE_SEARCH_REFERER = "https://www.google.com/";
 const BLOCKED_PAGE_PATTERNS = [
@@ -55,17 +53,11 @@ const BLOCKED_PAGE_PATTERNS = [
   /bot detection/i,
 ];
 
-const nlp = winkNLP(model);
-const its = nlp.its;
-
 type NormalizedEntityCandidate = {
   value: string;
   wasAllUppercase: boolean;
 };
 
-interface TokenLike {
-  out(method?: unknown): string;
-}
 const ENTITY_MAX_TEXT_CHARS = 6000;
 const ENTITY_MAX_COUNT = 32;
 const ENTITY_NOISE_TERMS = new Set([
@@ -107,22 +99,36 @@ const WEEKDAY_ENTITY_NOISE_TERMS = new Set([
   "friday",
   "saturday",
   "sunday",
+  "luni",
+  "marți",
+  "marti",
+  "miercuri",
+  "joi",
+  "vineri",
+  "sâmbătă",
+  "sambata",
+  "duminică",
+  "duminica",
 ]);
 const ENTITY_ROLE_PREFIXES = [
   "former",
   "president",
   "prime minister",
-  "attorney general",
-  "house speaker",
-  "senate majority leader",
-  "senate minority leader",
-  "gop rep",
-  "democratic rep",
-  "republican rep",
   "rep",
   "sen",
-  "admiral",
   "dr",
+  "fostul",
+  "fosta",
+  "președintele",
+  "presedintele",
+  "premierul",
+  "prim-ministrul",
+  "ministrul",
+  "senatorul",
+  "deputatul",
+  "europarlamentarul",
+  "primarul",
+  "liderul",
 ];
 const NUMERIC_ENTITY_PATTERN =
   /\$\d[\d,.]*(?:\s?(?:billion|million|trillion))?|\b\d+(?:\.\d+)?%|\b\d+(?:st|nd|rd|th)\b/gi;
@@ -140,7 +146,10 @@ type FetchResult = {
 };
 
 function normalizeWhitespace(text: string): string {
-  return text
+  // Diacritic normalization rides along here so every extracted field
+  // (body text, summaries, meta descriptions, entities) reads normalized
+  // before embedding, clustering, or any LLM call.
+  return normalizeRomanianDiacritics(text)
     .replace(/\u00a0/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -188,10 +197,10 @@ function buildEmbeddingText(title: string, bodyText: string, rssSnippet: string)
 
 function normalizeEntityCandidate(value: string): NormalizedEntityCandidate {
   const cleaned = normalizeWhitespace(value).replace(
-    /^[^A-Za-z0-9$]+|[^A-Za-z0-9%]+$/g,
+    /^[^\p{L}\p{N}$]+|[^\p{L}\p{N}%]+$/gu,
     "",
   );
-  const letters = cleaned.match(/[A-Za-z]/g) ?? [];
+  const letters = cleaned.match(/\p{L}/gu) ?? [];
   const wasAllUppercase =
     letters.length > 0 &&
     letters.every((letter) => letter === letter.toUpperCase());
@@ -216,8 +225,10 @@ function isUsefulEntityCandidate(
   numericEntities: Set<string>,
 ): boolean {
   if (entity.length < 3 || entity.length > 80) return false;
-  if (!/[a-z0-9]/.test(entity)) return false;
-  if (/^(?:[a-z]\s*)+$/.test(entity)) return false;
+  if (!/[\p{Ll}\p{N}]/u.test(entity)) return false;
+  // Reject runs of single letters ("a b c"); the old ASCII version of this
+  // check accidentally rejected every all-lowercase entity.
+  if (/^\p{Ll}(?:\s+\p{Ll})*$/u.test(entity)) return false;
 
   const words = entity.split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > 7) return false;
@@ -268,6 +279,21 @@ function addNumericEntities(
   }
 }
 
+// Capitalized-run entity matcher (BIV-601). Replaces the former wink-nlp
+// PROPN tagger, whose English-only model produced garbage on Romanian text.
+// Matches runs of capitalized words optionally joined by Romanian/English
+// name connectors ("Curtea de Apel București", "Bank of America").
+const PROPER_NOUN_CONNECTOR =
+  "(?:de|din|al|ale|a|la|lui|pe|sub|și|si|of|the|and|for|in|on|to)";
+// Digits are allowed inside words (Digi24, G4Media) and as standalone
+// continuation tokens (Antena 3, Formula 1).
+const PROPER_NOUN_WORD = "\\p{Lu}[\\p{L}\\p{N}'’.-]*";
+const PROPER_NOUN_CONTINUATION = `(?:${PROPER_NOUN_WORD}|\\p{N}+)`;
+const PROPER_NOUN_SEQUENCE = new RegExp(
+  `${PROPER_NOUN_WORD}(?:\\s+(?:${PROPER_NOUN_CONNECTOR}\\s+)?${PROPER_NOUN_CONTINUATION}){0,4}`,
+  "gu",
+);
+
 function collectProperNounCandidates(
   text: string,
   scores: Map<string, number>,
@@ -275,22 +301,11 @@ function collectProperNounCandidates(
   allUppercaseEntities: Set<string>,
   weight: number,
 ) {
-  const doc = nlp.readDoc(text.slice(0, ENTITY_MAX_TEXT_CHARS));
-  const tokens: Array<{ value: string; normal: string; pos: string; type: string }> = [];
+  const sample = text.slice(0, ENTITY_MAX_TEXT_CHARS);
+  const matches = sample.match(PROPER_NOUN_SEQUENCE) ?? [];
 
-  doc.tokens().each((token: TokenLike) => {
-    tokens.push({
-      value: token.out(),
-      normal: token.out(its.normal),
-      pos: token.out(its.pos),
-      type: token.out(its.type),
-    });
-  });
-
-  let phrase: string[] = [];
-  const flush = () => {
-    if (phrase.length === 0) return;
-    const normalized = normalizeEntityCandidate(phrase.join(" "));
+  for (const match of matches) {
+    const normalized = normalizeEntityCandidate(match);
     if (normalized.value) {
       scores.set(normalized.value, (scores.get(normalized.value) ?? 0) + weight);
       if (normalized.wasAllUppercase) allUppercaseEntities.add(normalized.value);
@@ -298,20 +313,13 @@ function collectProperNounCandidates(
       // Body matches use lower weights and must earn their way in by repetition.
       if (weight >= 3) titleEntities.add(normalized.value);
     }
-    phrase = [];
-  };
-
-  for (const token of tokens) {
-    if (token.pos === "PROPN" && token.type === "word") {
-      phrase.push(token.value);
-    } else {
-      flush();
-    }
   }
-  flush();
 }
 
-function extractEntityCandidates(title: string, ...texts: string[]): string[] {
+export function extractEntityCandidates(
+  title: string,
+  ...texts: string[]
+): string[] {
   const scores = new Map<string, number>();
   const titleEntities = new Set<string>();
   const allUppercaseEntities = new Set<string>();
@@ -484,12 +492,45 @@ function stripTags(html: string): string {
   );
 }
 
-function extractJsonLdText(html: string): string | undefined {
+function parseJsonLdScripts(html: string): unknown[] {
   const scripts = Array.from(
     html.matchAll(
       /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
     ),
   );
+  const parsed: unknown[] = [];
+
+  for (const script of scripts) {
+    const raw = decodeHtmlEntities(script[1] ?? "").trim();
+    if (!raw) continue;
+
+    try {
+      parsed.push(JSON.parse(raw));
+      continue;
+    } catch {
+      // Fall through to the sanitized retry.
+    }
+
+    // BIV-813: zf.ro (and others) emit raw newlines/tabs inside JSON string
+    // literals — legal in HTML, illegal in JSON — so the NewsArticle block
+    // holding the real articleBody failed to parse and extraction fell back
+    // to a site-wide teaser widget shared by every page. Control characters
+    // cannot appear in valid JSON strings, so replacing them with spaces is
+    // lossless for well-formed documents and recovers the malformed ones.
+    try {
+      parsed.push(JSON.parse(raw.replace(/[\u0000-\u001f]+/g, " ")));
+    } catch {
+      continue;
+    }
+  }
+
+  return parsed;
+}
+
+function collectJsonLdFields(
+  documents: unknown[],
+  keys: readonly string[],
+): string[] {
   const collected: string[] = [];
 
   const collectFields = (value: unknown) => {
@@ -500,7 +541,7 @@ function extractJsonLdText(html: string): string | undefined {
     }
 
     const record = value as Record<string, unknown>;
-    for (const key of ["articleBody", "description", "abstract"]) {
+    for (const key of keys) {
       const field = record[key];
       if (typeof field === "string") {
         const cleaned = stripTags(field);
@@ -514,23 +555,48 @@ function extractJsonLdText(html: string): string | undefined {
     if (record.mainEntity) collectFields(record.mainEntity);
   };
 
-  for (const script of scripts) {
-    const raw = decodeHtmlEntities(script[1] ?? "").trim();
-    if (!raw) continue;
+  for (const doc of documents) collectFields(doc);
+  return collected;
+}
 
-    try {
-      collectFields(JSON.parse(raw));
-    } catch {
-      continue;
-    }
-  }
-
-  const best = collected.sort((a, b) => b.length - a.length)[0];
+function longestOrUndefined(values: string[]): string | undefined {
+  const best = values.sort((a, b) => b.length - a.length)[0];
   return best ? normalizeWhitespace(best) : undefined;
+}
+
+/**
+ * The publisher-declared article body. Trustworthy when present: unlike
+ * description/abstract (which can be site-wide marketing text), articleBody
+ * is per-article by definition, so it may outrank generic block scoring.
+ */
+function extractJsonLdArticleBody(documents: unknown[]): string | undefined {
+  return longestOrUndefined(collectJsonLdFields(documents, ["articleBody"]));
+}
+
+function extractJsonLdText(documents: unknown[]): string | undefined {
+  return longestOrUndefined(
+    collectJsonLdFields(documents, ["articleBody", "description", "abstract"]),
+  );
+}
+
+/**
+ * BIV-813: text living inside <a> tags is navigation, not prose. zf.ro's
+ * "Articole recomandate" carousel renders every teaser as
+ * <p><a class="title">headline…</a></p>, so by raw text volume it looked
+ * like the article body on every page whose real body is script-rendered.
+ */
+function linkTextRatio(html: string): number {
+  const total = stripTags(html);
+  if (!total) return 0;
+  const linkText = stripTags(
+    (html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? []).join(" "),
+  );
+  return linkText.length / total.length;
 }
 
 function extractParagraphText(html: string): string {
   const paragraphs = Array.from(html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+    .filter((match) => linkTextRatio(match[1] ?? "") <= 0.7)
     .map((match) => stripTags(match[1] ?? ""))
     .filter((text) => text.length >= 40);
 
@@ -539,7 +605,9 @@ function extractParagraphText(html: string): string {
     return deduped.join("\n\n");
   }
 
-  return stripTags(html);
+  // Blocks without usable <p> prose fall back to their whole text — but only
+  // when that text isn't mostly link labels (menus, teaser carousels).
+  return linkTextRatio(html) > 0.5 ? "" : stripTags(html);
 }
 
 function scoreHtmlBlock(html: string): number {
@@ -850,17 +918,27 @@ function extractFirstInlineImage(html: string): {
   return {};
 }
 
-function extractImageMetadata(
-  html: string,
-  baseUrl: string,
-  fallbackAlt: string,
-): {
+export type ExtractedImageMetadata = {
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   imageAlt?: string;
   imageSource?: "og" | "twitter" | "jsonld" | "inline";
-} {
+};
+
+export function collectImageMetadataCandidates(
+  html: string,
+  baseUrl: string,
+  fallbackAlt: string,
+): ExtractedImageMetadata[] {
+  const candidates: ExtractedImageMetadata[] = [];
+  const seenUrls = new Set<string>();
+  const addCandidate = (candidate: ExtractedImageMetadata) => {
+    if (!candidate.imageUrl || seenUrls.has(candidate.imageUrl)) return;
+    seenUrls.add(candidate.imageUrl);
+    candidates.push(candidate);
+  };
+
   const ogImage = absolutizeUrl(
     getMetaContent(html, "property", "og:image"),
     baseUrl,
@@ -871,7 +949,7 @@ function extractImageMetadata(
   );
   const normalizedOgImage = ogImage ?? ogImageUrl;
   if (isLikelyValidImageUrl(normalizedOgImage)) {
-    return {
+    addCandidate({
       imageUrl: normalizedOgImage,
       imageWidth: parseOptionalInteger(
         getMetaContent(html, "property", "og:image:width"),
@@ -884,7 +962,7 @@ function extractImageMetadata(
         getMetaContent(html, "property", "og:title") ??
         fallbackAlt,
       imageSource: "og",
-    };
+    });
   }
 
   const twitterImage = absolutizeUrl(
@@ -897,49 +975,84 @@ function extractImageMetadata(
   );
   const normalizedTwitterImage = twitterImage ?? twitterImageSrc;
   if (isLikelyValidImageUrl(normalizedTwitterImage)) {
-    return {
+    addCandidate({
       imageUrl: normalizedTwitterImage,
       imageAlt:
         getMetaContent(html, "name", "twitter:image:alt") ??
         getMetaContent(html, "name", "twitter:title") ??
         fallbackAlt,
       imageSource: "twitter",
-    };
+    });
   }
 
   const jsonLdImage = extractJsonLdImage(html);
   const jsonLdUrl = absolutizeUrl(jsonLdImage.imageUrl, baseUrl);
   if (isLikelyValidImageUrl(jsonLdUrl)) {
-    return {
+    addCandidate({
       imageUrl: jsonLdUrl,
       imageWidth: jsonLdImage.imageWidth,
       imageHeight: jsonLdImage.imageHeight,
       imageAlt: jsonLdImage.imageAlt ?? fallbackAlt,
       imageSource: "jsonld",
-    };
+    });
   }
 
   const inlineImage = extractFirstInlineImage(html);
   const inlineUrl = absolutizeUrl(inlineImage.imageUrl, baseUrl);
   if (isLikelyValidImageUrl(inlineUrl)) {
-    return {
+    addCandidate({
       imageUrl: inlineUrl,
       imageWidth: inlineImage.imageWidth,
       imageHeight: inlineImage.imageHeight,
       imageAlt: inlineImage.imageAlt ?? fallbackAlt,
       imageSource: "inline",
-    };
+    });
   }
 
   const rawCandidate = extractRawImageCandidates(html, baseUrl)[0];
   if (isLikelyValidImageUrl(rawCandidate)) {
-    return {
+    addCandidate({
       imageUrl: rawCandidate,
       imageAlt: fallbackAlt,
       imageSource: "inline",
-    };
+    });
   }
 
+  return candidates;
+}
+
+// Publishers lie in image slots (Agerpres og:image links an HTML photo page
+// when the article has no photo), so the winning candidate must prove it
+// serves image bytes before we store it. Capped so one pathological page
+// can't trigger a fetch storm.
+const MAX_IMAGE_VERIFICATION_ATTEMPTS = 3;
+
+// This best-effort hero check runs inline in the content-fetch worker and
+// probes up to MAX_IMAGE_VERIFICATION_ATTEMPTS candidates sequentially, so
+// each probe uses a tighter timeout than verifyImageUrl's default to bound
+// worst-case blocking (3 × 4s instead of 3 × 8s).
+const HERO_IMAGE_VERIFY_TIMEOUT_MS = 4000;
+
+export type ImageUrlVerifier = (url: string) => Promise<ImageUrlVerdict>;
+
+const defaultHeroImageVerifier: ImageUrlVerifier = (url) =>
+  verifyImageUrl(url, { timeoutMs: HERO_IMAGE_VERIFY_TIMEOUT_MS });
+
+export async function resolveVerifiedImageMetadata(
+  html: string,
+  baseUrl: string,
+  fallbackAlt: string,
+  verifier: ImageUrlVerifier = defaultHeroImageVerifier,
+): Promise<ExtractedImageMetadata> {
+  const candidates = collectImageMetadataCandidates(html, baseUrl, fallbackAlt);
+  for (const candidate of candidates.slice(
+    0,
+    MAX_IMAGE_VERIFICATION_ATTEMPTS,
+  )) {
+    if ((await verifier(candidate.imageUrl!)) === "image") {
+      return candidate;
+    }
+  }
   return {};
 }
 
@@ -967,6 +1080,12 @@ function chooseBestContentBlock(html: string): {
     }
   }
 
+  // BIV-813: parsed ONCE from the ORIGINAL html — stripNoise removes
+  // <script> blocks, which also made the old post-scoring JSON-LD fallback
+  // unreachable.
+  const jsonLdDocs = parseJsonLdScripts(html);
+  const jsonLdBody = extractJsonLdArticleBody(jsonLdDocs);
+
   const candidates = Array.from(
     cleanedHtml.matchAll(/<(article|main|section|div)\b[\s\S]*?<\/\1>/gi),
   )
@@ -975,6 +1094,27 @@ function chooseBestContentBlock(html: string): {
 
   const best = candidates[0]?.html ?? cleanedHtml;
   const bestText = extractParagraphText(best);
+
+  // BIV-813: the publisher-declared JSON-LD articleBody outranks generic
+  // block scoring. On zf.ro the real body is script-rendered, so the
+  // best-scored <div> was a site-wide teaser widget — identical across every
+  // ZF page — which embedded as a near-identical vector and merged unrelated
+  // articles into one event. articleBody is per-article by definition, so it
+  // can't repeat that failure. Exception (longer-wins): some publishers put
+  // only a lede/teaser in articleBody; when the DOM prose is substantially
+  // fuller, it is the real body and the JSON-LD field is the excerpt.
+  if (jsonLdBody && jsonLdBody.length >= MIN_EXTRACTED_BODY_CHARS) {
+    const domIsSubstantiallyFuller =
+      bestText.length >= MIN_EXTRACTED_BODY_CHARS &&
+      bestText.length >= jsonLdBody.length * 1.5;
+    if (!domIsSubstantiallyFuller) {
+      return {
+        text: jsonLdBody,
+        method: "jsonld",
+      };
+    }
+  }
+
   if (bestText.length >= MIN_EXTRACTED_BODY_CHARS) {
     return {
       text: bestText,
@@ -982,7 +1122,7 @@ function chooseBestContentBlock(html: string): {
     };
   }
 
-  const jsonLdText = extractJsonLdText(cleanedHtml);
+  const jsonLdText = extractJsonLdText(jsonLdDocs);
   if (jsonLdText && jsonLdText.length >= MIN_EXTRACTED_BODY_CHARS) {
     return {
       text: jsonLdText,
@@ -1053,112 +1193,6 @@ async function fetchHtml(
   return lastHtmlResult ?? { ok: false };
 }
 
-function getGoogleNewsArticleId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname !== GOOGLE_NEWS_HOST) return null;
-
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    const markerIndex = parts.findIndex(
-      (part) => part === "articles" || part === "read",
-    );
-    if (markerIndex < 0) return null;
-    return parts[markerIndex + 1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveGoogleNewsUrl(url: string): Promise<string | null> {
-  const articleId = getGoogleNewsArticleId(url);
-  if (!articleId) return null;
-
-  const wrapperResponse = await fetchHtml(
-    `https://news.google.com/rss/articles/${articleId}`,
-  );
-  if (!wrapperResponse.ok || !wrapperResponse.html) return null;
-
-  const timestamp = wrapperResponse.html.match(/data-n-a-ts="(\d+)"/)?.[1];
-  const signature = wrapperResponse.html.match(/data-n-a-sg="([^"]+)"/)?.[1];
-  if (!timestamp || !signature) return null;
-
-  const payload = [[[
-    "Fbv4je",
-    JSON.stringify([
-      "garturlreq",
-      [
-        [
-          "en-US",
-          "US",
-          ["FINANCE_TOP_INDICES", "WEB_TEST_1_0_0"],
-          null,
-          null,
-          1,
-          1,
-          "US:en",
-          null,
-          1,
-          null,
-          null,
-          null,
-          null,
-          null,
-          0,
-          1,
-        ],
-        "en-US",
-        "US",
-        1,
-        [2, 3, 4, 8],
-        1,
-        0,
-        "655000234",
-        0,
-        0,
-        null,
-        0,
-      ],
-      articleId,
-      Number(timestamp),
-      signature,
-    ]),
-    null,
-    "generic",
-  ]]];
-
-  try {
-    const response = await fetch(GOOGLE_NEWS_BATCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        "User-Agent": EXTRACTION_USER_AGENT,
-        Referer: "https://news.google.com/",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      body: `f.req=${encodeURIComponent(JSON.stringify(payload))}`,
-    });
-
-    if (!response.ok) return null;
-
-    const text = await response.text();
-    const decodedChunk = text.split("\n\n")[1];
-    if (!decodedChunk) return null;
-
-    const parsed = JSON.parse(decodedChunk) as any[];
-    const wrappedResult = parsed.find(
-      (entry) => Array.isArray(entry) && entry[0] === "wrb.fr",
-    );
-    const rawPayload = wrappedResult?.[2];
-    if (typeof rawPayload !== "string") return null;
-
-    const decoded = JSON.parse(rawPayload) as unknown[];
-    const resolvedUrl = typeof decoded[1] === "string" ? decoded[1] : null;
-    return resolvedUrl;
-  } catch {
-    return null;
-  }
-}
-
 export async function extractArticleContentForEmbedding(args: {
   title: string;
   url: string;
@@ -1170,7 +1204,8 @@ export async function extractArticleContentForEmbedding(args: {
     args.rssSnippet,
   );
   const fallbackSummary = summarizeBody(args.rssSnippet);
-  const resolvedUrl = (await resolveGoogleNewsUrl(args.url)) ?? args.url;
+  const resolvedUrl =
+    (await resolveGoogleNewsUrl(args.url, EXTRACTION_USER_AGENT)) ?? args.url;
   const fetched = await fetchHtml(resolvedUrl, resolvedUrl !== args.url);
 
   if (!fetched.ok || !fetched.html) {
@@ -1178,7 +1213,7 @@ export async function extractArticleContentForEmbedding(args: {
       ? extractMetaDescription(fetched.html)
       : undefined;
     const blockedImage = fetched.html
-      ? extractImageMetadata(
+      ? await resolveVerifiedImageMetadata(
           fetched.html,
           fetched.finalUrl ?? resolvedUrl,
           args.title,
@@ -1216,7 +1251,11 @@ export async function extractArticleContentForEmbedding(args: {
         : resolvedUrl !== args.url
           ? resolvedUrl
           : args.url;
-    const image = extractImageMetadata(fetched.html, effectiveUrl, args.title);
+    const image = await resolveVerifiedImageMetadata(
+      fetched.html,
+      effectiveUrl,
+      args.title,
+    );
 
     const normalizedBody = normalizeWhitespace(extractedText).slice(0, MAX_BODY_CHARS);
     const bodyChars = normalizedBody.length;
@@ -1269,4 +1308,117 @@ export async function extractArticleContentForEmbedding(args: {
       extractionQuality: "weak",
     };
   }
+}
+
+/**
+ * Fixture-testable seam over the body-selection pipeline (no network).
+ * Exercises exactly what extractArticleContentForEmbedding does with a
+ * fetched page: choose the body block, including the JSON-LD articleBody
+ * preference (BIV-813).
+ */
+export function extractBodyFromHtml(html: string): {
+  text: string;
+  method: ExtractionMethod;
+} {
+  return chooseBestContentBlock(html);
+}
+
+export type PreparedEmbeddingArticle = {
+  sourceName?: string;
+  title: string;
+  rssSnippet?: string | null;
+  embeddingText: string;
+  extractedSummary?: string;
+  extractionMethod: string;
+  bodyChars: number;
+  extractionQuality?: "strong" | "weak";
+  entities?: string[];
+};
+
+/**
+ * BIV-813 guard: when several articles from the same source in a batch carry
+ * an IDENTICAL extracted body under different titles, that body is site
+ * furniture (paywall teaser widget, promo block), not article content —
+ * zf.ro served the same 3.9k-char teaser list as the "body" of 38 unrelated
+ * articles, which embedded as near-identical vectors and merged them all
+ * into one event. Demote those articles to title+snippet embeddings and
+ * re-derive summary/entities so no downstream signal (embedding similarity,
+ * entity overlap) is built from the shared boilerplate.
+ *
+ * Known tradeoff: a legitimate article the same source republishes under a
+ * retitled headline within one batch gets demoted too. It still embeds via
+ * title+snippet (and clusters on those signals), which we accept over the
+ * alternative — boilerplate bodies silently merging unrelated events.
+ */
+export function demoteRepeatedSourceBodies<
+  T extends PreparedEmbeddingArticle,
+>(articles: T[]): T[] {
+  const bodyOf = (article: T) => {
+    const separator = article.embeddingText.indexOf("\n\n");
+    return separator >= 0 ? article.embeddingText.slice(separator + 2) : "";
+  };
+
+  const bySourceBody = new Map<string, Map<string, number[]>>();
+  articles.forEach((article, index) => {
+    if (!article.sourceName) return;
+    const body = bodyOf(article);
+    if (body.length < MIN_EXTRACTED_BODY_CHARS) return;
+
+    // Group on a fixed-length prefix: buildEmbeddingText truncates
+    // title+body at MAX_EMBEDDING_CHARS, so the SAME boilerplate body ends
+    // up with different tail lengths under different-length titles — an
+    // exact-match key would miss exactly the repeats this guard exists for.
+    const bodyKey = body.slice(0, 2000);
+
+    const bodies =
+      bySourceBody.get(article.sourceName) ?? new Map<string, number[]>();
+    bySourceBody.set(article.sourceName, bodies);
+    bodies.set(bodyKey, [...(bodies.get(bodyKey) ?? []), index]);
+  });
+
+  const demoted = new Set<number>();
+  for (const bodies of bySourceBody.values()) {
+    for (const indexes of bodies.values()) {
+      // The same body under one title is a re-syndicated duplicate (fine);
+      // under two or more DIFFERENT titles it can only be boilerplate.
+      const distinctTitles = new Set(
+        indexes.map((index) =>
+          normalizeWhitespace(articles[index]!.title).toLowerCase(),
+        ),
+      );
+      if (distinctTitles.size >= 2) {
+        for (const index of indexes) demoted.add(index);
+      }
+    }
+  }
+
+  if (demoted.size === 0) return articles;
+
+  console.warn(
+    `[extraction] BIV-813 boilerplate guard: demoted ${demoted.size} article(s) whose extracted body repeats across different titles from the same source`,
+    {
+      sources: [
+        ...new Set(
+          [...demoted].map((index) => articles[index]!.sourceName ?? "?"),
+        ),
+      ],
+    },
+  );
+
+  return articles.map((article, index) => {
+    if (!demoted.has(index)) return article;
+    const snippet = article.rssSnippet ?? "";
+    // The overridden fields stay within T's property types (rss_fallback is
+    // a valid ExtractionMethod); the cast is needed because TS can't prove
+    // that for an arbitrary T extends PreparedEmbeddingArticle.
+    return {
+      ...article,
+      embeddingText: buildEmbeddingText(article.title, "", snippet),
+      extractedSummary: summarizeBody(snippet),
+      extractionMethod: "rss_fallback",
+      bodyChars: 0,
+      extractionQuality: "weak",
+      entities: extractEntityCandidates(article.title, snippet),
+    } as T;
+  });
 }

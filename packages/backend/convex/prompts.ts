@@ -1,3 +1,5 @@
+import { BRAND_NAME } from "./brand";
+
 export type EventSummaryArticleInput = {
   title: string;
   sourceName: string;
@@ -16,9 +18,9 @@ export type EventSummaryPromptInput = {
 };
 
 export type EventSummaryOutput = {
-  center: string;
-  left: string;
-  right: string;
+  neutral: string;
+  reformist: string;
+  suveranist: string;
   globalImpact: string;
 };
 
@@ -88,32 +90,71 @@ function trimField(value: string | undefined, maxLength: number): string {
   return (value ?? "").trim().slice(0, maxLength);
 }
 
-const GLOBAL_IMPACT_FALLBACK =
-  "Concrete downstream impact not stated in the supplied coverage.";
+export const GLOBAL_IMPACT_FALLBACK =
+  "Impactul concret nu este precizat în articolele furnizate.";
 
-function perspectiveCaseFor(count: number, side: "left" | "right"): string {
-  const sideGroup = side === "left" ? "left/left-center" : "right/right-center";
-  const fallback = `Limited ${side}-leaning coverage in the input.`;
+export const LIMITED_COVERAGE_FALLBACK: Record<
+  "reformist" | "suveranist",
+  string
+> = {
+  // BIV-805: user-visible fallback (stored as the perspective summary) — uses
+  // "orientare", not the "cadrare" calque; the LLM-internal prompt vocabulary
+  // is unchanged on purpose (model-facing, covered by the eval harness).
+  reformist: "Acoperire limitată din partea surselor cu orientare reformistă.",
+  suveranist: "Acoperire limitată din partea surselor cu orientare suveranistă.",
+};
+
+/**
+ * User-visible fallback stored when the model omits a perspective field
+ * (BIV-805: "perspectivă", not the "cadrare" calque). Lives here rather than
+ * in summarizationNode.ts so the non-Node test suite can lint its wording.
+ */
+export const SIDE_COVERAGE_FALLBACK =
+  "Acoperirea disponibilă nu oferă încă o perspectivă distinctă din această parte.";
+
+/**
+ * Map a source's stored bias label (left/left-center/center/right-center/
+ * right — derived from the −5..+5 axis score) to the Romanian framing pole
+ * shown to the model. Negative = reformist, positive = suveranist
+ * (docs/bias-axis-spec.md).
+ */
+function framingLabelFor(sourceBiasLabel: string): string {
+  const label = sourceBiasLabel.toLowerCase();
+  if (label === "left" || label === "left-center") return "reformistă";
+  if (label === "right" || label === "right-center") return "suveranistă";
+  if (label === "center") return "neutră";
+  return "necunoscută";
+}
+
+function perspectiveCaseFor(
+  count: number,
+  side: "reformist" | "suveranist",
+): string {
+  const sideLabel = side === "reformist" ? "reformistă" : "suveranistă";
+  const fallback = LIMITED_COVERAGE_FALLBACK[side];
   if (count <= 1) {
-    return `CASE A - ${count} ${sideGroup} articles in input; write exactly "${fallback}"`;
+    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}"`;
   }
-  return `CASE B or C - ${count} ${sideGroup} articles in input; choose CASE B if they mirror the shared factual core. Choose CASE C if they have distinct framing, emphasis, or exclusive facts.`;
+  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte.`;
 }
 
 export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
   system: string;
   user: string;
 } {
-  const leftArticleCount = input.articles.filter((article) => {
+  const reformistArticleCount = input.articles.filter((article) => {
     const label = article.sourceBiasLabel.toLowerCase();
     return label === "left" || label === "left-center";
   }).length;
-  const rightArticleCount = input.articles.filter((article) => {
+  const suveranistArticleCount = input.articles.filter((article) => {
     const label = article.sourceBiasLabel.toLowerCase();
     return label === "right" || label === "right-center";
   }).length;
-  const leftCase = perspectiveCaseFor(leftArticleCount, "left");
-  const rightCase = perspectiveCaseFor(rightArticleCount, "right");
+  const reformistCase = perspectiveCaseFor(reformistArticleCount, "reformist");
+  const suveranistCase = perspectiveCaseFor(
+    suveranistArticleCount,
+    "suveranist",
+  );
   const articleBlocks = input.articles
     .map((article, index) => {
       const facts = article.atomicFacts
@@ -122,16 +163,20 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
         .join("\n");
 
       return [
-        `Article ${index + 1}`,
-        `sourceName: ${article.sourceName}`,
-        `sourceBiasLabel: ${article.sourceBiasLabel}`,
-        `sourceReliability: ${article.sourceReliability}/10`,
-        `publishedAt: ${article.publishedAt}`,
-        `Title: ${trimField(article.title, 220)}`,
-        article.summary ? `Extracted summary: ${trimField(article.summary, 900)}` : "",
-        article.rssSnippet ? `RSS snippet: ${trimField(article.rssSnippet, 700)}` : "",
-        facts ? `Atomic facts:\n${facts}` : "",
-        `Canonical URL: ${article.canonicalUrl}`,
+        `Articolul ${index + 1}`,
+        `sursa: ${article.sourceName}`,
+        `cadrareaSursei: ${framingLabelFor(article.sourceBiasLabel)}`,
+        `fiabilitateaSursei: ${article.sourceReliability}/10`,
+        `publicatLa: ${article.publishedAt}`,
+        `Titlu: ${trimField(article.title, 220)}`,
+        article.summary
+          ? `Rezumat extras: ${trimField(article.summary, 900)}`
+          : "",
+        article.rssSnippet
+          ? `Fragment RSS: ${trimField(article.rssSnippet, 700)}`
+          : "",
+        facts ? `Fapte atomice:\n${facts}` : "",
+        `URL canonic: ${article.canonicalUrl}`,
       ]
         .filter(Boolean)
         .join("\n");
@@ -140,63 +185,72 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
 
   return {
     system: [
-      "You are Biviant's event synthesis engine.",
-      "You read clustered news coverage and write a strictly factual, multi-perspective summary.",
+      `Ești motorul de sinteză a evenimentelor al platformei ${BRAND_NAME}, un agregator de știri românesc.`,
+      "Citești articole de presă grupate pe același eveniment și scrii un rezumat strict factual, cu perspective multiple.",
       "",
-      "CORE RULES:",
-      "- Use ONLY the supplied article material. Never invent facts, figures, quotes, motives, outcomes, or downstream effects.",
-      "- Prefer facts confirmed by 2 or more sources. If a key fact appears in only one article, attribute it by source name.",
-      "- Treat the atomicFacts fields as pre-extracted verifiable claims. Use them to identify shared facts, disagreements, and facts only one side reports.",
-      "- If sources contradict on a fact, call out the disagreement with attribution. Do not silently pick one.",
-      '- Group articles by sourceBiasLabel: "left" and "left-center" inform the left field; "right" and "right-center" inform the right field; all reliable sources can inform center.',
-      "- Prefer sources with sourceReliability >= 7 when describing the current factual core. Attribute claims from sources with sourceReliability < 5.",
-      "- When articles conflict, use the most recent publishedAt as the current state only if it directly addresses the conflict.",
-      "- Write neutral, source-grounded prose. No bullet points. No marketing language. No editorializing.",
+      "LIMBA (regulă absolută):",
+      "- Scrie TOT textul EXCLUSIV în limba română, cu diacritice corecte (ș, ț, ă, â, î).",
+      "- Nu folosi engleza sau altă limbă în niciun câmp, indiferent de limba articolelor sursă. Citatele rămân în limba originală doar dacă sunt marcate ca citat.",
       "",
-      "PERSPECTIVE FIELD COUNTS (precomputed; treat as ground truth):",
-      `- left/left-center article count: ${leftArticleCount}`,
-      `- right/right-center article count: ${rightArticleCount}`,
-      "- Count by article sourceBiasLabel, not by distinct source name.",
-      `LEFT CASE: ${leftCase}`,
-      `RIGHT CASE: ${rightCase}`,
+      "AXA DE CADRARE (reformist ↔ suveranist):",
+      "- Cadrarea reformistă pune accent pe: integrarea europeană și NATO, statul de drept, lupta anticorupție, alinierea la politicile UE.",
+      "- Cadrarea suveranistă pune accent pe: suveranitatea națională față de Bruxelles, scepticismul față de mandatele UE, valorile tradiționale și religioase, protejarea capitalului național, criticile la adresa instituțiilor anticorupție.",
+      "- Ambele etichete sunt descriptive, nu evaluative. Nu prezenta niciuna dintre cadrări ca fiind corectă sau greșită.",
       "",
-      "PERSPECTIVE CASE DEFINITIONS:",
-      "- CASE A: use the exact limited-coverage fallback supplied in LEFT CASE or RIGHT CASE. Do not add explanation.",
-      "- CASE B: write 50-100 words noting that the relevant side's sources largely mirrored the shared factual account. Name 1-2 sources and cite one or two specific shared elements they emphasized. Do not invent unique framing.",
-      "- CASE C: write 50-100 words describing distinct framing, emphasis, or exclusive facts from that side, with source names.",
-      '- Never use a "Limited..." fallback for a side whose article count is 2 or more.',
+      "REGULI DE BAZĂ:",
+      "- Folosește DOAR materialul din articolele furnizate. Nu inventa niciodată fapte, cifre, citate, motivații, rezultate sau efecte ulterioare.",
+      "- Preferă faptele confirmate de 2 sau mai multe surse. Dacă un fapt-cheie apare într-un singur articol, atribuie-l numelui sursei.",
+      "- Tratează câmpurile de fapte atomice ca afirmații verificabile pre-extrase. Folosește-le pentru a identifica faptele comune, dezacordurile și faptele raportate de o singură parte.",
+      "- Dacă sursele se contrazic asupra unui fapt, semnalează dezacordul cu atribuire. Nu alege în tăcere una dintre variante.",
+      '- Grupează articolele după câmpul cadrareaSursei: "reformistă" informează câmpul reformist; "suveranistă" informează câmpul suveranist; toate sursele fiabile pot informa câmpul neutral.',
+      "- Preferă sursele cu fiabilitateaSursei >= 7 pentru nucleul factual. Atribuie explicit afirmațiile surselor cu fiabilitateaSursei < 5.",
+      "- Când articolele intră în conflict, folosește cel mai recent publicatLa drept stare curentă doar dacă abordează direct conflictul.",
+      "- Scrie proză neutră, ancorată în surse. Fără liste cu puncte. Fără limbaj de marketing. Fără editorializare.",
       "",
-      "GLOBAL IMPACT RULES:",
-      "- globalImpact must state one concrete, source-supported significance of the event.",
-      "- Valid impact forms, in priority order: a specific downstream consequence; an already-stated effect such as market reactions, casualties, diplomacy, ceasefire status, sanctions, or commodity price moves; or direct stakes named by an article.",
-      "- A stake exists when any article mentions specific risk to a person, group, market, region, treaty, election, ceasefire, supply, price, position, or institution.",
-      "- If unsure whether a mention qualifies as a concrete stake, treat it as valid and write the impact.",
-      "- Cite the source name when stating the impact.",
-      `- Use exactly "${GLOBAL_IMPACT_FALLBACK}" only when the supplied articles are purely procedural or informational and contain no risk, effect, consequence, or stake language.`,
+      "NUMĂRUL DE ARTICOLE PE PERSPECTIVĂ (precalculat; tratează ca adevăr):",
+      `- articole cu cadrare reformistă: ${reformistArticleCount}`,
+      `- articole cu cadrare suveranistă: ${suveranistArticleCount}`,
+      "- Numără după cadrareaSursei a articolului, nu după numele distinct al sursei.",
+      `CAZUL REFORMIST: ${reformistCase}`,
+      `CAZUL SUVERANIST: ${suveranistCase}`,
+      "",
+      "DEFINIȚIILE CAZURILOR:",
+      "- CAZUL A: folosește exact textul de rezervă furnizat mai sus. Nu adăuga explicații.",
+      "- CAZUL B: scrie 50-100 de cuvinte notând că sursele acelei părți au reflectat în mare nucleul factual comun. Numește 1-2 surse și citează unul sau două elemente comune pe care le-au accentuat. Nu inventa o cadrare unică.",
+      "- CAZUL C: scrie 50-100 de cuvinte descriind cadrarea, accentul sau faptele exclusive distincte ale acelei părți, cu numele surselor.",
+      '- Nu folosi niciodată un text de rezervă "Acoperire limitată..." pentru o parte cu 2 sau mai multe articole.',
+      "",
+      "REGULI PENTRU globalImpact:",
+      "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",
+      "- Forme valide de impact, în ordinea priorității: o consecință specifică ulterioară; un efect deja declarat (reacții de piață, victime, diplomație, sancțiuni, prețuri); sau mize directe numite de un articol.",
+      "- O miză există când orice articol menționează un risc specific pentru o persoană, un grup, o piață, o regiune, un tratat, alegeri, aprovizionare, prețuri sau o instituție.",
+      "- Dacă nu ești sigur că o mențiune este o miză concretă, consider-o validă și scrie impactul.",
+      "- Citează numele sursei când exprimi impactul.",
+      `- Folosește exact "${GLOBAL_IMPACT_FALLBACK}" doar când articolele sunt pur procedurale sau informative și nu conțin niciun risc, efect, consecință sau miză.`,
       "",
       "OUTPUT:",
-      "- Return ONLY JSON with exactly these keys: center, left, right, globalImpact.",
-      "- No prose, markdown, or code fences outside the JSON.",
+      "- Returnează DOAR JSON cu exact aceste chei: neutral, reformist, suveranist, globalImpact.",
+      "- Fără proză, markdown sau delimitatori de cod în afara JSON-ului.",
       "",
-      "DO NOT:",
-      "- Reference articles by index. Use source names.",
-      "- Mention URLs in prose.",
-      '- Use evaluative language about source motives or the word "spin".',
-      '- Use words like "could", "may", or "might" unless a supplied article uses that uncertainty.',
-      '- Use marketing or vague hype words such as "transformative", "unprecedented", "historic", "crucial", or "critical" unless quoted by a source or tied to literal safety, medical, or emergency stakes.',
+      "INTERZIS:",
+      "- Să faci referire la articole prin index. Folosește numele surselor.",
+      "- Să menționezi URL-uri în proză.",
+      '- Să folosești limbaj evaluativ despre motivațiile surselor sau cuvântul "manipulare".',
+      '- Să folosești "ar putea", "posibil" sau "s-ar putea" dacă niciun articol furnizat nu exprimă acea incertitudine.',
+      '- Să folosești cuvinte de marketing precum "transformator", "fără precedent", "istoric", "crucial" sau "critic", cu excepția citatelor sau a mizelor literale de siguranță, medicale sau de urgență.',
     ].join("\n"),
     user: [
-      `Event: ${input.eventTitle}`,
+      `Eveniment: ${input.eventTitle}`,
       "",
-      "Write:",
-      "- center (70-120 words): shared factual core, preferring facts confirmed across multiple sources. Note disagreements with attribution.",
-      "- left (50-100 words for CASE C; 50-100 words for CASE B): execute the LEFT CASE you were told above.",
-      "- right (50-100 words for CASE C; 50-100 words for CASE B): execute the RIGHT CASE you were told above.",
-      "- globalImpact (50-100 words): apply the GLOBAL IMPACT RULES. Prefer concrete stated effects or stakes over the fallback.",
+      "Scrie:",
+      "- neutral (70-120 cuvinte): nucleul factual comun, preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
+      "- reformist (50-100 de cuvinte pentru CAZUL B sau C): execută CAZUL REFORMIST indicat mai sus.",
+      "- suveranist (50-100 de cuvinte pentru CAZUL B sau C): execută CAZUL SUVERANIST indicat mai sus.",
+      "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
       "",
-      "Keep each field within its word limit. Avoid bullet points. Avoid unsupported certainty.",
+      "Respectă limita de cuvinte a fiecărui câmp. Evită listele cu puncte. Evită certitudinile nesusținute. Scrie exclusiv în limba română.",
       "",
-      "Articles:",
+      "Articole:",
       articleBlocks,
     ].join("\n"),
   };
@@ -231,8 +285,11 @@ export function buildArticleFactExtractionPrompt(
 
   return {
     system: [
-      "You are Biviant's atomic fact extraction engine.",
+      `You are ${BRAND_NAME}'s atomic fact extraction engine.`,
       "You extract short, standalone factual claims from individual news articles.",
+      "",
+      "LANGUAGE (absolute rule):",
+      "- Write every fact EXCLUSIVELY in Romanian, with correct diacritics (ș, ț, ă, â, î), regardless of the article's language.",
       "",
       "CORE RULES:",
       "- Use ONLY the supplied article material. Never infer, complete, or add facts from outside knowledge.",
@@ -288,47 +345,51 @@ export function buildArticleBiasScoringPrompt(
 
   return {
     system: [
-      "You are Biviant's per-article bias scoring engine.",
-      "Score each article on four sub-dimensions. Return only JSON matching the schema.",
+      `Ești motorul de scorare a biasului la nivel de articol al platformei ${BRAND_NAME}, un agregator de știri românesc.`,
+      "Evaluează fiecare articol pe axa reformist↔suveranist plus trei sub-dimensiuni. Returnează doar JSON conform schemei.",
       "",
-      "CORE RULES:",
-      "- Score the article text, not the outlet's reputation. Source name is attribution metadata only; do not use it as a proxy for political lean.",
-      "- Use only supplied article material. Do not infer author intent or facts beyond the text.",
-      "- Treat straight-news attribution as lower opinion, even when quoted sources use partisan language.",
-      "- Rationale must cite specific wording, sourcing, or structure from the article.",
+      "LIMBA (regulă absolută):",
+      "- Scrie câmpul rationale EXCLUSIV în limba română, cu diacritice corecte.",
       "",
-      "POLITICAL LEAN ANCHORS (-5 to +5):",
-      "-5: Strongly left. Frames events through a left-progressive lens, uses left-coded terms such as working class, corporate greed, undocumented immigrants, or highlights mostly left-aligned voices.",
-      "-2: Left-center. Subtle left framing in word choice; often quotes left and center sources.",
-      " 0: Neutral wire-style. Reuters, AP, or BBC straight-news templates. Symmetric attribution and descriptive language.",
-      "+2: Right-center. Subtle right framing in word choice; often quotes right and center sources.",
-      "+5: Strongly right. Frames events through a right-conservative lens, uses right-coded terms such as illegal aliens, elites, radical left, or highlights mostly right-aligned voices.",
+      "REGULI DE BAZĂ:",
+      "- Evaluează textul articolului, nu reputația publicației. Numele sursei este doar metadată de atribuire; nu îl folosi ca indicator al cadrării.",
+      "- Folosește doar materialul furnizat. Nu deduce intenția autorului sau fapte dincolo de text.",
+      "- Tratează atribuirea de tip știre factuală ca opinie redusă, chiar și când sursele citate folosesc limbaj partizan.",
+      "- Rationale trebuie să citeze formulări, surse sau structuri specifice din articol.",
       "",
-      "EMOTIONAL LANGUAGE ANCHORS (0 to 5):",
-      "0: Pure neutral language, such as 'The bill passed 60 to 40.'",
-      "2: Mild evaluative language, such as 'The contentious bill narrowly passed.'",
-      "5: Heavy loaded language, such as 'The disastrous bill was rammed through despite fierce opposition.'",
+      'AXA DE CADRARE (bias.axis = "reformist_suveranist", bias.score de la -5 la +5):',
+      "-5: Puternic reformist. Cadrează evenimentele prin lentila pro-europeană/reformistă ca voce proprie: statul de drept, anticorupția, integrarea europeană prezentate ca bine implicit; vocile suveraniste apar doar pentru a fi combătute.",
+      "-2: Moderat reformist. Cadrare reformistă subtilă în alegerea cuvintelor; citează preponderent voci pro-europene și neutre.",
+      " 0: Stil agenție de presă. Modelul Agerpres de știre factuală: atribuire simetrică și limbaj descriptiv, fără vocabularul niciunei tabere adoptat ca voce proprie.",
+      '+2: Moderat suveranist. Cadrare suveranistă subtilă; preia necitat termeni precum "dictatul Bruxelles-ului" sau prezintă instituțiile anticorupție drept abuzive.',
+      '+5: Puternic suveranist. Cadrează evenimentele prin lentila suveranistă ca voce proprie: "statul paralel", "interese străine", "globaliști", valorile naționale sub asediu; vocile pro-europene apar doar pentru a fi combătute.',
+      "- Scorul măsoară cadrarea TEXTULUI, nu subiectul. Un articol despre un miting suveranist nu este suveranist din cauza subiectului; contează al cui vocabular îl adoptă articolul ca voce proprie.",
       "",
-      "SOURCE DIVERSITY ANCHORS (0 to 5):",
-      "0: Anonymous sources only, or a single named voice.",
-      "2: Two or three sources from one perspective.",
-      "5: Four or more sources spanning multiple political or expert perspectives, with direct quotes.",
+      "LIMBAJ EMOȚIONAL (0 la 5):",
+      '0: Limbaj pur neutru, de tipul "Legea a trecut cu 60 de voturi la 40."',
+      '2: Limbaj ușor evaluativ, de tipul "Legea controversată a trecut la limită."',
+      '5: Limbaj puternic încărcat, de tipul "Legea dezastruoasă a fost trecută cu forța în ciuda opoziției vehemente."',
       "",
-      "FACT/OPINION ANCHORS (0 to 5):",
-      "0: Pure reporting: who, what, when, where, and how. Attributed claims only.",
-      "3: Reported with mild interpretive framing.",
-      "5: Op-ed, editorial, analysis, or explicit author judgment.",
+      "DIVERSITATEA SURSELOR (0 la 5):",
+      "0: Doar surse anonime sau o singură voce numită.",
+      "2: Două sau trei surse dintr-o singură perspectivă.",
+      "5: Patru sau mai multe surse din perspective politice sau de expertiză multiple, cu citate directe.",
+      "",
+      "RAPORT FAPTE/OPINIE (0 la 5):",
+      "0: Relatare pură: cine, ce, când, unde și cum. Doar afirmații atribuite.",
+      "3: Relatare cu cadrare interpretativă ușoară.",
+      "5: Editorial, analiză sau judecată explicită a autorului.",
       "",
       "OUTPUT:",
-      '- Return only JSON with exactly one key: "articles".',
-      "- Each item must include the original id and all four scores.",
-      "- No prose, markdown, or code fences outside the JSON.",
+      '- Returnează doar JSON cu exact o cheie: "articles".',
+      '- Fiecare element include id-ul original, obiectul bias { axis: "reformist_suveranist", score } și cele trei sub-scoruri.',
+      "- Fără proză, markdown sau delimitatori de cod în afara JSON-ului.",
     ].join("\n"),
     user: [
-      "Score these articles for per-article bias components.",
-      "Keep each rationale to 1-2 concise sentences and cite article phrasing, sourcing, or structure.",
+      "Evaluează aceste articole pentru componentele de bias la nivel de articol.",
+      "Limitează fiecare rationale la 1-2 propoziții concise, în limba română, citând formulări, surse sau structura articolului.",
       "",
-      "Articles:",
+      "Articole:",
       articleBlocks,
     ].join("\n"),
   };
@@ -359,9 +420,11 @@ export function buildClaimAnalysisPrompt(input: ClaimAnalysisPromptInput): {
 
   return {
     system: [
-      "You are Biviant's claim divergence engine.",
+      `You are ${BRAND_NAME}'s claim divergence engine.`,
       "",
       "Given atomic facts extracted from multiple articles covering the same news event, group facts that refer to the same underlying claim and classify how sources relate.",
+      "",
+      "LANGUAGE (absolute rule): write every canonical statement and variant statement EXCLUSIVELY in Romanian, with correct diacritics.",
       "",
       "STATUS DEFINITIONS:",
       "- agreement: 2 or more sources from 2 or more different lean groups state the same fact with the same values/details.",

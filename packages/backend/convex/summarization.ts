@@ -10,6 +10,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { sourceBiasLabel } from "./lib/sourceBias";
+import { normalizedPerspectives } from "./lib/biasAxis";
 import {
   buildEventShareRenderSignature,
   type EventShareRenderData,
@@ -57,10 +58,13 @@ function safeInteger(
 function shouldResummarize(event: Doc<"events">): boolean {
   if (event.status !== "published") return false;
 
+  // normalizedPerspectives falls back to legacy center/left/right keys so
+  // pre-BIV-303 events are not needlessly resummarized before the backfill.
+  const perspectives = normalizedPerspectives(event.perspectiveSummaries);
   const hasFullAiSummary = Boolean(
-    event.perspectiveSummaries?.center?.trim() &&
-    event.perspectiveSummaries?.left?.trim() &&
-    event.perspectiveSummaries?.right?.trim() &&
+    perspectives?.neutral?.trim() &&
+    perspectives?.reformist?.trim() &&
+    perspectives?.suveranist?.trim() &&
     event.globalImpact?.trim() &&
     event.lastSummarizedAt,
   );
@@ -234,7 +238,9 @@ async function buildShareRenderData(
 
   return {
     title: event.title,
-    summary: event.perspectiveSummaries?.center ?? event.globalImpact,
+    summary:
+      normalizedPerspectives(event.perspectiveSummaries)?.neutral ??
+      event.globalImpact,
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,
@@ -677,9 +683,9 @@ export const applyEventSummaryResult = internalMutation({
     jobId: v.id("eventSummaryJobs"),
     eventId: v.id("events"),
     runId: v.string(),
-    center: v.string(),
-    left: v.string(),
-    right: v.string(),
+    neutral: v.string(),
+    reformist: v.string(),
+    suveranist: v.string(),
     globalImpact: v.string(),
     summarySignature: v.optional(v.string()),
   },
@@ -689,9 +695,9 @@ export const applyEventSummaryResult = internalMutation({
       jobId,
       eventId,
       runId,
-      center,
-      left,
-      right,
+      neutral,
+      reformist,
+      suveranist,
       globalImpact,
       summarySignature,
     },
@@ -720,9 +726,9 @@ export const applyEventSummaryResult = internalMutation({
 
     await ctx.db.patch(eventId, {
       perspectiveSummaries: {
-        center: center.trim(),
-        left: left.trim(),
-        right: right.trim(),
+        neutral: neutral.trim(),
+        reformist: reformist.trim(),
+        suveranist: suveranist.trim(),
       },
       perspectiveSource: "ai",
       globalImpact: globalImpact.trim(),

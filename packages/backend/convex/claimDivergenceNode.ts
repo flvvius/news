@@ -7,15 +7,19 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { shutdownPostHog } from "./lib/openai";
-import { callOpenAI } from "./lib/aiCall";
+import { callLLM } from "./lib/aiCall";
 import {
   buildClaimAnalysisPrompt,
   type ClaimDivergenceStatus,
   type ClaimType,
 } from "./prompts";
 
-const DEFAULT_MODEL = "gpt-5-nano";
-const DEFAULT_ENABLED = true;
+import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
+
+const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
+// Claim analysis is paused for the Romanian launch (BIV-602); flip the
+// claim_analysis_enabled config key to re-enable.
+const DEFAULT_ENABLED = false;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_SCAN_LIMIT = 60;
 const DEFAULT_MIN_ARTICLES = 3;
@@ -528,7 +532,7 @@ async function detectEventClaimsForInput(
     })),
   });
 
-  const response = await callOpenAI<ParsedClaimResponse>({
+  const response = await callLLM<ParsedClaimResponse>({
     kind: "chat",
     model: settings.model,
     temperature: 0.1,

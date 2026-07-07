@@ -1,9 +1,11 @@
+import { BRAND_NAME } from "./brand";
+
 export type Locale = "ro" | "en";
 
 const ro = {
-  "seo.siteTitle": "Biviant — fiecare poveste de știri, analizată fapt cu fapt",
+  "seo.siteTitle": `${BRAND_NAME} — fiecare poveste de știri, analizată fapt cu fapt`,
   "seo.siteDescription":
-    "Biviant nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.",
+    `${BRAND_NAME} nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.`,
   "router.notFound": "Pagina nu a fost găsită",
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
@@ -40,7 +42,7 @@ const ro = {
     "Nu am putut trimite linkul de resetare. Încearcă din nou.",
   "auth.resetLinkSent":
     "Dacă acel e-mail există, am trimis un link de resetare a parolei.",
-  "auth.resetSendingStatus": "Trimitem emailul pentru resetarea parolei...",
+  "auth.resetSendingStatus": "Trimitem e-mailul pentru resetarea parolei...",
   "auth.checkEmailVerify": "Verifică e-mailul pentru a-ți confirma contul.",
   "auth.checkEmailVerifyDev":
     "Verifică e-mailul pentru a-ți confirma contul. Dacă nu apare nimic, folosește linkul de verificare afișat în logurile serverului.",
@@ -56,7 +58,7 @@ const ro = {
   "auth.verifyResend": "Retrimite e-mailul de verificare",
   "auth.continueGoogle": "Continuă cu Google",
   "auth.continueApple": "Continuă cu Apple",
-  "auth.account": "Cont Biviant",
+  "auth.account": `Cont ${BRAND_NAME}`,
   "auth.welcomeBack": "Bine ai revenit",
   "auth.createFreeAccount": "Creează un cont gratuit",
   "auth.accountIntro":
@@ -66,7 +68,7 @@ const ro = {
     "Accesează salvările, preferințele și experiența ta personalizată.",
   "auth.signUpTitle": "Creează-ți contul",
   "auth.signUpSubtitle":
-    "Contul gratuit deblochează salvările, feed-ul personalizat și notificările viitoare.",
+    "Contul gratuit deblochează salvările, feedul personalizat și notificările viitoare.",
   "auth.createAccount": "Creează cont",
   "auth.signingIn": "Te autentificăm...",
   "auth.creatingAccount": "Creăm contul...",
@@ -121,17 +123,17 @@ const ro = {
   "saved.none": "Nu ai salvări încă",
   "saved.noneBody":
     "Când găsești o poveste importantă, folosește iconița de salvare ca să o păstrezi aici.",
-  "saved.browseFeed": "Explorează feed-ul",
+  "saved.browseFeed": "Explorează feedul",
   "saved.summary.empty": "Articolele și evenimentele salvate vor apărea aici.",
   "saved.summary.one": "Ai 1 articol salvat pentru mai târziu.",
   "saved.summary.many": "Ai {count} articole salvate pentru mai târziu.",
-  "saved.metaTitle": "Salvate — Biviant",
+  "saved.metaTitle": `Salvate — ${BRAND_NAME}`,
   "activity.empty.title": "Urmărește-ți obiceiurile de citire",
   "activity.empty.body":
-    "Vezi balanța de bias, streak-urile de citire și statisticile tale într-un singur loc.",
+    "Vezi balanța de bias, streakurile de citire și statisticile tale într-un singur loc.",
   "activity.loading.title": "Se încarcă activitatea",
   "activity.loading.body":
-    "Pregătim salvările, streak-urile și statisticile tale.",
+    "Pregătim salvările, streakurile și statisticile tale.",
   "activity.checking.title": "Verificăm sesiunea",
   "activity.checking.body":
     "Pregătim activitatea ta și verificăm starea contului.",
@@ -147,9 +149,11 @@ const ro = {
   "activity.bookmarked": "salvate",
   "activity.section": "Activitate",
   "activity.last12Weeks": "Ultimele 12 săptămâni de lectură",
+  "activity.currentMonthReading": "Luna curentă de lectură",
   "activity.current": "Curent",
   "activity.best": "Record",
   "activity.active": "Active",
+  "activity.activeReadingDays": "Zile cu lectură",
   "activity.biasBalance": "Balanță de bias",
   "activity.biasMix": "Mixul perspectivelor din lectura ta",
   "activity.recentReading": "Lectură recentă",
@@ -157,23 +161,25 @@ const ro = {
   "activity.readingHistoryEmpty": "Istoricul tău de lectură va apărea aici",
   "activity.sourcesOne": "1 sursă",
   "activity.sourcesMany": "{count} surse",
-  "activity.feedCard": "Explorează feed-ul",
+  "activity.feedCard": "Explorează feedul",
   "activity.feedCardBody": "Vezi subiectele de astăzi",
   "activity.savedCard": "Salvate",
   "activity.savedOne": "1 articol salvat",
   "activity.savedMany": "{count} articole salvate",
   "activity.biasSnapshot.balanced":
     "Săptămâna aceasta ai avut un mix echilibrat",
-  "activity.biasSnapshot.left": "Săptămâna aceasta ai înclinat spre stânga",
+  "activity.biasSnapshot.left":
+    "Săptămâna aceasta ai înclinat spre polul reformist",
   "activity.biasSnapshot.leftStrong":
-    "Săptămâna aceasta ai înclinat puternic spre stânga",
-  "activity.biasSnapshot.right": "Săptămâna aceasta ai înclinat spre dreapta",
+    "Săptămâna aceasta ai înclinat puternic spre polul reformist",
+  "activity.biasSnapshot.right":
+    "Săptămâna aceasta ai înclinat spre polul suveranist",
   "activity.biasSnapshot.rightStrong":
-    "Săptămâna aceasta ai înclinat puternic spre dreapta",
+    "Săptămâna aceasta ai înclinat puternic spre polul suveranist",
   "activity.biasReads": "{count} lecturi",
-  "activity.metaTitle": "Activitate — Biviant",
-  "profile.metaTitle": "Profil — Biviant",
-  "auth.metaTitle": "Cont — Biviant",
+  "activity.metaTitle": `Activitate — ${BRAND_NAME}`,
+  "profile.metaTitle": `Profil — ${BRAND_NAME}`,
+  "auth.metaTitle": `Cont — ${BRAND_NAME}`,
   "activity.userFallback": "Utilizator",
   "activity.adminTitle": "Diagnostic pentru inferența topicurilor",
   "activity.adminBody":
@@ -211,7 +217,8 @@ const ro = {
   "profile.settings": "Setări",
   "profile.settingsBody": "Opțiuni rapide pentru preferințele tale.",
   "profile.theme": "Temă",
-  "profile.themeBody": "Selectorul de temă va fi disponibil în curând.",
+  "profile.themeBody":
+    "Alege între tema sistemului, modul luminos sau modul întunecat.",
   "profile.notifications": "Notificări",
   "profile.notificationsBody":
     "Preferințele pentru alerte și rezumate vor apărea aici.",
@@ -231,7 +238,7 @@ const ro = {
   "profile.hero":
     "Înțelege știrile din mai multe perspective, fără zgomot inutil.",
   "profile.heroBody":
-    "Biviant te ajută să urmărești biasul, comparațiile între surse și divergențele factuale, iar contul gratuit îți păstrează salvările și preferințele sincronizate.",
+    `${BRAND_NAME} te ajută să urmărești biasul, comparațiile între surse și divergențele factuale, iar contul gratuit îți păstrează salvările și preferințele sincronizate.`,
   "profile.learnMore": "Află mai multe",
   "profile.learnMoreBody":
     "Explorează cum funcționează produsul și de unde provin perspectivele din feed.",
@@ -248,6 +255,10 @@ const ro = {
   "settings.language": "Limbă",
   "settings.language.ro": "Română",
   "settings.language.en": "Engleză",
+  "settings.theme": "Temă",
+  "settings.theme.system": "Sistem",
+  "settings.theme.light": "Luminoasă",
+  "settings.theme.dark": "Întunecată",
   "user.menu": "Meniul utilizatorului",
   "user.account": "Cont",
   "user.streakOne": "1 zi consecutivă",
@@ -256,6 +267,8 @@ const ro = {
   "header.primaryNav": "Navigație principală",
   "header.mobileNav": "Navigație mobilă",
   "header.openMenu": "Deschide meniul",
+  "header.switchToDark": "Comută pe tema întunecată",
+  "header.switchToLight": "Comută pe tema luminoasă",
   "footer.aboutSection": "Despre",
   "footer.resourcesSection": "Resurse",
   "footer.legalSection": "Legal",
@@ -266,29 +279,7 @@ const ro = {
   "footer.terms": "Termeni",
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
-  "placeholder.inProgress": "Pagina este în lucru.",
-  "page.about.title": "Despre noi",
-  "page.about.body":
-    "Pagina este în lucru. Pregătim o prezentare scurtă despre Biviant și misiunea noastră.",
-  "page.contact.title": "Contact",
-  "page.contact.body":
-    "Pagina este în lucru. Vom adăuga în curând detaliile de contact și canalele prin care ne poți scrie.",
-  "page.partners.title": "Parteneri",
-  "page.partners.body":
-    "Pagina este în lucru. Aici vor apărea partenerii, colaborările și inițiativele susținute de Biviant.",
-  "page.how.title": "Cum funcționează",
-  "page.how.body":
-    "Pagina este în lucru. Pregătim o explicație simplă despre feed, analiza biasului și comparația dintre surse.",
-  "page.privacy.title": "Politica de confidențialitate",
-  "page.privacy.body":
-    "Pagina este în lucru. Vom publica aici informațiile despre datele colectate, utilizare și drepturile tale.",
-  "page.terms.title": "Termeni",
-  "page.terms.body":
-    "Pagina este în lucru. Urmează să adăugăm termenii și condițiile de utilizare pentru Biviant.",
-  "page.sources.title": "Sursele noastre",
-  "page.sources.body":
-    "Pagina este în lucru. În curând vei vedea cum selectăm sursele și cum construim perspectivele din feed.",
-  "feed.meta.title": "Feed — Biviant",
+  "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
   "feed.topic.search": "Caută topicuri...",
@@ -299,30 +290,18 @@ const ro = {
   "feed.topic.drawerTitle": "Filtrează după topic",
   "feed.topic.drawerBody": "Selectează un topic pentru a filtra poveștile",
 
-  // Localized topic display names (keyed by catalog slug). Fall back to the
-  // backend English displayName if a key is missing.
-  "topic.world": "Lume",
-  "topic.politics": "Politică",
-  "topic.elections": "Alegeri",
-  "topic.policy": "Politici publice",
-  "topic.courts": "Justiție",
-  "topic.immigration": "Imigrație",
-  "topic.economy": "Economie",
-  "topic.business": "Afaceri",
-  "topic.markets": "Piețe",
-  "topic.labor": "Muncă",
-  "topic.housing": "Locuințe",
-  "topic.tech": "Tehnologie",
-  "topic.ai": "IA",
-  "topic.cybersecurity": "Securitate cibernetică",
-  "topic.crypto": "Cripto",
-  "topic.health": "Sănătate",
-  "topic.science": "Știință",
-  "topic.climate": "Climă",
-  "topic.energy": "Energie",
-  "topic.defense": "Apărare",
-  "topic.education": "Educație",
-  "topic.transportation": "Transporturi",
+  // Topic display names are intentionally Romanian in every locale.
+  "topic.politica": "Politică",
+  "topic.economie": "Economie",
+  "topic.externe": "Externe",
+  "topic.justitie": "Justiție",
+  "topic.sanatate": "Sănătate",
+  "topic.educatie": "Educație",
+  "topic.tehnologie": "Tehnologie",
+  "topic.sport": "Sport",
+  "topic.cultura": "Cultură",
+  "topic.social": "Social",
+  "topic.mediu": "Mediu",
 
   // Onboarding — Screen A (the promise)
   "onboarding.promise.headline": "Vezi fiecare parte a poveștii.",
@@ -330,12 +309,13 @@ const ro = {
   "onboarding.promise.cardTitle":
     "Liderii ajung la un acord provizoriu după negocieri de noapte",
   "onboarding.promise.cardSummary":
-    "Presa e împărțită în privința semnificației acordului — compară cum încadrează stânga, centrul și dreapta același rezultat.",
+    "Presa e împărțită în privința semnificației acordului — compară cum prezintă sursele reformiste, neutre și suveraniste același rezultat.",
   "onboarding.promise.continue": "Continuă",
   "onboarding.promise.privacyNotice":
-    "Continuând, accepți că folosim analize anonime pentru a îmbunătăți Biviant. Poți renunța oricând în Setări.",
+    `Continuând, accepți că folosim analize anonime pentru a îmbunătăți ${BRAND_NAME}. Poți renunța oricând în Setări.`,
   "onboarding.promise.privacyLink": "Politica de confidențialitate",
-  "onboarding.promise.privacyLinkA11y": "Deschide politica de confidențialitate",
+  "onboarding.promise.privacyLinkA11y":
+    "Deschide politica de confidențialitate",
   // Onboarding — Screen B (topic picker)
   "onboarding.topics.title": "Urmărește ce contează pentru tine",
   "onboarding.topics.subtitle":
@@ -381,13 +361,13 @@ const ro = {
   "event.articles.other": "{count} articole",
   "event.follow": "Urmărește evenimentul",
   "event.biasDistribution":
-    "Distribuția biasului surselor: {left} stânga, {center} centru, {right} dreapta",
-  "event.bias.left": "{count} stânga",
-  "event.bias.center": "{count} centru",
-  "event.bias.right": "{count} dreapta",
-  "event.metaTitle": "Eveniment — Biviant",
+    "Distribuția orientării surselor: {left} reformiste, {center} neutre, {right} suveraniste",
+  "event.bias.left": "{count} reformiste",
+  "event.bias.center": "{count} neutre",
+  "event.bias.right": "{count} suveraniste",
+  "event.metaTitle": `Eveniment — ${BRAND_NAME}`,
   "event.metaDescription":
-    "Citește această poveste din mai multe perspective pe Biviant.",
+    `Citește această poveste din mai multe perspective pe ${BRAND_NAME}.`,
   "event.loading": "Se încarcă...",
   "event.notFound": "Evenimentul nu a fost găsit",
   "event.notFoundBody": "Evenimentul pe care îl cauți nu există.",
@@ -401,9 +381,9 @@ const ro = {
   "event.meaning": "Ce înseamnă asta",
   "event.compareOriginal":
     "Acoperire grupată din mai multe surse. Compară mai jos articolele originale.",
-  "event.left": "Stânga",
-  "event.centerTab": "Centru",
-  "event.right": "Dreapta",
+  "event.left": "Reformistă",
+  "event.centerTab": "Neutră",
+  "event.right": "Suveranistă",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -415,21 +395,21 @@ const ro = {
   "claim.divergences": "Divergențe",
   "claim.divergenceBody":
     "Afirmații unde sursele raportează detalii semnificativ diferite.",
-  "claim.framing": "Încadrare",
-  "claim.framings": "Diferențe de încadrare",
+  "claim.framing": "Formulare",
+  "claim.framings": "Diferențe de formulare",
   "claim.framingBody": "Fapte comune descrise cu limbaj semnificativ diferit.",
-  "claim.leftExclusive": "Exclusiv din stânga",
-  "claim.leftExclusives": "Exclusive din stânga",
+  "claim.leftExclusive": "Exclusiv reformist",
+  "claim.leftExclusives": "Exclusive reformiste",
   "claim.leftExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de stânga sau centru-stânga.",
-  "claim.rightExclusive": "Exclusiv din dreapta",
-  "claim.rightExclusives": "Exclusive din dreapta",
+    "Afirmații substanțiale găsite doar în surse reformiste sau apropiate de polul reformist.",
+  "claim.rightExclusive": "Exclusiv suveranist",
+  "claim.rightExclusives": "Exclusive suveraniste",
   "claim.rightExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de dreapta sau centru-dreapta.",
-  "claim.centerExclusive": "Exclusiv din centru",
-  "claim.centerExclusives": "Exclusive din centru",
+    "Afirmații substanțiale găsite doar în surse suveraniste sau apropiate de polul suveranist.",
+  "claim.centerExclusive": "Exclusiv neutru",
+  "claim.centerExclusives": "Exclusive neutre",
   "claim.centerExclusiveBody":
-    "Afirmații substanțiale găsite doar în surse de centru.",
+    "Afirmații substanțiale găsite doar în surse neutre.",
   "claim.unknownSource": "Sursă necunoscută",
   "claim.readSourceArticle": "Citește articolul sursă",
   "claim.importance": "importanță",
@@ -445,14 +425,14 @@ const ro = {
   "claim.unavailableBody":
     "Această vizualizare apare după ce suficiente articole au fapte atomice și procesorul de afirmații la nivel de eveniment analizează acordurile, divergențele și exclusivele.",
   "claim.clearFilter": "Șterge filtrul",
-  "coverage.left": "Stânga / centru-stânga",
-  "coverage.right": "Dreapta / centru-dreapta",
-  "coverage.center": "Centru",
+  "coverage.left": "Reformist / pro-european",
+  "coverage.right": "Suveranist",
+  "coverage.center": "Neutru",
   "coverage.unknown": "Necunoscut",
   "coverage.title": "Acoperirea surselor",
   "coverage.factual": "Factualitate",
   "coverage.credibility": "Credibilitate",
-  "quiz.metaTitle": "Quizul zilnic — Biviant",
+  "quiz.metaTitle": `Quizul zilnic — ${BRAND_NAME}`,
   "quiz.metaDescription":
     "Testează-ți atenția la știri cu 5 întrebări zilnice bazate pe afirmații și surse reale.",
   "quiz.kicker": "Quiz zilnic",
@@ -481,8 +461,8 @@ const ro = {
   "quiz.result.public":
     "Scorul tău este afișat aici. Conectează-te ca să îl salvezi și să conteze la streak.",
   "quiz.share.action": "Distribuie",
-  "quiz.share.title": "Quizul zilnic Biviant",
-  "quiz.share.text": "Am făcut {score}/{max} la quizul zilnic Biviant",
+  "quiz.share.title": `Quizul zilnic ${BRAND_NAME}`,
+  "quiz.share.text": `Am făcut {score}/{max} la quizul zilnic ${BRAND_NAME}`,
   "quiz.share.copied": "Rezultatul a fost copiat",
   "quiz.share.error": "Nu am putut distribui rezultatul.",
   "quiz.backToFeed": "Înapoi la feed",
@@ -496,7 +476,7 @@ const ro = {
   "quiz.correct": "Corect",
   "quiz.incorrect": "Greșit",
   "quiz.type.claimAttribution": "Atribuirea afirmației",
-  "quiz.type.factCheck": "Fact check",
+  "quiz.type.factCheck": "Verificare factuală",
   "quiz.type.perspectiveMatch": "Potrivire de perspectivă",
   "quiz.type.coverageGap": "Lacună de acoperire",
   "quiz.type.question": "Întrebare",
@@ -515,21 +495,21 @@ const ro = {
   "bookmark.remove": "Elimină salvarea",
   "bookmark.add": "Salvează acest eveniment",
   "bias.label.balanced": "Echilibrat",
-  "bias.label.left": "Înclină spre stânga",
-  "bias.label.leftStrong": "Puternic spre stânga",
-  "bias.label.right": "Înclină spre dreapta",
-  "bias.label.rightStrong": "Puternic spre dreapta",
+  "bias.label.left": "Înclină reformist",
+  "bias.label.leftStrong": "Puternic reformist",
+  "bias.label.right": "Înclină suveranist",
+  "bias.label.rightStrong": "Puternic suveranist",
   "bias.copy.balanced": "Citești un mix sănătos de perspective.",
-  "bias.copy.left": "Lectura recentă înclină spre stânga.",
+  "bias.copy.left": "Lectura recentă înclină spre polul reformist.",
   "bias.copy.leftStrong":
-    "Lectura recentă este puternic orientată spre stânga.",
-  "bias.copy.right": "Lectura recentă înclină spre dreapta.",
+    "Lectura recentă este puternic orientată spre polul reformist.",
+  "bias.copy.right": "Lectura recentă înclină spre polul suveranist.",
   "bias.copy.rightStrong":
-    "Lectura recentă este puternic orientată spre dreapta.",
+    "Lectura recentă este puternic orientată spre polul suveranist.",
   "bias.balance": "Distribuția biasului",
-  "bias.leftHeavy": "Mai mult stânga",
+  "bias.leftHeavy": "Mai mult reformist",
   "bias.center": "Echilibrat",
-  "bias.rightHeavy": "Mai mult dreapta",
+  "bias.rightHeavy": "Mai mult suveranist",
   "calendar.weekday.mon": "Lun",
   "calendar.weekday.tue": "Mar",
   "calendar.weekday.wed": "Mie",
@@ -539,9 +519,15 @@ const ro = {
   "calendar.weekday.sun": "Dum",
   "calendar.eventsRead.one": "{count} activitate",
   "calendar.eventsRead.many": "{count} activități",
+  "calendar.readingActivity.one": "{count} lectură",
+  "calendar.readingActivity.many": "{count} lecturi",
+  "calendar.noReading": "Fără lectură",
+  "calendar.legend.emptyDay": "Fără lectură",
+  "calendar.legend.readingDay": "Zi cu lectură",
+  "calendar.today": "Azi",
   "calendar.less": "Mai puțin",
   "calendar.more": "Mai mult",
-  "reset.metaTitle": "Resetează parola — Biviant",
+  "reset.metaTitle": `Resetează parola — ${BRAND_NAME}`,
   "reset.passwordMin": "Parola trebuie să aibă cel puțin 8 caractere",
   "reset.passwordMismatch": "Parolele nu se potrivesc",
   "reset.invalidToken":
@@ -554,7 +540,7 @@ const ro = {
   "reset.error":
     "Nu am putut reseta parola. Cere un link nou și încearcă din nou.",
   "reset.title": "Resetează parola",
-  "reset.body": "Alege o parolă nouă pentru contul tău Biviant.",
+  "reset.body": `Alege o parolă nouă pentru contul tău ${BRAND_NAME}.`,
   "reset.missingToken":
     "Acest link de resetare nu conține un token. Cere unul nou din formularul de conectare.",
   "reset.backToSignIn": "Înapoi la conectare",
@@ -566,19 +552,19 @@ const ro = {
   "reset.confirmPasswordPlaceholder": "Repetă noua parolă",
   "reset.updating": "Actualizăm parola...",
   "reset.submit": "Resetează parola",
-  "unsubscribe.meta.title": "Dezabonare — Biviant",
+  "unsubscribe.meta.title": `Dezabonare — ${BRAND_NAME}`,
   "unsubscribe.invalidTitle": "Link invalid",
   "unsubscribe.invalidBody":
     "Acest link de dezabonare nu conține adresa de e-mail. Folosește linkul primit în e-mail.",
-  "unsubscribe.goHome": "Mergi la început",
+  "unsubscribe.goHome": "Mergi la pagina principală",
   "unsubscribe.loading": "Te dezabonăm...",
   "unsubscribe.errorTitle": "Ceva nu a mers bine",
   "unsubscribe.errorBody":
-    "Nu am putut procesa cererea. Încearcă din nou sau răspunde la emailul nostru și te vom elimina manual.",
+    "Nu am putut procesa cererea. Încearcă din nou sau răspunde la e-mailul nostru și te vom elimina manual.",
   "unsubscribe.retry": "Încearcă din nou",
   "unsubscribe.successTitle": "Te-ai dezabonat",
   "unsubscribe.successBody":
-    "{email} a fost eliminat din toate e-mailurile Biviant. Nu te vom mai contacta.",
+    `{email} a fost eliminat din toate e-mailurile ${BRAND_NAME}. Nu te vom mai contacta.`,
   "unsubscribe.changedMind": "Te-ai răzgândit?",
   "unsubscribe.rejoin": "Înscrie-te din nou pe lista de așteptare",
   "articles.originalReporting": "Relatări originale",
@@ -587,11 +573,11 @@ const ro = {
   "articles.readOriginal": "Citește originalul",
   "articles.readOriginalAria":
     "Citește articolul original (se deschide într-o filă nouă)",
-  "source.metaTitle": "Profil sursă — Biviant",
+  "source.metaTitle": `Profil sursă — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
-    "Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe Biviant.",
+    `Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe ${BRAND_NAME}.`,
   "source.metaDescription":
-    "Analizează biasul, fiabilitatea, credibilitatea și articolele recente ale unei surse pe Biviant.",
+    `Analizează biasul, fiabilitatea, credibilitatea și articolele recente ale unei surse pe ${BRAND_NAME}.`,
   "source.notRated": "Neevaluat",
   "source.loading": "Se încarcă profilul sursei...",
   "source.notFound": "Sursa nu a fost găsită",
@@ -609,13 +595,14 @@ const ro = {
   "source.mbfcCategory": "Categoria MBFC",
   "source.factualRating": "Scor factual",
   "source.credibilityLabel": "Credibilitate",
-  "source.rollingSample": "Eșantion AI rolling",
+  "source.rollingSample": "Eșantion AI glisant",
   "source.rollingArticles": "{count} articole",
   "source.mean": "Media {value}",
   "source.stddev": "Deviația standard {value}",
+  "source.relatedEvent": "Eveniment asociat",
   "read.duration.seconds": "{count}s",
   "read.duration.minutes": "{count} min",
-  "scroll.depth": "{count}% profunzime",
+  "scroll.depth": "{count}% derulat",
   "source.recentReporting": "Relatări recente",
   "source.aiBias": "Bias AI {count}",
   "source.outlier": "Anomalie",
@@ -626,7 +613,7 @@ const ro = {
   "native.error.body":
     "Nu am putut încărca acest conținut. Verifică-ți conexiunea și încearcă din nou.",
   "native.error.retry": "Încearcă din nou",
-  "native.feed.errorTitle": "Nu am putut încărca feed-ul",
+  "native.feed.errorTitle": "Nu am putut încărca feedul",
   "native.feed.errorBody":
     "A apărut o problemă la încărcarea evenimentelor. Trage în jos pentru a reîncerca sau verifică-ți conexiunea.",
   "native.feed.searchEmpty":
@@ -685,7 +672,7 @@ const ro = {
   "native.profile.deleteFallbackContact": "Contactează-ne",
   "native.profile.deleteFallbackClose": "Închide",
   "native.profile.signingOut": "Te deconectăm…",
-  "native.about.section": "Despre Biviant",
+  "native.about.section": `Despre ${BRAND_NAME}`,
   "native.about.openLabel": "Deschide {title}",
   "native.about.browserErrorTitle": "Nu am putut deschide pagina",
   "native.about.browserErrorBody":
@@ -699,7 +686,7 @@ const ro = {
   "native.privacy.section": "Confidențialitate",
   "native.privacy.analyticsLabel": "Analiză de utilizare",
   "native.privacy.analyticsDescription":
-    "Partajează date de utilizare anonime ca să ne ajuți să îmbunătățim Biviant. Poți dezactiva oricând.",
+    `Partajează date de utilizare anonime ca să ne ajuți să îmbunătățim ${BRAND_NAME}. Poți dezactiva oricând.`,
   "native.privacy.analyticsOn": "Activată",
   "native.privacy.analyticsOff": "Dezactivată",
   "native.privacy.analyticsOptionLabel": "Analiză {label}",
@@ -711,7 +698,8 @@ const ro = {
     "Aceasta elimină definitiv istoricul tău de lectură și subiectele urmărite de pe acest dispozitiv și resetează identitatea de analiză. Nu poate fi anulată.",
   "native.privacy.clearDataConfirmAction": "Șterge datele",
   "native.privacy.clearDataConfirmCancel": "Anulează",
-  "native.privacy.clearDataDone": "Datele tale au fost șterse de pe acest dispozitiv.",
+  "native.privacy.clearDataDone":
+    "Datele tale au fost șterse de pe acest dispozitiv.",
   "native.privacy.clearDataError":
     "Nu am putut șterge datele de pe acest dispozitiv. Încearcă din nou.",
   "native.auth.close": "Închide",
@@ -741,9 +729,9 @@ type BaseStrings = typeof ro;
 const en: { [K in keyof BaseStrings]: string } = {
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
-  "seo.siteTitle": "Biviant — every news story broken down fact by fact",
+  "seo.siteTitle": `${BRAND_NAME} — every news story broken down fact by fact`,
   "seo.siteDescription":
-    "Biviant doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.",
+    `${BRAND_NAME} doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.`,
   "router.notFound": "Page not found",
   "tabs.saved": "Saved",
   "tabs.activity": "Activity",
@@ -792,7 +780,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.verifyResend": "Resend verification email",
   "auth.continueGoogle": "Continue with Google",
   "auth.continueApple": "Continue with Apple",
-  "auth.account": "Biviant account",
+  "auth.account": `${BRAND_NAME} account`,
   "auth.welcomeBack": "Welcome back",
   "auth.createFreeAccount": "Create a free account",
   "auth.accountIntro":
@@ -861,7 +849,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "saved.summary.empty": "Saved articles and events will appear here.",
   "saved.summary.one": "You have 1 saved article for later.",
   "saved.summary.many": "You have {count} saved articles for later.",
-  "saved.metaTitle": "Saved — Biviant",
+  "saved.metaTitle": `Saved — ${BRAND_NAME}`,
   "activity.empty.title": "Track your reading habits",
   "activity.empty.body":
     "See your bias balance, reading streaks, and stats in one place.",
@@ -883,9 +871,11 @@ const en: { [K in keyof BaseStrings]: string } = {
   "activity.bookmarked": "bookmarked",
   "activity.section": "Activity",
   "activity.last12Weeks": "Last 12 weeks of reading",
+  "activity.currentMonthReading": "Current month of reading",
   "activity.current": "Current",
   "activity.best": "Best",
   "activity.active": "Active",
+  "activity.activeReadingDays": "Reading days",
   "activity.biasBalance": "Bias balance",
   "activity.biasMix": "Your reading perspective mix",
   "activity.recentReading": "Recent reading",
@@ -899,14 +889,15 @@ const en: { [K in keyof BaseStrings]: string } = {
   "activity.savedOne": "1 saved article",
   "activity.savedMany": "{count} saved articles",
   "activity.biasSnapshot.balanced": "Balanced mix this week",
-  "activity.biasSnapshot.left": "Leaning left this week",
-  "activity.biasSnapshot.leftStrong": "Strongly left-leaning this week",
-  "activity.biasSnapshot.right": "Leaning right this week",
-  "activity.biasSnapshot.rightStrong": "Strongly right-leaning this week",
+  "activity.biasSnapshot.left": "Leaning reformist this week",
+  "activity.biasSnapshot.leftStrong": "Strongly reformist-leaning this week",
+  "activity.biasSnapshot.right": "Leaning sovereigntist this week",
+  "activity.biasSnapshot.rightStrong":
+    "Strongly sovereigntist-leaning this week",
   "activity.biasReads": "{count} reads",
-  "activity.metaTitle": "Activity — Biviant",
-  "profile.metaTitle": "Profile — Biviant",
-  "auth.metaTitle": "Account — Biviant",
+  "activity.metaTitle": `Activity — ${BRAND_NAME}`,
+  "profile.metaTitle": `Profile — ${BRAND_NAME}`,
+  "auth.metaTitle": `Account — ${BRAND_NAME}`,
   "activity.userFallback": "User",
   "activity.adminTitle": "Topic inference diagnostics",
   "activity.adminBody": "Review recent event topic assignments",
@@ -943,7 +934,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.settings": "Settings",
   "profile.settingsBody": "Quick options for your preferences.",
   "profile.theme": "Theme",
-  "profile.themeBody": "The theme selector will be available soon.",
+  "profile.themeBody":
+    "Choose between your system theme, light mode, or dark mode.",
   "profile.notifications": "Notifications",
   "profile.notificationsBody":
     "Preferences for alerts and digests will appear here.",
@@ -963,7 +955,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.hero":
     "Understand the news from multiple perspectives, without the noise.",
   "profile.heroBody":
-    "Biviant helps you follow bias, compare sources, and spot factual divergence, while a free account keeps your saved items and preferences in sync.",
+    `${BRAND_NAME} helps you follow bias, compare sources, and spot factual divergence, while a free account keeps your saved items and preferences in sync.`,
   "profile.learnMore": "Learn more",
   "profile.learnMoreBody":
     "Explore how the product works and where the perspectives in the feed come from.",
@@ -980,6 +972,10 @@ const en: { [K in keyof BaseStrings]: string } = {
   "settings.language": "Language",
   "settings.language.ro": "Romanian",
   "settings.language.en": "English",
+  "settings.theme": "Theme",
+  "settings.theme.system": "System",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark",
   "user.menu": "User menu",
   "user.account": "Account",
   "user.streakOne": "1 day streak",
@@ -988,6 +984,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "header.primaryNav": "Primary navigation",
   "header.mobileNav": "Mobile navigation",
   "header.openMenu": "Open menu",
+  "header.switchToDark": "Switch to dark theme",
+  "header.switchToLight": "Switch to light theme",
   "footer.aboutSection": "About",
   "footer.resourcesSection": "Resources",
   "footer.legalSection": "Legal",
@@ -998,29 +996,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.terms": "Terms",
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
-  "placeholder.inProgress": "Page under construction.",
-  "page.about.title": "About us",
-  "page.about.body":
-    "Page under construction. We are preparing a short introduction to Biviant and our mission.",
-  "page.contact.title": "Contact",
-  "page.contact.body":
-    "Page under construction. We will add contact details and ways to reach us soon.",
-  "page.partners.title": "Partners",
-  "page.partners.body":
-    "Page under construction. This is where Biviant partners, collaborations, and supported initiatives will appear.",
-  "page.how.title": "How it works",
-  "page.how.body":
-    "Page under construction. We are preparing a simple explanation of the feed, bias analysis, and source comparison.",
-  "page.privacy.title": "Privacy policy",
-  "page.privacy.body":
-    "Page under construction. We will publish information here about collected data, usage, and your rights.",
-  "page.terms.title": "Terms",
-  "page.terms.body":
-    "Page under construction. We will add Biviant’s terms and conditions here soon.",
-  "page.sources.title": "Our sources",
-  "page.sources.body":
-    "Page under construction. Soon you will see how we select sources and build perspectives in the feed.",
-  "feed.meta.title": "Feed — Biviant",
+  "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
   "feed.topic.search": "Search topics...",
@@ -1031,30 +1007,18 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.topic.drawerTitle": "Filter by topic",
   "feed.topic.drawerBody": "Select a topic to filter stories",
 
-  // Localized topic display names (keyed by catalog slug). Fall back to the
-  // backend English displayName if a key is missing.
-  "topic.world": "World",
-  "topic.politics": "Politics",
-  "topic.elections": "Elections",
-  "topic.policy": "Policy",
-  "topic.courts": "Courts",
-  "topic.immigration": "Immigration",
-  "topic.economy": "Economy",
-  "topic.business": "Business",
-  "topic.markets": "Markets",
-  "topic.labor": "Labor",
-  "topic.housing": "Housing",
-  "topic.tech": "Tech",
-  "topic.ai": "AI",
-  "topic.cybersecurity": "Cybersecurity",
-  "topic.crypto": "Crypto",
-  "topic.health": "Health",
-  "topic.science": "Science",
-  "topic.climate": "Climate",
-  "topic.energy": "Energy",
-  "topic.defense": "Defense",
-  "topic.education": "Education",
-  "topic.transportation": "Transportation",
+  // Topic display names are intentionally Romanian in every locale.
+  "topic.politica": "Politică",
+  "topic.economie": "Economie",
+  "topic.externe": "Externe",
+  "topic.justitie": "Justiție",
+  "topic.sanatate": "Sănătate",
+  "topic.educatie": "Educație",
+  "topic.tehnologie": "Tehnologie",
+  "topic.sport": "Sport",
+  "topic.cultura": "Cultură",
+  "topic.social": "Social",
+  "topic.mediu": "Mediu",
 
   // Onboarding — Screen A (the promise)
   "onboarding.promise.headline": "See every side of the story.",
@@ -1062,10 +1026,10 @@ const en: { [K in keyof BaseStrings]: string } = {
   "onboarding.promise.cardTitle":
     "Leaders reach a tentative deal after late-night talks",
   "onboarding.promise.cardSummary":
-    "Coverage splits on what the agreement means — compare how the left, center, and right frame the same outcome.",
+    "Coverage splits on what the agreement means — compare how reformist, neutral, and sovereigntist sources frame the same outcome.",
   "onboarding.promise.continue": "Continue",
   "onboarding.promise.privacyNotice":
-    "By continuing you accept that we use anonymous analytics to improve Biviant. You can opt out anytime in Settings.",
+    `By continuing you accept that we use anonymous analytics to improve ${BRAND_NAME}. You can opt out anytime in Settings.`,
   "onboarding.promise.privacyLink": "Privacy Policy",
   "onboarding.promise.privacyLinkA11y": "Open the privacy policy",
   // Onboarding — Screen B (topic picker)
@@ -1112,13 +1076,13 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.articles.other": "{count} articles",
   "event.follow": "Follow the event",
   "event.biasDistribution":
-    "Source bias distribution: {left} left, {center} center, {right} right",
-  "event.bias.left": "{count} left",
-  "event.bias.center": "{count} center",
-  "event.bias.right": "{count} right",
-  "event.metaTitle": "Event — Biviant",
+    "Source framing distribution: {left} reformist, {center} neutral, {right} sovereigntist",
+  "event.bias.left": "{count} reformist",
+  "event.bias.center": "{count} neutral",
+  "event.bias.right": "{count} sovereigntist",
+  "event.metaTitle": `Event — ${BRAND_NAME}`,
   "event.metaDescription":
-    "Read this story from multiple perspectives on Biviant.",
+    `Read this story from multiple perspectives on ${BRAND_NAME}.`,
   "event.loading": "Loading...",
   "event.notFound": "Event not found",
   "event.notFoundBody": "The event you're looking for doesn't exist.",
@@ -1132,9 +1096,9 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.meaning": "What this means",
   "event.compareOriginal":
     "Coverage grouped from multiple sources. Compare the original reporting below.",
-  "event.left": "Left",
-  "event.centerTab": "Center",
-  "event.right": "Right",
+  "event.left": "Reformist",
+  "event.centerTab": "Neutral",
+  "event.right": "Sovereigntist",
   "event.sourceCount.one": "1 source",
   "event.sourceCount.few": "{count} sources",
   "event.sourceCount.many": "{count} sources",
@@ -1150,18 +1114,18 @@ const en: { [K in keyof BaseStrings]: string } = {
   "claim.framings": "Framing differences",
   "claim.framingBody":
     "Shared facts described with meaningfully different language.",
-  "claim.leftExclusive": "Left-only claims",
-  "claim.leftExclusives": "Left-side exclusives",
+  "claim.leftExclusive": "Reformist-only claims",
+  "claim.leftExclusives": "Reformist exclusives",
   "claim.leftExclusiveBody":
-    "Substantive claims only found in left or left-center coverage.",
-  "claim.rightExclusive": "Right-only claims",
-  "claim.rightExclusives": "Right-side exclusives",
+    "Substantive claims only found in reformist or reformist-leaning coverage.",
+  "claim.rightExclusive": "Sovereigntist-only claims",
+  "claim.rightExclusives": "Sovereigntist exclusives",
   "claim.rightExclusiveBody":
-    "Substantive claims only found in right or right-center coverage.",
-  "claim.centerExclusive": "Center-only claims",
-  "claim.centerExclusives": "Center exclusives",
+    "Substantive claims only found in sovereigntist or sovereigntist-leaning coverage.",
+  "claim.centerExclusive": "Neutral-only claims",
+  "claim.centerExclusives": "Neutral exclusives",
   "claim.centerExclusiveBody":
-    "Substantive claims only found in center coverage.",
+    "Substantive claims only found in neutral coverage.",
   "claim.unknownSource": "Unknown source",
   "claim.readSourceArticle": "Read source article",
   "claim.importance": "importance",
@@ -1177,14 +1141,14 @@ const en: { [K in keyof BaseStrings]: string } = {
   "claim.unavailableBody":
     "This view appears once enough articles have atomic facts and the event-level claim worker has analyzed agreements, divergences, and exclusives.",
   "claim.clearFilter": "Clear filter",
-  "coverage.left": "Left / left-center",
-  "coverage.right": "Right / right-center",
-  "coverage.center": "Center",
+  "coverage.left": "Reformist / pro-European",
+  "coverage.right": "Sovereigntist",
+  "coverage.center": "Neutral",
   "coverage.unknown": "Unknown",
   "coverage.title": "Source coverage",
   "coverage.factual": "Factual",
   "coverage.credibility": "Credibility",
-  "quiz.metaTitle": "Daily News Quiz — Biviant",
+  "quiz.metaTitle": `Daily News Quiz — ${BRAND_NAME}`,
   "quiz.metaDescription":
     "Test your news literacy with a daily quiz based on real claims, sources, and coverage gaps.",
   "quiz.kicker": "Daily quiz",
@@ -1213,8 +1177,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "quiz.result.public":
     "Your score is shown here. Sign in to save it and count it toward your streak.",
   "quiz.share.action": "Share",
-  "quiz.share.title": "Biviant Daily News Quiz",
-  "quiz.share.text": "I scored {score}/{max} on today’s Biviant news quiz",
+  "quiz.share.title": `${BRAND_NAME} Daily News Quiz`,
+  "quiz.share.text": `I scored {score}/{max} on today’s ${BRAND_NAME} news quiz`,
   "quiz.share.copied": "Result copied",
   "quiz.share.error": "Could not share this result.",
   "quiz.backToFeed": "Back to feed",
@@ -1247,19 +1211,19 @@ const en: { [K in keyof BaseStrings]: string } = {
   "bookmark.remove": "Remove bookmark",
   "bookmark.add": "Bookmark this event",
   "bias.label.balanced": "Balanced",
-  "bias.label.left": "Leaning left",
-  "bias.label.leftStrong": "Strongly left",
-  "bias.label.right": "Leaning right",
-  "bias.label.rightStrong": "Strongly right",
+  "bias.label.left": "Leaning reformist",
+  "bias.label.leftStrong": "Strongly reformist",
+  "bias.label.right": "Leaning sovereigntist",
+  "bias.label.rightStrong": "Strongly sovereigntist",
   "bias.copy.balanced": "You’re reading a healthy mix of perspectives.",
-  "bias.copy.left": "Your recent reading leans left.",
-  "bias.copy.leftStrong": "Your recent reading leans strongly left.",
-  "bias.copy.right": "Your recent reading leans right.",
-  "bias.copy.rightStrong": "Your recent reading leans strongly right.",
+  "bias.copy.left": "Your recent reading leans reformist.",
+  "bias.copy.leftStrong": "Your recent reading leans strongly reformist.",
+  "bias.copy.right": "Your recent reading leans sovereigntist.",
+  "bias.copy.rightStrong": "Your recent reading leans strongly sovereigntist.",
   "bias.balance": "Bias balance",
-  "bias.leftHeavy": "Left-heavy",
+  "bias.leftHeavy": "Reformist-heavy",
   "bias.center": "Balanced",
-  "bias.rightHeavy": "Right-heavy",
+  "bias.rightHeavy": "Sovereigntist-heavy",
   "calendar.weekday.mon": "Mon",
   "calendar.weekday.tue": "Tue",
   "calendar.weekday.wed": "Wed",
@@ -1269,9 +1233,15 @@ const en: { [K in keyof BaseStrings]: string } = {
   "calendar.weekday.sun": "Sun",
   "calendar.eventsRead.one": "{count} activity",
   "calendar.eventsRead.many": "{count} activities",
+  "calendar.readingActivity.one": "{count} read",
+  "calendar.readingActivity.many": "{count} reads",
+  "calendar.noReading": "No reading",
+  "calendar.legend.emptyDay": "No reading",
+  "calendar.legend.readingDay": "Reading day",
+  "calendar.today": "Today",
   "calendar.less": "Less",
   "calendar.more": "More",
-  "reset.metaTitle": "Reset password — Biviant",
+  "reset.metaTitle": `Reset password — ${BRAND_NAME}`,
   "reset.passwordMin": "Password must be at least 8 characters",
   "reset.passwordMismatch": "Passwords do not match",
   "reset.invalidToken":
@@ -1284,7 +1254,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "reset.error":
     "We couldn't reset your password. Request a new link and try again.",
   "reset.title": "Reset your password",
-  "reset.body": "Choose a new password for your Biviant account.",
+  "reset.body": `Choose a new password for your ${BRAND_NAME} account.`,
   "reset.missingToken":
     "This password reset link is missing a token. Request a new one from the sign-in form.",
   "reset.backToSignIn": "Back to sign in",
@@ -1296,7 +1266,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "reset.confirmPasswordPlaceholder": "Repeat your new password",
   "reset.updating": "Updating password...",
   "reset.submit": "Reset password",
-  "unsubscribe.meta.title": "Unsubscribe — Biviant",
+  "unsubscribe.meta.title": `Unsubscribe — ${BRAND_NAME}`,
   "unsubscribe.invalidTitle": "Invalid link",
   "unsubscribe.invalidBody":
     "This unsubscribe link is missing the email address. Please use the link from your email.",
@@ -1308,7 +1278,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "unsubscribe.retry": "Try again",
   "unsubscribe.successTitle": "You're unsubscribed",
   "unsubscribe.successBody":
-    "{email} has been removed from all Biviant emails. You won't hear from us again.",
+    `{email} has been removed from all ${BRAND_NAME} emails. You won't hear from us again.`,
   "unsubscribe.changedMind": "Changed your mind?",
   "unsubscribe.rejoin": "Re-join the waitlist",
   "articles.originalReporting": "Original reporting",
@@ -1316,11 +1286,11 @@ const en: { [K in keyof BaseStrings]: string } = {
   "articles.viewSource": "View {name} source profile",
   "articles.readOriginal": "Read original",
   "articles.readOriginalAria": "Read original article (opens in a new tab)",
-  "source.metaTitle": "Source profile — Biviant",
+  "source.metaTitle": `Source profile — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
-    "Review {name}'s bias, reliability, credibility, and recent coverage on Biviant.",
+    `Review {name}'s bias, reliability, credibility, and recent coverage on ${BRAND_NAME}.`,
   "source.metaDescription":
-    "Review source bias, reliability, credibility, and recent articles on Biviant.",
+    `Review source bias, reliability, credibility, and recent articles on ${BRAND_NAME}.`,
   "source.notRated": "Not rated",
   "source.loading": "Loading source profile...",
   "source.notFound": "Source not found",
@@ -1348,6 +1318,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "source.aiBias": "AI bias {count}",
   "source.outlier": "Outlier",
   "source.notClustered": "Not clustered",
+  "source.relatedEvent": "Related event",
 
   // Native app (apps/native) — keys without a web equivalent
   "native.error.title": "Something went wrong",
@@ -1414,7 +1385,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.profile.deleteFallbackContact": "Contact us",
   "native.profile.deleteFallbackClose": "Close",
   "native.profile.signingOut": "Signing out…",
-  "native.about.section": "About Biviant",
+  "native.about.section": `About ${BRAND_NAME}`,
   "native.about.openLabel": "Open {title}",
   "native.about.browserErrorTitle": "Couldn't open page",
   "native.about.browserErrorBody":
@@ -1428,7 +1399,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.privacy.section": "Privacy",
   "native.privacy.analyticsLabel": "Usage analytics",
   "native.privacy.analyticsDescription":
-    "Share anonymous usage data to help us improve Biviant. You can turn this off anytime.",
+    `Share anonymous usage data to help us improve ${BRAND_NAME}. You can turn this off anytime.`,
   "native.privacy.analyticsOn": "On",
   "native.privacy.analyticsOff": "Off",
   "native.privacy.analyticsOptionLabel": "Analytics {label}",

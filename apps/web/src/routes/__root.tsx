@@ -7,6 +7,8 @@ import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
 import { getString, type Locale } from "@/lib/i18n/strings";
+import { themeNoFlashScript } from "@/lib/theme";
+import { ThemeProvider } from "@/lib/theme/ThemeProvider";
 import { api } from "@news-app/backend/convex/_generated/api";
 
 import {
@@ -85,7 +87,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     return {
       meta: [
         { charSet: "utf-8" },
-        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        {
+          name: "viewport",
+          // viewport-fit=cover is required for env(safe-area-inset-*) to
+          // resolve to non-zero on iOS; without it the tab bar's home-indicator
+          // padding is dead and the bar sits in the unsafe area (BIV-810).
+          content: "width=device-width, initial-scale=1, viewport-fit=cover",
+        },
         { title },
         { name: "description", content: description },
         { property: "og:site_name", content: SITE.name },
@@ -93,14 +101,21 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         { property: "og:title", content: title },
         { property: "og:description", content: description },
         { property: "og:image", content: SITE.ogImage },
+        { property: "og:image:type", content: SITE.ogImageType },
+        { property: "og:image:width", content: String(SITE.ogImageWidth) },
+        { property: "og:image:height", content: String(SITE.ogImageHeight) },
+        { property: "og:image:alt", content: title },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
         { name: "twitter:image", content: SITE.ogImage },
+        { name: "twitter:image:alt", content: title },
         { name: "theme-color", content: "#0f172a" },
       ],
       links: [
         { rel: "stylesheet", href: appCss },
+        { rel: "icon", type: "image/png", href: "/logo-mark.png" },
+        { rel: "apple-touch-icon", href: "/logo-mark.png" },
         {
           rel: "preload",
           href: "/fonts/inter-latin-wght-normal.woff2",
@@ -210,26 +225,42 @@ function RootDocument() {
       initialToken={context.token}
     >
       <LocaleProvider locale={locale}>
-        <html lang={locale} className="dark bg-background">
+        <html
+          lang={locale}
+          className="bg-background"
+          suppressHydrationWarning
+        >
           <head>
+            <script
+              dangerouslySetInnerHTML={{ __html: themeNoFlashScript }}
+              suppressHydrationWarning
+            />
             <HeadContent />
           </head>
           <body className="min-h-svh flex flex-col antialiased">
-            <div className="hidden h-16 md:block">
-              <Header />
-            </div>
-            <main className="flex-1 pb-20 md:pb-0">
-              <Outlet />
-            </main>
-            <Footer />
-            <MobileTabBar />
-            <Toaster richColors />
-            <PostHogAnalytics />
-            {TanStackRouterDevtools && (
-              <Suspense fallback={null}>
-                <TanStackRouterDevtools position="bottom-left" />
-              </Suspense>
-            )}
+            <ThemeProvider>
+              <div className="hidden h-14 md:block">
+                <Header />
+              </div>
+              {/* 4rem clears the ~3.5rem mobile tab bar plus breathing room;
+                  the safe-area term matches the bar's own inset padding. */}
+              <main className="flex-1 pb-[calc(4rem+var(--safe-area-bottom))] md:pb-0">
+                <Outlet />
+              </main>
+              <Footer />
+              <MobileTabBar />
+              {/* Lift mobile toasts above the fixed tab bar + home indicator. */}
+              <Toaster
+                richColors
+                mobileOffset={{ bottom: "calc(4rem + var(--safe-area-bottom))" }}
+              />
+              <PostHogAnalytics />
+              {TanStackRouterDevtools && (
+                <Suspense fallback={null}>
+                  <TanStackRouterDevtools position="bottom-left" />
+                </Suspense>
+              )}
+            </ThemeProvider>
             <Scripts />
           </body>
         </html>
