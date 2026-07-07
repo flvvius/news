@@ -112,7 +112,7 @@ export const getEventShareRenderData = internalQuery({
 
     return {
       title: event.title,
-      summary: event.perspectiveSummaries?.center ?? event.globalImpact,
+      summary: event.perspectiveSummaries?.neutral ?? event.globalImpact,
       imageUrl: event.imageUrl,
       imageAlt: event.imageAlt,
       lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

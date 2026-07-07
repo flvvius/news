@@ -5,7 +5,9 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
+import decodeIco from "decode-ico";
 import sharp from "sharp";
+import { sniffImageFormat } from "./lib/imageSniff";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -145,6 +147,47 @@ async function getFontFilePaths(): Promise<string[]> {
   return cachedFontFilePathsPromise;
 }
 
+// Formats resvg can rasterize when embedded via <image href="data:...">.
+const RESVG_SAFE_MIME = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+} as const;
+
+// Resvg only decodes PNG/JPEG/GIF hrefs, so anything else (favicon ICO
+// containers, WebP, SVG, ...) must be re-encoded to PNG before embedding.
+async function toResvgSafeDataUri(bytes: Buffer): Promise<string | null> {
+  const format = sniffImageFormat(bytes);
+
+  if (format && format in RESVG_SAFE_MIME) {
+    const mime = RESVG_SAFE_MIME[format as keyof typeof RESVG_SAFE_MIME];
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  }
+
+  if (format === "ico") {
+    const frames = decodeIco(bytes);
+    const best = [...frames].sort(
+      (a, b) => b.width * b.height - a.width * a.height,
+    )[0];
+    if (!best) return null;
+    if (best.type === "png") {
+      return `data:image/png;base64,${Buffer.from(best.data).toString("base64")}`;
+    }
+    const png = await sharp(Buffer.from(best.data), {
+      raw: { width: best.width, height: best.height, channels: 4 },
+    })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  }
+
+  if (format === null) return null;
+
+  // webp / avif / bmp / svg — sharp decodes these; normalize to PNG.
+  const png = await sharp(bytes).png().toBuffer();
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
@@ -156,19 +199,6 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
     });
     if (!response.ok) return null;
 
-    const contentType = response.headers.get("content-type");
-    if (!contentType?.startsWith("image/")) {
-      return null;
-    }
-
-    if (
-      contentType.includes("icon") ||
-      contentType.endsWith("/x-icon") ||
-      contentType.endsWith("/vnd.microsoft.icon")
-    ) {
-      return null;
-    }
-
     const contentLength = Number(response.headers.get("content-length") ?? 0);
     if (contentLength > MAX_FETCH_BYTES) {
       return null;
@@ -179,7 +209,10 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
     if (bytes.byteLength > MAX_FETCH_BYTES) {
       return null;
     }
-    return `data:${contentType};base64,${bytes.toString("base64")}`;
+    // Favicon CDNs routinely mislabel Content-Type (PNG served as
+    // image/x-icon and vice versa), so the sniffed bytes are authoritative
+    // and the header is ignored.
+    return await toResvgSafeDataUri(bytes);
   } catch (error) {
     console.error("[shareAssets] Failed to fetch image asset:", error);
     return null;

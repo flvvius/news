@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
 import { computeStreakUpdate } from "./lib/streaks";
+import { normalizedPerspectives } from "./lib/biasAxis";
 import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
@@ -391,7 +392,9 @@ export const getQuizGenerationInput = internalQuery({
             _id: event._id,
             title: event.title,
             slug: event.slug,
-            perspectiveSummaries: event.perspectiveSummaries,
+            perspectiveSummaries: normalizedPerspectives(
+              event.perspectiveSummaries,
+            ),
             globalImpact: event.globalImpact,
             sourceBiasCounts: preview.sourceBiasCounts,
             articleCount: preview.articleCount,

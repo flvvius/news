@@ -6,19 +6,19 @@ import { useT } from "@/contexts/locale-context";
 import { cn } from "@/lib/cn";
 import type { EventDetail } from "@/lib/event-types";
 
-type Perspective = "left" | "center" | "right";
+type Perspective = "reformist" | "neutral" | "suveranist";
 
 const PERSPECTIVE_LABEL_KEY = {
-  left: "event.left",
-  center: "event.centerTab",
-  right: "event.right",
+  reformist: "event.left",
+  neutral: "event.centerTab",
+  suveranist: "event.right",
 } as const;
 
 /** Bias token underline for the active segment — labels carry the meaning. */
 const PERSPECTIVE_BAR: Record<Perspective, string> = {
-  left: "bg-bias-left",
-  center: "bg-bias-center",
-  right: "bg-bias-right",
+  reformist: "bg-bias-left",
+  neutral: "bg-bias-center",
+  suveranist: "bg-bias-right",
 };
 
 type PerspectiveSummariesProps = {
@@ -37,14 +37,14 @@ export function PerspectiveSummaries({
   const t = useT();
 
   const available: Perspective[] = (
-    ["left", "center", "right"] as Perspective[]
+    ["reformist", "neutral", "suveranist"] as Perspective[]
   ).filter((perspective) => Boolean(perspectiveSummaries?.[perspective]));
   const initial =
-    available.find((perspective) => perspective !== "center") ?? "center";
+    available.find((perspective) => perspective !== "neutral") ?? "neutral";
   const [active, setActive] = useState<Perspective>(initial);
 
   // Without at least one directional summary there is nothing to compare.
-  if (!available.some((perspective) => perspective !== "center")) {
+  if (!available.some((perspective) => perspective !== "neutral")) {
     return null;
   }
 

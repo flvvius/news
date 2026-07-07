@@ -3,13 +3,14 @@ import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Resend } from "resend";
+import { BRAND_NAME } from "./brand";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Hardcoded fallbacks — overridden at runtime via the config table
 const DEFAULT_UNSUB_BASE = "https://biviant.com/unsubscribe";
-const DEFAULT_PHYSICAL_ADDRESS = "Biviant, Bucharest, Romania";
-const DEFAULT_FROM_ADDRESS = "Biviant <hello@biviant.com>";
+const DEFAULT_PHYSICAL_ADDRESS = `${BRAND_NAME}, Bucharest, Romania`;
+const DEFAULT_FROM_ADDRESS = `${BRAND_NAME} <hello@biviant.com>`;
 const DEFAULT_REPLY_TO = "hello@biviant.com";
 const DEFAULT_SITE_URL = "https://biviant.com";
 
@@ -77,7 +78,7 @@ export const sendWelcomeEmail = internalAction({
         from: emailCfg.fromAddress,
         replyTo: emailCfg.replyTo,
         to: [args.email],
-        subject: `You're #${args.position} on the Biviant waitlist`,
+        subject: `You're #${args.position} on the ${BRAND_NAME} waitlist`,
         headers: {
           "List-Unsubscribe": `<${unsubUrl}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -138,7 +139,7 @@ export const sendInviteEmail = internalAction({
         from: emailCfg.fromAddress,
         replyTo: emailCfg.replyTo,
         to: [args.email],
-        subject: "Your Biviant early access is ready",
+        subject: `Your ${BRAND_NAME} early access is ready`,
         headers: {
           "List-Unsubscribe": `<${unsubUrl}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -188,7 +189,7 @@ function getWelcomeEmailHTML(
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Biviant</title>
+  <title>Welcome to ${BRAND_NAME}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -216,7 +217,7 @@ function getWelcomeEmailHTML(
           <!-- Header -->
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Welcome to the Waitlist</span>
             </td>
@@ -226,7 +227,7 @@ function getWelcomeEmailHTML(
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
               <p style="margin:0 0 16px 0;">Hi ${firstName},</p>
-              <p style="margin:0 0 24px 0;">Thanks for joining Biviant. You're officially on the waitlist.</p>
+              <p style="margin:0 0 24px 0;">Thanks for joining ${BRAND_NAME}. You're officially on the waitlist.</p>
             </td>
           </tr>
 
@@ -276,7 +277,7 @@ function getWelcomeEmailHTML(
           </tr>
           <tr>
             <td style="padding:0 40px 24px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">Share Biviant with friends who are tired of their news bubble. The more people who join from your referral, the higher you climb.</p>
+              <p style="margin:0 0 16px 0;">Share ${BRAND_NAME} with friends who are tired of their news bubble. The more people who join from your referral, the higher you climb.</p>
             </td>
           </tr>
 
@@ -331,7 +332,7 @@ function getWelcomeEmailText(
 
   return `Hi ${firstName},
 
-Thanks for joining Biviant. You're officially on the waitlist.
+Thanks for joining ${BRAND_NAME}. You're officially on the waitlist.
 
 You're #${position} in line.
 
@@ -342,7 +343,7 @@ What happens next:
 3. Early access - When we're ready to launch, you'll be among the first to get an invite.
 
 Move up the list:
-Share Biviant with friends who are tired of their news bubble: https://biviant.com?ref=${position}
+Share ${BRAND_NAME} with friends who are tired of their news bubble: https://biviant.com?ref=${position}
 
 ---
 See every side of the story.
@@ -366,7 +367,7 @@ function getInviteEmailHTML(
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Biviant Invite</title>
+  <title>Your ${BRAND_NAME} Invite</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -380,7 +381,7 @@ function getInviteEmailHTML(
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   <!-- Preview text -->
   <div style="display:none; max-height:0; overflow:hidden;">
-    Your early access to Biviant is ready. See news from every perspective.
+    Your early access to ${BRAND_NAME} is ready. See news from every perspective.
   </div>
 
   <!-- Outer wrapper -->
@@ -394,7 +395,7 @@ function getInviteEmailHTML(
           <!-- Header -->
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Your Early Access is Ready</span>
             </td>
@@ -404,7 +405,7 @@ function getInviteEmailHTML(
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
               <p style="margin:0 0 16px 0;">Hi ${firstName},</p>
-              <p style="margin:0 0 24px 0;">The wait is over. You now have early access to Biviant.</p>
+              <p style="margin:0 0 24px 0;">The wait is over. You now have early access to ${BRAND_NAME}.</p>
               <p style="margin:0 0 16px 0;">Create your account using <strong>${email}</strong> to unlock the beta.</p>
             </td>
           </tr>
@@ -500,7 +501,7 @@ function getInviteEmailText(
 
   return `Hi ${firstName},
 
-The wait is over. You now have early access to Biviant.
+The wait is over. You now have early access to ${BRAND_NAME}.
 
 Create your account using this email: ${email}
 

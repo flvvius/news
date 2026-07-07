@@ -1,7 +1,8 @@
 import { SignInPrompt } from "@/components/SignInPrompt";
 import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
-import StreakActivityCalendar from "@/components/streak-activity-calendar";
+import { CurrentMonthReadingCalendar } from "@/components/current-month-reading-calendar";
+import { RecentReadingItem } from "@/components/activity/recent-reading-item";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -13,35 +14,12 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { formatRelativeTimestamp } from "@/lib/dates";
 import {
   Bookmark,
-  BrainCircuit,
   ChevronRight,
   Flame,
   Newspaper,
   Sparkles,
 } from "lucide-react";
-
-function formatReadDuration(
-  t: ReturnType<typeof useT>,
-  seconds?: number,
-) {
-  if (!seconds || seconds <= 0) return null;
-  if (seconds < 60) {
-    return t("read.duration.seconds").replace("{count}", String(seconds));
-  }
-  const minutes = Math.round(seconds / 60);
-  return t("read.duration.minutes").replace("{count}", String(minutes));
-}
-
-function formatScrollDepth(
-  t: ReturnType<typeof useT>,
-  percentage?: number,
-) {
-  if (percentage === undefined) return null;
-  return t("scroll.depth").replace(
-    "{count}",
-    String(Math.round(percentage * 100)),
-  );
-}
+import { QuizCta } from "@/components/quiz-cta";
 
 function getBiasSnapshotLabel(
   balance: number,
@@ -150,8 +128,8 @@ function AuthorizedDashboard({
   const eventsExplored = dashboardOverview?.stats.eventsExplored ?? 0;
   const recentHistory = dashboardOverview?.recentHistory ?? [];
   const recentBookmarks = dashboardOverview?.recentBookmarks ?? [];
-  const streakDays = dashboardOverview?.streakCalendar.days ?? [];
-  const activeDays = dashboardOverview?.streakCalendar.activeDays ?? 0;
+  const readingCalendarDays = dashboardOverview?.readingCalendar.days ?? [];
+  const activeReadingDays = dashboardOverview?.readingCalendar.activeDays ?? 0;
   const weeklyBiasReads = dashboardOverview?.weeklyBiasSummary.reads ?? 0;
   const weeklyBiasBalance = dashboardOverview?.weeklyBiasSummary.balance ?? 0;
   const nextStreakMilestone = getNextStreakMilestone(readingStreak);
@@ -259,22 +237,7 @@ function AuthorizedDashboard({
             </div>
           </div>
 
-          <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <BrainCircuit className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-semibold">{t("quiz.cta.activityTitle")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("quiz.cta.activityBody")}
-                </p>
-              </div>
-            </div>
-            <Button asChild size="sm" className="shrink-0">
-              <Link to="/quiz">{t("quiz.cta.action")}</Link>
-            </Button>
-          </section>
+          <QuizCta variant="activity" />
 
           {/* Activity + Bias Row */}
           <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -284,7 +247,7 @@ function AuthorizedDashboard({
                 <div>
                   <h2 className="font-semibold">{t("activity.section")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    {t("activity.last12Weeks")}
+                    {t("activity.currentMonthReading")}
                   </p>
                 </div>
                 <div className="flex gap-6 text-center">
@@ -306,16 +269,16 @@ function AuthorizedDashboard({
                   </div>
                   <div>
                     <p className="text-lg font-bold tabular-nums">
-                      {activeDays}
+                      {activeReadingDays}
                     </p>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {t("activity.active")}
+                      {t("activity.activeReadingDays")}
                     </p>
                   </div>
                 </div>
               </div>
               <div className="mt-5">
-                <StreakActivityCalendar days={streakDays} />
+                <CurrentMonthReadingCalendar days={readingCalendarDays} />
               </div>
             </div>
 
@@ -365,62 +328,9 @@ function AuthorizedDashboard({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {recentHistory.slice(0, 4).map((entry) => {
-                      const durationLabel = formatReadDuration(
-                        t,
-                        entry.metadata.timeSpentSeconds,
-                      );
-                      const scrollLabel = formatScrollDepth(
-                        t,
-                        entry.metadata.scrollDepthPercentage,
-                      );
-                      const detailBits = [durationLabel, scrollLabel].filter(
-                        Boolean,
-                      );
-
-                      return (
-                        <Link
-                          key={entry.event._id}
-                          to="/event/$slug"
-                          params={{ slug: entry.event.slug }}
-                          className="group flex gap-3 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
-                        >
-                          <div className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                            {entry.event.imageUrl ? (
-                              <img
-                                src={entry.event.imageUrl}
-                                alt=""
-                                className="size-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
-                                <Newspaper className="size-5" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
-                              {entry.event.title}
-                            </p>
-                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>
-                                {formatRelativeTimestamp(
-                                  entry.lastViewedAt,
-                                  locale,
-                                )}
-                              </span>
-                              {detailBits.length > 0 && (
-                                <>
-                                  <span>·</span>
-                                  <span>{detailBits.join(" · ")}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </Link>
-                      );
-                    })}
+                    {recentHistory.slice(0, 4).map((entry) => (
+                      <RecentReadingItem key={entry.event._id} entry={entry} />
+                    ))}
                   </div>
                 )}
               </div>

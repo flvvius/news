@@ -24,7 +24,7 @@ export function buildOnboardingFixtureEvent(
     _id: FIXTURE_EVENT_ID,
     slug: "onboarding-fixture",
     title,
-    perspectiveSummaries: { center: summary },
+    perspectiveSummaries: { neutral: summary },
     firstPublishedAt: Date.now() - TWO_HOURS_MS,
     topicIds: [FIXTURE_TOPIC_ID],
     sourceCount: 12,

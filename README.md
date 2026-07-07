@@ -57,8 +57,7 @@ The current repo is in a transitional state:
 
 ### Partially implemented
 
-- MBFC RapidAPI integration exists in code, but is not the default active path
-- Source MBFC data is currently seeded manually from the curated feed list
+- Source ratings are seeded manually from `sourceReputation.ts` (the authoritative source-metadata path; the old MBFC RapidAPI integration was removed)
 - Native app auth and Convex connection work, but the app is mostly scaffold/UI shell
 - Event model and event pages exist, but the current real-data pipeline does not yet create/publish events from ingested articles
 
@@ -173,7 +172,7 @@ This is the Convex backend package and the most important backend logic in the r
 - [`ingestion.ts`](./packages/backend/convex/ingestion.ts): RSS fetch/parse/dedup/source creation/article insert/pipeline locks
 - [`enrichment.ts`](./packages/backend/convex/enrichment.ts): article claiming and DB-side enrichment mutations
 - [`enrichmentNode.ts`](./packages/backend/convex/enrichmentNode.ts): OpenAI embedding generation
-- [`mbfc.ts`](./packages/backend/convex/mbfc.ts): MBFC API integration path
+- [`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts): manual Romanian source-reputation seed (authoritative source metadata)
 - [`crons.ts`](./packages/backend/convex/crons.ts): scheduled ingestion and enrichment jobs
 
 ### Product support
@@ -220,6 +219,23 @@ Important implication:
 
 - the feed is event-driven, not article-driven
 - if real ingestion does not produce `events`, the feed will still rely on seeded/demo events
+
+##### Trending vs Latest (BIV-801)
+
+The Trending tab ranks by `trendingScore` (in
+`packages/backend/convex/lib/publicEventPreviews.ts`), which combines
+corroboration and recency: `sources*10 + articles*3 + hoursSinceEpoch`.
+The corroboration terms prefer the claim-verified counts
+(`factualSourceCount`/`factualArticleCount`), but those only populate while
+the claim-analysis pipeline runs — and it is paused behind a feature flag
+(BIV-602). Without the raw-coverage fallback the score degenerated to the
+recency term alone and Trending was indistinguishable from Latest.
+Trending does **not** rank on user interactions, so an interaction-free dev
+database is not the cause of tab sameness. Note that existing
+`publicEventPreviews` rows keep their stored score until the next
+`syncPublicEventPreview` (pipeline update or
+`internal.clustering.backfillEventCandidacy` run), and the anonymous
+first-page snapshot refreshes via the `rebuild-public-feed-snapshots` cron.
 
 #### Event detail page
 
@@ -352,21 +368,15 @@ Article records inserted by ingestion currently contain:
 - logs AI usage
 - checks daily budget before spending
 
-#### 5. MBFC API integration path
+#### 5. Source metadata path
 
-[`mbfc.ts`](./packages/backend/convex/mbfc.ts) exists and supports:
-
-- source lookup via RapidAPI
-- normalization of bias/factual ratings
-- writing back to `sources`
-- fallback marking as `unrated`
-- batch enrichment
-
-But today:
-
-- the MBFC cron is disabled
-- the feed list still carries manual MBFC data
-- the active MVP path is manual metadata in `feeds.ts`, not API-enriched metadata
+Source bias/reliability ratings are seeded manually from
+[`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts)
+(hand-assigned axis scores + reliability + provenance notes, upserted via
+`seeds:seedRomanianSources`). This is the single documented source-metadata
+path; the old MBFC RapidAPI integration was removed in BIV-402. If the
+source list ever grows past what hand-curation can maintain, see the backlog
+note in `sourceReputation.ts` before adding an automated refresh.
 
 ### What does not exist yet
 
@@ -497,10 +507,6 @@ Currently active:
 - `ingest-rss-feeds`: every 60 minutes
 - `enrich-articles`: every 30 minutes
 
-Currently disabled:
-
-- MBFC API source enrichment cron
-
 ## Environment Variables
 
 This repo uses a mix of web env vars, native public env vars, and backend/server env vars.
@@ -520,8 +526,16 @@ Required or commonly expected by the current code:
 
 - `CONVEX_URL`
 - `CONVEX_SITE_URL`
-- `SITE_URL`
+- `SITE_URL` — Better Auth `baseURL`; on a **dev** deployment set it to
+  `http://localhost:3001` so OAuth redirects and email links point at the
+  local web app (`npx convex env set SITE_URL http://localhost:3001`)
+- `DEPLOY_ENV` — set to `development` on dev Convex deployments
+  (`npx convex env set DEPLOY_ENV development`). The Convex runtime reports
+  `NODE_ENV=production` on *every* deployment, dev included, so without this
+  flag a dev deployment behaves like production: localhost origins are not
+  trusted and all localhost auth fails with "Invalid origin" (BIV-808/809)
 - `ALLOWED_ORIGINS` (optional, comma-separated origins allowed for verification links)
+- `CONVEX_ALLOW_LOCALHOST` (optional escape hatch: trust localhost origins even in production)
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
@@ -530,9 +544,9 @@ Required or commonly expected by the current code:
 
 ### AI / ingestion / email env vars
 
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY` (embeddings + any gpt-* chat models)
+- `GEMINI_API_KEY` (gemini-* chat models — the default pipeline summarizer/bias scorer)
 - `POSTHOG_API_KEY` (optional)
-- `RAPIDAPI_KEY` for MBFC API path
 - `RESEND_API_KEY`
 
 ### Native public env vars
@@ -544,7 +558,7 @@ Note:
 
 - not every integration is required for local development
 - the easiest local path is usually seeded data + web app + Convex
-- MBFC API and Resend can be omitted if you do not need those flows locally
+- Resend can be omitted if you do not need email flows locally
 
 ## Local Development
 

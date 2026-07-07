@@ -20,6 +20,7 @@ import { SignInPrompt } from "@/components/SignInPrompt";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { guardQuizRoute } from "@/lib/feature-flags";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -76,6 +77,11 @@ type GradeQuestionVariables = {
 };
 
 export const Route = createFileRoute("/quiz")({
+  // BIV-802: quiz is feature-flagged off for launch — direct navigation
+  // redirects to the feed instead of rendering a hidden screen.
+  beforeLoad: () => {
+    guardQuizRoute();
+  },
   head: ({ matches }) => {
     const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "quiz.metaTitle");
@@ -236,7 +242,11 @@ function QuizExperience({
   }
 
   const handleSelect = async (questionId: string, choiceId: string) => {
-    if (gradingLockRef.current || activeResult || questionFeedback[questionId]) {
+    if (
+      gradingLockRef.current ||
+      activeResult ||
+      questionFeedback[questionId]
+    ) {
       return;
     }
     gradingLockRef.current = true;
@@ -362,7 +372,7 @@ function QuizExperience({
 
             <CardContent className="space-y-6 px-4 py-6 sm:px-6 sm:py-8">
               <div className="space-y-3">
-                <h2 className="max-w-[65ch] text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
+                <h2 className="text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
                   {localize(currentQuestion.question, locale)}
                 </h2>
                 <p className="text-sm text-muted-foreground">
@@ -393,8 +403,8 @@ function QuizExperience({
                           currentFeedback.selectedChoiceId === choice.id
                           ? "border-primary/45 bg-primary/10"
                           : isSelected
-                              ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                              : "border-border bg-background hover:border-primary/35 hover:bg-accent",
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                            : "border-border bg-background hover:border-primary/35 hover:bg-accent",
                         (Boolean(currentFeedback) || isGrading) &&
                           "cursor-default",
                       )}
@@ -571,7 +581,7 @@ function QuizExperience({
                           );
                         })}
                       </div>
-                      <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
                         {review
                           ? localize(review.explanation, locale)
                           : correctChoice

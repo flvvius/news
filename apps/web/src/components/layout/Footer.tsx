@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 import { useT } from "@/lib/i18n/LocaleContext";
 
 const footerSections = [
@@ -33,7 +34,7 @@ export function Footer() {
   const t = useT();
 
   return (
-    <footer className="border-t border-border bg-muted/20 pb-24 md:pb-8">
+    <footer className="border-t border-border bg-muted/20 pb-[calc(5rem+var(--safe-area-bottom))] md:pb-8">
       <div className="container mx-auto max-w-6xl px-4 py-10">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-3">
           {footerSections.map((section, index) => (
@@ -60,7 +61,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 border-t border-border pt-4 text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Biviant
+          © {new Date().getFullYear()} {BRAND_NAME}
         </div>
       </div>
     </footer>

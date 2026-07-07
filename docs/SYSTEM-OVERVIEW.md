@@ -19,13 +19,13 @@ The whole content pipeline is **autonomous**: a set of Convex cron jobs run cont
 - **Web: TanStack Start + React 19 + Tailwind v4** (`apps/web`).
 - **Native: Expo / React Native** (`apps/native`) — now a real product surface (feed, event detail, claims, quiz, streaks), not just a shell.
 - **Auth: Better Auth** with a Convex storage adapter (email/password + Google + Apple, cross-domain + Expo plugins).
-- **AI: OpenAI** — `text-embedding-3-small` for embeddings (512 dims), and the **`gpt-5-nano`** family for all reasoning tasks (fact extraction, bias scoring, summaries, claim divergence, quiz). Every model id is **runtime-configurable** via the `config` table, so the defaults in code can be overridden without a deploy.
+- **AI: Gemini + OpenAI** — `text-embedding-3-small` (OpenAI) for embeddings (512 dims), and **`gemini-3.1-flash-lite`** (via Gemini's OpenAI-compatible API) as the default chat model for reasoning tasks (bias scoring, summaries; fact extraction/claim divergence are paused). Every model id is **runtime-configurable** via the `config` table — gemini-* ids route to Gemini, everything else to OpenAI (`lib/modelRouting.ts`).
 - **Email: Resend**. **Analytics: PostHog** (instruments every LLM call for token/cost/latency tracking).
 
 ### Convex function types you'll see everywhere
 - **`query`** — read-only, reactive, runs in Convex's deterministic V8 runtime.
 - **`mutation`** — transactional writes, V8 runtime, no network/`fetch`.
-- **`action`** — can do I/O (`fetch`, OpenAI). Cannot touch the DB directly; it calls queries/mutations via `ctx.runQuery`/`ctx.runMutation`. Files ending in `Node.ts` (`enrichmentNode`, `summarizationNode`, etc.) declare `"use node"` so they run in the **Node.js runtime** (needed for the OpenAI SDK, PostHog, `wink-nlp`, `crypto`).
+- **`action`** — can do I/O (`fetch`, OpenAI). Cannot touch the DB directly; it calls queries/mutations via `ctx.runQuery`/`ctx.runMutation`. Files ending in `Node.ts` (`enrichmentNode`, `summarizationNode`, etc.) declare `"use node"` so they run in the **Node.js runtime** (needed for the OpenAI SDK, PostHog, `crypto`).
 - **`internal*`** variants are not exposed to clients; the pipeline is built almost entirely from `internalAction`/`internalMutation`/`internalQuery`.
 
 The recurring architectural pattern: **an action orchestrates** (fetch, call OpenAI, decide), and **delegates all DB reads/writes to internal queries/mutations**, so the side-effecting steps are small, transactional, and idempotent.
@@ -96,7 +96,7 @@ events (processing → published)  +  publicEventPreviews
 ```
 
 ### 3.1 Ingestion (`ingestion.ts`)
-Entry: `ingestAllFeeds` (cron, 60 min). Feeds are **curated by hand** in `feeds.ts` (~two dozen outlets, each with domain + bias + reliability + MBFC metadata). MBFC's API integration exists (`mbfc.ts`) but the cron is disabled; metadata is seeded from the curated list.
+Entry: `ingestAllFeeds` (cron, 60 min). Feeds are **curated by hand** in `feeds.ts` (Romanian launch set, two tiers), with bias/reliability derived from the manual reputation seed in `sourceReputation.ts` — the single source-metadata path (the old MBFC API integration was removed in BIV-402).
 
 Per feed (`ingestSingleFeed`, an action):
 1. **Get-or-create the source** by domain (logo via Clearbit).
@@ -114,7 +114,7 @@ The batch driver processes feeds sequentially, **retries failed feeds once** aft
 Entry: `enrichUnprocessedArticles` (cron, 40 min; also self-triggered after ingestion). Batch size 40, with a budget check up front.
 
 1. **Atomically claim** a batch of `unprocessed` (or expired-lease) articles via a lease (`enrichmentRunId` + `enrichmentLeaseExpiresAt`, 15 min TTL). Every later write re-checks the lease so two overlapping runs never double-process an article ("lease no longer belongs to run X → skip").
-2. **Content extraction** (`lib/articleExtraction.ts`, concurrency 5): fetches the real article HTML (8 s timeout), pulls the body via priority patterns (`<article>`, `<main>`, `articleBody`/`story-body` selectors), then JSON-LD, then meta tags, falling back to the RSS snippet. Resolves **Google News redirect links** via the `batchexecute` RPC. Uses **`wink-nlp`** to derive entities and a short summary. Detects an OG/Twitter/JSON-LD/inline lead image. Classifies `extractionQuality` as **`strong`** (real body text) or **`weak`** (snippet-only) — this later loosens/tightens clustering thresholds.
+2. **Content extraction** (`lib/articleExtraction.ts`, concurrency 5): fetches the real article HTML (8 s timeout), pulls the body via priority patterns (`<article>`, `<main>`, `articleBody`/`story-body` selectors), then JSON-LD, then meta tags, falling back to the RSS snippet. Resolves **Google News redirect links** via the `batchexecute` RPC. Derives entities via a Unicode-aware capitalized-sequence matcher (the English-only `wink-nlp` model was removed in BIV-601) and a short summary. Detects an OG/Twitter/JSON-LD/inline lead image. Classifies `extractionQuality` as **`strong`** (real body text) or **`weak`** (snippet-only) — this later loosens/tightens clustering thresholds.
 3. **Embeddings**: one `text-embedding-3-small` call for the batch at **512 dimensions** (`EMBEDDING_VERSION = 4`; bumping it triggers re-enrichment). Articles whose embedding failed are `discarded`.
 4. **Atomic fact extraction** (`gpt-5-nano`, JSON-schema-constrained): each article → up to 8 short, standalone, verifiable claims ("Vote count: 60–40", "Passed Tuesday"). These are the cheap tokens fed to summarization and claim analysis instead of full text. Prompt in `prompts.ts → buildArticleFactExtractionPrompt`.
 5. **Per-article bias scoring** (`gpt-5-nano`, JSON-schema): scores four sub-dimensions on anchored scales — `politicalLean` (−5..+5), `emotionalLanguage` (0..5), `sourceDiversity` (0..5), `factOpinionRatio` (0..5) + a cited rationale. **The model scores the *text*, explicitly not the outlet's reputation.** These combine into a single `aiBiasScore` via a weighted formula (`combineBiasScore`): political lean amplified by emotional/opinion intensity, dampened by source diversity, clamped to ±5. `sourceBiasDelta = aiBiasScore − source.baseBias`; if `|delta| ≥ threshold` the article is flagged as diverging from its outlet's baseline.

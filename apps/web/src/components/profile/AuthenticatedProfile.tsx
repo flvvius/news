@@ -1,8 +1,16 @@
 import { useState } from "react";
-import { CheckCircle2, Globe2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import {
+  CheckCircle2,
+  Globe2,
+  KeyRound,
+  LogOut,
+  Palette,
+  ShieldCheck,
+} from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ThemePicker } from "@/components/theme/ThemePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
@@ -171,17 +179,34 @@ export function AuthenticatedProfile({
                 <CardTitle>{t("profile.settings")}</CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
-                      <Globe2 className="size-4 text-primary" />
-                      <span>{t("settings.language")}</span>
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
+                        <Globe2 className="size-4 text-primary" />
+                        <span>{t("settings.language")}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {t("profile.settingsBody")}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {t("profile.settingsBody")}
-                    </p>
+                    <LanguagePicker />
                   </div>
-                  <LanguagePicker />
+
+                  <div className="border-t pt-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
+                          <Palette className="size-4 text-primary" />
+                          <span>{t("profile.theme")}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {t("profile.themeBody")}
+                        </p>
+                      </div>
+                      <ThemePicker />
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

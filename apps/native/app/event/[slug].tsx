@@ -310,7 +310,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
   };
 
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
-  const summary = event.perspectiveSummaries?.center;
+  const summary = event.perspectiveSummaries?.neutral;
 
   return (
     <View className="flex-1">

@@ -14,6 +14,7 @@ import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
 } from "./lib/userProfile";
+import { normalizedPerspectives } from "./lib/biasAxis";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -429,7 +430,7 @@ async function buildDashboardEventPreview(
       title: preview.title,
       imageUrl: preview.imageUrl,
       summary:
-        preview.perspectiveSummaries?.center ??
+        preview.perspectiveSummaries?.neutral ??
         preview.globalImpact ??
         "Open the event to compare coverage from multiple sources.",
       firstPublishedAt: preview.firstPublishedAt,
@@ -472,7 +473,7 @@ async function buildDashboardEventPreview(
     title: event.title,
     imageUrl: event.imageUrl,
     summary:
-      event.perspectiveSummaries?.center ??
+      event.perspectiveSummaries?.neutral ??
       event.globalImpact ??
       "Open the event to compare coverage from multiple sources.",
     firstPublishedAt: event.firstPublishedAt,
@@ -560,7 +561,9 @@ export const getBookmarkedEvents = query({
             title: preview.title,
             imageUrl: preview.imageUrl,
             imageAlt: preview.imageAlt,
-            perspectiveSummaries: preview.perspectiveSummaries,
+            perspectiveSummaries: normalizedPerspectives(
+              preview.perspectiveSummaries,
+            ),
             globalImpact: preview.globalImpact,
             firstPublishedAt: preview.firstPublishedAt,
             lastUpdatedAt: preview.lastUpdatedAt,
@@ -660,7 +663,22 @@ export const getDashboardOverview = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    const today = startOfUtcDay(Date.now());
+    const now = Date.now();
+    const today = startOfUtcDay(now);
+    const currentMonthDate = new Date(now);
+    const currentMonthStart = Date.UTC(
+      currentMonthDate.getUTCFullYear(),
+      currentMonthDate.getUTCMonth(),
+      1,
+    );
+    const nextMonthStart = Date.UTC(
+      currentMonthDate.getUTCFullYear(),
+      currentMonthDate.getUTCMonth() + 1,
+      1,
+    );
+    const currentMonthDayCount = Math.round(
+      (nextMonthStart - currentMonthStart) / DAY_MS,
+    );
     const streakWindowDays = 84;
     const streakStart = today - (streakWindowDays - 1) * DAY_MS;
     const streakStartKey = new Date(streakStart).toISOString().slice(0, 10);
@@ -794,6 +812,19 @@ export const getDashboardOverview = query({
         isToday: timestamp === today,
       };
     });
+    const readingCalendarDays = Array.from(
+      { length: currentMonthDayCount },
+      (_, index) => {
+        const timestamp = currentMonthStart + index * DAY_MS;
+        const activeSet = uniqueEventIdsByDay.get(timestamp);
+
+        return {
+          timestamp,
+          activityCount: activeSet?.size ?? 0,
+          isToday: timestamp === today,
+        };
+      },
+    );
 
     return {
       stats: {
@@ -808,6 +839,12 @@ export const getDashboardOverview = query({
       streakCalendar: {
         activeDays: streakDays.filter((day) => day.activityCount > 0).length,
         days: streakDays,
+      },
+      readingCalendar: {
+        activeDays: readingCalendarDays.filter(
+          (day) => day.activityCount > 0,
+        ).length,
+        days: readingCalendarDays,
       },
       weeklyBiasSummary: {
         reads: recentBiasReads,

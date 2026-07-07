@@ -14,17 +14,11 @@ crons.interval(
   internal.ingestion.ingestAllFeeds,
 );
 
-// ---------------------------------------------------------------------------
-// MBFC Enrichment — DISABLED for MVP
-// ---------------------------------------------------------------------------
-// MBFC ratings are seeded manually from feeds.ts (curated from
-// mediabiasfactcheck.com). Re-enable via the API when the source list
-// grows past what can be maintained by hand.
-// crons.interval(
-//   "enrich-sources-mbfc",
-//   { hours: 24 },
-//   internal.mbfc.enrichAllSources,
-// );
+// Source ratings come from the manual Romanian reputation seed
+// (sourceReputation.ts, BIV-401) — the single source-metadata path. The old
+// MBFC RapidAPI integration was removed in BIV-402; see
+// docs/bias-axis-spec.md and the backlog note in sourceReputation.ts if an
+// automated refresh is ever wanted again.
 
 // ---------------------------------------------------------------------------
 // Article Enrichment (Embeddings) — Every 40 minutes

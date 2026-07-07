@@ -1,7 +1,7 @@
 import { Bookmark, BarChart3, BrainCircuit, Newspaper, User } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ComponentType, MouseEvent } from "react";
-import { useScrollVisibility } from "@/hooks/use-scroll-visibility";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +20,7 @@ type TabKey =
 
 type TabDefinition = TabItem & { key: TabKey };
 
-const tabDefinitions: readonly TabDefinition[] = [
+const allTabDefinitions: readonly TabDefinition[] = [
   {
     to: "/feed",
     key: "tabs.feed",
@@ -36,16 +36,33 @@ const tabDefinitions: readonly TabDefinition[] = [
   { to: "/profil", key: "tabs.profile", icon: User },
 ];
 
+// Quiz tab hidden while its feature flag is off (BIV-802). Exported so tests
+// can assert the visible set without rendering the router.
+export const tabDefinitions = allTabDefinitions.filter(
+  (tab) => tab.to !== "/quiz" || FEATURE_FLAGS.quiz,
+);
+
+// Tailwind needs literal class names, so pick the column class explicitly
+// instead of interpolating the tab count.
+const gridColsClass =
+  tabDefinitions.length === 5 ? "grid-cols-5" : "grid-cols-4";
+
 function matchesPath(pathname: string, to: string, allowPrefix = false) {
   return pathname === to || (allowPrefix && pathname.startsWith(`${to}/`));
 }
 
+/**
+ * Flat, full-width tab bar (BIV-807, mirrors the native DESIGN_LOG): system
+ * chrome, bg-background + top hairline. The floating blurred pill and the
+ * hide-on-scroll motion were rejected on native — glassmorphism/elevation
+ * theater, and scroll-linked chrome contradicts the frequency law. Active
+ * state is icon weight + foreground text; no tab-switch animation.
+ */
 export function MobileTabBar() {
   const t = useT();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const isVisible = useScrollVisibility();
 
   const handleTabClick =
     (isSameDestination: boolean) => (event: MouseEvent<HTMLAnchorElement>) => {
@@ -63,48 +80,39 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label={t("nav.mobile")}
-      className={cn(
-        "fixed inset-x-0 bottom-0 z-50 px-4 pb-4 transition-transform duration-300 ease-out md:hidden",
-        isVisible ? "translate-y-0" : "translate-y-[calc(100%+1rem)]",
-      )}
-      style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      data-slot="mobile-tab-bar"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] md:hidden"
     >
-      <div className="mx-auto max-w-md rounded-[1.4rem] border border-border bg-background/92 p-2 shadow-lg shadow-foreground/5 backdrop-blur-xl">
-        <div className="grid grid-cols-5 gap-1">
-        {tabDefinitions.map(({ to, key, icon: Icon, isActive: customIsActive }) => {
-          const isActive = customIsActive
-            ? customIsActive(pathname)
-            : matchesPath(pathname, to);
-          const isSameDestination = pathname === to;
-          const label = t(key);
+      <div className={cn("grid", gridColsClass)}>
+        {tabDefinitions.map(
+          ({ to, key, icon: Icon, isActive: customIsActive }) => {
+            const isActive = customIsActive
+              ? customIsActive(pathname)
+              : matchesPath(pathname, to);
+            const isSameDestination = pathname === to;
+            const label = t(key);
 
-          return (
-            <Link
-              key={to}
-              to={to}
-              onClick={handleTabClick(isSameDestination)}
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[11px] transition-all",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-              )}
-            >
-              <Icon
+            return (
+              <Link
+                key={to}
+                to={to}
+                onClick={handleTabClick(isSameDestination)}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "size-5 transition-transform",
-                  isActive && "scale-[1.04]",
+                  "flex min-w-0 flex-col items-center gap-1 px-2 pb-2 pt-2.5 text-[11px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                  isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground",
                 )}
-                strokeWidth={isActive ? 2.5 : 2}
-              />
-              <span className={cn("truncate", isActive && "font-semibold")}>
-                {label}
-              </span>
-            </Link>
-          );
-        })}
-        </div>
+              >
+                <Icon className="size-5" strokeWidth={isActive ? 2.5 : 2} />
+                <span className={cn("truncate", isActive && "font-semibold")}>
+                  {label}
+                </span>
+              </Link>
+            );
+          },
+        )}
       </div>
     </nav>
   );

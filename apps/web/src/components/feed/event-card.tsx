@@ -1,12 +1,9 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import BookmarkButton from "@/components/bookmark-button";
-import ShareEventButton from "@/components/share-event-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { buildInteractionContextFromSources } from "@/lib/interaction-tracking";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
-import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 type EventCardProps = {
@@ -16,7 +13,9 @@ type EventCardProps = {
     title: string;
     imageUrl?: string;
     perspectiveSummaries?: {
-      center?: string;
+      neutral?: string;
+      reformist?: string;
+      suveranist?: string;
     };
     globalImpact?: string;
     firstPublishedAt: number;
@@ -41,12 +40,14 @@ type EventCardProps = {
     }>;
   };
   topicNamesById: Record<string, string>;
-  /** Max source logos to display. Pre-validated by the parent. */
+  /** Kept for API compatibility; the editorial row shows no logo stack. */
   maxSources?: number;
   variant?: "default" | "feature";
   searchQuery?: string;
   returnToFeed?: boolean;
   interactive?: boolean;
+  /** Saved page only: show the bookmark toggle as the row's one action. */
+  showBookmark?: boolean;
 };
 
 function escapeRegExp(value: string) {
@@ -105,14 +106,25 @@ function biasBucketClass(bucket: BiasBucket) {
   return "bg-bias-center";
 }
 
+/**
+ * Editorial feed row (BIV-807, mirrors the native DESIGN_LOG): kicker →
+ * title → 4px bias distribution bar → meta line, with an optional
+ * thumbnail. On mobile the default row stacks a full-width 16:9 image
+ * above the copy (more compact than the lead's 3:2); at sm+ it becomes a
+ * side-by-side row with the thumbnail on the right. The lead ("feature")
+ * row gets a full-width 3:2 image and a bigger headline — a front-page
+ * move, not a "featured card". No card
+ * chrome, no shadows, no per-row share/bookmark actions (the feed is for
+ * reading; the saved page opts into the bookmark toggle).
+ */
 const EventCard = ({
   event,
   topicNamesById,
-  maxSources = 5,
   variant = "default",
   searchQuery,
   returnToFeed = false,
   interactive = true,
+  showBookmark = false,
 }: EventCardProps) => {
   const locale = useLocale();
   const t = useT();
@@ -121,7 +133,7 @@ const EventCard = ({
     .filter(Boolean);
   const primaryTopic = topics[0] ?? t("event.general");
   const summaryPreview =
-    event.perspectiveSummaries?.center ??
+    event.perspectiveSummaries?.neutral ??
     event.globalImpact ??
     t("event.coveragePreview");
   const isFeature = variant === "feature";
@@ -138,9 +150,11 @@ const EventCard = ({
     },
     { left: 0, center: 0, right: 0 } as Record<BiasBucket, number>,
   );
-  const biasDistribution =
-    event.sourceBiasCounts ?? fallbackBiasDistribution;
-  const totalSources = Math.max(0, event.sourceCount ?? event.sources?.length ?? 0);
+  const biasDistribution = event.sourceBiasCounts ?? fallbackBiasDistribution;
+  const totalSources = Math.max(
+    0,
+    event.sourceCount ?? event.sources?.length ?? 0,
+  );
   const distributionTotal =
     biasDistribution.left + biasDistribution.center + biasDistribution.right;
   const showBiasDistribution =
@@ -148,212 +162,140 @@ const EventCard = ({
     distributionTotal > 0 &&
     (event.sourceBiasCounts !== undefined || (event.sources?.length ?? 0) > 0);
 
-  const cardContent = (
-    <Card
-      className={cn(
-        "overflow-hidden border-border/80 bg-card/95 py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
-        isFeature ? "rounded-[1.4rem]" : "rounded-[1.2rem]",
-      )}
+  const metaParts = [
+    t("event.sources").replace("{count}", String(totalSources)),
+    event.articleCount !== undefined
+      ? event.articleCount === 1
+        ? t("event.articles.one")
+        : t("event.articles.many").replace(
+            "{count}",
+            String(event.articleCount),
+          )
+      : null,
+    lastUpdatedLabel,
+  ].filter(Boolean);
+
+  const biasBar = showBiasDistribution ? (
+    <div
+      className="flex h-1 w-full max-w-64 overflow-hidden rounded-full bg-bias-track"
+      aria-label={t("event.biasDistribution")
+        .replace("{left}", String(biasDistribution.left))
+        .replace("{center}", String(biasDistribution.center))
+        .replace("{right}", String(biasDistribution.right))}
+      role="img"
     >
-      <div
-        className={cn(
-          "relative overflow-hidden bg-muted/40",
-          isFeature
-            ? "aspect-16/10 sm:aspect-16/10"
-            : "aspect-16/10 lg:aspect-16/10",
-        )}
-      >
-        <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
-          {(topics.length > 0 ? topics : [t("event.general")])
-            .slice(0, isFeature ? 3 : 2)
-            .map((topic) => (
-              <span
-                key={topic}
-                className="inline-flex h-7 items-center rounded-full border border-white/20 bg-black/45 px-3 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-              >
-                {topic}
-              </span>
-            ))}
-        </div>
-        {event.imageUrl ? (
+      {(["left", "center", "right"] as BiasBucket[]).map((bucket) => {
+        const count = biasDistribution[bucket];
+        if (count === 0) return null;
+        return (
+          <div
+            key={bucket}
+            className={biasBucketClass(bucket)}
+            style={{ width: `${(count / distributionTotal) * 100}%` }}
+          />
+        );
+      })}
+    </div>
+  ) : null;
+
+  const kicker = (
+    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      {primaryTopic}
+    </p>
+  );
+
+  const meta = (
+    <p className="text-xs text-muted-foreground" title={lastUpdatedTitle}>
+      {metaParts.join(" · ")}
+    </p>
+  );
+
+  const rowContent = isFeature ? (
+    <article className="flex flex-col gap-3">
+      {event.imageUrl && (
+        <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
           <img
             src={event.imageUrl}
             alt={event.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            className="h-full w-full object-cover"
             loading="lazy"
           />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-linear-to-br from-muted to-background">
-            <span className="rounded-full border border-border/80 bg-background/85 px-3 py-1 text-xs font-medium text-muted-foreground">
-              {primaryTopic}
-            </span>
-          </div>
-        )}
-      </div>
-      <CardContent
-        className={cn(
-          "space-y-4 px-5 pb-6 pt-0 sm:px-6",
-          isFeature && "px-5 pb-7 pt-1 sm:px-8",
-        )}
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <p
-              className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground -mt-1"
-              title={lastUpdatedTitle}
-            >
-              {t("event.updated").replace("{time}", lastUpdatedLabel)}
-            </p>
-            {interactive && (
-              <div className="flex items-center gap-2 -mt-1">
-                <ShareEventButton
-                  eventId={event._id}
-                  interactionContext={interactionContext}
-                  slug={event.slug}
-                  title={event.title}
-                  summary={summaryPreview}
-                  size="sm"
-                  className="rounded-full border border-border/80 bg-background/80"
-                />
-                <BookmarkButton
-                  eventId={event._id}
-                  interactionContext={interactionContext}
-                  size="sm"
-                  redirectTo={`/event/${event.slug}`}
-                  className="rounded-full border border-border/80 bg-background/80"
-                />
-              </div>
-            )}
-          </div>
-          <CardTitle
-            className={cn(
-              "leading-tight tracking-tight text-card-foreground",
-              isFeature ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl",
-            )}
-          >
-            {highlightTitle(event.title, searchQuery)}
-          </CardTitle>
         </div>
-
-        <p
-          className={cn(
-            "line-clamp-3 text-sm text-muted-foreground",
-            isFeature && "sm:text-base",
-          )}
+      )}
+      {kicker}
+      <h3 className="break-words text-2xl font-semibold leading-tight tracking-tight text-foreground transition-colors group-hover:text-primary">
+        {highlightTitle(event.title, searchQuery)}
+      </h3>
+      <p className="line-clamp-2 break-words text-sm text-muted-foreground">
+        {summaryPreview}
+      </p>
+      {biasBar}
+      {meta}
+    </article>
+  ) : (
+    <article
+      data-slot="event-card-list-row"
+      className="flex flex-col gap-3 sm:flex-row sm:gap-4"
+    >
+      {event.imageUrl && (
+        <div
+          data-slot="event-card-list-thumbnail"
+          className="aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-border bg-muted sm:order-last sm:aspect-auto sm:h-36 sm:w-48"
         >
-          {summaryPreview}
-        </p>
-
-        <div className="border-t border-border/70 pt-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              {event.sources && event.sources.length > 0 && (
-                <div className="flex -space-x-3">
-                  {event.sources.slice(0, maxSources).map((source) => (
-                    <div
-                      key={source._id}
-                      className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-background shadow-sm"
-                      title={source.name}
-                    >
-                      {source.logoUrl ? (
-                        <img
-                          src={source.logoUrl}
-                          alt={source.name}
-                          className="h-full w-full object-contain p-1.5"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-xs font-medium text-foreground">
-                          {source.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-card-foreground">
-                  {t("event.sources").replace("{count}", String(totalSources))}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {event.articleCount !== undefined
-                    ? event.articleCount === 1
-                      ? t("event.articles.one")
-                      : t("event.articles.many").replace(
-                          "{count}",
-                          String(event.articleCount),
-                        )
-                    : t("event.follow")}
-                </p>
-              </div>
-            </div>
-
-            {showBiasDistribution && (
-              <div className="space-y-1.5">
-                <div
-                  className="flex h-1.5 overflow-hidden rounded-full bg-bias-track"
-                  aria-label={t("event.biasDistribution")
-                    .replace("{left}", String(biasDistribution.left))
-                    .replace("{center}", String(biasDistribution.center))
-                    .replace("{right}", String(biasDistribution.right))}
-                  role="img"
-                >
-                  {(["left", "center", "right"] as BiasBucket[]).map(
-                    (bucket) => {
-                      const count = biasDistribution[bucket];
-                      if (count === 0) return null;
-                      return (
-                        <div
-                          key={bucket}
-                          className={biasBucketClass(bucket)}
-                          style={{
-                            width: `${(count / distributionTotal) * 100}%`,
-                          }}
-                        />
-                      );
-                    },
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>
-                    {t("event.bias.left").replace(
-                      "{count}",
-                      String(biasDistribution.left),
-                    )}
-                  </span>
-                  <span>
-                    {t("event.bias.center").replace(
-                      "{count}",
-                      String(biasDistribution.center),
-                    )}
-                  </span>
-                  <span>
-                    {t("event.bias.right").replace(
-                      "{count}",
-                      String(biasDistribution.right),
-                    )}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
+          <img
+            src={event.imageUrl}
+            alt=""
+            aria-hidden="true"
+            width={128}
+            height={96}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
         </div>
-      </CardContent>
-    </Card>
+      )}
+      <div
+        data-slot="event-card-list-copy"
+        className="min-w-0 flex-1 space-y-2"
+      >
+        {kicker}
+        <h3 className="line-clamp-3 break-words text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
+          {highlightTitle(event.title, searchQuery)}
+        </h3>
+        {biasBar}
+        {meta}
+      </div>
+    </article>
   );
 
+  // The bookmark toggle must be a SIBLING of the row link, never nested
+  // inside it — <a><button/></a> is invalid, keyboard-hostile markup.
+  const bookmarkAction = showBookmark ? (
+    <div className="shrink-0 self-start">
+      <BookmarkButton
+        eventId={event._id}
+        interactionContext={interactionContext}
+        size="sm"
+        redirectTo={`/event/${event.slug}`}
+      />
+    </div>
+  ) : null;
+
   if (!interactive) {
-    return <div className="group block">{cardContent}</div>;
+    return <div className="group block">{rowContent}</div>;
   }
 
   return (
-    <Link
-      to="/event/$slug"
-      params={{ slug: event.slug }}
-      search={returnToFeed ? { returnToFeed: "1" } : undefined}
-      className="group block"
-    >
-      {cardContent}
-    </Link>
+    <div className="flex gap-3">
+      <Link
+        to="/event/$slug"
+        params={{ slug: event.slug }}
+        search={returnToFeed ? { returnToFeed: "1" } : undefined}
+        className="group block min-w-0 flex-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      >
+        {rowContent}
+      </Link>
+      {bookmarkAction}
+    </div>
   );
 };
 

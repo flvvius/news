@@ -1,6 +1,53 @@
 import { internalMutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { TOPIC_CATALOG } from "./topicCatalog";
+import { ROMANIAN_SOURCE_REPUTATION } from "./sourceReputation";
+import { namedAxisBias } from "./lib/biasAxis";
+
+/**
+ * Seed/refresh the Romanian source-reputation rows (BIV-401).
+ * Idempotent upsert by domain — safe to re-run after editing
+ * sourceReputation.ts. Run: npx convex run seeds:seedRomanianSources
+ */
+export const seedRomanianSources = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let created = 0;
+    let updated = 0;
+
+    for (const entry of ROMANIAN_SOURCE_REPUTATION) {
+      const values = {
+        name: entry.name,
+        bias: namedAxisBias(entry.biasScore),
+        baseBias: entry.biasScore,
+        reliabilityScore: entry.reliabilityScore,
+        provenance: entry.provenance,
+      };
+
+      const existing = await ctx.db
+        .query("sources")
+        .withIndex("by_domain", (q) => q.eq("domain", entry.domain))
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, values);
+        updated++;
+      } else {
+        await ctx.db.insert("sources", {
+          domain: entry.domain,
+          logoUrl: `https://icons.duckduckgo.com/ip3/${entry.domain}.ico`,
+          ...values,
+        });
+        created++;
+      }
+    }
+
+    console.log(
+      `✅ Romanian source reputation seeded: ${created} created, ${updated} updated`,
+    );
+    return { created, updated };
+  },
+});
 
 /**
  * Seed the database with dummy data for UI development.
@@ -33,10 +80,12 @@ export const seedDB = internalMutation({
       topicIdsBySlug.set(topic.slug, topicId);
     }
 
-    const topicEconomy = topicIdsBySlug.get("economy");
-    const topicTech = topicIdsBySlug.get("tech");
+    const topicEconomy = topicIdsBySlug.get("economie");
+    const topicTech = topicIdsBySlug.get("tehnologie");
     if (!topicEconomy || !topicTech) {
-      throw new Error("Seed topic catalog is missing required economy/tech topics");
+      throw new Error(
+        "Seed topic catalog is missing required economie/tehnologie topics",
+      );
     }
 
     console.log(`✅ Created ${TOPIC_CATALOG.length} topics`);
@@ -49,7 +98,7 @@ export const seedDB = internalMutation({
       name: "CNN",
       baseBias: -4,
       reliabilityScore: 7,
-      logoUrl: "https://logo.clearbit.com/cnn.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/cnn.com.ico",
       mbfcCategory: "left",
       mbfcFactual: "mostly-factual",
       mbfcCredibility: "medium",
@@ -61,7 +110,7 @@ export const seedDB = internalMutation({
       name: "Fox News",
       baseBias: 4,
       reliabilityScore: 5,
-      logoUrl: "https://logo.clearbit.com/foxnews.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/foxnews.com.ico",
       mbfcCategory: "right",
       mbfcFactual: "mixed",
       mbfcCredibility: "medium",
@@ -73,7 +122,7 @@ export const seedDB = internalMutation({
       name: "Reuters",
       baseBias: 0,
       reliabilityScore: 9,
-      logoUrl: "https://logo.clearbit.com/reuters.com",
+      logoUrl: "https://icons.duckduckgo.com/ip3/reuters.com.ico",
       mbfcCategory: "center",
       mbfcFactual: "very-high",
       mbfcCredibility: "high",
@@ -93,10 +142,10 @@ export const seedDB = internalMutation({
       imageUrl:
         "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
-        center:
+        neutral:
           "The Federal Reserve raised interest rates by 0.25% to combat persistent inflation, bringing the federal funds rate to 5.5%. This marks the highest level in over two decades.",
-        left: "Critics argue the rate hike disproportionately affects working-class Americans and small businesses, while large corporations can absorb the costs. Housing affordability continues to decline.",
-        right:
+        reformist: "Critics argue the rate hike disproportionately affects working-class Americans and small businesses, while large corporations can absorb the costs. Housing affordability continues to decline.",
+        suveranist:
           "The Fed's decisive action demonstrates fiscal responsibility. Controlling inflation is essential for long-term economic stability, and markets have responded positively to the measured approach.",
       },
       globalImpact:
@@ -112,10 +161,10 @@ export const seedDB = internalMutation({
       imageUrl:
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
       perspectiveSummaries: {
-        center:
+        neutral:
           "A bipartisan bill introduced in Congress aims to establish the first comprehensive regulatory framework for AI systems, requiring transparency in training data and mandatory safety audits for high-risk applications.",
-        left: "The bill doesn't go far enough in protecting workers from AI displacement. Stronger provisions are needed for algorithmic bias prevention and union consultation rights.",
-        right:
+        reformist: "The bill doesn't go far enough in protecting workers from AI displacement. Stronger provisions are needed for algorithmic bias prevention and union consultation rights.",
+        suveranist:
           "While some oversight is reasonable, excessive regulation could stifle American innovation and hand competitive advantage to China. The free market should primarily guide AI development.",
       },
       globalImpact:

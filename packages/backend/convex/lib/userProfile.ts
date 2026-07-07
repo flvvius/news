@@ -1,6 +1,14 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { normalizeEmail } from "./betaAccess";
 
+/** The slice of a Better Auth user doc the profile helpers consume. */
+export type AuthUserForProfile = {
+  _id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+};
+
 export async function getUserProfileByAuthUserId(
   ctx: QueryCtx | MutationCtx,
   authUserId: string,
@@ -13,12 +21,7 @@ export async function getUserProfileByAuthUserId(
 
 export async function ensureUserProfileForAuthUser(
   ctx: MutationCtx,
-  authUser: {
-    _id: string;
-    email: string;
-    name?: string | null;
-    image?: string | null;
-  },
+  authUser: AuthUserForProfile,
 ) {
   const existingUser = await getUserProfileByAuthUserId(ctx, authUser._id);
   if (existingUser) return existingUser;

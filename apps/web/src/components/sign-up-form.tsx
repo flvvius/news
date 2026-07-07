@@ -10,7 +10,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Loader2, UserPlus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
 function getVerificationCallbackURL(redirectTo: AuthRedirectPath) {
@@ -128,12 +128,11 @@ export default function SignUpForm({
   });
 
   return (
-    <Card className="border-border shadow-lg">
-      <CardHeader className="text-center pb-2">
-        <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary mx-auto mb-4">
-          <UserPlus className="size-6" />
-        </div>
-        <CardTitle className="text-2xl font-bold">{resolvedTitle}</CardTitle>
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-2xl font-semibold tracking-tight">
+          {resolvedTitle}
+        </CardTitle>
         <p className="text-muted-foreground text-sm mt-1">
           {resolvedSubtitle}
         </p>

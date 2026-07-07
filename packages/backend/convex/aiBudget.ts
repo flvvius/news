@@ -26,8 +26,10 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 // (JSON string of Record<string, { input: number; output: number }>).
 // ---------------------------------------------------------------------------
 
-/** Default model pricing as of 2025. Add new models as needed. */
+/** Default model pricing as of 2026. Add new models as needed. */
 const DEFAULT_MODEL_RATES: Record<string, { input: number; output: number }> = {
+  "gemini-3.1-flash-lite": { input: 0.0000001, output: 0.0000004 },
+  "gemini-3.5-flash": { input: 0.0000003, output: 0.0000025 },
   "gpt-5-nano": { input: 0.00000005, output: 0.0000004 },
   "gpt-5-mini": { input: 0.00000025, output: 0.000002 },
   "gpt-4o-mini": { input: 0.00000015, output: 0.0000006 },

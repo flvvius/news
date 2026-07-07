@@ -38,10 +38,17 @@ export function GoogleSignInButton({
       onClick={async () => {
         try {
           onBeforeSignIn?.();
-          await authClient.signIn.social({
+          // BIV-808: signIn.social resolves with { error } instead of
+          // throwing, so a failed request must be surfaced explicitly or the
+          // button silently does nothing.
+          const { error } = await authClient.signIn.social({
             provider: "google",
             callbackURL,
           });
+          if (error) {
+            console.error(error);
+            toast.error(t("auth.googleError"));
+          }
         } catch (error) {
           console.error(error);
           toast.error(t("auth.googleError"));
