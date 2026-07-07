@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 
 export const Route = createFileRoute("/cum-functioneaza")({
   head: () => ({
     meta: [
-      { title: "Cum funcționează — Biviant" },
+      { title: `Cum funcționează — ${BRAND_NAME}` },
       {
         name: "description",
-        content:
-          "Cum colectează Biviant știrile, cum grupează articolele pe evenimente și cum atribuie scoruri de orientare și fiabilitate surselor.",
+        content: `Cum colectează ${BRAND_NAME} știrile, cum grupează articolele pe evenimente și cum atribuie scoruri de orientare și fiabilitate surselor.`,
       },
     ],
   }),
@@ -23,7 +23,7 @@ export function CumFunctioneazaPage() {
     >
       <StaticSection heading="1. Colectăm articolele">
         <p>
-          Biviant citește la intervale regulate fluxurile RSS publice ale
+          {BRAND_NAME} citește la intervale regulate fluxurile RSS publice ale
           publicațiilor românești monitorizate. Reținem titlul, un scurt
           fragment, data publicării și linkul canonic — lectura integrală se
           întâmplă întotdeauna pe site-ul publicației.

@@ -1,5 +1,7 @@
 "use node";
 
+import { BRAND_NAME } from "./brand";
+
 import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
@@ -365,7 +367,7 @@ function buildPrompt(input: QuizGenerationInput, targetQuestions: number) {
 
   return {
     system: [
-      "You create Biviant's Daily News Quiz from structured, source-attributed news facts.",
+      `You create ${BRAND_NAME}'s Daily News Quiz from structured, source-attributed news facts.`,
       "Every question must be grounded in the provided claims or atomic facts. Do not invent facts, sources, events, or URLs.",
       "Write concise, neutral, media-literacy questions in both English and Romanian.",
       "Use a calm, nonpartisan tone. Avoid blue/red political language.",

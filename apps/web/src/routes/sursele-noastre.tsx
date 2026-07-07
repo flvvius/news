@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 
 export const Route = createFileRoute("/sursele-noastre")({
   head: () => ({
     meta: [
-      { title: "Sursele noastre — Biviant" },
+      { title: `Sursele noastre — ${BRAND_NAME}` },
       {
         name: "description",
-        content:
-          "Cum alege Biviant publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.",
+        content: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
       },
     ],
   }),
@@ -19,7 +19,7 @@ export function SurseleNoastrePage() {
   return (
     <StaticPage
       title="Sursele noastre"
-      intro="Biviant monitorizează publicații românești de știri din întreg spectrul reformist–suveranist. Iată cum le alegem și cum le evaluăm."
+      intro={`${BRAND_NAME} monitorizează publicații românești de știri din întreg spectrul reformist–suveranist. Iată cum le alegem și cum le evaluăm.`}
     >
       <StaticSection heading="Criterii de includere">
         <ul className="list-disc space-y-2 pl-5">

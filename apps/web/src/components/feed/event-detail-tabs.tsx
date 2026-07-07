@@ -55,7 +55,7 @@ export function EventDetailTabs({
   // hairline + pt-6 while titles stay readable and content-first.
   const sectionBreak = "mt-8 border-t border-border pt-6";
   const bodyText =
-    "max-w-[65ch] break-words text-[15px] leading-relaxed text-foreground sm:text-base";
+    "break-words text-[15px] leading-relaxed text-foreground sm:text-base";
   // Perspective tabs: bias-token underline instead of pill chrome.
   const underlineTrigger =
     "flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0 pb-2 pt-1 text-sm font-medium text-muted-foreground shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent dark:data-[state=active]:border-b-2";

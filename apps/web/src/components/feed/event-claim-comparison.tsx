@@ -175,7 +175,7 @@ function ClaimVariantRow({
             )}
           </div>
 
-          <p className="text-sm leading-relaxed text-card-foreground max-w-[65ch]">
+          <p className="text-sm leading-relaxed text-card-foreground">
             {variant.statement}
           </p>
 
@@ -240,7 +240,7 @@ function ClaimCard({
           </span>
         </div>
 
-        <h4 className="text-base font-semibold leading-snug tracking-tight text-card-foreground max-w-[65ch]">
+        <h4 className="text-base font-semibold leading-snug tracking-tight text-card-foreground">
           {claim.canonicalStatement}
         </h4>
       </div>
@@ -450,9 +450,7 @@ export default function EventClaimComparison({
           <CardTitle className="text-xl tracking-tight">
             {t("claim.title")}
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            {t("claim.subtitle")}
-          </p>
+          <p className="text-sm text-muted-foreground">{t("claim.subtitle")}</p>
         </div>
       </CardHeader>
 

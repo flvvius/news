@@ -12,6 +12,7 @@ import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
 import type * as authMaintenance from "../authMaintenance.js";
 import type * as bias from "../bias.js";
+import type * as brand from "../brand.js";
 import type * as briefing from "../briefing.js";
 import type * as claimDivergence from "../claimDivergence.js";
 import type * as claimDivergenceNode from "../claimDivergenceNode.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authMaintenance: typeof authMaintenance;
   bias: typeof bias;
+  brand: typeof brand;
   briefing: typeof briefing;
   claimDivergence: typeof claimDivergence;
   claimDivergenceNode: typeof claimDivergenceNode;

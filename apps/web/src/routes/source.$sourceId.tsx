@@ -35,7 +35,10 @@ export const Route = createFileRoute("/source/$sourceId")({
         return await httpClient.query(api.sources.getSourceProfile, args);
       }
 
-      return await context.convexClient.query(api.sources.getSourceProfile, args);
+      return await context.convexClient.query(
+        api.sources.getSourceProfile,
+        args,
+      );
     } catch (error) {
       console.error(
         `[Route loader] Failed to load source profile (${params.sourceId}):`,
@@ -136,7 +139,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     key: "bias_thresholds",
   });
   const thresholdsValue = thresholdsConfig?.value;
-  const thresholds = isNumberArray(thresholdsValue) ? thresholdsValue : undefined;
+  const thresholds = isNumberArray(thresholdsValue)
+    ? thresholdsValue
+    : undefined;
 
   if (data === undefined) {
     return (
@@ -156,7 +161,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     return (
       <div className="container mx-auto max-w-5xl px-4 py-8">
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
+          <h1 className="mb-2 text-2xl font-semibold">
+            {t("source.notFound")}
+          </h1>
           <p className="mb-4 text-muted-foreground">
             {t("source.notFoundBody")}
           </p>
@@ -248,7 +255,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">{t("source.events")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("source.events")}
+                  </p>
                   <p className="text-2xl font-semibold text-card-foreground">
                     {stats.eventCount}
                   </p>
@@ -310,7 +319,10 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                                   locale,
                                 )}
                               >
-                                {formatRelativeTimestamp(article.publishedAt, locale)}
+                                {formatRelativeTimestamp(
+                                  article.publishedAt,
+                                  locale,
+                                )}
                               </span>
                             </div>
                             <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-card-foreground">
@@ -322,18 +334,15 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                               </p>
                             )}
                             <div className="flex flex-wrap gap-2 pt-1">
-                              {article.event ? (
+                              {article.event && (
                                 <Link
                                   to="/event/$slug"
                                   params={{ slug: article.event.slug }}
-                                  className="inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted"
+                                  className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-muted"
                                 >
-                                  {article.event.title}
+                                  {t("source.relatedEvent")}
+                                  <ExternalLinkIcon className="size-3" />
                                 </Link>
-                              ) : (
-                                <span className="inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-                                  {t("source.notClustered")}
-                                </span>
                               )}
                               <a
                                 href={article.canonicalUrl}
@@ -366,9 +375,7 @@ function InvalidSourceId() {
     <div className="container mx-auto max-w-5xl px-4 py-8">
       <div className="text-center">
         <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
-        <p className="mb-4 text-muted-foreground">
-          {t("source.invalidBody")}
-        </p>
+        <p className="mb-4 text-muted-foreground">{t("source.invalidBody")}</p>
         <Button asChild>
           <Link to="/feed">{t("source.backToFeed")}</Link>
         </Button>

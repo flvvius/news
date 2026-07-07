@@ -1,3 +1,4 @@
+import { BRAND_NAME } from "./brand";
 import {
   createClient,
   type GenericCtx,
@@ -115,7 +116,7 @@ const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 const isProduction = isProductionDeployment();
 const emailFromAddress =
-  process.env.EMAIL_FROM_ADDRESS?.trim() || "Biviant <hello@biviant.com>";
+  process.env.EMAIL_FROM_ADDRESS?.trim() || `${BRAND_NAME} <hello@biviant.com>`;
 const emailReplyTo =
   process.env.EMAIL_REPLY_TO?.trim() || "hello@biviant.com";
 
@@ -269,7 +270,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset your Biviant password</title>
+  <title>Reset your ${BRAND_NAME} password</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -282,7 +283,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   <div style="display:none; max-height:0; overflow:hidden;">
-    Reset your Biviant password and get back to the full story.
+    Reset your ${BRAND_NAME} password and get back to the full story.
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
@@ -291,7 +292,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; border:1px solid #e5e7eb; max-width:600px;">
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Reset Your Password</span>
             </td>
@@ -299,7 +300,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">We received a request to reset your Biviant password.</p>
+              <p style="margin:0 0 16px 0;">We received a request to reset your ${BRAND_NAME} password.</p>
               <p style="margin:0 0 24px 0;">Use the button below to choose a new password and get back into your account.</p>
             </td>
           </tr>
@@ -355,9 +356,9 @@ function getResetPasswordEmailHTML(resetUrl: string) {
 }
 
 function getResetPasswordEmailText(resetUrl: string) {
-  return `Reset your Biviant password
+  return `Reset your ${BRAND_NAME} password
 
-We received a request to reset your Biviant password.
+We received a request to reset your ${BRAND_NAME} password.
 
 Choose a new password here:
 ${resetUrl}
@@ -375,7 +376,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify your Biviant email</title>
+  <title>Verify your ${BRAND_NAME} email</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -388,7 +389,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   <div style="display:none; max-height:0; overflow:hidden;">
-    Verify your Biviant email to activate your account and unlock synced features.
+    Verify your ${BRAND_NAME} email to activate your account and unlock synced features.
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
@@ -397,7 +398,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; border:1px solid #e5e7eb; max-width:600px;">
           <tr>
             <td align="center" style="padding:40px 40px 20px 40px;">
-              <span style="font-size:28px; font-weight:bold; color:#2563eb;">Biviant</span>
+              <span style="font-size:28px; font-weight:bold; color:#2563eb;">${BRAND_NAME}</span>
               <br><br>
               <span style="font-size:22px; font-weight:bold; color:#111827;">Verify Your Email</span>
             </td>
@@ -405,7 +406,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 
           <tr>
             <td style="padding:0 40px 20px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">Thanks for creating your Biviant account.</p>
+              <p style="margin:0 0 16px 0;">Thanks for creating your ${BRAND_NAME} account.</p>
               <p style="margin:0 0 24px 0;">Confirm your email address to activate your account and unlock bookmarks, personalized ranking, and future notifications.</p>
             </td>
           </tr>
@@ -430,7 +431,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
 
           <tr>
             <td style="padding:0 40px 32px 40px; font-size:16px; line-height:1.6; color:#374151;">
-              <p style="margin:0 0 16px 0;">If you didn’t create a Biviant account, you can safely ignore this email.</p>
+              <p style="margin:0 0 16px 0;">If you didn’t create a ${BRAND_NAME} account, you can safely ignore this email.</p>
               <p style="margin:0;">If the button doesn’t work, paste this link into your browser:</p>
               <p style="margin:12px 0 0 0; word-break:break-all;">
                 <a href="${verificationUrl}" target="_blank" style="color:#2563eb; text-decoration:underline;">${verificationUrl}</a>
@@ -461,16 +462,16 @@ function getVerificationEmailHTML(verificationUrl: string) {
 }
 
 function getVerificationEmailText(verificationUrl: string) {
-  return `Verify your Biviant email
+  return `Verify your ${BRAND_NAME} email
 
-Thanks for creating your Biviant account.
+Thanks for creating your ${BRAND_NAME} account.
 
 Confirm your email address here:
 ${verificationUrl}
 
 Once verified, you can sign in and unlock bookmarks, personalized ranking, and future notifications.
 
-If you didn't create a Biviant account, you can ignore this email.
+If you didn't create a ${BRAND_NAME} account, you can ignore this email.
 
 See every side of the story.
 ${siteUrl}`;
@@ -687,7 +688,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         const normalizedUrl = normalizeAuthActionUrl(url);
         await sendAuthEmail({
           to: user.email,
-          subject: "Reset your Biviant password",
+          subject: `Reset your ${BRAND_NAME} password`,
           actionUrl: normalizedUrl,
           html: getResetPasswordEmailHTML(normalizedUrl),
           text: getResetPasswordEmailText(normalizedUrl),
@@ -702,7 +703,7 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         const normalizedUrl = normalizeAuthActionUrl(url);
         await sendAuthEmail({
           to: user.email,
-          subject: "Verify your Biviant email",
+          subject: `Verify your ${BRAND_NAME} email`,
           actionUrl: normalizedUrl,
           html: getVerificationEmailHTML(normalizedUrl),
           text: getVerificationEmailText(normalizedUrl),

@@ -1,3 +1,5 @@
+import { BRAND_NAME } from "./brand";
+
 export type EventSummaryArticleInput = {
   title: string;
   sourceName: string;
@@ -183,7 +185,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
 
   return {
     system: [
-      "Ești motorul de sinteză a evenimentelor al platformei Biviant, un agregator de știri românesc.",
+      `Ești motorul de sinteză a evenimentelor al platformei ${BRAND_NAME}, un agregator de știri românesc.`,
       "Citești articole de presă grupate pe același eveniment și scrii un rezumat strict factual, cu perspective multiple.",
       "",
       "LIMBA (regulă absolută):",
@@ -283,7 +285,7 @@ export function buildArticleFactExtractionPrompt(
 
   return {
     system: [
-      "You are Biviant's atomic fact extraction engine.",
+      `You are ${BRAND_NAME}'s atomic fact extraction engine.`,
       "You extract short, standalone factual claims from individual news articles.",
       "",
       "LANGUAGE (absolute rule):",
@@ -343,7 +345,7 @@ export function buildArticleBiasScoringPrompt(
 
   return {
     system: [
-      "Ești motorul de scorare a biasului la nivel de articol al platformei Biviant, un agregator de știri românesc.",
+      `Ești motorul de scorare a biasului la nivel de articol al platformei ${BRAND_NAME}, un agregator de știri românesc.`,
       "Evaluează fiecare articol pe axa reformist↔suveranist plus trei sub-dimensiuni. Returnează doar JSON conform schemei.",
       "",
       "LIMBA (regulă absolută):",
@@ -418,7 +420,7 @@ export function buildClaimAnalysisPrompt(input: ClaimAnalysisPromptInput): {
 
   return {
     system: [
-      "You are Biviant's claim divergence engine.",
+      `You are ${BRAND_NAME}'s claim divergence engine.`,
       "",
       "Given atomic facts extracted from multiple articles covering the same news event, group facts that refer to the same underlying claim and classify how sources relate.",
       "",

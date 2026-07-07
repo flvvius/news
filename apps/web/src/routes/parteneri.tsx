@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 
 export const Route = createFileRoute("/parteneri")({
   head: () => ({
     meta: [
-      { title: "Parteneri — Biviant" },
+      { title: `Parteneri — ${BRAND_NAME}` },
       {
         name: "description",
-        content:
-          "Colaborări Biviant: publicații, organizații de educație media și cercetători interesați de pluralismul surselor de știri.",
+        content: `Colaborări ${BRAND_NAME}: publicații, organizații de educație media și cercetători interesați de pluralismul surselor de știri.`,
       },
     ],
   }),
@@ -19,11 +19,11 @@ export function ParteneriPage() {
   return (
     <StaticPage
       title="Parteneri"
-      intro="Biviant este la început de drum: nu avem încă parteneriate anunțate public, dar suntem deschiși la colaborări care servesc aceluiași scop — un consum de știri mai echilibrat."
+      intro={`${BRAND_NAME} este la început de drum: nu avem încă parteneriate anunțate public, dar suntem deschiși la colaborări care servesc aceluiași scop — un consum de știri mai echilibrat.`}
     >
       <StaticSection heading="Publicații">
         <p>
-          Biviant trimite cititori către articolele originale: afișăm titlul,
+          {BRAND_NAME} trimite cititori către articolele originale: afișăm titlul,
           un scurt fragment și sursa, iar lectura integrală se întâmplă pe
           site-ul publicației. Folosim fluxurile RSS publice și respectăm
           regulile de acces ale fiecărui site.
@@ -41,7 +41,7 @@ export function ParteneriPage() {
 
       <StaticSection heading="Educație media și cercetare">
         <p>
-          Modul în care Biviant clasifică orientarea și fiabilitatea surselor
+          Modul în care {BRAND_NAME} clasifică orientarea și fiabilitatea surselor
           este explicat public în paginile platformei, iar datele agregate despre acoperirea
           evenimentelor pot fi utile organizațiilor de educație media,
           jurnaliștilor și cercetătorilor care studiază peisajul media

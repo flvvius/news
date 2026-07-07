@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 
 export const Route = createFileRoute("/termeni")({
   head: () => ({
     meta: [
-      { title: "Termeni și condiții — Biviant" },
+      { title: `Termeni și condiții — ${BRAND_NAME}` },
       {
         name: "description",
-        content:
-          "Condițiile de utilizare a platformei Biviant: ce oferă serviciul, ce reguli se aplică și care sunt limitele răspunderii.",
+        content: `Condițiile de utilizare a platformei ${BRAND_NAME}: ce oferă serviciul, ce reguli se aplică și care sunt limitele răspunderii.`,
       },
     ],
   }),
@@ -19,11 +19,11 @@ export function TermeniPage() {
   return (
     <StaticPage
       title="Termeni și condiții"
-      intro="Folosind Biviant accepți condițiile de mai jos. Le-am scris cât mai simplu cu putință."
+      intro={`Folosind ${BRAND_NAME} accepți condițiile de mai jos. Le-am scris cât mai simplu cu putință.`}
     >
       <StaticSection heading="Ce este serviciul">
         <p>
-          Biviant este un agregator de știri: colectează articole din
+          {BRAND_NAME} este un agregator de știri: colectează articole din
           fluxurile publice ale publicațiilor românești, le grupează pe
           evenimente, afișează informații despre orientarea și fiabilitatea
           surselor și generează automat rezumate. Serviciul este oferit „ca
@@ -34,10 +34,10 @@ export function TermeniPage() {
 
       <StaticSection heading="Conținutul publicațiilor">
         <p>
-          Articolele aparțin publicațiilor care le-au scris. Biviant afișează
-          titluri, fragmente scurte și metadate, cu link direct către
-          articolul original — nu republică texte integrale. Dacă reprezinți
-          o publicație și ai obiecții privind modul de afișare, scrie-ne prin
+          Articolele aparțin publicațiilor care le-au scris. {BRAND_NAME}{" "}
+          afișează titluri, fragmente scurte și metadate, cu link direct către
+          articolul original — nu republică texte integrale. Dacă reprezinți o
+          publicație și ai obiecții privind modul de afișare, scrie-ne prin
           pagina de{" "}
           <Link to="/contact" className="underline hover:text-foreground">
             Contact
@@ -83,23 +83,23 @@ export function TermeniPage() {
             accesului;
           </li>
           <li>
-            nu prezenta conținutul Biviant în moduri care induc în eroare cu
-            privire la sursa lui.
+            nu prezenta conținutul {BRAND_NAME} în moduri care induc în eroare
+            cu privire la sursa lui.
           </li>
         </ul>
       </StaticSection>
 
       <StaticSection heading="Răspundere">
         <p>
-          În limitele permise de lege, nu răspundem pentru decizii luate pe
-          baza conținutului agregat sau al rezumatelor generate automat, nici
-          pentru conținutul site-urilor către care trimitem prin linkuri.
-          Nimic din acești termeni nu limitează drepturile pe care legea ți
-          le garantează în calitate de consumator.
+          În limitele permise de lege, nu răspundem pentru decizii luate pe baza
+          conținutului agregat sau al rezumatelor generate automat, nici pentru
+          conținutul site-urilor către care trimitem prin linkuri. Nimic din
+          acești termeni nu limitează drepturile pe care legea ți le garantează
+          în calitate de consumator.
         </p>
       </StaticSection>
 
-      <StaticSection heading="Legea aplicabilă și modificări">
+      {/* <StaticSection heading="Legea aplicabilă și modificări">
         <p>
           Acești termeni sunt guvernați de legea română. Serviciul este
           operat de {"{{TODO: entitate juridică}}"}. Putem actualiza termenii;
@@ -107,7 +107,7 @@ export function TermeniPage() {
           versiunea curentă este în vigoare de la{" "}
           {"{{TODO: data intrării în vigoare}}"}.
         </p>
-      </StaticSection>
+      </StaticSection> */}
     </StaticPage>
   );
 }

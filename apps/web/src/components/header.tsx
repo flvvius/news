@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import {
@@ -56,10 +57,10 @@ export default function Header() {
             className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
-              B
+              {BRAND_NAME.charAt(0)}
             </div>
             <span className="text-lg font-semibold tracking-tight">
-              Biviant
+              {BRAND_NAME}
             </span>
           </Link>
 
@@ -115,9 +116,9 @@ export default function Header() {
                 <div className="border-b border-border p-6">
                   <SheetTitle className="flex items-center gap-2">
                     <div className="flex size-8 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
-                      B
+                      {BRAND_NAME.charAt(0)}
                     </div>
-                    <span className="font-semibold">Biviant</span>
+                    <span className="font-semibold">{BRAND_NAME}</span>
                   </SheetTitle>
                 </div>
                 <nav

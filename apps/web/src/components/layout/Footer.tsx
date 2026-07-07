@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { BRAND_NAME } from "@/lib/i18n/strings";
 import { useT } from "@/lib/i18n/LocaleContext";
 
 const footerSections = [
@@ -60,7 +61,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 border-t border-border pt-4 text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Biviant
+          © {new Date().getFullYear()} {BRAND_NAME}
         </div>
       </div>
     </footer>

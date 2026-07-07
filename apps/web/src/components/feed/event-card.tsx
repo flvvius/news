@@ -108,9 +108,12 @@ function biasBucketClass(bucket: BiasBucket) {
 
 /**
  * Editorial feed row (BIV-807, mirrors the native DESIGN_LOG): kicker →
- * title → 4px bias distribution bar → meta line, with an optional right
- * thumbnail. The lead ("feature") row gets a full-width 3:2 image and a
- * bigger headline — a front-page move, not a "featured card". No card
+ * title → 4px bias distribution bar → meta line, with an optional
+ * thumbnail. On mobile the default row stacks a full-width 16:9 image
+ * above the copy (more compact than the lead's 3:2); at sm+ it becomes a
+ * side-by-side row with the thumbnail on the right. The lead ("feature")
+ * row gets a full-width 3:2 image and a bigger headline — a front-page
+ * move, not a "featured card". No card
  * chrome, no shadows, no per-row share/bookmark actions (the feed is for
  * reading; the saved page opts into the bookmark toggle).
  */
@@ -157,8 +160,7 @@ const EventCard = ({
   const showBiasDistribution =
     totalSources > 0 &&
     distributionTotal > 0 &&
-    (event.sourceBiasCounts !== undefined ||
-      (event.sources?.length ?? 0) > 0);
+    (event.sourceBiasCounts !== undefined || (event.sources?.length ?? 0) > 0);
 
   const metaParts = [
     t("event.sources").replace("{count}", String(totalSources)),
@@ -224,26 +226,21 @@ const EventCard = ({
       <h3 className="break-words text-2xl font-semibold leading-tight tracking-tight text-foreground transition-colors group-hover:text-primary">
         {highlightTitle(event.title, searchQuery)}
       </h3>
-      <p className="line-clamp-2 max-w-[65ch] break-words text-sm text-muted-foreground">
+      <p className="line-clamp-2 break-words text-sm text-muted-foreground">
         {summaryPreview}
       </p>
       {biasBar}
       {meta}
     </article>
   ) : (
-    <article data-slot="event-card-list-row" className="flex gap-4">
-      <div data-slot="event-card-list-copy" className="min-w-0 flex-1 space-y-2">
-        {kicker}
-        <h3 className="line-clamp-3 break-words text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
-          {highlightTitle(event.title, searchQuery)}
-        </h3>
-        {biasBar}
-        {meta}
-      </div>
+    <article
+      data-slot="event-card-list-row"
+      className="flex flex-col gap-3 sm:flex-row sm:gap-4"
+    >
       {event.imageUrl && (
         <div
           data-slot="event-card-list-thumbnail"
-          className="h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-border bg-muted"
+          className="aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-border bg-muted sm:order-last sm:aspect-auto sm:h-36 sm:w-48"
         >
           <img
             src={event.imageUrl}
@@ -256,6 +253,17 @@ const EventCard = ({
           />
         </div>
       )}
+      <div
+        data-slot="event-card-list-copy"
+        className="min-w-0 flex-1 space-y-2"
+      >
+        {kicker}
+        <h3 className="line-clamp-3 break-words text-lg font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
+          {highlightTitle(event.title, searchQuery)}
+        </h3>
+        {biasBar}
+        {meta}
+      </div>
     </article>
   );
 

@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { getString } from "@/lib/i18n/strings";
+import { BRAND_NAME, getString } from "@/lib/i18n/strings";
 import {
   AlertCircle,
   CheckCircle,
@@ -156,9 +156,9 @@ function PageShell({ children }: { children: React.ReactNode }) {
           {/* Logo */}
           <div className="flex items-center gap-2 mb-8">
             <div className="flex items-center justify-center size-9 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-              B
+              {BRAND_NAME.charAt(0)}
             </div>
-            <span className="text-xl font-bold">Biviant</span>
+            <span className="text-xl font-bold">{BRAND_NAME}</span>
           </div>
           {children}
         </CardContent>

@@ -63,10 +63,7 @@ export default function SourceProfileScreen() {
 
   return (
     <Screen>
-      <QueryBoundary
-        title={t("source.notFound")}
-        body={t("native.error.body")}
-      >
+      <QueryBoundary title={t("source.notFound")} body={t("native.error.body")}>
         <SourceProfileContent />
       </QueryBoundary>
     </Screen>
@@ -191,7 +188,9 @@ function CredibilityRow({
   isFirst?: boolean;
 }) {
   return (
-    <View className={cn("gap-0.5 py-3", !isFirst && "border-t border-border/60")}>
+    <View
+      className={cn("gap-0.5 py-3", !isFirst && "border-t border-border/60")}
+    >
       <Text className="text-xs text-muted-foreground">{label}</Text>
       <Text className="text-[16px] font-medium text-foreground">{value}</Text>
       {detail ? (
@@ -215,14 +214,20 @@ function ArticleRow({
   const isOutlier = article.biasOutlierFlag || article.sourceBiasOutlierFlag;
 
   return (
-    <View className={cn("gap-2.5 py-4", !isLast && "border-b border-border/60")}>
+    <View
+      className={cn("gap-2.5 py-4", !isLast && "border-b border-border/60")}
+    >
       <View className="flex-row flex-wrap items-center gap-2">
         <Text className="text-xs text-muted-foreground">
           {formatRelativeTimestamp(article.publishedAt, locale)}
         </Text>
         {typeof article.aiBiasScore === "number" ? (
           <Text className="text-xs text-muted-foreground">
-            · {t("source.aiBias").replace("{count}", article.aiBiasScore.toFixed(1))}
+            ·{" "}
+            {t("source.aiBias").replace(
+              "{count}",
+              article.aiBiasScore.toFixed(1),
+            )}
           </Text>
         ) : null}
         {isOutlier ? (
@@ -264,7 +269,7 @@ function ArticleRow({
         {article.event ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={article.event.title}
+            accessibilityLabel={t("source.relatedEvent")}
             onPress={() => router.push(`/event/${article.event!.slug}`)}
             hitSlop={6}
             className="min-h-9 max-w-full flex-row items-center gap-1 active:opacity-70"
@@ -274,7 +279,7 @@ function ArticleRow({
               numberOfLines={1}
               className="shrink text-sm font-medium text-primary"
             >
-              {article.event.title}
+              {t("source.relatedEvent")}
             </Text>
           </Pressable>
         ) : (
@@ -344,7 +349,11 @@ function SourceProfileView({ data }: { data: SourceProfile }) {
 
       {/* Metadata reads as a plain meta line — chips would shout. */}
       <View className="flex-row flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <BiasIndicator bias={source.baseBias} size="md" thresholds={thresholds} />
+        <BiasIndicator
+          bias={source.baseBias}
+          size="md"
+          thresholds={thresholds}
+        />
         <Text className="text-xs font-medium text-muted-foreground">
           {formatBiasLabel(source.biasLabel)}
           {" · "}

@@ -1,9 +1,11 @@
+import { BRAND_NAME } from "./brand";
+
 export type Locale = "ro" | "en";
 
 const ro = {
-  "seo.siteTitle": "Biviant — fiecare poveste de știri, analizată fapt cu fapt",
+  "seo.siteTitle": `${BRAND_NAME} — fiecare poveste de știri, analizată fapt cu fapt`,
   "seo.siteDescription":
-    "Biviant nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.",
+    `${BRAND_NAME} nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.`,
   "router.notFound": "Pagina nu a fost găsită",
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
@@ -56,7 +58,7 @@ const ro = {
   "auth.verifyResend": "Retrimite e-mailul de verificare",
   "auth.continueGoogle": "Continuă cu Google",
   "auth.continueApple": "Continuă cu Apple",
-  "auth.account": "Cont Biviant",
+  "auth.account": `Cont ${BRAND_NAME}`,
   "auth.welcomeBack": "Bine ai revenit",
   "auth.createFreeAccount": "Creează un cont gratuit",
   "auth.accountIntro":
@@ -125,7 +127,7 @@ const ro = {
   "saved.summary.empty": "Articolele și evenimentele salvate vor apărea aici.",
   "saved.summary.one": "Ai 1 articol salvat pentru mai târziu.",
   "saved.summary.many": "Ai {count} articole salvate pentru mai târziu.",
-  "saved.metaTitle": "Salvate — Biviant",
+  "saved.metaTitle": `Salvate — ${BRAND_NAME}`,
   "activity.empty.title": "Urmărește-ți obiceiurile de citire",
   "activity.empty.body":
     "Vezi balanța de bias, streakurile de citire și statisticile tale într-un singur loc.",
@@ -166,16 +168,18 @@ const ro = {
   "activity.savedMany": "{count} articole salvate",
   "activity.biasSnapshot.balanced":
     "Săptămâna aceasta ai avut un mix echilibrat",
-  "activity.biasSnapshot.left": "Săptămâna aceasta ai înclinat spre polul reformist",
+  "activity.biasSnapshot.left":
+    "Săptămâna aceasta ai înclinat spre polul reformist",
   "activity.biasSnapshot.leftStrong":
     "Săptămâna aceasta ai înclinat puternic spre polul reformist",
-  "activity.biasSnapshot.right": "Săptămâna aceasta ai înclinat spre polul suveranist",
+  "activity.biasSnapshot.right":
+    "Săptămâna aceasta ai înclinat spre polul suveranist",
   "activity.biasSnapshot.rightStrong":
     "Săptămâna aceasta ai înclinat puternic spre polul suveranist",
   "activity.biasReads": "{count} lecturi",
-  "activity.metaTitle": "Activitate — Biviant",
-  "profile.metaTitle": "Profil — Biviant",
-  "auth.metaTitle": "Cont — Biviant",
+  "activity.metaTitle": `Activitate — ${BRAND_NAME}`,
+  "profile.metaTitle": `Profil — ${BRAND_NAME}`,
+  "auth.metaTitle": `Cont — ${BRAND_NAME}`,
   "activity.userFallback": "Utilizator",
   "activity.adminTitle": "Diagnostic pentru inferența topicurilor",
   "activity.adminBody":
@@ -234,7 +238,7 @@ const ro = {
   "profile.hero":
     "Înțelege știrile din mai multe perspective, fără zgomot inutil.",
   "profile.heroBody":
-    "Biviant te ajută să urmărești biasul, comparațiile între surse și divergențele factuale, iar contul gratuit îți păstrează salvările și preferințele sincronizate.",
+    `${BRAND_NAME} te ajută să urmărești biasul, comparațiile între surse și divergențele factuale, iar contul gratuit îți păstrează salvările și preferințele sincronizate.`,
   "profile.learnMore": "Află mai multe",
   "profile.learnMoreBody":
     "Explorează cum funcționează produsul și de unde provin perspectivele din feed.",
@@ -273,7 +277,7 @@ const ro = {
   "footer.terms": "Termeni",
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
-  "feed.meta.title": "Feed — Biviant",
+  "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
   "feed.topic.search": "Caută topicuri...",
@@ -306,9 +310,10 @@ const ro = {
     "Presa e împărțită în privința semnificației acordului — compară cum prezintă sursele reformiste, neutre și suveraniste același rezultat.",
   "onboarding.promise.continue": "Continuă",
   "onboarding.promise.privacyNotice":
-    "Continuând, accepți că folosim analize anonime pentru a îmbunătăți Biviant. Poți renunța oricând în Setări.",
+    `Continuând, accepți că folosim analize anonime pentru a îmbunătăți ${BRAND_NAME}. Poți renunța oricând în Setări.`,
   "onboarding.promise.privacyLink": "Politica de confidențialitate",
-  "onboarding.promise.privacyLinkA11y": "Deschide politica de confidențialitate",
+  "onboarding.promise.privacyLinkA11y":
+    "Deschide politica de confidențialitate",
   // Onboarding — Screen B (topic picker)
   "onboarding.topics.title": "Urmărește ce contează pentru tine",
   "onboarding.topics.subtitle":
@@ -358,9 +363,9 @@ const ro = {
   "event.bias.left": "{count} reformiste",
   "event.bias.center": "{count} neutre",
   "event.bias.right": "{count} suveraniste",
-  "event.metaTitle": "Eveniment — Biviant",
+  "event.metaTitle": `Eveniment — ${BRAND_NAME}`,
   "event.metaDescription":
-    "Citește această poveste din mai multe perspective pe Biviant.",
+    `Citește această poveste din mai multe perspective pe ${BRAND_NAME}.`,
   "event.loading": "Se încarcă...",
   "event.notFound": "Evenimentul nu a fost găsit",
   "event.notFoundBody": "Evenimentul pe care îl cauți nu există.",
@@ -425,7 +430,7 @@ const ro = {
   "coverage.title": "Acoperirea surselor",
   "coverage.factual": "Factualitate",
   "coverage.credibility": "Credibilitate",
-  "quiz.metaTitle": "Quizul zilnic — Biviant",
+  "quiz.metaTitle": `Quizul zilnic — ${BRAND_NAME}`,
   "quiz.metaDescription":
     "Testează-ți atenția la știri cu 5 întrebări zilnice bazate pe afirmații și surse reale.",
   "quiz.kicker": "Quiz zilnic",
@@ -454,8 +459,8 @@ const ro = {
   "quiz.result.public":
     "Scorul tău este afișat aici. Conectează-te ca să îl salvezi și să conteze la streak.",
   "quiz.share.action": "Distribuie",
-  "quiz.share.title": "Quizul zilnic Biviant",
-  "quiz.share.text": "Am făcut {score}/{max} la quizul zilnic Biviant",
+  "quiz.share.title": `Quizul zilnic ${BRAND_NAME}`,
+  "quiz.share.text": `Am făcut {score}/{max} la quizul zilnic ${BRAND_NAME}`,
   "quiz.share.copied": "Rezultatul a fost copiat",
   "quiz.share.error": "Nu am putut distribui rezultatul.",
   "quiz.backToFeed": "Înapoi la feed",
@@ -520,7 +525,7 @@ const ro = {
   "calendar.today": "Azi",
   "calendar.less": "Mai puțin",
   "calendar.more": "Mai mult",
-  "reset.metaTitle": "Resetează parola — Biviant",
+  "reset.metaTitle": `Resetează parola — ${BRAND_NAME}`,
   "reset.passwordMin": "Parola trebuie să aibă cel puțin 8 caractere",
   "reset.passwordMismatch": "Parolele nu se potrivesc",
   "reset.invalidToken":
@@ -533,7 +538,7 @@ const ro = {
   "reset.error":
     "Nu am putut reseta parola. Cere un link nou și încearcă din nou.",
   "reset.title": "Resetează parola",
-  "reset.body": "Alege o parolă nouă pentru contul tău Biviant.",
+  "reset.body": `Alege o parolă nouă pentru contul tău ${BRAND_NAME}.`,
   "reset.missingToken":
     "Acest link de resetare nu conține un token. Cere unul nou din formularul de conectare.",
   "reset.backToSignIn": "Înapoi la conectare",
@@ -545,7 +550,7 @@ const ro = {
   "reset.confirmPasswordPlaceholder": "Repetă noua parolă",
   "reset.updating": "Actualizăm parola...",
   "reset.submit": "Resetează parola",
-  "unsubscribe.meta.title": "Dezabonare — Biviant",
+  "unsubscribe.meta.title": `Dezabonare — ${BRAND_NAME}`,
   "unsubscribe.invalidTitle": "Link invalid",
   "unsubscribe.invalidBody":
     "Acest link de dezabonare nu conține adresa de e-mail. Folosește linkul primit în e-mail.",
@@ -557,7 +562,7 @@ const ro = {
   "unsubscribe.retry": "Încearcă din nou",
   "unsubscribe.successTitle": "Te-ai dezabonat",
   "unsubscribe.successBody":
-    "{email} a fost eliminat din toate e-mailurile Biviant. Nu te vom mai contacta.",
+    `{email} a fost eliminat din toate e-mailurile ${BRAND_NAME}. Nu te vom mai contacta.`,
   "unsubscribe.changedMind": "Te-ai răzgândit?",
   "unsubscribe.rejoin": "Înscrie-te din nou pe lista de așteptare",
   "articles.originalReporting": "Relatări originale",
@@ -566,11 +571,11 @@ const ro = {
   "articles.readOriginal": "Citește originalul",
   "articles.readOriginalAria":
     "Citește articolul original (se deschide într-o filă nouă)",
-  "source.metaTitle": "Profil sursă — Biviant",
+  "source.metaTitle": `Profil sursă — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
-    "Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe Biviant.",
+    `Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe ${BRAND_NAME}.`,
   "source.metaDescription":
-    "Analizează biasul, fiabilitatea, credibilitatea și articolele recente ale unei surse pe Biviant.",
+    `Analizează biasul, fiabilitatea, credibilitatea și articolele recente ale unei surse pe ${BRAND_NAME}.`,
   "source.notRated": "Neevaluat",
   "source.loading": "Se încarcă profilul sursei...",
   "source.notFound": "Sursa nu a fost găsită",
@@ -592,6 +597,7 @@ const ro = {
   "source.rollingArticles": "{count} articole",
   "source.mean": "Media {value}",
   "source.stddev": "Deviația standard {value}",
+  "source.relatedEvent": "Eveniment asociat",
   "read.duration.seconds": "{count}s",
   "read.duration.minutes": "{count} min",
   "scroll.depth": "{count}% derulat",
@@ -664,7 +670,7 @@ const ro = {
   "native.profile.deleteFallbackContact": "Contactează-ne",
   "native.profile.deleteFallbackClose": "Închide",
   "native.profile.signingOut": "Te deconectăm…",
-  "native.about.section": "Despre Biviant",
+  "native.about.section": `Despre ${BRAND_NAME}`,
   "native.about.openLabel": "Deschide {title}",
   "native.about.browserErrorTitle": "Nu am putut deschide pagina",
   "native.about.browserErrorBody":
@@ -678,7 +684,7 @@ const ro = {
   "native.privacy.section": "Confidențialitate",
   "native.privacy.analyticsLabel": "Analiză de utilizare",
   "native.privacy.analyticsDescription":
-    "Partajează date de utilizare anonime ca să ne ajuți să îmbunătățim Biviant. Poți dezactiva oricând.",
+    `Partajează date de utilizare anonime ca să ne ajuți să îmbunătățim ${BRAND_NAME}. Poți dezactiva oricând.`,
   "native.privacy.analyticsOn": "Activată",
   "native.privacy.analyticsOff": "Dezactivată",
   "native.privacy.analyticsOptionLabel": "Analiză {label}",
@@ -690,7 +696,8 @@ const ro = {
     "Aceasta elimină definitiv istoricul tău de lectură și subiectele urmărite de pe acest dispozitiv și resetează identitatea de analiză. Nu poate fi anulată.",
   "native.privacy.clearDataConfirmAction": "Șterge datele",
   "native.privacy.clearDataConfirmCancel": "Anulează",
-  "native.privacy.clearDataDone": "Datele tale au fost șterse de pe acest dispozitiv.",
+  "native.privacy.clearDataDone":
+    "Datele tale au fost șterse de pe acest dispozitiv.",
   "native.privacy.clearDataError":
     "Nu am putut șterge datele de pe acest dispozitiv. Încearcă din nou.",
   "native.auth.close": "Închide",
@@ -720,9 +727,9 @@ type BaseStrings = typeof ro;
 const en: { [K in keyof BaseStrings]: string } = {
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
-  "seo.siteTitle": "Biviant — every news story broken down fact by fact",
+  "seo.siteTitle": `${BRAND_NAME} — every news story broken down fact by fact`,
   "seo.siteDescription":
-    "Biviant doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.",
+    `${BRAND_NAME} doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.`,
   "router.notFound": "Page not found",
   "tabs.saved": "Saved",
   "tabs.activity": "Activity",
@@ -771,7 +778,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "auth.verifyResend": "Resend verification email",
   "auth.continueGoogle": "Continue with Google",
   "auth.continueApple": "Continue with Apple",
-  "auth.account": "Biviant account",
+  "auth.account": `${BRAND_NAME} account`,
   "auth.welcomeBack": "Welcome back",
   "auth.createFreeAccount": "Create a free account",
   "auth.accountIntro":
@@ -840,7 +847,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "saved.summary.empty": "Saved articles and events will appear here.",
   "saved.summary.one": "You have 1 saved article for later.",
   "saved.summary.many": "You have {count} saved articles for later.",
-  "saved.metaTitle": "Saved — Biviant",
+  "saved.metaTitle": `Saved — ${BRAND_NAME}`,
   "activity.empty.title": "Track your reading habits",
   "activity.empty.body":
     "See your bias balance, reading streaks, and stats in one place.",
@@ -883,11 +890,12 @@ const en: { [K in keyof BaseStrings]: string } = {
   "activity.biasSnapshot.left": "Leaning reformist this week",
   "activity.biasSnapshot.leftStrong": "Strongly reformist-leaning this week",
   "activity.biasSnapshot.right": "Leaning sovereigntist this week",
-  "activity.biasSnapshot.rightStrong": "Strongly sovereigntist-leaning this week",
+  "activity.biasSnapshot.rightStrong":
+    "Strongly sovereigntist-leaning this week",
   "activity.biasReads": "{count} reads",
-  "activity.metaTitle": "Activity — Biviant",
-  "profile.metaTitle": "Profile — Biviant",
-  "auth.metaTitle": "Account — Biviant",
+  "activity.metaTitle": `Activity — ${BRAND_NAME}`,
+  "profile.metaTitle": `Profile — ${BRAND_NAME}`,
+  "auth.metaTitle": `Account — ${BRAND_NAME}`,
   "activity.userFallback": "User",
   "activity.adminTitle": "Topic inference diagnostics",
   "activity.adminBody": "Review recent event topic assignments",
@@ -945,7 +953,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.hero":
     "Understand the news from multiple perspectives, without the noise.",
   "profile.heroBody":
-    "Biviant helps you follow bias, compare sources, and spot factual divergence, while a free account keeps your saved items and preferences in sync.",
+    `${BRAND_NAME} helps you follow bias, compare sources, and spot factual divergence, while a free account keeps your saved items and preferences in sync.`,
   "profile.learnMore": "Learn more",
   "profile.learnMoreBody":
     "Explore how the product works and where the perspectives in the feed come from.",
@@ -984,7 +992,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.terms": "Terms",
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
-  "feed.meta.title": "Feed — Biviant",
+  "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
   "feed.topic.search": "Search topics...",
@@ -1017,7 +1025,7 @@ const en: { [K in keyof BaseStrings]: string } = {
     "Coverage splits on what the agreement means — compare how the left, center, and right frame the same outcome.",
   "onboarding.promise.continue": "Continue",
   "onboarding.promise.privacyNotice":
-    "By continuing you accept that we use anonymous analytics to improve Biviant. You can opt out anytime in Settings.",
+    `By continuing you accept that we use anonymous analytics to improve ${BRAND_NAME}. You can opt out anytime in Settings.`,
   "onboarding.promise.privacyLink": "Privacy Policy",
   "onboarding.promise.privacyLinkA11y": "Open the privacy policy",
   // Onboarding — Screen B (topic picker)
@@ -1068,9 +1076,9 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.bias.left": "{count} reformist",
   "event.bias.center": "{count} neutral",
   "event.bias.right": "{count} sovereigntist",
-  "event.metaTitle": "Event — Biviant",
+  "event.metaTitle": `Event — ${BRAND_NAME}`,
   "event.metaDescription":
-    "Read this story from multiple perspectives on Biviant.",
+    `Read this story from multiple perspectives on ${BRAND_NAME}.`,
   "event.loading": "Loading...",
   "event.notFound": "Event not found",
   "event.notFoundBody": "The event you're looking for doesn't exist.",
@@ -1136,7 +1144,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "coverage.title": "Source coverage",
   "coverage.factual": "Factual",
   "coverage.credibility": "Credibility",
-  "quiz.metaTitle": "Daily News Quiz — Biviant",
+  "quiz.metaTitle": `Daily News Quiz — ${BRAND_NAME}`,
   "quiz.metaDescription":
     "Test your news literacy with a daily quiz based on real claims, sources, and coverage gaps.",
   "quiz.kicker": "Daily quiz",
@@ -1165,8 +1173,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "quiz.result.public":
     "Your score is shown here. Sign in to save it and count it toward your streak.",
   "quiz.share.action": "Share",
-  "quiz.share.title": "Biviant Daily News Quiz",
-  "quiz.share.text": "I scored {score}/{max} on today’s Biviant news quiz",
+  "quiz.share.title": `${BRAND_NAME} Daily News Quiz`,
+  "quiz.share.text": `I scored {score}/{max} on today’s ${BRAND_NAME} news quiz`,
   "quiz.share.copied": "Result copied",
   "quiz.share.error": "Could not share this result.",
   "quiz.backToFeed": "Back to feed",
@@ -1229,7 +1237,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "calendar.today": "Today",
   "calendar.less": "Less",
   "calendar.more": "More",
-  "reset.metaTitle": "Reset password — Biviant",
+  "reset.metaTitle": `Reset password — ${BRAND_NAME}`,
   "reset.passwordMin": "Password must be at least 8 characters",
   "reset.passwordMismatch": "Passwords do not match",
   "reset.invalidToken":
@@ -1242,7 +1250,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "reset.error":
     "We couldn't reset your password. Request a new link and try again.",
   "reset.title": "Reset your password",
-  "reset.body": "Choose a new password for your Biviant account.",
+  "reset.body": `Choose a new password for your ${BRAND_NAME} account.`,
   "reset.missingToken":
     "This password reset link is missing a token. Request a new one from the sign-in form.",
   "reset.backToSignIn": "Back to sign in",
@@ -1254,7 +1262,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "reset.confirmPasswordPlaceholder": "Repeat your new password",
   "reset.updating": "Updating password...",
   "reset.submit": "Reset password",
-  "unsubscribe.meta.title": "Unsubscribe — Biviant",
+  "unsubscribe.meta.title": `Unsubscribe — ${BRAND_NAME}`,
   "unsubscribe.invalidTitle": "Invalid link",
   "unsubscribe.invalidBody":
     "This unsubscribe link is missing the email address. Please use the link from your email.",
@@ -1266,7 +1274,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "unsubscribe.retry": "Try again",
   "unsubscribe.successTitle": "You're unsubscribed",
   "unsubscribe.successBody":
-    "{email} has been removed from all Biviant emails. You won't hear from us again.",
+    `{email} has been removed from all ${BRAND_NAME} emails. You won't hear from us again.`,
   "unsubscribe.changedMind": "Changed your mind?",
   "unsubscribe.rejoin": "Re-join the waitlist",
   "articles.originalReporting": "Original reporting",
@@ -1274,11 +1282,11 @@ const en: { [K in keyof BaseStrings]: string } = {
   "articles.viewSource": "View {name} source profile",
   "articles.readOriginal": "Read original",
   "articles.readOriginalAria": "Read original article (opens in a new tab)",
-  "source.metaTitle": "Source profile — Biviant",
+  "source.metaTitle": `Source profile — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
-    "Review {name}'s bias, reliability, credibility, and recent coverage on Biviant.",
+    `Review {name}'s bias, reliability, credibility, and recent coverage on ${BRAND_NAME}.`,
   "source.metaDescription":
-    "Review source bias, reliability, credibility, and recent articles on Biviant.",
+    `Review source bias, reliability, credibility, and recent articles on ${BRAND_NAME}.`,
   "source.notRated": "Not rated",
   "source.loading": "Loading source profile...",
   "source.notFound": "Source not found",
@@ -1306,6 +1314,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "source.aiBias": "AI bias {count}",
   "source.outlier": "Outlier",
   "source.notClustered": "Not clustered",
+  "source.relatedEvent": "Related event",
 
   // Native app (apps/native) — keys without a web equivalent
   "native.error.title": "Something went wrong",
@@ -1372,7 +1381,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.profile.deleteFallbackContact": "Contact us",
   "native.profile.deleteFallbackClose": "Close",
   "native.profile.signingOut": "Signing out…",
-  "native.about.section": "About Biviant",
+  "native.about.section": `About ${BRAND_NAME}`,
   "native.about.openLabel": "Open {title}",
   "native.about.browserErrorTitle": "Couldn't open page",
   "native.about.browserErrorBody":
@@ -1386,7 +1395,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "native.privacy.section": "Privacy",
   "native.privacy.analyticsLabel": "Usage analytics",
   "native.privacy.analyticsDescription":
-    "Share anonymous usage data to help us improve Biviant. You can turn this off anytime.",
+    `Share anonymous usage data to help us improve ${BRAND_NAME}. You can turn this off anytime.`,
   "native.privacy.analyticsOn": "On",
   "native.privacy.analyticsOff": "Off",
   "native.privacy.analyticsOptionLabel": "Analytics {label}",

@@ -8,6 +8,7 @@ import { cleanup, render } from "@testing-library/react";
 import { beforeEach } from "vitest";
 import type { ComponentType, ReactElement } from "react";
 
+import { BRAND_NAME } from "@/lib/i18n/strings";
 import { DesprePage } from "./despre";
 import { ContactPage } from "./contact";
 import { ParteneriPage } from "./parteneri";
@@ -66,7 +67,7 @@ describe("footer pages (BIV-803)", () => {
       expect(text.length).toBeGreaterThan(500);
       expect(text.toLowerCase()).not.toContain("lorem");
       expect(text).not.toContain("Pagina este în lucru");
-      expect(text).toContain("Biviant");
+      expect(text).toContain(BRAND_NAME);
     },
   );
 

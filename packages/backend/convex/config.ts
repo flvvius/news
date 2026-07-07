@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { BRAND_NAME } from "./brand";
 import {
   query,
   mutation,
@@ -624,7 +625,7 @@ export const seedDefaults = internalMutation({
       // Email settings
       {
         key: "email_from_address",
-        value: "Biviant <hello@biviant.com>",
+        value: `${BRAND_NAME} <hello@biviant.com>`,
         description:
           'Sender address for transactional emails (RFC 5322 "From" header).',
       },
@@ -635,7 +636,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "email_physical_address",
-        value: "Biviant, Bucharest, Romania",
+        value: `${BRAND_NAME}, Bucharest, Romania`,
         description:
           "CAN-SPAM required physical address shown in email footers.",
       },

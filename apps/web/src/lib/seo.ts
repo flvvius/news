@@ -1,4 +1,4 @@
-import { getString, type Locale } from "@/lib/i18n/strings";
+import { BRAND_NAME, getString, type Locale } from "@/lib/i18n/strings";
 
 /**
  * SEO constants used across all routes.
@@ -7,7 +7,7 @@ import { getString, type Locale } from "@/lib/i18n/strings";
  * Place an OG image at `public/og-image.png` (1200×630px recommended).
  */
 export const SITE = {
-  name: "Biviant",
+  name: BRAND_NAME,
   url: "https://biviant.com",
   title: getString("en", "seo.siteTitle"),
   description: getString("en", "seo.siteDescription"),
