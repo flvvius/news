@@ -127,11 +127,6 @@ function parseDailyLimitUsd(limitConfig: { value: string } | null): number {
   return DEFAULT_DAILY_BUDGET_USD;
 }
 
-function startOfUtcDay(timestamp: number): number {
-  const date = new Date(timestamp);
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-}
-
 function formatUtcDate(timestamp: number): string {
   return new Date(timestamp).toISOString().split("T")[0]!;
 }

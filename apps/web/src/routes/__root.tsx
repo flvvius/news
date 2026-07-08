@@ -128,6 +128,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   },
 
   component: RootDocument,
+  // TanStack Router (v1.132) types the root route's `beforeLoad` return as
+  // `never`, so returning the resolved auth/locale context — which descendants
+  // read via `useRouteContext` — trips TS2322 despite being the correct runtime
+  // contract. Suppress this known-incorrect type error only; if a future router
+  // version fixes the inference, @ts-expect-error will flag itself for removal.
+  // @ts-expect-error -- root beforeLoad return-context typing limitation
   beforeLoad: async (ctx): Promise<RootContextState> => {
     // During intent preloading we avoid extra round-trips and keep existing
     // auth/locale context. During real client invalidations/navigation we

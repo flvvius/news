@@ -8,6 +8,9 @@ const POSTHOG_KEY = (import.meta as any).env.VITE_PUBLIC_POSTHOG_KEY as
 const POSTHOG_HOST = (import.meta as any).env.VITE_PUBLIC_POSTHOG_HOST as
 	| string
 	| undefined;
+const POSTHOG_UI_HOST = (import.meta as any).env.VITE_PUBLIC_POSTHOG_UI_HOST as
+	| string
+	| undefined;
 
 let initialized = false;
 
@@ -15,11 +18,6 @@ function ensureInitialized() {
 	if (initialized || typeof window === "undefined" || !POSTHOG_KEY) {
 		return;
 	}
-	posthog.init(POSTHOG_KEY, {
-const POSTHOG_UI_HOST = (import.meta as any).env.VITE_PUBLIC_POSTHOG_UI_HOST as
-	| string
-	| undefined;
-
 	posthog.init(POSTHOG_KEY, {
 		api_host: POSTHOG_HOST ?? "https://eu.i.posthog.com",
 		// Proxied ingestion goes through our reverse proxy domain, but the

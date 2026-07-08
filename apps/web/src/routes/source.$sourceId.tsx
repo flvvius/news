@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
 import {
   ArrowLeftIcon,
   ExternalLinkIcon,
@@ -134,7 +135,12 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     sourceId,
     limit: 60,
   });
-  const data = queryData ?? loaderData;
+  // loaderData is untyped through the router context, which would make `data`
+  // (and `articles` below) `any`; pin it to the query's return type.
+  const data = (queryData ?? loaderData) as
+    | FunctionReturnType<typeof api.sources.getSourceProfile>
+    | null
+    | undefined;
   const thresholdsConfig = useQuery(api.config.get, {
     key: "bias_thresholds",
   });
