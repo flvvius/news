@@ -16,11 +16,16 @@ function ensureInitialized() {
 		return;
 	}
 	posthog.init(POSTHOG_KEY, {
-		api_host: POSTHOG_HOST ?? "https://us.i.posthog.com",
+const POSTHOG_UI_HOST = (import.meta as any).env.VITE_PUBLIC_POSTHOG_UI_HOST as
+	| string
+	| undefined;
+
+	posthog.init(POSTHOG_KEY, {
+		api_host: POSTHOG_HOST ?? "https://eu.i.posthog.com",
 		// Proxied ingestion goes through our reverse proxy domain, but the
 		// toolbar/session-recording links should still point at the real
 		// PostHog app (EU region), not the proxy.
-		ui_host: "https://eu.posthog.com",
+		ui_host: POSTHOG_UI_HOST ?? "https://eu.posthog.com",
 		// We capture pageviews manually below so client-side (SPA) route
 		// changes are tracked, not just the initial document load.
 		capture_pageview: false,
