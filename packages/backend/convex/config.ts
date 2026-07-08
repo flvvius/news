@@ -695,9 +695,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_batch_size",
-        value: 3,
+        value: 8,
         description:
-          "Maximum number of queued event summary jobs processed per summarization run.",
+          "Maximum number of queued event summary jobs processed per summarization run. Summaries gate publishing, so this is sized to keep pace with clustering rather than trickle.",
       },
       {
         key: "event_summary_max_attempts",
@@ -928,15 +928,15 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "cluster_publish_min_articles",
-        value: 2,
+        value: 3,
         description:
-          "Minimum number of clustered articles required before a new event is published to the feed.",
+          "Legacy clustering publish threshold. Publishing is now gated on a successful AI summary (see event_summary_min_articles), so this no longer flips status directly; kept aligned at 3 to document the effective bar.",
       },
       {
         key: "cluster_publish_min_sources",
         value: 2,
         description:
-          "Minimum number of distinct sources required before a new event is published to the feed.",
+          "Legacy clustering publish threshold. Publishing is now gated on a successful AI summary (see event_summary_min_sources); kept aligned at 2 to document the effective bar.",
       },
       {
         key: "topic_inference_min_score",

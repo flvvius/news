@@ -3394,21 +3394,10 @@ export const attachArticleToEvent = internalMutation({
     eventEmbedding: v.array(v.number()),
     version: v.number(),
     topicSlugs: v.array(v.string()),
-    publishMinArticles: v.number(),
-    publishMinSources: v.number(),
   },
   handler: async (
     ctx,
-    {
-      articleId,
-      eventId,
-      publishedAt,
-      eventEmbedding,
-      version,
-      topicSlugs,
-      publishMinArticles,
-      publishMinSources,
-    },
+    { articleId, eventId, publishedAt, eventEmbedding, version, topicSlugs },
   ) => {
     const article = await ctx.db.get(articleId);
     const event = await ctx.db.get(eventId);
@@ -3469,12 +3458,14 @@ export const attachArticleToEvent = internalMutation({
       event.lastArticleAt ?? event.firstPublishedAt,
       publishedAt,
     );
-    const nextStatus = shouldPublishCluster(nextArticleCount, nextSourceCount, {
-      minArticles: publishMinArticles,
-      minSources: publishMinSources,
-    })
-      ? "published"
-      : event.status;
+    // Publishing is gated on a successful AI summary, not on article/source
+    // counts: applyEventSummaryResult flips status -> "published" once an event
+    // has neutral/reformist/suveranist perspectives + globalImpact. Clustering
+    // therefore preserves the event's current status here (a merge that keeps an
+    // already-published event is the only path that carries "published"
+    // forward). A newly-qualified event stays "processing" until the immediate
+    // post-batch summarization trigger produces its summary.
+    const nextStatus = event.status;
     if (
       nextFirstPublishedAt !== event.firstPublishedAt ||
       nextLastUpdatedAt !== (event.lastUpdatedAt ?? event.firstPublishedAt) ||
@@ -5784,6 +5775,16 @@ export const mergeNearDuplicateEvents = internalAction({
       });
       await flushJobMetrics(ctx, metrics, startedAt);
 
+      // Merges/reclusters can push an event over the summary/publish bar, so
+      // trigger summarization immediately rather than waiting for the cron.
+      if (mergedPairs > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.summarizationNode.summarizeQueuedEvents,
+          {},
+        );
+      }
+
       return { mergedPairs, examinedPairs, skipped };
     } finally {
       try {
@@ -6194,6 +6195,16 @@ export const reclusterRecentSingletonEvents = internalAction({
         lastRunMetricsJson: JSON.stringify(metrics),
       });
       await flushJobMetrics(ctx, metrics, startedAt);
+
+      // Merges/reclusters can push an event over the summary/publish bar, so
+      // trigger summarization immediately rather than waiting for the cron.
+      if (mergedPairs > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.summarizationNode.summarizeQueuedEvents,
+          {},
+        );
+      }
 
       return { mergedPairs, examinedPairs, skipped };
     } finally {
@@ -6622,8 +6633,6 @@ export const clusterEnrichedArticles = internalAction({
             eventEmbedding: paddedEmbedding,
             version: 1,
             topicSlugs,
-            publishMinArticles: publishSettings.minArticles,
-            publishMinSources: publishSettings.minSources,
           },
         );
 
@@ -6856,6 +6865,17 @@ export const clusterEnrichedArticles = internalAction({
         await ctx.scheduler.runAfter(
           RECLUSTER_RECENT_SINGLETONS_DELAY_MS,
           internal.clustering.reclusterRecentSingletonEvents,
+          {},
+        );
+      }
+      // Events publish only after a summary, so kick summarization immediately
+      // after a clustering batch instead of waiting up to 45 min for the cron —
+      // any event that just crossed the summary/publish bar gets its perspective
+      // summaries + globalImpact (and goes public) as soon as possible.
+      if (clusteredIntoExisting + createdEvents > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.summarizationNode.summarizeQueuedEvents,
           {},
         );
       }
