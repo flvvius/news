@@ -22,6 +22,7 @@ import {
   type AuthUserForProfile,
 } from "./lib/userProfile";
 import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
+import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
 const MAX_BIAS_DETECTION_ATTEMPTS = 3;
@@ -1041,6 +1042,94 @@ export const deleteInvalidEventEmbeddingsFor512dVectorIndex = mutation({
       continueCursor: page.continueCursor,
       scheduledContinuation,
       remainingPages,
+    };
+  },
+});
+
+/**
+ * One-time cleanup for the publish-on-summary switchover: revert `published`
+ * events that can never earn an AI summary (fewer than the summary min articles
+ * or sources) and don't already have one, back to `processing`. Under the new
+ * invariant an event is public only if it has a full AI summary; these legacy
+ * rows (published under the old 2-article bar) would otherwise stay public
+ * without one. Qualifying published-but-summary-less events (>= the thresholds)
+ * are LEFT ALONE here — the summary backfill fills those in place.
+ *
+ * Idempotent. Run dry first:
+ *   npx convex run --prod migrations:revertUnsummarizablePublishedEvents '{"dryRun":true}'
+ *   npx convex run --prod migrations:revertUnsummarizablePublishedEvents '{"dryRun":false}'
+ */
+export const revertUnsummarizablePublishedEvents = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    minArticles: v.optional(v.number()),
+    minSources: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const minArticles = args.minArticles ?? 3;
+    const minSources = args.minSources ?? 2;
+    const scanLimit = Math.min(Math.max(args.limit ?? 2000, 1), 5000);
+
+    const published = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .order("desc")
+      .take(scanLimit);
+
+    let scanned = 0;
+    let reverted = 0;
+    const samples: Array<{
+      eventId: string;
+      title: string;
+      articleCount: number;
+      sourceCount: number;
+    }> = [];
+
+    for (const event of published) {
+      scanned++;
+      const perspectives = normalizedPerspectives(event.perspectiveSummaries);
+      const hasFullAiSummary = Boolean(
+        perspectives?.neutral?.trim() &&
+          perspectives?.reformist?.trim() &&
+          perspectives?.suveranist?.trim() &&
+          event.globalImpact?.trim() &&
+          event.lastSummarizedAt,
+      );
+      const articleCount = event.articleCount ?? 1;
+      const sourceCount = event.sourceCount ?? 1;
+      const canQualify =
+        articleCount >= minArticles && sourceCount >= minSources;
+
+      // Leave alone: anything that already has a summary, or that still
+      // qualifies for one (the backfill will summarize those in place).
+      if (hasFullAiSummary || canQualify) continue;
+
+      if (samples.length < 20) {
+        samples.push({
+          eventId: String(event._id),
+          title: event.title,
+          articleCount,
+          sourceCount,
+        });
+      }
+      reverted++;
+
+      if (!dryRun) {
+        await ctx.db.patch(event._id, { status: "processing" });
+        // Now that status !== "published", this deletes the public preview.
+        await syncPublicEventPreview(ctx, event._id);
+      }
+    }
+
+    return {
+      dryRun,
+      minArticles,
+      minSources,
+      scannedPublished: scanned,
+      reverted,
+      samples,
     };
   },
 });

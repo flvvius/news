@@ -50,6 +50,13 @@ export interface FeedEntry {
   reliabilityScore: number;
   /** Provenance note for the ratings, from the reputation seed */
   provenance: string;
+  /**
+   * Optional per-feed fetch timeout override in ms. Defaults to the ingestion
+   * default (15s). Raise it for slow third-party proxy/extractor feeds (e.g.
+   * the bazqux createfeed extractor) that legitimately take longer than a
+   * direct-origin RSS fetch and would otherwise abort every run.
+   */
+  fetchTimeoutMs?: number;
 }
 
 type FeedDefinition = Omit<
@@ -102,6 +109,9 @@ const TIER_1: FeedDefinition[] = [
     domain: "agerpres.ro",
     tier: 1,
     mbfc: { category: "center", factual: "very-high", credibility: "high" },
+    // The bazqux extractor scrapes the Agerpres widget live and routinely takes
+    // ~7-20s, so the default 15s timeout aborted it most runs. Give it headroom.
+    fetchTimeoutMs: 30_000,
   },
   {
     url: "https://www.zf.ro/rss/",

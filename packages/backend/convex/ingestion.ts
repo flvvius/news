@@ -1281,6 +1281,7 @@ export const ingestSingleFeed = internalAction({
     mbfcCategory: v.string(),
     mbfcFactual: v.optional(v.string()),
     mbfcCredibility: v.optional(v.string()),
+    fetchTimeoutMs: v.optional(v.number()),
   },
   handler: async (
     ctx,
@@ -1293,6 +1294,7 @@ export const ingestSingleFeed = internalAction({
       mbfcCategory,
       mbfcFactual,
       mbfcCredibility,
+      fetchTimeoutMs,
     },
   ): Promise<{ inserted: number; skipped: number; error?: string }> => {
     let articlesInserted = 0;
@@ -1326,7 +1328,8 @@ export const ingestSingleFeed = internalAction({
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
         },
-        signal: AbortSignal.timeout(15_000), // 15s timeout
+        // Per-feed override for slow proxy/extractor feeds; default 15s.
+        signal: AbortSignal.timeout(fetchTimeoutMs ?? 15_000),
       });
 
       if (!response.ok) {
@@ -1585,6 +1588,7 @@ export const ingestAllFeeds = internalAction({
           mbfcCategory: feed.mbfc.category,
           mbfcFactual: feed.mbfc.factual,
           mbfcCredibility: feed.mbfc.credibility,
+          fetchTimeoutMs: feed.fetchTimeoutMs,
         });
 
         results.push({

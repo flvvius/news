@@ -197,13 +197,14 @@ async function sendAuthEmail({
   html,
   text,
   debugLabel,
-  actionUrl,
 }: {
   to: string;
   subject: string;
   html: string;
   text: string;
   debugLabel: string;
+  // Accepted for call-site symmetry (callers pass the resolved action URL) but
+  // deliberately not read here — the URL is redacted from logs below.
   actionUrl: string;
 }) {
   if (!resend) {

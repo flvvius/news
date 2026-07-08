@@ -38,10 +38,6 @@ function formatTime(value: number | undefined) {
   }).format(value);
 }
 
-function pct(value: number | undefined) {
-  return `${Math.round((value ?? 0) * 100)}%`;
-}
-
 function formatCountersSummary(
   counters: Record<string, number> | undefined,
   limit = 3,

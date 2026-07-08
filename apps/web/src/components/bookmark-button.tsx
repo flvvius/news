@@ -3,6 +3,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { useQuery, useConvexAuth } from "convex/react";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AuthRedirectPath } from "@/lib/auth-redirect";
@@ -42,7 +43,11 @@ export default function BookmarkButton({
     isAuthenticated ? { eventId } : "skip",
   );
 
-  const toggle = useMutation({
+  const toggle = useMutation<
+    FunctionReturnType<typeof api.interactions.toggleBookmark>,
+    Error,
+    FunctionArgs<typeof api.interactions.toggleBookmark>
+  >({
     mutationFn: useConvexMutation(api.interactions.toggleBookmark),
     onSuccess: (data) => {
       if (data?.bookmarked === true) {

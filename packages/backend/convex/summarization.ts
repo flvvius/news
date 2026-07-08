@@ -56,7 +56,9 @@ function safeInteger(
 }
 
 function shouldResummarize(event: Doc<"events">): boolean {
-  if (event.status !== "published") return false;
+  // No status gate: `processing` events awaiting their first summary are
+  // eligible too (a successful summary is what promotes them to `published`).
+  // Count/source thresholds are enforced separately in getEventEligibility.
 
   // normalizedPerspectives falls back to legacy center/left/right keys so
   // pre-BIV-303 events are not needlessly resummarized before the backfill.
@@ -321,15 +323,31 @@ export const enqueueEligibleEventSummaries = internalMutation({
   },
   handler: async (ctx, { limit, minArticles, minSources }) => {
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
-      .order("desc")
-      .take(safeLimit * 3);
+    const scanWindow = safeLimit * 4;
+    // Primary candidates are qualifying `processing` events awaiting their first
+    // summary (which is what publishes them) — ordered by most recent article so
+    // freshly-qualified events surface first. `published` events are still
+    // scanned to re-summarize after new articles land and to backfill any
+    // legacy summary-less rows. getEventEligibility filters both by min
+    // article/source counts.
+    const [processingEvents, publishedEvents] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_status_last_article_at", (q) =>
+          q.eq("status", "processing"),
+        )
+        .order("desc")
+        .take(scanWindow),
+      ctx.db
+        .query("events")
+        .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+        .order("desc")
+        .take(scanWindow),
+    ]);
 
     return enqueueEligibleEvents(
       ctx,
-      events,
+      [...processingEvents, ...publishedEvents],
       safeLimit,
       minArticles,
       minSources,
@@ -734,6 +752,11 @@ export const applyEventSummaryResult = internalMutation({
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+      // A successful summary is the sole gate to going public: promote a
+      // qualifying `processing` event to `published` now that it has full AI
+      // perspectives + globalImpact. syncPublicEventPreview below then creates
+      // its public preview. Already-published events keep their status.
+      ...(event.status === "processing" ? { status: "published" as const } : {}),
     });
 
     await ctx.db.patch(jobId, {
