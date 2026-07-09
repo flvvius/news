@@ -110,8 +110,19 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
         description:
           "Impactul concret de 25-100 de cuvinte, în limba română, sau textul de rezervă exact când nu este susținut.",
       },
+      perspectiveApplicable: {
+        type: "boolean",
+        description:
+          "false doar în CAZUL D (subiect fără dimensiune reformist-suveranistă); altfel true.",
+      },
     },
-    required: ["neutral", "reformist", "suveranist", "globalImpact"],
+    required: [
+      "neutral",
+      "reformist",
+      "suveranist",
+      "globalImpact",
+      "perspectiveApplicable",
+    ],
   },
 } as const;
 
@@ -167,15 +178,24 @@ function parseSummaryOutput(
   const record = parsed as Record<string, unknown>;
   const neutralFallback = `Acoperirea subiectului „${eventTitle}" este în curs de dezvoltare.`;
   const sideFallback = SIDE_COVERAGE_FALLBACK;
+  // Missing/invalid flag defaults to true (legacy behavior). When the model
+  // declares CASE D, the side fields are force-cleared even if it wrote
+  // something into them.
+  const perspectiveApplicable = record.perspectiveApplicable !== false;
 
   return {
     neutral: cleanSummaryField(record.neutral, neutralFallback),
-    reformist: cleanSummaryField(record.reformist, sideFallback),
-    suveranist: cleanSummaryField(record.suveranist, sideFallback),
+    reformist: perspectiveApplicable
+      ? cleanSummaryField(record.reformist, sideFallback)
+      : "",
+    suveranist: perspectiveApplicable
+      ? cleanSummaryField(record.suveranist, sideFallback)
+      : "",
     globalImpact: cleanSummaryField(
       record.globalImpact,
       "Această știre poate influența dezbaterea publică pe măsură ce apar noi relatări.",
     ),
+    perspectiveApplicable,
   };
 }
 
@@ -185,8 +205,10 @@ function countWords(value: string): number {
 
 function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   const violations: string[] = [];
-  for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS)) {
-    const wordCount = countWords(summary[field as keyof EventSummaryOutput]);
+  for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS) as Array<
+    [keyof typeof SUMMARY_WORD_LIMITS, number]
+  >) {
+    const wordCount = countWords(summary[field]);
     if (wordCount > maxWords) {
       violations.push(
         `${field} has ${wordCount} words; maximum is ${maxWords}`,
@@ -744,7 +766,9 @@ export const processSummaryJob = internalAction({
           kind: "chat",
           model: settings.model,
           temperature: 0.2,
-          maxTokens: 900,
+          // Romanian tokenizes densely and v3 prompts carry full bodies;
+          // 900 was truncation-prone at the 120+100+100+100 word targets.
+          maxTokens: 1200,
           responseFormat: {
             type: "json_schema",
             json_schema: EVENT_SUMMARY_JSON_SCHEMA,
@@ -807,6 +831,7 @@ export const processSummaryJob = internalAction({
           reformist: summary.reformist,
           suveranist: summary.suveranist,
           globalImpact: summary.globalImpact,
+          perspectiveApplicable: summary.perspectiveApplicable,
           summarySignature,
         },
       );

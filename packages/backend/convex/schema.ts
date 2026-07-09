@@ -90,6 +90,9 @@ export default defineSchema({
     // neutral / reformist / suveranist framing summaries (BIV-303);
     // legacy center/left/right keys remain readable pre-migration.
     perspectiveSummaries: v.optional(perspectiveSummariesValidator),
+    // false = the summarizer judged the story has no reformist/suveranist
+    // axis (CASE D); undefined = legacy = applicable.
+    perspectiveApplicable: v.optional(v.boolean()),
     perspectiveSource: v.optional(
       v.union(v.literal("heuristic"), v.literal("ai")),
     ),
@@ -233,6 +236,7 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     imageAlt: v.optional(v.string()),
     perspectiveSummaries: v.optional(perspectiveSummariesValidator),
+    perspectiveApplicable: v.optional(v.boolean()),
     globalImpact: v.optional(v.string()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.number(),

@@ -65,10 +65,17 @@ function shouldResummarize(event: Doc<"events">): boolean {
   // normalizedPerspectives falls back to legacy center/left/right keys so
   // pre-BIV-303 events are not needlessly resummarized before the backfill.
   const perspectives = normalizedPerspectives(event.perspectiveSummaries);
+  // CASE D events (perspectiveApplicable=false) intentionally have empty
+  // side fields — neutral + globalImpact alone make them complete, otherwise
+  // they would re-enqueue on every cron forever.
+  const sidesComplete =
+    event.perspectiveApplicable === false ||
+    Boolean(
+      perspectives?.reformist?.trim() && perspectives?.suveranist?.trim(),
+    );
   const hasFullAiSummary = Boolean(
     perspectives?.neutral?.trim() &&
-    perspectives?.reformist?.trim() &&
-    perspectives?.suveranist?.trim() &&
+    sidesComplete &&
     event.globalImpact?.trim() &&
     event.lastSummarizedAt,
   );
@@ -723,6 +730,7 @@ export const applyEventSummaryResult = internalMutation({
     reformist: v.string(),
     suveranist: v.string(),
     globalImpact: v.string(),
+    perspectiveApplicable: v.optional(v.boolean()),
     summarySignature: v.optional(v.string()),
   },
   handler: async (
@@ -735,6 +743,7 @@ export const applyEventSummaryResult = internalMutation({
       reformist,
       suveranist,
       globalImpact,
+      perspectiveApplicable,
       summarySignature,
     },
   ) => {
@@ -760,12 +769,18 @@ export const applyEventSummaryResult = internalMutation({
       return { applied: false as const };
     }
 
+    const applicable = perspectiveApplicable ?? true;
     await ctx.db.patch(eventId, {
-      perspectiveSummaries: {
-        neutral: neutral.trim(),
-        reformist: reformist.trim(),
-        suveranist: suveranist.trim(),
-      },
+      // CASE D stores only the neutral summary; the empty side fields stay
+      // unset so the UI's note replaces the perspective split.
+      perspectiveSummaries: applicable
+        ? {
+            neutral: neutral.trim(),
+            reformist: reformist.trim(),
+            suveranist: suveranist.trim(),
+          }
+        : { neutral: neutral.trim() },
+      perspectiveApplicable: applicable,
       perspectiveSource: "ai",
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),

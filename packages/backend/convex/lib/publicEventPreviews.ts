@@ -231,6 +231,7 @@ export async function syncPublicEventPreview(
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
     perspectiveSummaries,
+    perspectiveApplicable: event.perspectiveApplicable,
     globalImpact: event.globalImpact,
     firstPublishedAt: event.firstPublishedAt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

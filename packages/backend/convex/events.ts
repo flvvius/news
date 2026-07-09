@@ -450,6 +450,7 @@ export const getEventBySlug = query({
         perspectiveSummaries: normalizedPerspectives(
           event.perspectiveSummaries,
         ),
+        perspectiveApplicable: event.perspectiveApplicable,
         globalImpact: event.globalImpact,
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,
