@@ -18,6 +18,7 @@ export type PublicPreviewRow = Pick<
   | "imageUrl"
   | "imageAlt"
   | "perspectiveSummaries"
+  | "perspectiveApplicable"
   | "globalImpact"
   | "firstPublishedAt"
   | "lastUpdatedAt"
