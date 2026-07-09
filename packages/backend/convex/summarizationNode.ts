@@ -8,6 +8,7 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
 import { callLLM } from "./lib/aiCall";
+import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
   SIDE_COVERAGE_FALLBACK,
@@ -23,6 +24,13 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MIN_ARTICLES = 3;
 const DEFAULT_MIN_SOURCES = 2;
 const DEFAULT_MAX_INPUT_ARTICLES = 12;
+const DEFAULT_BODY_FETCH_ENABLED = true;
+const DEFAULT_BODY_CHARS = 2600;
+// Total prompt budget for transient bodies across all articles; the
+// per-article cap scales down as more articles are selected.
+const TOTAL_BODY_CHARS_BUDGET = 24000;
+const MIN_BODY_CHARS_PER_ARTICLE = 1200;
+const BODY_FETCH_CONCURRENCY = 4;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const SUMMARY_WORD_LIMITS = {
@@ -40,6 +48,8 @@ type SummarySettings = {
   minArticles: number;
   minSources: number;
   maxInputArticles: number;
+  bodyFetchEnabled: boolean;
+  bodyChars: number;
 };
 
 type SummaryQueueHealthResult = {
@@ -59,6 +69,7 @@ type SummaryQueueHealthResult = {
 };
 
 type SummaryInputArticle = {
+  _id: string;
   title: string;
   source?: {
     name: string;
@@ -118,6 +129,13 @@ function safeString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : fallback;
+}
+
+function safeBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
 }
 
 function cleanSummaryField(value: unknown, fallback: string): string {
@@ -234,6 +252,8 @@ async function loadSummarySettings(
       "event_summary_min_articles",
       "event_summary_min_sources",
       "event_summary_max_input_articles",
+      "event_summary_body_fetch_enabled",
+      "event_summary_body_chars",
     ],
   })) as Record<string, unknown>;
 
@@ -275,7 +295,63 @@ async function loadSummarySettings(
       3,
       20,
     ),
+    bodyFetchEnabled: safeBoolean(
+      cfg.event_summary_body_fetch_enabled,
+      DEFAULT_BODY_FETCH_ENABLED,
+    ),
+    bodyChars: safeInteger(
+      cfg.event_summary_body_chars,
+      DEFAULT_BODY_CHARS,
+      500,
+      6000,
+    ),
   };
+}
+
+/**
+ * Fetch article bodies transiently for one summary prompt. Bodies are used
+ * in memory and dropped — never persisted (copyright constraint; see
+ * fetchArticleBodyText). Any article whose fetch fails or comes back blocked
+ * simply contributes its stored summary/rssSnippet, as before.
+ */
+async function fetchTransientArticleBodies(
+  articles: SummaryInputArticle[],
+  settings: SummarySettings,
+): Promise<Map<string, string>> {
+  const bodies = new Map<string, string>();
+  if (!settings.bodyFetchEnabled || articles.length === 0) return bodies;
+
+  const perArticleCap = Math.max(
+    MIN_BODY_CHARS_PER_ARTICLE,
+    Math.min(
+      settings.bodyChars,
+      Math.floor(TOTAL_BODY_CHARS_BUDGET / articles.length),
+    ),
+  );
+
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(BODY_FETCH_CONCURRENCY, articles.length) },
+    async () => {
+      while (nextIndex < articles.length) {
+        const article = articles[nextIndex++]!;
+        try {
+          const fetched = await fetchArticleBodyText(article.canonicalUrl);
+          if (fetched.body) {
+            bodies.set(article._id, fetched.body.slice(0, perArticleCap));
+          }
+        } catch {
+          // Fall back to summary/rssSnippet for this article.
+        }
+      }
+    },
+  );
+  await Promise.all(workers);
+
+  console.log(
+    `[summarization] Transient bodies fetched for ${bodies.size}/${articles.length} article(s)`,
+  );
+  return bodies;
 }
 
 export const summarizeQueuedEvents = internalAction({
@@ -643,6 +719,11 @@ export const processSummaryJob = internalAction({
         };
       }
 
+      const transientBodies = await fetchTransientArticleBodies(
+        input.articles,
+        settings,
+      );
+
       const prompt = buildEventSummaryPrompt({
         eventTitle: input.event.title,
         articles: input.articles.map((article: SummaryInputArticle) => ({
@@ -654,6 +735,7 @@ export const processSummaryJob = internalAction({
           summary: article.summary,
           rssSnippet: article.rssSnippet,
           atomicFacts: article.atomicFacts,
+          bodyText: transientBodies.get(article._id),
           canonicalUrl: article.canonicalUrl,
         })),
       });

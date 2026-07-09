@@ -9,6 +9,9 @@ export type EventSummaryArticleInput = {
   summary?: string;
   rssSnippet?: string;
   atomicFacts: string[];
+  // Fetched transiently at summarization time and already capped by the
+  // caller — never persisted (copyright constraint).
+  bodyText?: string;
   canonicalUrl: string;
 };
 
@@ -169,6 +172,9 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
         `fiabilitateaSursei: ${article.sourceReliability}/10`,
         `publicatLa: ${article.publishedAt}`,
         `Titlu: ${trimField(article.title, 220)}`,
+        article.bodyText
+          ? `Textul articolului: ${trimField(article.bodyText, 6000)}`
+          : "",
         article.summary
           ? `Rezumat extras: ${trimField(article.summary, 900)}`
           : "",

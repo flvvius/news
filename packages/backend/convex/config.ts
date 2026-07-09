@@ -724,6 +724,18 @@ export const seedDefaults = internalMutation({
           "Maximum number of recent articles included in one event summarization prompt.",
       },
       {
+        key: "event_summary_body_fetch_enabled",
+        value: true,
+        description:
+          "When true, the summarizer fetches each selected article's body transiently at summarization time (used in memory for the prompt, never stored) instead of relying only on the short extracted summary + RSS snippet.",
+      },
+      {
+        key: "event_summary_body_chars",
+        value: 2600,
+        description:
+          "Per-article character cap for transiently fetched body text in the event summary prompt. The effective cap also scales down with article count to bound total prompt size.",
+      },
+      {
         key: "event_share_asset_generation_enabled",
         value: false,
         description:
