@@ -575,6 +575,9 @@ const ro = {
   "articles.readOriginal": "Citește originalul",
   "articles.readOriginalAria":
     "Citește articolul original (se deschide într-o filă nouă)",
+  "articles.showMore.one": "Arată încă 1 articol",
+  "articles.showMore.many": "Arată încă {count} articole",
+  "articles.showLess": "Arată mai puțin",
   "source.metaTitle": `Profil sursă — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
     `Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe ${BRAND_NAME}.`,
@@ -1290,6 +1293,9 @@ const en: { [K in keyof BaseStrings]: string } = {
   "articles.viewSource": "View {name} source profile",
   "articles.readOriginal": "Read original",
   "articles.readOriginalAria": "Read original article (opens in a new tab)",
+  "articles.showMore.one": "Show 1 more article",
+  "articles.showMore.many": "Show {count} more articles",
+  "articles.showLess": "Show less",
   "source.metaTitle": `Source profile — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
     `Review {name}'s bias, reliability, credibility, and recent coverage on ${BRAND_NAME}.`,

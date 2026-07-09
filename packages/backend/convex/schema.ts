@@ -233,6 +233,10 @@ export default defineSchema({
     eventId: v.id("events"),
     slug: v.string(),
     title: v.string(),
+    // Diacritic-folded, lowercase copy of `title` used solely by the search
+    // index so queries match regardless of Romanian diacritics ("bucuresti"
+    // ↔ "București"). Optional to keep legacy rows valid until backfilled.
+    searchText: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     imageAlt: v.optional(v.string()),
     perspectiveSummaries: v.optional(perspectiveSummariesValidator),
@@ -272,7 +276,7 @@ export default defineSchema({
     .index("by_last_updated_at", ["lastUpdatedAt"])
     .index("by_trending_score", ["trendingScore"])
     .searchIndex("by_title", {
-      searchField: "title",
+      searchField: "searchText",
     }),
 
   publicEventPreviewTopics: defineTable({
