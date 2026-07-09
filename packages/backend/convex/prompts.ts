@@ -109,8 +109,11 @@ function trimField(value: string | undefined, maxLength: number): string {
  * v4 = CASE D applies even with cross-lean coverage of apolitic stories
  * (dev eval: 0/17 fired, loto/meteo/sport got forced splits); case labels
  * must not leak into output text.
+ * v5 = CASE D wired into the precomputed case lines + explicit step-0
+ * decision order (v4 still fired 0/18 — the "tratează ca adevăr" case
+ * lines left no D option at the point of writing).
  */
-export const SUMMARY_PROMPT_VERSION = 4;
+export const SUMMARY_PROMPT_VERSION = 5;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
@@ -155,9 +158,9 @@ function perspectiveCaseFor(
   const sideLabel = side === "reformist" ? "reformistă" : "suveranistă";
   const fallback = LIMITED_COVERAGE_FALLBACK[side];
   if (count <= 1) {
-    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}"`;
+    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}". (Ignoră acest caz dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
   }
-  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte.`;
+  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte. (Ignoră ambele dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
 }
 
 export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
@@ -280,6 +283,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       `Eveniment: ${input.eventTitle}`,
       "",
       "Scrie:",
+      "- Pasul 0, înainte de orice: stabilește perspectiveApplicable aplicând VERIFICAREA AXEI POLITICE. Pentru știri despre loterie, sport, meteo, sondaje de divertisment sau fapt divers fără poziționări politice divergente, răspunsul corect este false — chiar dacă ambele părți au articole în input.",
       "- neutral (70-120 cuvinte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
       '- reformist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
       '- suveranist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
