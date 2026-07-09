@@ -106,8 +106,11 @@ function trimField(value: string | undefined, maxLength: number): string {
  * v3 = transient full-body input, CASE D (no political axis →
  * perspectiveApplicable=false), concrete emphasis/omission requirements for
  * the perspective fields, globalImpact must not restate neutral.
+ * v4 = CASE D applies even with cross-lean coverage of apolitic stories
+ * (dev eval: 0/17 fired, loto/meteo/sport got forced splits); case labels
+ * must not leak into output text.
  */
-export const SUMMARY_PROMPT_VERSION = 3;
+export const SUMMARY_PROMPT_VERSION = 4;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
@@ -233,7 +236,8 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
-      '- Dacă subiectul este apolitic (meteo, sport, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică) și articolele nu conțin poziționări politice divergente, setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
+      '- Dacă subiectul este apolitic (meteo, sport, loterie, rezultate sportive, sondaje de divertisment, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică), setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
+      "- Aplică CAZUL D chiar dacă ambele părți au articole în input: faptul că surse cu orientări diferite au relatat aceeași știre apolitică NU creează o axă politică. Întrebarea decisivă este: conțin articolele poziționări politice divergente? Dacă nu, este CAZUL D.",
       "- NU folosi CAZUL D pentru subiecte despre politică, partide, guvern, parlament, justiție, corupție, UE/NATO, buget, alegeri sau declarații ale politicienilor — acelea au întotdeauna o axă.",
       "- Când perspectiveApplicable este true, execută cazurile precalculate de mai jos.",
       "",
@@ -249,6 +253,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- CAZUL B: scrie 50-100 de cuvinte notând că sursele acelei părți au reflectat în mare nucleul factual comun. Numește 1-2 surse și elementele concrete pe care le-au pus în titlu sau în prim-plan. NU inventa o diferență de ton care nu există în articole — dacă acoperirea e identică, spune asta direct.",
       "- CAZUL C: scrie 50-100 de cuvinte descriind concret cum diferă acoperirea acelei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
       '- Nu folosi niciodată un text de rezervă "Acoperire limitată..." pentru o parte cu 2 sau mai multe articole.',
+      '- Etichetele "CAZUL A/B/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
       "",
       "REGULI PENTRU globalImpact:",
       "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",

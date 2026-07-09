@@ -153,7 +153,12 @@ function safeBoolean(value: unknown, fallback: boolean): boolean {
 
 function cleanSummaryField(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
-  const cleaned = value.replace(/\s+/g, " ").trim();
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    // The prompt's internal case rubric must not leak into user-visible
+    // text (observed: "CAZUL B: Sursele reformiste…").
+    .replace(/^\s*CAZUL\s+[A-D]\s*[:—-]\s*/i, "")
+    .trim();
   return cleaned.length > 0 ? cleaned.slice(0, 1200) : fallback;
 }
 
