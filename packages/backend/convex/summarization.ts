@@ -309,7 +309,10 @@ async function enqueueEligibleEvents(
       event.lastSummarizedAt &&
       now - latestJob.updatedAt < TERMINAL_SUCCESS_WINDOW_MS &&
       (event.lastSummarizedAt ?? 0) >=
-        (event.lastUpdatedAt ?? event.firstPublishedAt)
+        (event.lastUpdatedAt ?? event.firstPublishedAt) &&
+      // A prompt-version bump is a deliberate one-time migration — the
+      // anti-thrash window must not delay it.
+      (event.lastSummaryPromptVersion ?? 0) === SUMMARY_PROMPT_VERSION
     ) {
       skipped++;
       continue;
