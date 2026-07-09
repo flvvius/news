@@ -23,6 +23,10 @@ const PERSPECTIVE_BAR: Record<Perspective, string> = {
 
 type PerspectiveSummariesProps = {
   perspectiveSummaries: EventDetail["event"]["perspectiveSummaries"];
+  // false = the summarizer judged the story has no reformist/suveranist axis
+  // (CASE D) — show a note instead of the segmented control. undefined =
+  // legacy events, rendered exactly as before.
+  perspectiveApplicable?: EventDetail["event"]["perspectiveApplicable"];
 };
 
 /**
@@ -33,6 +37,7 @@ type PerspectiveSummariesProps = {
  */
 export function PerspectiveSummaries({
   perspectiveSummaries,
+  perspectiveApplicable,
 }: PerspectiveSummariesProps) {
   const t = useT();
 
@@ -42,6 +47,19 @@ export function PerspectiveSummaries({
   const initial =
     available.find((perspective) => perspective !== "neutral") ?? "neutral";
   const [active, setActive] = useState<Perspective>(initial);
+
+  if (perspectiveApplicable === false) {
+    return (
+      <View className="gap-4">
+        <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
+          {t("event.multiplePerspectives")}
+        </Text>
+        <Text className="max-w-[455px] text-base leading-relaxed text-muted-foreground">
+          {t("event.noPoliticalAxis")}
+        </Text>
+      </View>
+    );
+  }
 
   // Without at least one directional summary there is nothing to compare.
   if (!available.some((perspective) => perspective !== "neutral")) {

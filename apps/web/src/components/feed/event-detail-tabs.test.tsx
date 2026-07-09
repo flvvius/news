@@ -16,12 +16,14 @@ function renderTabs(
   perspectiveSummaries: Parameters<
     typeof EventDetailTabs
   >[0]["perspectiveSummaries"],
+  perspectiveApplicable?: boolean,
 ) {
   return render(
     <LocaleProvider locale="ro">
       <EventDetailTabs
         eventId={eventId}
         perspectiveSummaries={perspectiveSummaries}
+        perspectiveApplicable={perspectiveApplicable}
         globalImpact={null}
         articles={[]}
       />
@@ -78,5 +80,23 @@ describe("EventDetailTabs (BIV-804)", () => {
     // just the summary card.
     expect(screen.queryAllByRole("tablist")).toHaveLength(0);
     expect(screen.getByText("Doar rezumat")).toBeTruthy();
+  });
+
+  test("CASE D (perspectiveApplicable=false) shows the no-axis note instead of tabs", () => {
+    renderTabs({ neutral: "Rezumat apolitic" }, false);
+
+    expect(screen.queryAllByRole("tablist")).toHaveLength(0);
+    expect(screen.getByText("Rezumat apolitic")).toBeTruthy();
+    expect(
+      screen.getByText(getString("ro", "event.noPoliticalAxis")),
+    ).toBeTruthy();
+  });
+
+  test("legacy events (perspectiveApplicable undefined) show no note", () => {
+    renderTabs({ neutral: "Doar rezumat" });
+
+    expect(
+      screen.queryByText(getString("ro", "event.noPoliticalAxis")),
+    ).toBeNull();
   });
 });

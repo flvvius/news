@@ -468,6 +468,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         <View className="mt-8 border-t border-border pt-6">
           <PerspectiveSummaries
             perspectiveSummaries={event.perspectiveSummaries}
+            perspectiveApplicable={event.perspectiveApplicable}
           />
         </View>
 

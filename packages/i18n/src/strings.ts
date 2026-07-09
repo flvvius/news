@@ -384,6 +384,8 @@ const ro = {
   "event.left": "Reformistă",
   "event.centerTab": "Neutră",
   "event.right": "Suveranistă",
+  "event.noPoliticalAxis":
+    "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -1099,6 +1101,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.left": "Reformist",
   "event.centerTab": "Neutral",
   "event.right": "Sovereigntist",
+  "event.noPoliticalAxis":
+    "This story has no significant political dimension in press coverage.",
   "event.sourceCount.one": "1 source",
   "event.sourceCount.few": "{count} sources",
   "event.sourceCount.many": "{count} sources",

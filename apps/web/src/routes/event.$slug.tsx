@@ -330,6 +330,7 @@ function EventDetailPage() {
           <EventDetailTabs
             eventId={event._id}
             perspectiveSummaries={event.perspectiveSummaries}
+            perspectiveApplicable={event.perspectiveApplicable}
             globalImpact={event.globalImpact}
             articles={articles}
           />
