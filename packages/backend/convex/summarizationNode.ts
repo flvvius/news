@@ -34,6 +34,7 @@ const MIN_BODY_CHARS_PER_ARTICLE = 1200;
 const BODY_FETCH_CONCURRENCY = 4;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
+const JOB_STAGGER_MS = 8000;
 const SUMMARY_WORD_LIMITS = {
   neutral: 120,
   reformist: 100,
@@ -417,9 +418,12 @@ export const summarizeQueuedEvents = internalAction({
       },
     );
 
-    for (const job of dueJobs) {
+    // Stagger the jobs instead of firing them all at once: concurrent
+    // summary calls burst past Gemini's rate limit (observed 429s), and each
+    // job also fans out its own transient body fetches.
+    for (const [index, job] of dueJobs.entries()) {
       await ctx.scheduler.runAfter(
-        0,
+        index * JOB_STAGGER_MS,
         internal.summarizationNode.processSummaryJob,
         {
           jobId: job._id,
@@ -591,9 +595,10 @@ export const runPhase5Backfill = internalAction({
         limit: settings.batchSize,
       },
     )) as Array<{ _id: Id<"eventSummaryJobs"> }>;
-    for (const job of dueJobs) {
+    // Staggered like summarizeQueuedEvents: bursts 429 against Gemini.
+    for (const [index, job] of dueJobs.entries()) {
       await ctx.scheduler.runAfter(
-        0,
+        index * JOB_STAGGER_MS,
         internal.summarizationNode.processSummaryJob,
         {
           jobId: job._id,
