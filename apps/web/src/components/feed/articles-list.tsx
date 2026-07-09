@@ -10,7 +10,6 @@ import BiasIndicator from "@/components/bias-indicator";
 import { SectionTitle } from "@/components/ui/section-title";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { cn } from "@/lib/utils";
 
 type Article = {
   _id: Id<"articles">;
@@ -39,6 +38,7 @@ type ArticlesListProps = {
 };
 
 const INITIAL_ARTICLE_COUNT = 5;
+const ARTICLE_INCREMENT = 10;
 
 function isNumberArray(value: unknown): value is number[] {
   return (
@@ -49,7 +49,7 @@ function isNumberArray(value: unknown): value is number[] {
 
 const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
   const t = useT();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_ARTICLE_COUNT);
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation({
     mutationFn: useConvexMutation(api.interactions.logInteraction),
@@ -79,10 +79,9 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
     });
   };
 
-  const visibleArticles = isExpanded
-    ? articles
-    : articles.slice(0, INITIAL_ARTICLE_COUNT);
-  const remainingCount = articles.length - INITIAL_ARTICLE_COUNT;
+  const visibleArticles = articles.slice(0, visibleCount);
+  const remainingCount = articles.length - visibleCount;
+  const nextBatchCount = Math.min(ARTICLE_INCREMENT, remainingCount);
   const showToggle = remainingCount > 0;
 
   return (
@@ -187,24 +186,18 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
       {showToggle && (
         <button
           type="button"
-          aria-expanded={isExpanded}
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() =>
+            setVisibleCount((count) => count + ARTICLE_INCREMENT)
+          }
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          {isExpanded
-            ? t("articles.showLess")
-            : remainingCount === 1
-              ? t("articles.showMore.one")
-              : t("articles.showMore.many").replace(
-                  "{count}",
-                  String(remainingCount),
-                )}
-          <ChevronDownIcon
-            className={cn(
-              "size-4 transition-transform",
-              isExpanded && "rotate-180",
-            )}
-          />
+          {nextBatchCount === 1
+            ? t("articles.showMore.one")
+            : t("articles.showMore.many").replace(
+                "{count}",
+                String(nextBatchCount),
+              )}
+          <ChevronDownIcon className="size-4" />
         </button>
       )}
     </section>
