@@ -93,6 +93,16 @@ function trimField(value: string | undefined, maxLength: number): string {
   return (value ?? "").trim().slice(0, maxLength);
 }
 
+/**
+ * Bump when the summary prompt semantics change so existing events are
+ * resummarized even with unchanged article inputs. Folded into the summary
+ * signature (summarizationNode.ts) AND checked against
+ * events.lastSummaryPromptVersion by shouldResummarize (summarization.ts) —
+ * the signature alone only skips spend, it never re-enqueues.
+ * v2 = Romanian-first neutral/reformist/suveranist prompt (BIV-202).
+ */
+export const SUMMARY_PROMPT_VERSION = 2;
+
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
 

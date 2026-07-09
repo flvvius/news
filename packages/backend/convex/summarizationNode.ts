@@ -12,6 +12,7 @@ import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
   SIDE_COVERAGE_FALLBACK,
+  SUMMARY_PROMPT_VERSION,
   type EventSummaryOutput,
 } from "./prompts";
 
@@ -194,13 +195,6 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   }
   return violations;
 }
-
-/**
- * Bump when the summary prompt semantics change so existing events are
- * resummarized even with unchanged article inputs. v2 = Romanian-first
- * neutral/reformist/suveranist prompt (BIV-202).
- */
-const SUMMARY_PROMPT_VERSION = 2;
 
 function buildSummarySignature(input: {
   event: { _id: string; title: string };

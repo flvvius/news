@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { SUMMARY_PROMPT_VERSION } from "./prompts";
 
 // Same convex-test glob as the other suites: `!(*.*.*)` drops second-dot files
 // (so convex.config.ts / the Better Auth component is never instantiated) plus
@@ -155,6 +156,7 @@ describe("publish is gated on a successful AI summary", () => {
         perspectiveSource: "ai",
         globalImpact: "g",
         lastSummarizedAt: now,
+        lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
       });
     });
 
@@ -163,5 +165,38 @@ describe("publish is gated on a successful AI summary", () => {
       { limit: 10, minArticles: 3, minSources: 2 },
     );
     expect(result.queued).toBe(0);
+  });
+
+  test("a summary written under an older prompt version is re-enqueued once", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("events", {
+        title: "Stale Prompt Version",
+        slug: "stale-prompt-version",
+        status: "published",
+        firstPublishedAt: now,
+        lastUpdatedAt: now,
+        lastArticleAt: now,
+        articleCount: 3,
+        sourceCount: 2,
+        sourceIds: [],
+        perspectiveSummaries: {
+          neutral: "n",
+          reformist: "r",
+          suveranist: "s",
+        },
+        perspectiveSource: "ai",
+        globalImpact: "g",
+        lastSummarizedAt: now,
+        lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION - 1,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.summarization.enqueueEligibleEventSummaries,
+      { limit: 10, minArticles: 3, minSources: 2 },
+    );
+    expect(result.queued).toBe(1);
   });
 });

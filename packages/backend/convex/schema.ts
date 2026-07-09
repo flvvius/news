@@ -104,6 +104,9 @@ export default defineSchema({
     sourceIds: v.optional(v.array(v.id("sources"))),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
     lastSummarySignature: v.optional(v.string()),
+    // SUMMARY_PROMPT_VERSION the current summary was written under; a bump
+    // makes shouldResummarize re-enqueue the event once.
+    lastSummaryPromptVersion: v.optional(v.number()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
     lastClaimAnalysisSignature: v.optional(v.string()),
     factualArticleCount: v.optional(v.number()),

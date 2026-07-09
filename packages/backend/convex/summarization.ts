@@ -11,6 +11,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { normalizedPerspectives } from "./lib/biasAxis";
+import { selectSummaryArticles } from "./lib/summaryArticleSelection";
+import { SUMMARY_PROMPT_VERSION } from "./prompts";
 import {
   buildEventShareRenderSignature,
   type EventShareRenderData,
@@ -71,6 +73,14 @@ function shouldResummarize(event: Doc<"events">): boolean {
     event.lastSummarizedAt,
   );
   if (!hasFullAiSummary) return true;
+
+  // Prompt-semantics staleness: signature short-circuiting alone never
+  // re-enqueues, so a SUMMARY_PROMPT_VERSION bump would be a no-op without
+  // this check. Events summarized under an older prompt version re-run once
+  // and get stamped with the current version.
+  if ((event.lastSummaryPromptVersion ?? 0) !== SUMMARY_PROMPT_VERSION) {
+    return true;
+  }
 
   const changedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   return (event.lastSummarizedAt ?? 0) < changedAt;
@@ -650,13 +660,21 @@ export const getEventSummaryInput = internalQuery({
       ),
     );
     const sourcesById = new Map(sourceRows);
-    const sortedArticles = [...articles].sort(
-      (a, b) => b.publishedAt - a.publishedAt,
-    );
-    const selectedArticles = sortedArticles.slice(
-      0,
-      Math.min(Math.max(Math.floor(maxArticles), 3), 20),
-    );
+    const selectedArticles = selectSummaryArticles(
+      articles.map((article) => {
+        const source = sourcesById.get(article.sourceId) ?? null;
+        return {
+          _id: article._id,
+          publishedAt: article.publishedAt,
+          extractionQuality: article.extractionQuality,
+          source: source
+            ? { _id: source._id, biasLabel: sourceBiasLabel(source) }
+            : null,
+          article,
+        };
+      }),
+      maxArticles,
+    ).map(({ article }) => article);
 
     return {
       eligible: true as const,
@@ -752,6 +770,7 @@ export const applyEventSummaryResult = internalMutation({
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+      lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
       // A successful summary is the sole gate to going public: promote a
       // qualifying `processing` event to `published` now that it has full AI
       // perspectives + globalImpact. syncPublicEventPreview below then creates
@@ -867,6 +886,7 @@ export const markSummaryJobSkipped = internalMutation({
         await ctx.db.patch(eventId, {
           lastSummarizedAt: Date.now(),
           lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+          lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
         });
       }
     }
