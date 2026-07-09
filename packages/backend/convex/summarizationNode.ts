@@ -19,6 +19,10 @@ import {
 import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
+// Free-tier strategy: the primary model's daily quota (e.g. gemini-3.5-flash,
+// 20 req/day free) covers the first events of the day; quota 429s switch the
+// job to this model instead of failing it. "none" disables the fallback.
+const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const DEFAULT_ENQUEUE_LIMIT = 40;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -44,6 +48,7 @@ const SUMMARY_WORD_LIMITS = {
 
 type SummarySettings = {
   model: string;
+  fallbackModel?: string;
   enqueueLimit: number;
   batchSize: number;
   maxAttempts: number;
@@ -261,6 +266,101 @@ function retryDelayMs(attempts: number): number {
   return BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1);
 }
 
+/**
+ * Rate/quota rejection from the model API (Gemini free tier surfaces both
+ * per-minute and per-day exhaustion as 429 RESOURCE_EXHAUSTED). These are
+ * the errors worth retrying on the fallback model rather than failing.
+ */
+function isQuotaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(message);
+}
+
+/**
+ * gemini-3.5* are thinking models on the OpenAI-compat endpoint: thinking
+ * spends from max_tokens before any JSON is emitted, so they need headroom
+ * beyond the ~900 tokens the four Romanian fields actually take.
+ */
+function summaryMaxTokensFor(model: string): number {
+  return model.startsWith("gemini-3.5") ? 3000 : 1200;
+}
+
+/**
+ * Run the summary model call with the word-cap retry loop. Throws on quota
+ * errors, unusable output, or persistent word-cap violations — the caller
+ * decides whether a fallback model gets a shot.
+ */
+async function generateSummaryWithModel(
+  ctx: ActionCtx,
+  model: string,
+  prompt: { system: string; user: string },
+  eventId: Id<"events">,
+  eventTitle: string,
+): Promise<{
+  summary: EventSummaryOutput;
+  inputTokens: number;
+  outputTokens: number;
+}> {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let retryInstruction: string | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await callLLM<unknown>({
+      kind: "chat",
+      model,
+      temperature: 0.2,
+      maxTokens: summaryMaxTokensFor(model),
+      responseFormat: {
+        type: "json_schema",
+        json_schema: EVENT_SUMMARY_JSON_SCHEMA,
+      },
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+        ...(retryInstruction
+          ? [{ role: "user" as const, content: retryInstruction }]
+          : []),
+      ],
+      context: {
+        callType: "event_summary",
+        eventId,
+      },
+      runtime: ctx,
+    });
+
+    inputTokens += response.usage.inputTokens;
+    outputTokens += response.usage.outputTokens;
+
+    const content = response.result;
+    if (!content) {
+      throw new Error(
+        response.error ?? "Model returned an empty summary response",
+      );
+    }
+
+    const candidate = parseSummaryOutput(content, eventTitle);
+    const wordCapViolations = validateSummaryWordCaps(candidate);
+    if (wordCapViolations.length === 0) {
+      return { summary: candidate, inputTokens, outputTokens };
+    }
+
+    if (attempt === 1) {
+      throw new Error(
+        `Model exceeded summary word caps after retry: ${wordCapViolations.join("; ")}`,
+      );
+    }
+
+    retryInstruction = [
+      "Your previous JSON exceeded one or more word limits:",
+      ...wordCapViolations.map((violation) => `- ${violation}`),
+      "Return the same JSON keys again, but keep every field within its word cap.",
+    ].join("\n");
+  }
+
+  throw new Error("Model did not produce a usable event summary");
+}
+
 async function loadSummarySettings(
   ctx: ActionCtx,
   args: { enqueueLimit?: number; processLimit?: number },
@@ -268,6 +368,7 @@ async function loadSummarySettings(
   const cfg = (await ctx.runQuery(internal.config.getBatch, {
     keys: [
       "event_summary_model",
+      "event_summary_model_fallback",
       "event_summary_enqueue_limit",
       "event_summary_batch_size",
       "event_summary_max_attempts",
@@ -279,8 +380,14 @@ async function loadSummarySettings(
     ],
   })) as Record<string, unknown>;
 
+  const fallbackModel = safeString(
+    cfg.event_summary_model_fallback,
+    DEFAULT_FALLBACK_MODEL,
+  );
+
   return {
     model: safeString(cfg.event_summary_model, DEFAULT_MODEL),
+    fallbackModel: fallbackModel === "none" ? undefined : fallbackModel,
     enqueueLimit: safeInteger(
       args.enqueueLimit ?? cfg.event_summary_enqueue_limit,
       DEFAULT_ENQUEUE_LIMIT,
@@ -766,70 +873,42 @@ export const processSummaryJob = internalAction({
         })),
       });
 
-      let summary: EventSummaryOutput | null = null;
-      let inputTokens = 0;
-      let outputTokens = 0;
-      let retryInstruction: string | null = null;
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await callLLM<unknown>({
-          kind: "chat",
-          model: settings.model,
-          temperature: 0.2,
-          // Romanian tokenizes densely and v3 prompts carry full bodies;
-          // 900 was truncation-prone at the 120+100+100+100 word targets.
-          maxTokens: 1200,
-          responseFormat: {
-            type: "json_schema",
-            json_schema: EVENT_SUMMARY_JSON_SCHEMA,
-          },
-          messages: [
-            { role: "system", content: prompt.system },
-            { role: "user", content: prompt.user },
-            ...(retryInstruction
-              ? [{ role: "user" as const, content: retryInstruction }]
-              : []),
-          ],
-          context: {
-            callType: "event_summary",
-            eventId: input.event._id,
-          },
-          runtime: ctx,
-        });
-
-        inputTokens += response.usage.inputTokens;
-        outputTokens += response.usage.outputTokens;
-
-        const content = response.result;
-        if (!content) {
-          throw new Error(
-            response.error ?? "Model returned an empty summary response",
-          );
+      let generated: {
+        summary: EventSummaryOutput;
+        inputTokens: number;
+        outputTokens: number;
+      };
+      try {
+        generated = await generateSummaryWithModel(
+          ctx,
+          settings.model,
+          prompt,
+          input.event._id,
+          input.event.title,
+        );
+      } catch (error) {
+        // Free-tier quota strategy: the primary model's daily quota covers
+        // the first events of the day; once it 429s, the job runs on the
+        // fallback model instead of failing.
+        if (
+          !isQuotaError(error) ||
+          !settings.fallbackModel ||
+          settings.fallbackModel === settings.model
+        ) {
+          throw error;
         }
-
-        const candidate = parseSummaryOutput(content, input.event.title);
-        const wordCapViolations = validateSummaryWordCaps(candidate);
-        if (wordCapViolations.length === 0) {
-          summary = candidate;
-          break;
-        }
-
-        if (attempt === 1) {
-          throw new Error(
-            `Model exceeded summary word caps after retry: ${wordCapViolations.join("; ")}`,
-          );
-        }
-
-        retryInstruction = [
-          "Your previous JSON exceeded one or more word limits:",
-          ...wordCapViolations.map((violation) => `- ${violation}`),
-          "Return the same JSON keys again, but keep every field within its word cap.",
-        ].join("\n");
+        console.warn(
+          `[summarization] ${settings.model} quota/rate limited — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
+        );
+        generated = await generateSummaryWithModel(
+          ctx,
+          settings.fallbackModel,
+          prompt,
+          input.event._id,
+          input.event.title,
+        );
       }
-
-      if (!summary) {
-        throw new Error("Model did not produce a usable event summary");
-      }
+      const { summary, inputTokens, outputTokens } = generated;
 
       const result = await ctx.runMutation(
         internal.summarization.applyEventSummaryResult,

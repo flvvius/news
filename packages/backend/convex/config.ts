@@ -688,6 +688,12 @@ export const seedDefaults = internalMutation({
           "Chat model used for event perspective summaries (gemini-* routes via Gemini's OpenAI-compatible API; anything else via OpenAI).",
       },
       {
+        key: "event_summary_model_fallback",
+        value: "gemini-3.1-flash-lite",
+        description:
+          "Model used when the primary event_summary_model is rate/quota limited (429) — lets a low-quota premium model cover the first events of the day and degrade gracefully. Set to \"none\" to disable.",
+      },
+      {
         key: "event_summary_enqueue_limit",
         value: 40,
         description:
