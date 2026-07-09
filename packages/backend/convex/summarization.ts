@@ -11,6 +11,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { normalizedPerspectives } from "./lib/biasAxis";
+import { selectSummaryArticles } from "./lib/summaryArticleSelection";
+import { SUMMARY_PROMPT_VERSION } from "./prompts";
 import {
   buildEventShareRenderSignature,
   type EventShareRenderData,
@@ -63,14 +65,29 @@ function shouldResummarize(event: Doc<"events">): boolean {
   // normalizedPerspectives falls back to legacy center/left/right keys so
   // pre-BIV-303 events are not needlessly resummarized before the backfill.
   const perspectives = normalizedPerspectives(event.perspectiveSummaries);
+  // CASE D events (perspectiveApplicable=false) intentionally have empty
+  // side fields — neutral + globalImpact alone make them complete, otherwise
+  // they would re-enqueue on every cron forever.
+  const sidesComplete =
+    event.perspectiveApplicable === false ||
+    Boolean(
+      perspectives?.reformist?.trim() && perspectives?.suveranist?.trim(),
+    );
   const hasFullAiSummary = Boolean(
     perspectives?.neutral?.trim() &&
-    perspectives?.reformist?.trim() &&
-    perspectives?.suveranist?.trim() &&
+    sidesComplete &&
     event.globalImpact?.trim() &&
     event.lastSummarizedAt,
   );
   if (!hasFullAiSummary) return true;
+
+  // Prompt-semantics staleness: signature short-circuiting alone never
+  // re-enqueues, so a SUMMARY_PROMPT_VERSION bump would be a no-op without
+  // this check. Events summarized under an older prompt version re-run once
+  // and get stamped with the current version.
+  if ((event.lastSummaryPromptVersion ?? 0) !== SUMMARY_PROMPT_VERSION) {
+    return true;
+  }
 
   const changedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   return (event.lastSummarizedAt ?? 0) < changedAt;
@@ -292,7 +309,10 @@ async function enqueueEligibleEvents(
       event.lastSummarizedAt &&
       now - latestJob.updatedAt < TERMINAL_SUCCESS_WINDOW_MS &&
       (event.lastSummarizedAt ?? 0) >=
-        (event.lastUpdatedAt ?? event.firstPublishedAt)
+        (event.lastUpdatedAt ?? event.firstPublishedAt) &&
+      // A prompt-version bump is a deliberate one-time migration — the
+      // anti-thrash window must not delay it.
+      (event.lastSummaryPromptVersion ?? 0) === SUMMARY_PROMPT_VERSION
     ) {
       skipped++;
       continue;
@@ -650,13 +670,21 @@ export const getEventSummaryInput = internalQuery({
       ),
     );
     const sourcesById = new Map(sourceRows);
-    const sortedArticles = [...articles].sort(
-      (a, b) => b.publishedAt - a.publishedAt,
-    );
-    const selectedArticles = sortedArticles.slice(
-      0,
-      Math.min(Math.max(Math.floor(maxArticles), 3), 20),
-    );
+    const selectedArticles = selectSummaryArticles(
+      articles.map((article) => {
+        const source = sourcesById.get(article.sourceId) ?? null;
+        return {
+          _id: article._id,
+          publishedAt: article.publishedAt,
+          extractionQuality: article.extractionQuality,
+          source: source
+            ? { _id: source._id, biasLabel: sourceBiasLabel(source) }
+            : null,
+          article,
+        };
+      }),
+      maxArticles,
+    ).map(({ article }) => article);
 
     return {
       eligible: true as const,
@@ -705,6 +733,7 @@ export const applyEventSummaryResult = internalMutation({
     reformist: v.string(),
     suveranist: v.string(),
     globalImpact: v.string(),
+    perspectiveApplicable: v.optional(v.boolean()),
     summarySignature: v.optional(v.string()),
   },
   handler: async (
@@ -717,6 +746,7 @@ export const applyEventSummaryResult = internalMutation({
       reformist,
       suveranist,
       globalImpact,
+      perspectiveApplicable,
       summarySignature,
     },
   ) => {
@@ -742,16 +772,23 @@ export const applyEventSummaryResult = internalMutation({
       return { applied: false as const };
     }
 
+    const applicable = perspectiveApplicable ?? true;
     await ctx.db.patch(eventId, {
-      perspectiveSummaries: {
-        neutral: neutral.trim(),
-        reformist: reformist.trim(),
-        suveranist: suveranist.trim(),
-      },
+      // CASE D stores only the neutral summary; the empty side fields stay
+      // unset so the UI's note replaces the perspective split.
+      perspectiveSummaries: applicable
+        ? {
+            neutral: neutral.trim(),
+            reformist: reformist.trim(),
+            suveranist: suveranist.trim(),
+          }
+        : { neutral: neutral.trim() },
+      perspectiveApplicable: applicable,
       perspectiveSource: "ai",
       globalImpact: globalImpact.trim(),
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+      lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
       // A successful summary is the sole gate to going public: promote a
       // qualifying `processing` event to `published` now that it has full AI
       // perspectives + globalImpact. syncPublicEventPreview below then creates
@@ -867,6 +904,7 @@ export const markSummaryJobSkipped = internalMutation({
         await ctx.db.patch(eventId, {
           lastSummarizedAt: Date.now(),
           lastSummarySignature: summarySignature ?? event.lastSummarySignature,
+          lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
         });
       }
     }

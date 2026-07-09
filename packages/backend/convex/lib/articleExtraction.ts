@@ -1323,6 +1323,42 @@ export function extractBodyFromHtml(html: string): {
   return chooseBestContentBlock(html);
 }
 
+export type FetchedArticleBody = {
+  body?: string;
+  method: ExtractionMethod | "fetch_failed";
+};
+
+/**
+ * Transient body fetch for the event summarizer. Article bodies must never
+ * be persisted (storing scraped third-party text is a copyright exposure),
+ * so the summarizer re-fetches at summarization time, uses the text in
+ * memory for the prompt, and drops it. Same fetch/extraction machinery as
+ * extractArticleContentForEmbedding, minus summary/entities/images. Returns
+ * no body when the page is blocked or the extracted text is below the
+ * strong-body floor — callers fall back to the stored summary/rssSnippet.
+ */
+export async function fetchArticleBodyText(
+  url: string,
+): Promise<FetchedArticleBody> {
+  const resolvedUrl =
+    (await resolveGoogleNewsUrl(url, EXTRACTION_USER_AGENT)) ?? url;
+  const fetched = await fetchHtml(resolvedUrl, resolvedUrl !== url);
+  if (!fetched.ok || !fetched.html) {
+    return { method: "fetch_failed" };
+  }
+
+  try {
+    const { text, method } = chooseBestContentBlock(fetched.html);
+    const normalizedBody = normalizeWhitespace(text).slice(0, MAX_BODY_CHARS);
+    if (normalizedBody.length < MIN_EXTRACTED_BODY_CHARS) {
+      return { method };
+    }
+    return { body: normalizedBody, method };
+  } catch {
+    return { method: "fetch_failed" };
+  }
+}
+
 export type PreparedEmbeddingArticle = {
   sourceName?: string;
   title: string;

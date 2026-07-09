@@ -4,6 +4,8 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
+import { ChevronDownIcon } from "lucide-react";
+import { useState } from "react";
 import BiasIndicator from "@/components/bias-indicator";
 import { SectionTitle } from "@/components/ui/section-title";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
@@ -35,6 +37,9 @@ type ArticlesListProps = {
   articles: Article[];
 };
 
+const INITIAL_ARTICLE_COUNT = 5;
+const ARTICLE_INCREMENT = 10;
+
 function isNumberArray(value: unknown): value is number[] {
   return (
     Array.isArray(value) &&
@@ -44,6 +49,7 @@ function isNumberArray(value: unknown): value is number[] {
 
 const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
   const t = useT();
+  const [visibleCount, setVisibleCount] = useState(INITIAL_ARTICLE_COUNT);
   const { isAuthenticated } = useConvexAuth();
   const logInteraction = useMutation({
     mutationFn: useConvexMutation(api.interactions.logInteraction),
@@ -73,13 +79,18 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
     });
   };
 
+  const visibleArticles = articles.slice(0, visibleCount);
+  const remainingCount = articles.length - visibleCount;
+  const nextBatchCount = Math.min(ARTICLE_INCREMENT, remainingCount);
+  const showToggle = remainingCount > 0;
+
   return (
     <section className="space-y-2 border-t border-border pt-6">
       <SectionTitle>
         {t("articles.originalReporting")} ({articles.length})
       </SectionTitle>
       <div className="flex flex-col divide-y divide-border">
-        {articles.map((article) => (
+        {visibleArticles.map((article) => (
           <div key={article._id} className="py-5">
             <div className="flex min-w-0 flex-col gap-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -171,6 +182,24 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
           </div>
         ))}
       </div>
+
+      {showToggle && (
+        <button
+          type="button"
+          onClick={() =>
+            setVisibleCount((count) => count + ARTICLE_INCREMENT)
+          }
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          {nextBatchCount === 1
+            ? t("articles.showMore.one")
+            : t("articles.showMore.many").replace(
+                "{count}",
+                String(nextBatchCount),
+              )}
+          <ChevronDownIcon className="size-4" />
+        </button>
+      )}
     </section>
   );
 };

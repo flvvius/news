@@ -38,18 +38,25 @@ type PerspectiveSummaries = {
 export function EventDetailTabs({
   eventId,
   perspectiveSummaries,
+  perspectiveApplicable,
   globalImpact,
   articles,
 }: {
   eventId: Id<"events">;
   perspectiveSummaries?: PerspectiveSummaries | null;
+  // false = the summarizer judged the story has no reformist/suveranist axis
+  // (CASE D) — show a note instead of the split. undefined = legacy events,
+  // rendered exactly as before.
+  perspectiveApplicable?: boolean | null;
   globalImpact?: string | null;
   articles: EventDetailArticle[];
 }) {
   const t = useT();
-  const hasPerspectives = Boolean(
-    perspectiveSummaries?.reformist || perspectiveSummaries?.suveranist,
-  );
+  const hasPerspectives =
+    perspectiveApplicable !== false &&
+    Boolean(
+      perspectiveSummaries?.reformist || perspectiveSummaries?.suveranist,
+    );
 
   // Section rhythm from the native DESIGN_LOG: zones separate with mt-8 +
   // hairline + pt-6 while titles stay readable and content-first.
@@ -118,6 +125,11 @@ export function EventDetailTabs({
           <p className={bodyText}>
             {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
           </p>
+          {perspectiveApplicable === false && (
+            <p className="text-sm text-muted-foreground">
+              {t("event.noPoliticalAxis")}
+            </p>
+          )}
         </section>
       )}
 

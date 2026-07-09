@@ -18,6 +18,7 @@ export type PublicPreviewRow = Pick<
   | "imageUrl"
   | "imageAlt"
   | "perspectiveSummaries"
+  | "perspectiveApplicable"
   | "globalImpact"
   | "firstPublishedAt"
   | "lastUpdatedAt"
@@ -101,6 +102,7 @@ export function toFeedEvent(row: PublicPreviewRow) {
     imageUrl: row.imageUrl,
     imageAlt: row.imageAlt,
     perspectiveSummaries: normalizedPerspectives(row.perspectiveSummaries),
+    perspectiveApplicable: row.perspectiveApplicable,
     globalImpact: row.globalImpact,
     firstPublishedAt: row.firstPublishedAt,
     lastUpdatedAt: row.lastUpdatedAt,

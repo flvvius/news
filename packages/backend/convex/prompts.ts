@@ -9,6 +9,9 @@ export type EventSummaryArticleInput = {
   summary?: string;
   rssSnippet?: string;
   atomicFacts: string[];
+  // Fetched transiently at summarization time and already capped by the
+  // caller — never persisted (copyright constraint).
+  bodyText?: string;
   canonicalUrl: string;
 };
 
@@ -22,6 +25,9 @@ export type EventSummaryOutput = {
   reformist: string;
   suveranist: string;
   globalImpact: string;
+  // false = CASE D: the story has no reformist/suveranist dimension, so the
+  // side fields are empty and the UI shows a note instead of a fake split.
+  perspectiveApplicable: boolean;
 };
 
 export type ArticleFactExtractionInput = {
@@ -90,6 +96,25 @@ function trimField(value: string | undefined, maxLength: number): string {
   return (value ?? "").trim().slice(0, maxLength);
 }
 
+/**
+ * Bump when the summary prompt semantics change so existing events are
+ * resummarized even with unchanged article inputs. Folded into the summary
+ * signature (summarizationNode.ts) AND checked against
+ * events.lastSummaryPromptVersion by shouldResummarize (summarization.ts) —
+ * the signature alone only skips spend, it never re-enqueues.
+ * v2 = Romanian-first neutral/reformist/suveranist prompt (BIV-202).
+ * v3 = transient full-body input, CASE D (no political axis →
+ * perspectiveApplicable=false), concrete emphasis/omission requirements for
+ * the perspective fields, globalImpact must not restate neutral.
+ * v4 = CASE D applies even with cross-lean coverage of apolitic stories
+ * (dev eval: 0/17 fired, loto/meteo/sport got forced splits); case labels
+ * must not leak into output text.
+ * v5 = CASE D wired into the precomputed case lines + explicit step-0
+ * decision order (v4 still fired 0/18 — the "tratează ca adevăr" case
+ * lines left no D option at the point of writing).
+ */
+export const SUMMARY_PROMPT_VERSION = 5;
+
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
 
@@ -133,9 +158,9 @@ function perspectiveCaseFor(
   const sideLabel = side === "reformist" ? "reformistă" : "suveranistă";
   const fallback = LIMITED_COVERAGE_FALLBACK[side];
   if (count <= 1) {
-    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}"`;
+    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}". (Ignoră acest caz dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
   }
-  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte.`;
+  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte. (Ignoră ambele dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
 }
 
 export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
@@ -169,6 +194,9 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
         `fiabilitateaSursei: ${article.sourceReliability}/10`,
         `publicatLa: ${article.publishedAt}`,
         `Titlu: ${trimField(article.title, 220)}`,
+        article.bodyText
+          ? `Textul articolului: ${trimField(article.bodyText, 6000)}`
+          : "",
         article.summary
           ? `Rezumat extras: ${trimField(article.summary, 900)}`
           : "",
@@ -199,6 +227,8 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "REGULI DE BAZĂ:",
       "- Folosește DOAR materialul din articolele furnizate. Nu inventa niciodată fapte, cifre, citate, motivații, rezultate sau efecte ulterioare.",
+      '- Când un articol are câmpul "Textul articolului", acela este materialul principal — extrage din el detaliile concrete (cifre, nume, locuri, termene, declarații). "Rezumat extras" și "Fragment RSS" sunt doar rezerve pentru articolele fără text.',
+      "- Rezumatul neutral trebuie să rețină detaliile specifice care fac știrea utilă: sume, procente, date, locuri, instituții și persoane numite de surse. Nu le înlocui cu formulări generale.",
       "- Preferă faptele confirmate de 2 sau mai multe surse. Dacă un fapt-cheie apare într-un singur articol, atribuie-l numelui sursei.",
       "- Tratează câmpurile de fapte atomice ca afirmații verificabile pre-extrase. Folosește-le pentru a identifica faptele comune, dezacordurile și faptele raportate de o singură parte.",
       "- Dacă sursele se contrazic asupra unui fapt, semnalează dezacordul cu atribuire. Nu alege în tăcere una dintre variante.",
@@ -206,6 +236,13 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Preferă sursele cu fiabilitateaSursei >= 7 pentru nucleul factual. Atribuie explicit afirmațiile surselor cu fiabilitateaSursei < 5.",
       "- Când articolele intră în conflict, folosește cel mai recent publicatLa drept stare curentă doar dacă abordează direct conflictul.",
       "- Scrie proză neutră, ancorată în surse. Fără liste cu puncte. Fără limbaj de marketing. Fără editorializare.",
+      "",
+      "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
+      "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
+      '- Dacă subiectul este apolitic (meteo, sport, loterie, rezultate sportive, sondaje de divertisment, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică), setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
+      "- Aplică CAZUL D chiar dacă ambele părți au articole în input: faptul că surse cu orientări diferite au relatat aceeași știre apolitică NU creează o axă politică. Întrebarea decisivă este: conțin articolele poziționări politice divergente? Dacă nu, este CAZUL D.",
+      "- NU folosi CAZUL D pentru subiecte despre politică, partide, guvern, parlament, justiție, corupție, UE/NATO, buget, alegeri sau declarații ale politicienilor — acelea au întotdeauna o axă.",
+      "- Când perspectiveApplicable este true, execută cazurile precalculate de mai jos.",
       "",
       "NUMĂRUL DE ARTICOLE PE PERSPECTIVĂ (precalculat; tratează ca adevăr):",
       `- articole cu cadrare reformistă: ${reformistArticleCount}`,
@@ -216,12 +253,14 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "DEFINIȚIILE CAZURILOR:",
       "- CAZUL A: folosește exact textul de rezervă furnizat mai sus. Nu adăuga explicații.",
-      "- CAZUL B: scrie 50-100 de cuvinte notând că sursele acelei părți au reflectat în mare nucleul factual comun. Numește 1-2 surse și citează unul sau două elemente comune pe care le-au accentuat. Nu inventa o cadrare unică.",
-      "- CAZUL C: scrie 50-100 de cuvinte descriind cadrarea, accentul sau faptele exclusive distincte ale acelei părți, cu numele surselor.",
+      "- CAZUL B: scrie 50-100 de cuvinte notând că sursele acelei părți au reflectat în mare nucleul factual comun. Numește 1-2 surse și elementele concrete pe care le-au pus în titlu sau în prim-plan. NU inventa o diferență de ton care nu există în articole — dacă acoperirea e identică, spune asta direct.",
+      "- CAZUL C: scrie 50-100 de cuvinte descriind concret cum diferă acoperirea acelei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
       '- Nu folosi niciodată un text de rezervă "Acoperire limitată..." pentru o parte cu 2 sau mai multe articole.',
+      '- Etichetele "CAZUL A/B/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
       "",
       "REGULI PENTRU globalImpact:",
       "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",
+      "- globalImpact NU repetă rezumatul neutral. Nu re-povesti evenimentul: începe direct cu cine sau ce este afectat și cu ce consecință. Dacă o informație apare deja în neutral, în globalImpact apare doar consecința ei, nu faptul în sine.",
       "- Forme valide de impact, în ordinea priorității: o consecință specifică ulterioară; un efect deja declarat (reacții de piață, victime, diplomație, sancțiuni, prețuri); sau mize directe numite de un articol.",
       "- O miză există când orice articol menționează un risc specific pentru o persoană, un grup, o piață, o regiune, un tratat, alegeri, aprovizionare, prețuri sau o instituție.",
       "- Dacă nu ești sigur că o mențiune este o miză concretă, consider-o validă și scrie impactul.",
@@ -229,7 +268,8 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       `- Folosește exact "${GLOBAL_IMPACT_FALLBACK}" doar când articolele sunt pur procedurale sau informative și nu conțin niciun risc, efect, consecință sau miză.`,
       "",
       "OUTPUT:",
-      "- Returnează DOAR JSON cu exact aceste chei: neutral, reformist, suveranist, globalImpact.",
+      "- Returnează DOAR JSON cu exact aceste chei: neutral, reformist, suveranist, globalImpact, perspectiveApplicable.",
+      "- perspectiveApplicable este boolean: false doar în CAZUL D, altfel true.",
       "- Fără proză, markdown sau delimitatori de cod în afara JSON-ului.",
       "",
       "INTERZIS:",
@@ -243,10 +283,12 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       `Eveniment: ${input.eventTitle}`,
       "",
       "Scrie:",
-      "- neutral (70-120 cuvinte): nucleul factual comun, preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
-      "- reformist (50-100 de cuvinte pentru CAZUL B sau C): execută CAZUL REFORMIST indicat mai sus.",
-      "- suveranist (50-100 de cuvinte pentru CAZUL B sau C): execută CAZUL SUVERANIST indicat mai sus.",
-      "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
+      "- Pasul 0, înainte de orice: stabilește perspectiveApplicable aplicând VERIFICAREA AXEI POLITICE. Pentru știri despre loterie, sport, meteo, sondaje de divertisment sau fapt divers fără poziționări politice divergente, răspunsul corect este false — chiar dacă ambele părți au articole în input.",
+      "- neutral (70-120 cuvinte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
+      '- reformist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
+      '- suveranist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
+      "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Începe cu consecința, nu repeta neutral. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
+      "- perspectiveApplicable (boolean): false doar dacă ai aplicat CAZUL D.",
       "",
       "Respectă limita de cuvinte a fiecărui câmp. Evită listele cu puncte. Evită certitudinile nesusținute. Scrie exclusiv în limba română.",
       "",

@@ -8,23 +8,42 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
 import { callLLM } from "./lib/aiCall";
+import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
   SIDE_COVERAGE_FALLBACK,
+  SUMMARY_PROMPT_VERSION,
   type EventSummaryOutput,
 } from "./prompts";
 
 import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
+// Free-tier strategy: the primary model's daily quota (e.g. gemini-3.5-flash,
+// 20 req/day free) covers the first events of the day; quota 429s switch the
+// job to this model instead of failing it. "none" disables the fallback.
+const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const DEFAULT_ENQUEUE_LIMIT = 40;
 const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MIN_ARTICLES = 3;
 const DEFAULT_MIN_SOURCES = 2;
 const DEFAULT_MAX_INPUT_ARTICLES = 12;
+const DEFAULT_BODY_FETCH_ENABLED = true;
+const DEFAULT_BODY_CHARS = 2600;
+// Total prompt budget for transient bodies across all articles; the
+// per-article cap scales down as more articles are selected.
+const TOTAL_BODY_CHARS_BUDGET = 24000;
+const MIN_BODY_CHARS_PER_ARTICLE = 1200;
+const BODY_FETCH_CONCURRENCY = 4;
+// Hard deadline for the whole body-fetch fan-out. Each fetch attempt is
+// individually 8s-capped, but a slow publisher can still chain resolve +
+// several header-profile attempts per article; past this budget the job
+// proceeds with whatever bodies have already landed.
+const BODY_FETCH_TOTAL_TIMEOUT_MS = 60_000;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
+const JOB_STAGGER_MS = 8000;
 const SUMMARY_WORD_LIMITS = {
   neutral: 120,
   reformist: 100,
@@ -34,12 +53,15 @@ const SUMMARY_WORD_LIMITS = {
 
 type SummarySettings = {
   model: string;
+  fallbackModel?: string;
   enqueueLimit: number;
   batchSize: number;
   maxAttempts: number;
   minArticles: number;
   minSources: number;
   maxInputArticles: number;
+  bodyFetchEnabled: boolean;
+  bodyChars: number;
 };
 
 type SummaryQueueHealthResult = {
@@ -59,6 +81,7 @@ type SummaryQueueHealthResult = {
 };
 
 type SummaryInputArticle = {
+  _id: string;
   title: string;
   source?: {
     name: string;
@@ -98,8 +121,19 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
         description:
           "Impactul concret de 25-100 de cuvinte, în limba română, sau textul de rezervă exact când nu este susținut.",
       },
+      perspectiveApplicable: {
+        type: "boolean",
+        description:
+          "false doar în CAZUL D (subiect fără dimensiune reformist-suveranistă); altfel true.",
+      },
     },
-    required: ["neutral", "reformist", "suveranist", "globalImpact"],
+    required: [
+      "neutral",
+      "reformist",
+      "suveranist",
+      "globalImpact",
+      "perspectiveApplicable",
+    ],
   },
 } as const;
 
@@ -120,9 +154,21 @@ function safeString(value: unknown, fallback: string): string {
     : fallback;
 }
 
+function safeBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
+}
+
 function cleanSummaryField(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
-  const cleaned = value.replace(/\s+/g, " ").trim();
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    // The prompt's internal case rubric must not leak into user-visible
+    // text (observed: "CAZUL B: Sursele reformiste…").
+    .replace(/^\s*CAZUL\s+[A-D]\s*[:—-]\s*/i, "")
+    .trim();
   return cleaned.length > 0 ? cleaned.slice(0, 1200) : fallback;
 }
 
@@ -148,15 +194,24 @@ function parseSummaryOutput(
   const record = parsed as Record<string, unknown>;
   const neutralFallback = `Acoperirea subiectului „${eventTitle}" este în curs de dezvoltare.`;
   const sideFallback = SIDE_COVERAGE_FALLBACK;
+  // Missing/invalid flag defaults to true (legacy behavior). When the model
+  // declares CASE D, the side fields are force-cleared even if it wrote
+  // something into them.
+  const perspectiveApplicable = record.perspectiveApplicable !== false;
 
   return {
     neutral: cleanSummaryField(record.neutral, neutralFallback),
-    reformist: cleanSummaryField(record.reformist, sideFallback),
-    suveranist: cleanSummaryField(record.suveranist, sideFallback),
+    reformist: perspectiveApplicable
+      ? cleanSummaryField(record.reformist, sideFallback)
+      : "",
+    suveranist: perspectiveApplicable
+      ? cleanSummaryField(record.suveranist, sideFallback)
+      : "",
     globalImpact: cleanSummaryField(
       record.globalImpact,
       "Această știre poate influența dezbaterea publică pe măsură ce apar noi relatări.",
     ),
+    perspectiveApplicable,
   };
 }
 
@@ -166,8 +221,10 @@ function countWords(value: string): number {
 
 function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   const violations: string[] = [];
-  for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS)) {
-    const wordCount = countWords(summary[field as keyof EventSummaryOutput]);
+  for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS) as Array<
+    [keyof typeof SUMMARY_WORD_LIMITS, number]
+  >) {
+    const wordCount = countWords(summary[field]);
     if (wordCount > maxWords) {
       violations.push(
         `${field} has ${wordCount} words; maximum is ${maxWords}`,
@@ -176,13 +233,6 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   }
   return violations;
 }
-
-/**
- * Bump when the summary prompt semantics change so existing events are
- * resummarized even with unchanged article inputs. v2 = Romanian-first
- * neutral/reformist/suveranist prompt (BIV-202).
- */
-const SUMMARY_PROMPT_VERSION = 2;
 
 function buildSummarySignature(input: {
   event: { _id: string; title: string };
@@ -221,6 +271,101 @@ function retryDelayMs(attempts: number): number {
   return BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1);
 }
 
+/**
+ * Rate/quota rejection from the model API (Gemini free tier surfaces both
+ * per-minute and per-day exhaustion as 429 RESOURCE_EXHAUSTED). These are
+ * the errors worth retrying on the fallback model rather than failing.
+ */
+function isQuotaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(message);
+}
+
+/**
+ * gemini-3.5* are thinking models on the OpenAI-compat endpoint: thinking
+ * spends from max_tokens before any JSON is emitted, so they need headroom
+ * beyond the ~900 tokens the four Romanian fields actually take.
+ */
+function summaryMaxTokensFor(model: string): number {
+  return model.startsWith("gemini-3.5") ? 3000 : 1200;
+}
+
+/**
+ * Run the summary model call with the word-cap retry loop. Throws on quota
+ * errors, unusable output, or persistent word-cap violations — the caller
+ * decides whether a fallback model gets a shot.
+ */
+async function generateSummaryWithModel(
+  ctx: ActionCtx,
+  model: string,
+  prompt: { system: string; user: string },
+  eventId: Id<"events">,
+  eventTitle: string,
+): Promise<{
+  summary: EventSummaryOutput;
+  inputTokens: number;
+  outputTokens: number;
+}> {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let retryInstruction: string | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await callLLM<unknown>({
+      kind: "chat",
+      model,
+      temperature: 0.2,
+      maxTokens: summaryMaxTokensFor(model),
+      responseFormat: {
+        type: "json_schema",
+        json_schema: EVENT_SUMMARY_JSON_SCHEMA,
+      },
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+        ...(retryInstruction
+          ? [{ role: "user" as const, content: retryInstruction }]
+          : []),
+      ],
+      context: {
+        callType: "event_summary",
+        eventId,
+      },
+      runtime: ctx,
+    });
+
+    inputTokens += response.usage.inputTokens;
+    outputTokens += response.usage.outputTokens;
+
+    const content = response.result;
+    if (!content) {
+      throw new Error(
+        response.error ?? "Model returned an empty summary response",
+      );
+    }
+
+    const candidate = parseSummaryOutput(content, eventTitle);
+    const wordCapViolations = validateSummaryWordCaps(candidate);
+    if (wordCapViolations.length === 0) {
+      return { summary: candidate, inputTokens, outputTokens };
+    }
+
+    if (attempt === 1) {
+      throw new Error(
+        `Model exceeded summary word caps after retry: ${wordCapViolations.join("; ")}`,
+      );
+    }
+
+    retryInstruction = [
+      "Your previous JSON exceeded one or more word limits:",
+      ...wordCapViolations.map((violation) => `- ${violation}`),
+      "Return the same JSON keys again, but keep every field within its word cap.",
+    ].join("\n");
+  }
+
+  throw new Error("Model did not produce a usable event summary");
+}
+
 async function loadSummarySettings(
   ctx: ActionCtx,
   args: { enqueueLimit?: number; processLimit?: number },
@@ -228,17 +373,26 @@ async function loadSummarySettings(
   const cfg = (await ctx.runQuery(internal.config.getBatch, {
     keys: [
       "event_summary_model",
+      "event_summary_model_fallback",
       "event_summary_enqueue_limit",
       "event_summary_batch_size",
       "event_summary_max_attempts",
       "event_summary_min_articles",
       "event_summary_min_sources",
       "event_summary_max_input_articles",
+      "event_summary_body_fetch_enabled",
+      "event_summary_body_chars",
     ],
   })) as Record<string, unknown>;
 
+  const fallbackModel = safeString(
+    cfg.event_summary_model_fallback,
+    DEFAULT_FALLBACK_MODEL,
+  );
+
   return {
     model: safeString(cfg.event_summary_model, DEFAULT_MODEL),
+    fallbackModel: fallbackModel === "none" ? undefined : fallbackModel,
     enqueueLimit: safeInteger(
       args.enqueueLimit ?? cfg.event_summary_enqueue_limit,
       DEFAULT_ENQUEUE_LIMIT,
@@ -275,7 +429,80 @@ async function loadSummarySettings(
       3,
       20,
     ),
+    bodyFetchEnabled: safeBoolean(
+      cfg.event_summary_body_fetch_enabled,
+      DEFAULT_BODY_FETCH_ENABLED,
+    ),
+    bodyChars: safeInteger(
+      cfg.event_summary_body_chars,
+      DEFAULT_BODY_CHARS,
+      500,
+      6000,
+    ),
   };
+}
+
+/**
+ * Fetch article bodies transiently for one summary prompt. Bodies are used
+ * in memory and dropped — never persisted (copyright constraint; see
+ * fetchArticleBodyText). Any article whose fetch fails or comes back blocked
+ * simply contributes its stored summary/rssSnippet, as before.
+ */
+async function fetchTransientArticleBodies(
+  articles: SummaryInputArticle[],
+  settings: SummarySettings,
+): Promise<Map<string, string>> {
+  const bodies = new Map<string, string>();
+  if (!settings.bodyFetchEnabled || articles.length === 0) return bodies;
+
+  const perArticleCap = Math.max(
+    MIN_BODY_CHARS_PER_ARTICLE,
+    Math.min(
+      settings.bodyChars,
+      Math.floor(TOTAL_BODY_CHARS_BUDGET / articles.length),
+    ),
+  );
+
+  const deadlineAt = Date.now() + BODY_FETCH_TOTAL_TIMEOUT_MS;
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(BODY_FETCH_CONCURRENCY, articles.length) },
+    async () => {
+      while (nextIndex < articles.length && Date.now() < deadlineAt) {
+        const article = articles[nextIndex++]!;
+        try {
+          const fetched = await fetchArticleBodyText(article.canonicalUrl);
+          if (fetched.body) {
+            bodies.set(article._id, fetched.body.slice(0, perArticleCap));
+          }
+        } catch {
+          // Fall back to summary/rssSnippet for this article.
+        }
+      }
+    },
+  );
+
+  // Workers write into `bodies` as they finish, so on deadline we can stop
+  // waiting and use whatever landed; abandoned in-flight fetches resolve into
+  // a Map nobody reads again.
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = await Promise.race([
+    Promise.all(workers).then(() => false),
+    new Promise<boolean>((resolve) => {
+      deadlineTimer = setTimeout(
+        () => resolve(true),
+        BODY_FETCH_TOTAL_TIMEOUT_MS,
+      );
+    }),
+  ]);
+  clearTimeout(deadlineTimer);
+
+  console.log(
+    `[summarization] Transient bodies fetched for ${bodies.size}/${articles.length} article(s)${
+      timedOut ? " (fan-out deadline hit — proceeding with partial bodies)" : ""
+    }`,
+  );
+  return bodies;
 }
 
 export const summarizeQueuedEvents = internalAction({
@@ -325,9 +552,12 @@ export const summarizeQueuedEvents = internalAction({
       },
     );
 
-    for (const job of dueJobs) {
+    // Stagger the jobs instead of firing them all at once: concurrent
+    // summary calls burst past Gemini's rate limit (observed 429s), and each
+    // job also fans out its own transient body fetches.
+    for (const [index, job] of dueJobs.entries()) {
       await ctx.scheduler.runAfter(
-        0,
+        index * JOB_STAGGER_MS,
         internal.summarizationNode.processSummaryJob,
         {
           jobId: job._id,
@@ -499,9 +729,10 @@ export const runPhase5Backfill = internalAction({
         limit: settings.batchSize,
       },
     )) as Array<{ _id: Id<"eventSummaryJobs"> }>;
-    for (const job of dueJobs) {
+    // Staggered like summarizeQueuedEvents: bursts 429 against Gemini.
+    for (const [index, job] of dueJobs.entries()) {
       await ctx.scheduler.runAfter(
-        0,
+        index * JOB_STAGGER_MS,
         internal.summarizationNode.processSummaryJob,
         {
           jobId: job._id,
@@ -643,6 +874,11 @@ export const processSummaryJob = internalAction({
         };
       }
 
+      const transientBodies = await fetchTransientArticleBodies(
+        input.articles,
+        settings,
+      );
+
       const prompt = buildEventSummaryPrompt({
         eventTitle: input.event.title,
         articles: input.articles.map((article: SummaryInputArticle) => ({
@@ -654,72 +890,47 @@ export const processSummaryJob = internalAction({
           summary: article.summary,
           rssSnippet: article.rssSnippet,
           atomicFacts: article.atomicFacts,
+          bodyText: transientBodies.get(article._id),
           canonicalUrl: article.canonicalUrl,
         })),
       });
 
-      let summary: EventSummaryOutput | null = null;
-      let inputTokens = 0;
-      let outputTokens = 0;
-      let retryInstruction: string | null = null;
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await callLLM<unknown>({
-          kind: "chat",
-          model: settings.model,
-          temperature: 0.2,
-          maxTokens: 900,
-          responseFormat: {
-            type: "json_schema",
-            json_schema: EVENT_SUMMARY_JSON_SCHEMA,
-          },
-          messages: [
-            { role: "system", content: prompt.system },
-            { role: "user", content: prompt.user },
-            ...(retryInstruction
-              ? [{ role: "user" as const, content: retryInstruction }]
-              : []),
-          ],
-          context: {
-            callType: "event_summary",
-            eventId: input.event._id,
-          },
-          runtime: ctx,
-        });
-
-        inputTokens += response.usage.inputTokens;
-        outputTokens += response.usage.outputTokens;
-
-        const content = response.result;
-        if (!content) {
-          throw new Error(
-            response.error ?? "Model returned an empty summary response",
-          );
+      let generated: {
+        summary: EventSummaryOutput;
+        inputTokens: number;
+        outputTokens: number;
+      };
+      try {
+        generated = await generateSummaryWithModel(
+          ctx,
+          settings.model,
+          prompt,
+          input.event._id,
+          input.event.title,
+        );
+      } catch (error) {
+        // Free-tier quota strategy: the primary model's daily quota covers
+        // the first events of the day; once it 429s, the job runs on the
+        // fallback model instead of failing.
+        if (
+          !isQuotaError(error) ||
+          !settings.fallbackModel ||
+          settings.fallbackModel === settings.model
+        ) {
+          throw error;
         }
-
-        const candidate = parseSummaryOutput(content, input.event.title);
-        const wordCapViolations = validateSummaryWordCaps(candidate);
-        if (wordCapViolations.length === 0) {
-          summary = candidate;
-          break;
-        }
-
-        if (attempt === 1) {
-          throw new Error(
-            `Model exceeded summary word caps after retry: ${wordCapViolations.join("; ")}`,
-          );
-        }
-
-        retryInstruction = [
-          "Your previous JSON exceeded one or more word limits:",
-          ...wordCapViolations.map((violation) => `- ${violation}`),
-          "Return the same JSON keys again, but keep every field within its word cap.",
-        ].join("\n");
+        console.warn(
+          `[summarization] ${settings.model} quota/rate limited — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
+        );
+        generated = await generateSummaryWithModel(
+          ctx,
+          settings.fallbackModel,
+          prompt,
+          input.event._id,
+          input.event.title,
+        );
       }
-
-      if (!summary) {
-        throw new Error("Model did not produce a usable event summary");
-      }
+      const { summary, inputTokens, outputTokens } = generated;
 
       const result = await ctx.runMutation(
         internal.summarization.applyEventSummaryResult,
@@ -731,6 +942,7 @@ export const processSummaryJob = internalAction({
           reformist: summary.reformist,
           suveranist: summary.suveranist,
           globalImpact: summary.globalImpact,
+          perspectiveApplicable: summary.perspectiveApplicable,
           summarySignature,
         },
       );

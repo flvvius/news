@@ -15,6 +15,7 @@ import {
 } from "./lib/feedSerialization";
 import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
 import { normalizedPerspectives } from "./lib/biasAxis";
+import { foldDiacriticsToAscii } from "./lib/romanian";
 
 const TRENDING_SCAN_LIMIT = 250;
 const TOPIC_SCAN_LIMIT = 500;
@@ -228,10 +229,13 @@ export const searchPublishedEvents = query({
       return [];
     }
 
+    // Fold the query the same way `searchText` is stored so diacritics on
+    // either side don't block a match ("bucuresti" ↔ "București").
+    const searchQuery = foldDiacriticsToAscii(normalizedQuery);
     const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 12), 1), 30);
     const rawMatches = await ctx.db
       .query("publicEventPreviews")
-      .withSearchIndex("by_title", (q) => q.search("title", normalizedQuery))
+      .withSearchIndex("by_title", (q) => q.search("searchText", searchQuery))
       .take(args.topicId ? safeLimit * 4 : safeLimit);
 
     const filtered = args.topicId
@@ -450,6 +454,7 @@ export const getEventBySlug = query({
         perspectiveSummaries: normalizedPerspectives(
           event.perspectiveSummaries,
         ),
+        perspectiveApplicable: event.perspectiveApplicable,
         globalImpact: event.globalImpact,
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,

@@ -384,6 +384,8 @@ const ro = {
   "event.left": "Reformistă",
   "event.centerTab": "Neutră",
   "event.right": "Suveranistă",
+  "event.noPoliticalAxis":
+    "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -573,6 +575,8 @@ const ro = {
   "articles.readOriginal": "Citește originalul",
   "articles.readOriginalAria":
     "Citește articolul original (se deschide într-o filă nouă)",
+  "articles.showMore.one": "Arată încă 1 articol",
+  "articles.showMore.many": "Arată încă {count} articole",
   "source.metaTitle": `Profil sursă — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
     `Analizează biasul, fiabilitatea, credibilitatea și acoperirea recentă a lui {name} pe ${BRAND_NAME}.`,
@@ -1099,6 +1103,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.left": "Reformist",
   "event.centerTab": "Neutral",
   "event.right": "Sovereigntist",
+  "event.noPoliticalAxis":
+    "This story has no significant political dimension in press coverage.",
   "event.sourceCount.one": "1 source",
   "event.sourceCount.few": "{count} sources",
   "event.sourceCount.many": "{count} sources",
@@ -1286,6 +1292,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "articles.viewSource": "View {name} source profile",
   "articles.readOriginal": "Read original",
   "articles.readOriginalAria": "Read original article (opens in a new tab)",
+  "articles.showMore.one": "Show 1 more article",
+  "articles.showMore.many": "Show {count} more articles",
   "source.metaTitle": `Source profile — ${BRAND_NAME}`,
   "source.metaDescriptionLoaded":
     `Review {name}'s bias, reliability, credibility, and recent coverage on ${BRAND_NAME}.`,

@@ -688,6 +688,12 @@ export const seedDefaults = internalMutation({
           "Chat model used for event perspective summaries (gemini-* routes via Gemini's OpenAI-compatible API; anything else via OpenAI).",
       },
       {
+        key: "event_summary_model_fallback",
+        value: "gemini-3.1-flash-lite",
+        description:
+          "Model used when the primary event_summary_model is rate/quota limited (429) — lets a low-quota premium model cover the first events of the day and degrade gracefully. Set to \"none\" to disable.",
+      },
+      {
         key: "event_summary_enqueue_limit",
         value: 40,
         description:
@@ -722,6 +728,18 @@ export const seedDefaults = internalMutation({
         value: 12,
         description:
           "Maximum number of recent articles included in one event summarization prompt.",
+      },
+      {
+        key: "event_summary_body_fetch_enabled",
+        value: true,
+        description:
+          "When true, the summarizer fetches each selected article's body transiently at summarization time (used in memory for the prompt, never stored) instead of relying only on the short extracted summary + RSS snippet.",
+      },
+      {
+        key: "event_summary_body_chars",
+        value: 2600,
+        description:
+          "Per-article character cap for transiently fetched body text in the event summary prompt. The effective cap also scales down with article count to bound total prompt size.",
       },
       {
         key: "event_share_asset_generation_enabled",

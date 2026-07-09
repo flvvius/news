@@ -16,6 +16,7 @@ import { syncTopicCatalogRows } from "./topics";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
 import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
+import { foldDiacriticsToAscii } from "./lib/romanian";
 import {
   ensureUserProfileForAuthUser,
   getUserProfileByAuthUserId,
@@ -1130,6 +1131,44 @@ export const revertUnsummarizablePublishedEvents = internalMutation({
       scannedPublished: scanned,
       reverted,
       samples,
+    };
+  },
+});
+
+/**
+ * Backfill `searchText` on existing publicEventPreviews so the diacritic-
+ * insensitive search index covers rows written before the field existed.
+ * Run: npx convex run migrations:backfillPreviewSearchText
+ */
+export const backfillPreviewSearchText = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 500), 1),
+      2000,
+    );
+    const page = await ctx.db.query("publicEventPreviews").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+
+    for (const preview of page.page) {
+      const searchText = foldDiacriticsToAscii(preview.title);
+      if (preview.searchText !== searchText) {
+        await ctx.db.patch(preview._id, { searchText });
+        updated++;
+      }
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
     };
   },
 });

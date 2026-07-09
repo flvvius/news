@@ -88,6 +88,50 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
   });
 });
 
+describe("event summary prompt v3 (full bodies + CASE D)", () => {
+  const prompt = buildEventSummaryPrompt({
+    eventTitle: "Bugetul pe 2027",
+    articles: [
+      article({ bodyText: "Textul complet al articolului despre buget." }),
+      article({ sourceName: "G4Media", sourceBiasLabel: "left-center" }),
+    ],
+  });
+
+  test("includes the transient body text when present, omits the block otherwise", () => {
+    expect(prompt.user).toContain(
+      "Textul articolului: Textul complet al articolului despre buget.",
+    );
+    // The second article has no bodyText — exactly one body block.
+    expect(prompt.user.match(/Textul articolului:/g)).toHaveLength(1);
+  });
+
+  test("declares the body text as primary material over summary/snippet", () => {
+    expect(prompt.system).toContain("materialul principal");
+    expect(prompt.system).toContain("Rezumat extras");
+  });
+
+  test("defines CASE D with the perspectiveApplicable flag and a political guardrail", () => {
+    expect(prompt.system).toContain("CAZUL D");
+    expect(prompt.system).toContain("perspectiveApplicable");
+    expect(prompt.system).toContain("are prioritate față de A/B/C");
+    // The guardrail: political/justice/EU/budget/election stories never CASE D.
+    expect(prompt.system).toMatch(/NU folosi CAZUL D.*politic/);
+    expect(prompt.user).toContain("perspectiveApplicable (boolean)");
+  });
+
+  test("CASE C demands concrete emphases/omissions and allows short quotes; CASE B forbids invented tone", () => {
+    expect(prompt.system).toContain("ce omite");
+    expect(prompt.system).toContain("maxim 10 cuvinte");
+    expect(prompt.system).toContain(
+      "NU inventa o diferență de ton care nu există",
+    );
+  });
+
+  test("globalImpact must not restate the neutral summary", () => {
+    expect(prompt.system).toContain("globalImpact NU repetă rezumatul neutral");
+  });
+});
+
 describe("Romanian-first bias scoring prompt (BIV-202)", () => {
   const prompt = buildArticleBiasScoringPrompt({
     maxInputChars: 6000,

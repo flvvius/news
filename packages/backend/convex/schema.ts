@@ -90,6 +90,9 @@ export default defineSchema({
     // neutral / reformist / suveranist framing summaries (BIV-303);
     // legacy center/left/right keys remain readable pre-migration.
     perspectiveSummaries: v.optional(perspectiveSummariesValidator),
+    // false = the summarizer judged the story has no reformist/suveranist
+    // axis (CASE D); undefined = legacy = applicable.
+    perspectiveApplicable: v.optional(v.boolean()),
     perspectiveSource: v.optional(
       v.union(v.literal("heuristic"), v.literal("ai")),
     ),
@@ -104,6 +107,9 @@ export default defineSchema({
     sourceIds: v.optional(v.array(v.id("sources"))),
     lastSummarizedAt: v.optional(v.number()), // Set after first AI summarization
     lastSummarySignature: v.optional(v.string()),
+    // SUMMARY_PROMPT_VERSION the current summary was written under; a bump
+    // makes shouldResummarize re-enqueue the event once.
+    lastSummaryPromptVersion: v.optional(v.number()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
     lastClaimAnalysisSignature: v.optional(v.string()),
     factualArticleCount: v.optional(v.number()),
@@ -227,9 +233,14 @@ export default defineSchema({
     eventId: v.id("events"),
     slug: v.string(),
     title: v.string(),
+    // Diacritic-folded, lowercase copy of `title` used solely by the search
+    // index so queries match regardless of Romanian diacritics ("bucuresti"
+    // ↔ "București"). Optional to keep legacy rows valid until backfilled.
+    searchText: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     imageAlt: v.optional(v.string()),
     perspectiveSummaries: v.optional(perspectiveSummariesValidator),
+    perspectiveApplicable: v.optional(v.boolean()),
     globalImpact: v.optional(v.string()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.number(),
@@ -265,7 +276,7 @@ export default defineSchema({
     .index("by_last_updated_at", ["lastUpdatedAt"])
     .index("by_trending_score", ["trendingScore"])
     .searchIndex("by_title", {
-      searchField: "title",
+      searchField: "searchText",
     }),
 
   publicEventPreviewTopics: defineTable({

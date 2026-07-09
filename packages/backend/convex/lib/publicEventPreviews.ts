@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { encodeRankedCursor, toFeedEvent } from "./feedSerialization";
 import { normalizedPerspectives } from "./biasAxis";
+import { foldDiacriticsToAscii } from "./romanian";
 
 export const MAX_PREVIEW_SOURCES = 5;
 const FEED_SNAPSHOT_PAGE_SIZE = 24;
@@ -228,9 +229,12 @@ export async function syncPublicEventPreview(
     eventId,
     slug: event.slug,
     title: event.title,
+    // Feeds the diacritic-insensitive search index (see schema).
+    searchText: foldDiacriticsToAscii(event.title),
     imageUrl: event.imageUrl,
     imageAlt: event.imageAlt,
     perspectiveSummaries,
+    perspectiveApplicable: event.perspectiveApplicable,
     globalImpact: event.globalImpact,
     firstPublishedAt: event.firstPublishedAt,
     lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

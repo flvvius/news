@@ -47,6 +47,7 @@ import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_romanian from "../lib/romanian.js";
 import type * as lib_sourceBias from "../lib/sourceBias.js";
 import type * as lib_streaks from "../lib/streaks.js";
+import type * as lib_summaryArticleSelection from "../lib/summaryArticleSelection.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
@@ -118,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "lib/romanian": typeof lib_romanian;
   "lib/sourceBias": typeof lib_sourceBias;
   "lib/streaks": typeof lib_streaks;
+  "lib/summaryArticleSelection": typeof lib_summaryArticleSelection;
   "lib/userProfile": typeof lib_userProfile;
   migrations: typeof migrations;
   notifications: typeof notifications;
