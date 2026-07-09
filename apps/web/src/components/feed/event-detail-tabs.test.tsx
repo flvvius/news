@@ -83,10 +83,21 @@ describe("EventDetailTabs (BIV-804)", () => {
   });
 
   test("CASE D (perspectiveApplicable=false) shows the no-axis note instead of tabs", () => {
-    renderTabs({ neutral: "Rezumat apolitic" }, false);
+    // Directional summaries present on purpose: the guard must suppress the
+    // tab bar even when hasPerspectives would otherwise be true.
+    renderTabs(
+      {
+        neutral: "Rezumat apolitic",
+        reformist: "Perspectiva reformistă",
+        suveranist: "Perspectiva suveranistă",
+      },
+      false,
+    );
 
     expect(screen.queryAllByRole("tablist")).toHaveLength(0);
     expect(screen.getByText("Rezumat apolitic")).toBeTruthy();
+    expect(screen.queryByText("Perspectiva reformistă")).toBeNull();
+    expect(screen.queryByText("Perspectiva suveranistă")).toBeNull();
     expect(
       screen.getByText(getString("ro", "event.noPoliticalAxis")),
     ).toBeTruthy();

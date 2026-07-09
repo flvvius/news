@@ -36,6 +36,11 @@ const DEFAULT_BODY_CHARS = 2600;
 const TOTAL_BODY_CHARS_BUDGET = 24000;
 const MIN_BODY_CHARS_PER_ARTICLE = 1200;
 const BODY_FETCH_CONCURRENCY = 4;
+// Hard deadline for the whole body-fetch fan-out. Each fetch attempt is
+// individually 8s-capped, but a slow publisher can still chain resolve +
+// several header-profile attempts per article; past this budget the job
+// proceeds with whatever bodies have already landed.
+const BODY_FETCH_TOTAL_TIMEOUT_MS = 60_000;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const JOB_STAGGER_MS = 8000;
@@ -458,11 +463,12 @@ async function fetchTransientArticleBodies(
     ),
   );
 
+  const deadlineAt = Date.now() + BODY_FETCH_TOTAL_TIMEOUT_MS;
   let nextIndex = 0;
   const workers = Array.from(
     { length: Math.min(BODY_FETCH_CONCURRENCY, articles.length) },
     async () => {
-      while (nextIndex < articles.length) {
+      while (nextIndex < articles.length && Date.now() < deadlineAt) {
         const article = articles[nextIndex++]!;
         try {
           const fetched = await fetchArticleBodyText(article.canonicalUrl);
@@ -475,10 +481,26 @@ async function fetchTransientArticleBodies(
       }
     },
   );
-  await Promise.all(workers);
+
+  // Workers write into `bodies` as they finish, so on deadline we can stop
+  // waiting and use whatever landed; abandoned in-flight fetches resolve into
+  // a Map nobody reads again.
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = await Promise.race([
+    Promise.all(workers).then(() => false),
+    new Promise<boolean>((resolve) => {
+      deadlineTimer = setTimeout(
+        () => resolve(true),
+        BODY_FETCH_TOTAL_TIMEOUT_MS,
+      );
+    }),
+  ]);
+  clearTimeout(deadlineTimer);
 
   console.log(
-    `[summarization] Transient bodies fetched for ${bodies.size}/${articles.length} article(s)`,
+    `[summarization] Transient bodies fetched for ${bodies.size}/${articles.length} article(s)${
+      timedOut ? " (fan-out deadline hit — proceeding with partial bodies)" : ""
+    }`,
   );
   return bodies;
 }

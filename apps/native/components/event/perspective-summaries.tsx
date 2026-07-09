@@ -52,7 +52,7 @@ export function PerspectiveSummaries({
     return (
       <View className="gap-4">
         <Text className="text-sm font-semibold uppercase tracking-[1.2px] text-muted-foreground">
-          {t("event.multiplePerspectives")}
+          {t("event.summary")}
         </Text>
         <Text className="max-w-[455px] text-base leading-relaxed text-muted-foreground">
           {t("event.noPoliticalAxis")}
