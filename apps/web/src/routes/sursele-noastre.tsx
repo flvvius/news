@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/sursele-noastre")({
-  head: () => ({
-    meta: [
-      { title: `Sursele noastre — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Sursele noastre — ${BRAND_NAME}`,
+      description: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
+      path: "/sursele-noastre",
+    }),
   component: SurseleNoastrePage,
 });
 
