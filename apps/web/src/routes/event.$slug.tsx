@@ -369,10 +369,14 @@ function EventDetailPage() {
 
             {event.imageUrl && (
               <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
+                {/* Hero photo is the page's LCP element (Lighthouse mobile
+                    baseline: LCP 4.3s) — hint the browser to fetch it first. */}
                 <img
                   src={event.imageUrl}
                   alt={event.imageAlt ?? event.title}
                   className="h-full w-full object-cover"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               </div>
             )}
