@@ -1,5 +1,6 @@
 import {
   createRouter as createTanStackRouter,
+  Link,
   type AnyRouter,
 } from "@tanstack/react-router";
 // Only PURE values may be imported from router-core here: Vite's dev
@@ -22,7 +23,14 @@ import "./index.css";
 
 function NotFound() {
 	const t = useT();
-	return <div>{t("router.notFound")}</div>;
+	return (
+		<div className="container mx-auto max-w-4xl px-4 py-16 text-center">
+			<h1 className="mb-2 text-2xl font-semibold">{t("router.notFound")}</h1>
+			<Link to="/feed" className="text-primary underline">
+				Feed
+			</Link>
+		</div>
+	);
 }
 
 export function getRouter(): AnyRouter {

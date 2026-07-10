@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
@@ -22,7 +22,8 @@ export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
     const trimmedSourceId = params.sourceId.trim();
     if (!/^[a-z0-9]{16,64}$/i.test(trimmedSourceId)) {
-      return null;
+      // Malformed id can never resolve — real HTTP 404, not a soft-404.
+      throw notFound();
     }
 
     const args = {
@@ -30,24 +31,42 @@ export const Route = createFileRoute("/source/$sourceId")({
       limit: 60,
     };
     const httpClient = context.convexQueryClient.serverHttpClient;
+    let data;
 
     try {
       if (httpClient) {
-        return await httpClient.query(api.sources.getSourceProfile, args);
+        data = await httpClient.query(api.sources.getSourceProfile, args);
+      } else {
+        data = await context.convexClient.query(
+          api.sources.getSourceProfile,
+          args,
+        );
       }
-
-      return await context.convexClient.query(
-        api.sources.getSourceProfile,
-        args,
-      );
     } catch (error) {
+      // A well-formed id that doesn't decode to the sources table fails
+      // argument validation — that URL can never resolve, so 404 it.
+      if (
+        error instanceof Error &&
+        error.message.includes("ArgumentValidationError")
+      ) {
+        throw notFound();
+      }
       console.error(
         `[Route loader] Failed to load source profile (${params.sourceId}):`,
         error,
       );
-      return null;
+      // Transient backend failure: degrade to the loading shell and let the
+      // client-side subscription retry, instead of mislabeling the URL.
+      return undefined;
     }
+
+    if (data === null) {
+      throw notFound();
+    }
+
+    return data;
   },
+  notFoundComponent: SourceNotFound,
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
     const sourceName = loaderData?.source?.name;
@@ -116,6 +135,21 @@ function isNumberArray(value: unknown): value is number[] {
   );
 }
 
+function SourceNotFound() {
+  const t = useT();
+  return (
+    <div className="container mx-auto max-w-5xl px-4 py-8">
+      <div className="text-center">
+        <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
+        <p className="mb-4 text-muted-foreground">{t("source.notFoundBody")}</p>
+        <Button asChild>
+          <Link to="/feed">{t("source.backToFeed")}</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SourceProfilePage() {
   const { sourceId } = Route.useParams();
   const parsedSourceId = parseSourceId(sourceId);
@@ -164,21 +198,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   }
 
   if (data === null) {
-    return (
-      <div className="container mx-auto max-w-5xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">
-            {t("source.notFound")}
-          </h1>
-          <p className="mb-4 text-muted-foreground">
-            {t("source.notFoundBody")}
-          </p>
-          <Button asChild>
-            <Link to="/feed">{t("source.backToFeed")}</Link>
-          </Button>
-        </div>
-      </div>
-    );
+    // Client-side path only; the server path throws notFound() in the loader
+    // and returns HTTP 404.
+    return <SourceNotFound />;
   }
 
   const { source, stats, articles } = data;

@@ -1,4 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  notFound,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -56,24 +61,35 @@ export const Route = createFileRoute("/event/$slug")({
   validateSearch: searchSchema,
   loader: async ({ context, params }) => {
     const httpClient = context.convexQueryClient.serverHttpClient;
+    let data;
     try {
       if (httpClient) {
-        return await httpClient.query(api.events.getEventBySlug, {
+        data = await httpClient.query(api.events.getEventBySlug, {
+          slug: params.slug,
+        });
+      } else {
+        data = await context.convexClient.query(api.events.getEventBySlug, {
           slug: params.slug,
         });
       }
-
-      return await context.convexClient.query(api.events.getEventBySlug, {
-        slug: params.slug,
-      });
     } catch (error) {
       console.error(
         `[Route loader] Failed to load event (slug: ${params.slug}):`,
         error,
       );
-      return null;
+      // Transient backend failure: degrade to the loading shell and let the
+      // client-side subscription retry, instead of mislabeling the URL.
+      return undefined;
     }
+
+    if (data === null) {
+      // Unknown slug must be a real HTTP 404, not a soft-404 page with 200.
+      throw notFound();
+    }
+
+    return data;
   },
+  notFoundComponent: EventNotFound,
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
     const title = loaderData?.event?.title
@@ -154,6 +170,21 @@ export const Route = createFileRoute("/event/$slug")({
   component: EventDetailPage,
 });
 
+function EventNotFound() {
+  const t = useT();
+  return (
+    <div className="container mx-auto max-w-4xl px-4 py-8">
+      <div className="text-center">
+        <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
+        <p className="mb-4 text-muted-foreground">{t("event.notFoundBody")}</p>
+        <Button asChild>
+          <Link to="/feed">{t("event.backToFeed")}</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function EventDetailPage() {
   const locale = useLocale();
   const t = useT();
@@ -231,19 +262,9 @@ function EventDetailPage() {
   }
 
   if (eventData === null) {
-    return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
-          <p className="mb-4 text-muted-foreground">
-            {t("event.notFoundBody")}
-          </p>
-          <Button asChild>
-            <Link to="/feed">{t("event.backToFeed")}</Link>
-          </Button>
-        </div>
-      </div>
-    );
+    // Client-side path only (e.g. event unpublished after navigation); the
+    // server path throws notFound() in the loader and returns HTTP 404.
+    return <EventNotFound />;
   }
 
   const { event, articles } = eventData;
