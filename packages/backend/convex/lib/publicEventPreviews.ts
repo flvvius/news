@@ -243,6 +243,10 @@ export async function syncPublicEventPreview(
     topicIds: topics,
     factualArticleCount: event.factualArticleCount,
     factualSourceCount: event.factualSourceCount,
+    // L1 disclosure mirror: previews exist only for events whose summary came
+    // out of the AI pipeline, so default the legacy-row gap to true/false.
+    aiGenerated: event.aiGenerated ?? true,
+    humanReviewed: event.humanReviewed ?? false,
     trendingScore: computeTrendingScore({
       factualArticleCount: event.factualArticleCount,
       factualSourceCount: event.factualSourceCount,

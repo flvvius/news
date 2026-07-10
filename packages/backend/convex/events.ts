@@ -459,6 +459,13 @@ export const getEventBySlug = query({
         firstPublishedAt: event.firstPublishedAt,
         lastUpdatedAt: event.lastUpdatedAt,
         topicIds,
+        // L1 (AI Act art. 50(4)) — machine-readable disclosure. Published
+        // events all carry AI summaries, so pre-backfill gaps default to
+        // aiGenerated=true / humanReviewed=false rather than hiding the label.
+        aiGenerated: event.aiGenerated ?? true,
+        humanReviewed: event.humanReviewed ?? false,
+        modelUsed: event.modelUsed,
+        promptVersion: event.promptVersion,
         shareImageUrl: shareImageUrl ?? undefined,
         shareImageWidth:
           shareAsset?.status === "ready" ? shareAsset.width : undefined,

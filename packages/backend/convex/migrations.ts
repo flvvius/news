@@ -1140,6 +1140,88 @@ export const revertUnsummarizablePublishedEvents = internalMutation({
  * insensitive search index covers rows written before the field existed.
  * Run: npx convex run migrations:backfillPreviewSearchText
  */
+/**
+ * L1 (AI Act art. 50(4)) — stamp the AI-disclosure fields onto every event
+ * that already carries an AI summary, plus mirror aiGenerated/humanReviewed
+ * onto its public preview. The model that produced legacy summaries was not
+ * recorded, so those rows get "unrecorded".
+ */
+export const backfillAiDisclosureFields = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      500,
+    );
+    const page = await ctx.db.query("events").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+
+    for (const event of page.page) {
+      const hasSummary = Boolean(
+        normalizedPerspectives(event.perspectiveSummaries)?.neutral?.trim() ||
+          event.globalImpact?.trim() ||
+          event.lastSummarizedAt,
+      );
+      if (!hasSummary || event.aiGenerated !== undefined) continue;
+      await ctx.db.patch(event._id, {
+        aiGenerated: true,
+        humanReviewed: false,
+        modelUsed: event.modelUsed ?? "unrecorded",
+        promptVersion:
+          event.promptVersion ??
+          String(event.lastSummaryPromptVersion ?? "pre-l1"),
+      });
+      updated++;
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/** L1 companion: mirror aiGenerated/humanReviewed onto existing previews. */
+export const backfillPreviewAiDisclosure = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 500), 1),
+      2000,
+    );
+    const page = await ctx.db.query("publicEventPreviews").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+    for (const preview of page.page) {
+      if (preview.aiGenerated !== undefined) continue;
+      await ctx.db.patch(preview._id, {
+        aiGenerated: true,
+        humanReviewed: false,
+      });
+      updated++;
+    }
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
 export const backfillPreviewSearchText = mutation({
   args: {
     cursor: v.optional(v.string()),

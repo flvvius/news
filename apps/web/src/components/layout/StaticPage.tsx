@@ -27,12 +27,14 @@ export function StaticPage({
 export function StaticSection({
   heading,
   children,
+  id,
 }: {
   heading?: string;
   children: ReactNode;
+  id?: string;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 scroll-mt-20" id={id}>
       {heading && (
         <h2 className="text-xl font-semibold tracking-tight">{heading}</h2>
       )}

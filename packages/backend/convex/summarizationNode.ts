@@ -900,6 +900,7 @@ export const processSummaryJob = internalAction({
         inputTokens: number;
         outputTokens: number;
       };
+      let modelUsed = settings.model;
       try {
         generated = await generateSummaryWithModel(
           ctx,
@@ -929,6 +930,7 @@ export const processSummaryJob = internalAction({
           input.event._id,
           input.event.title,
         );
+        modelUsed = settings.fallbackModel;
       }
       const { summary, inputTokens, outputTokens } = generated;
 
@@ -944,6 +946,7 @@ export const processSummaryJob = internalAction({
           globalImpact: summary.globalImpact,
           perspectiveApplicable: summary.perspectiveApplicable,
           summarySignature,
+          modelUsed,
         },
       );
 

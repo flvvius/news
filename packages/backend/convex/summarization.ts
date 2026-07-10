@@ -735,6 +735,10 @@ export const applyEventSummaryResult = internalMutation({
     globalImpact: v.string(),
     perspectiveApplicable: v.optional(v.boolean()),
     summarySignature: v.optional(v.string()),
+    // L1 disclosure: the model that actually produced this summary (primary
+    // or quota fallback). Optional for legacy callers; the stored row always
+    // gets aiGenerated/humanReviewed/promptVersion regardless.
+    modelUsed: v.optional(v.string()),
   },
   handler: async (
     ctx,
@@ -748,6 +752,7 @@ export const applyEventSummaryResult = internalMutation({
       globalImpact,
       perspectiveApplicable,
       summarySignature,
+      modelUsed,
     },
   ) => {
     const job = await ctx.db.get(jobId);
@@ -789,6 +794,13 @@ export const applyEventSummaryResult = internalMutation({
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,
       lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      // L1 (AI Act art. 50(4)): every stored summary is marked AI-generated
+      // at write time — publication is impossible with these unset because
+      // this mutation is the sole path that writes summaries/publishes.
+      aiGenerated: true,
+      humanReviewed: false,
+      modelUsed: modelUsed ?? event.modelUsed ?? "unrecorded",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
       // A successful summary is the sole gate to going public: promote a
       // qualifying `processing` event to `published` now that it has full AI
       // perspectives + globalImpact. syncPublicEventPreview below then creates

@@ -112,6 +112,15 @@ export default defineSchema({
     lastSummaryPromptVersion: v.optional(v.number()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
     lastClaimAnalysisSignature: v.optional(v.string()),
+
+    // L1 — AI Act art. 50(4) disclosure. Written by applyEventSummaryResult
+    // whenever a summary lands; a summary can never publish with aiGenerated
+    // unset (see summarizationPublishGate tests). Optional only for rows that
+    // predate the backfill (migrations.backfillAiDisclosureFields).
+    aiGenerated: v.optional(v.boolean()),
+    humanReviewed: v.optional(v.boolean()),
+    modelUsed: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
     lastFactualUpdateAt: v.optional(v.number()),
@@ -249,6 +258,10 @@ export default defineSchema({
     topicIds: v.array(v.id("topics")),
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
+    // L1 — machine-readable AI disclosure mirrored from the event so every
+    // public API payload can carry it.
+    aiGenerated: v.optional(v.boolean()),
+    humanReviewed: v.optional(v.boolean()),
     trendingScore: v.number(),
     createdAt: v.optional(v.number()),
     sourceBiasCounts: v.object({

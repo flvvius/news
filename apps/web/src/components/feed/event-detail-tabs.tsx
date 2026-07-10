@@ -1,5 +1,6 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AiDisclosureLabel } from "@/components/feed/ai-disclosure-label";
 import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import { SectionTitle } from "@/components/ui/section-title";
@@ -41,6 +42,7 @@ export function EventDetailTabs({
   perspectiveApplicable,
   globalImpact,
   articles,
+  sourceCount,
 }: {
   eventId: Id<"events">;
   perspectiveSummaries?: PerspectiveSummaries | null;
@@ -50,8 +52,22 @@ export function EventDetailTabs({
   perspectiveApplicable?: boolean | null;
   globalImpact?: string | null;
   articles: EventDetailArticle[];
+  // For the AI-disclosure label ("from N sources"); falls back to the
+  // distinct sources present in `articles`.
+  sourceCount?: number;
 }) {
   const t = useT();
+  const disclosureSourceCount =
+    sourceCount ??
+    new Set(
+      articles.map((article) => article.source?._id).filter(Boolean),
+    ).size;
+  const hasAiSummary = Boolean(
+    perspectiveSummaries?.neutral ||
+      perspectiveSummaries?.reformist ||
+      perspectiveSummaries?.suveranist ||
+      globalImpact,
+  );
   const hasPerspectives =
     perspectiveApplicable !== false &&
     Boolean(
@@ -118,6 +134,12 @@ export function EventDetailTabs({
               </TabsContent>
             )}
           </Tabs>
+          {/* L1 (AI Act art. 50(4)): sits under the tab container so it is
+              adjacent to whichever perspective tab is active, and is part of
+              the server-rendered HTML. */}
+          {hasAiSummary && (
+            <AiDisclosureLabel sourceCount={disclosureSourceCount} />
+          )}
         </section>
       ) : (
         <section className="space-y-4">
@@ -129,6 +151,9 @@ export function EventDetailTabs({
             <p className="text-sm text-muted-foreground">
               {t("event.noPoliticalAxis")}
             </p>
+          )}
+          {hasAiSummary && (
+            <AiDisclosureLabel sourceCount={disclosureSourceCount} />
           )}
         </section>
       )}

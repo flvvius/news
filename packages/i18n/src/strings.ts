@@ -386,6 +386,12 @@ const ro = {
   "event.right": "Suveranistă",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
+  "event.aiDisclosure.one":
+    "Rezumat generat de AI din 1 sursă. Neverificat independent de un editor uman.",
+  "event.aiDisclosure":
+    "Rezumat generat de AI din {count} surse. Neverificat independent de un editor uman.",
+  "event.aiDisclosure.report": "Raportează o eroare",
+  "event.aiDisclosure.learnMore": "Cum generăm rezumatele",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -1105,6 +1111,12 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.right": "Sovereigntist",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
+  "event.aiDisclosure.one":
+    "AI-generated summary from 1 source. Not independently human-reviewed.",
+  "event.aiDisclosure":
+    "AI-generated summary from {count} sources. Not independently human-reviewed.",
+  "event.aiDisclosure.report": "Report an error",
+  "event.aiDisclosure.learnMore": "How we generate summaries",
   "event.sourceCount.one": "1 source",
   "event.sourceCount.few": "{count} sources",
   "event.sourceCount.many": "{count} sources",

@@ -73,6 +73,7 @@ describe("publish is gated on a successful AI summary", () => {
         reformist: "Reformist framing.",
         suveranist: "Suveranist framing.",
         globalImpact: "Why it matters.",
+        modelUsed: "test-model-1",
       },
     );
     expect(result.applied).toBe(true);
@@ -83,6 +84,13 @@ describe("publish is gated on a successful AI summary", () => {
     expect(event?.globalImpact).toBe("Why it matters.");
     expect(event?.lastSummarizedAt ?? 0).toBeGreaterThan(0);
 
+    // L1 (AI Act art. 50(4)): publication implies the disclosure fields are
+    // set — a published summary can never have aiGenerated unset.
+    expect(event?.aiGenerated).toBe(true);
+    expect(event?.humanReviewed).toBe(false);
+    expect(event?.modelUsed).toBe("test-model-1");
+    expect(event?.promptVersion).toBe(String(SUMMARY_PROMPT_VERSION));
+
     // The event is only now public, so its preview must exist.
     const preview = await t.run(async (ctx) =>
       ctx.db
@@ -91,6 +99,48 @@ describe("publish is gated on a successful AI summary", () => {
         .unique(),
     );
     expect(preview).not.toBeNull();
+    expect(preview?.aiGenerated).toBe(true);
+    expect(preview?.humanReviewed).toBe(false);
+  });
+
+  test("a summary applied without an explicit model still gets the disclosure fields", async () => {
+    const t = convexTest(schema, modules);
+    const eventId = await seedProcessingEvent(t, {
+      title: "Legacy Caller Event",
+      articleCount: 3,
+      sourceCount: 2,
+    });
+    const runId = "run-legacy";
+    const jobId = await t.run(async (ctx) => {
+      return await ctx.db.insert("eventSummaryJobs", {
+        eventId,
+        status: "processing",
+        attempts: 1,
+        requestedAt: Date.now(),
+        nextAttemptAt: Date.now(),
+        updatedAt: Date.now(),
+        processingRunId: runId,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.summarization.applyEventSummaryResult,
+      {
+        jobId,
+        eventId,
+        runId,
+        neutral: "Neutral framing.",
+        reformist: "Reformist framing.",
+        suveranist: "Suveranist framing.",
+        globalImpact: "Why it matters.",
+      },
+    );
+    expect(result.applied).toBe(true);
+
+    const event = await t.run(async (ctx) => ctx.db.get(eventId));
+    expect(event?.aiGenerated).toBe(true);
+    expect(event?.humanReviewed).toBe(false);
+    expect(event?.modelUsed).toBe("unrecorded");
   });
 
   test("enqueueEligibleEventSummaries queues a qualifying processing event", async () => {

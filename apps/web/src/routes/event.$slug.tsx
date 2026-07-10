@@ -256,8 +256,43 @@ function EventDetailPage() {
     articles.map((article: Article) => article.source),
   );
 
+  // L1 (AI Act art. 50(4)) — machine-readable marking, server-rendered into
+  // the initial HTML. digitalSourceType is the IPTC term for fully
+  // AI-generated content; creativeWorkStatus discloses the missing human
+  // review in-band.
+  const jsonLd = {
+    "@context": [
+      "https://schema.org",
+      { digitalSourceType: "https://cv.iptc.org/newscodes/digitalsourcetype/" },
+    ],
+    "@type": "NewsArticle",
+    headline: event.title,
+    inLanguage: locale,
+    url: absoluteSiteUrl(`/event/${event.slug}`),
+    datePublished: new Date(event.firstPublishedAt).toISOString(),
+    dateModified: new Date(lastUpdatedAt).toISOString(),
+    isAccessibleForFree: true,
+    creativeWorkStatus:
+      "AI-generated summary; not independently human-reviewed",
+    digitalSourceType:
+      "https://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+    author: {
+      "@type": "Organization",
+      name: SITE.name,
+      url: SITE.url,
+    },
+    ...(event.imageUrl ? { image: [event.imageUrl] } : {}),
+    isBasedOn: articles
+      .slice(0, 25)
+      .map((article: Article) => article.canonicalUrl),
+  };
+
   return (
     <div className="bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
         <div className="flex flex-col gap-6 sm:gap-8">
           <button
@@ -333,6 +368,7 @@ function EventDetailPage() {
             perspectiveApplicable={event.perspectiveApplicable}
             globalImpact={event.globalImpact}
             articles={articles}
+            sourceCount={sourceCount}
           />
 
           <ArticlesList eventId={event._id} articles={articles} />
