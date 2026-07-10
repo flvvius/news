@@ -5,9 +5,24 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
 const SITEMAP_KEY = "public";
-const DEFAULT_SITE_URL = "https://biviant.com";
+// Must match the canonical host (apex 307-redirects to www).
+const DEFAULT_SITE_URL = "https://www.biviant.com";
 const DEFAULT_LIMIT = 5000;
 const SITEMAP_PAGE_SIZE = 1000;
+
+// Public indexable routes without per-row lastmod.
+const STATIC_PATHS = [
+  "/",
+  "/feed",
+  "/surse",
+  "/cum-functioneaza",
+  "/sursele-noastre",
+  "/despre",
+  "/parteneri",
+  "/contact",
+  "/termeni",
+  "/politica-confidentialitate",
+];
 
 function escapeXml(value: string) {
   return value
@@ -83,38 +98,44 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
     const siteUrl = args.siteUrl?.trim() || DEFAULT_SITE_URL;
     const now = Date.now();
 
+    // Convex allows only one .paginate() per mutation, so both scans use
+    // index-range cursors with .take() instead (the previous double-paginate
+    // version threw on every cron run and the snapshot never built).
     const events: Array<Doc<"publicEventPreviews">> = [];
-    let eventCursor: string | null = null;
+    let eventCursor: number | undefined;
+    let readRows = 0;
     while (events.length < limit) {
       const pageSize = Math.min(SITEMAP_PAGE_SIZE, limit - events.length);
+      const cursor = eventCursor;
       const page = await ctx.db
         .query("publicEventPreviews")
-        .withIndex("by_last_updated_at")
+        .withIndex("by_last_updated_at", (q) =>
+          cursor === undefined ? q : q.lt("lastUpdatedAt", cursor),
+        )
         .order("desc")
-        .paginate({ cursor: eventCursor, numItems: pageSize });
-      events.push(...page.page);
-      if (page.isDone) break;
-      eventCursor = page.continueCursor;
+        .take(pageSize);
+      readRows += page.length;
+      // Thin-page gate: an event page without an AI summary is mostly
+      // third-party RSS text — keep it out of the sitemap until summarized.
+      events.push(
+        ...page.filter((event) => event.perspectiveSummaries?.neutral?.trim()),
+      );
+      if (page.length < pageSize) break;
+      eventCursor = page[page.length - 1]!.lastUpdatedAt;
     }
 
     const sourceLimit = Math.max(0, limit - events.length);
-    const sources: Array<Doc<"sources">> = [];
-    let sourceCursor: string | null = null;
-    while (sources.length < sourceLimit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, sourceLimit - sources.length);
-      const page = await ctx.db
-        .query("sources")
-        .withIndex("by_rolling_bias_updated_at")
-        .order("desc")
-        .paginate({ cursor: sourceCursor, numItems: pageSize });
-      sources.push(...page.page);
-      if (page.isDone) break;
-      sourceCursor = page.continueCursor;
-    }
+    const sources: Array<Doc<"sources">> =
+      sourceLimit === 0
+        ? []
+        : await ctx.db
+            .query("sources")
+            .withIndex("by_rolling_bias_updated_at")
+            .order("desc")
+            .take(Math.min(sourceLimit, SITEMAP_PAGE_SIZE));
 
     const entries = [
-      toSitemapUrl(siteUrl, "/"),
-      toSitemapUrl(siteUrl, "/feed"),
+      ...STATIC_PATHS.map((path) => toSitemapUrl(siteUrl, path)),
       ...events.map((event) =>
         toSitemapUrl(siteUrl, `/event/${event.slug}`, event.lastUpdatedAt),
       ),
@@ -148,7 +169,7 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
       internal.pipeline.recordPipelineIoRollup,
       {
         jobName: "rebuildPublicSitemapSnapshot",
-        readRows: events.length + sources.length,
+        readRows: readRows + sources.length,
         writeRows: 1,
         vectorSearches: 0,
         status: "ok",
