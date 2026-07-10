@@ -8,6 +8,7 @@ import { Resvg } from "@resvg/resvg-js";
 import decodeIco from "decode-ico";
 import sharp from "sharp";
 import { sniffImageFormat } from "./lib/imageSniff";
+import { BOT_USER_AGENT } from "./lib/botIdentity";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -20,8 +21,8 @@ import {
 
 const BIVIANT_BLUE = "#5AA6F7";
 const BIVIANT_BLUE_SOFT = "#87BBFF";
-const USER_AGENT =
-  "Mozilla/5.0 (compatible; BiviantBot/1.0; +https://biviant.com)";
+// L6: single crawler identity everywhere.
+const USER_AGENT = BOT_USER_AGENT;
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;
 const WHATSAPP_TARGET_BYTES = 280 * 1024;

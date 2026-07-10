@@ -103,6 +103,33 @@ export default defineSchema({
     .index("by_expiresAt", ["expiresAt"]),
 
   // =========================================================================
+  // 2b. PUBLISHER REQUESTS (L6 — opt-out/takedown form, full lifecycle log)
+  // =========================================================================
+  publisherRequests: defineTable({
+    domain: v.string(),
+    contact: v.string(),
+    requestType: v.union(
+      v.literal("opt_out"),
+      v.literal("takedown"),
+      v.literal("other"),
+    ),
+    message: v.optional(v.string()),
+    status: v.union(
+      v.literal("received"),
+      v.literal("approved"),
+      v.literal("denied"),
+      v.literal("executed"),
+    ),
+    receivedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    decisionNote: v.optional(v.string()),
+    executedAt: v.optional(v.number()),
+  })
+    .index("by_status_receivedAt", ["status", "receivedAt"])
+    .index("by_domain", ["domain"]),
+
+  // =========================================================================
   // 3. EVENTS (The Clusters/Stories)
   // =========================================================================
   events: defineTable({
@@ -482,6 +509,63 @@ export default defineSchema({
   })
     .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_event", ["eventId"]),
+
+  // =========================================================================
+  // 3d.4. GENERATION AUDIT (L7 — append-only, one record per pipeline action)
+  // =========================================================================
+  // Proves diligence per published summary: sources (IDs + content hashes +
+  // fetch timestamps + permission state at fetch), check results, review
+  // outcome, publication timestamps. NO update/delete mutation exists for
+  // this table — corrections append a new version referencing the old via
+  // supersedesAuditId. All writes go through generationAudit.append.
+  generationAudit: defineTable({
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    runId: v.optional(v.string()),
+    // Monotonically increasing per event.
+    version: v.number(),
+    supersedesAuditId: v.optional(v.id("generationAudit")),
+    action: v.union(
+      v.literal("published"),
+      v.literal("blocked_verbatim"),
+      v.literal("blocked_ungrounded"),
+      v.literal("held_for_review"),
+      v.literal("review_approved"),
+      v.literal("review_rejected"),
+      v.literal("corrected"),
+      v.literal("unpublished"),
+    ),
+    model: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
+    summary: v.optional(
+      v.object({
+        neutral: v.string(),
+        reformist: v.string(),
+        suveranist: v.string(),
+        globalImpact: v.string(),
+        perspectiveApplicable: v.boolean(),
+      }),
+    ),
+    sourceArticles: v.array(
+      v.object({
+        articleId: v.id("articles"),
+        canonicalUrl: v.string(),
+        contentHash: v.optional(v.string()),
+        fetchedAt: v.optional(v.number()),
+        permissionState: v.optional(v.string()),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+    reviewOutcome: v.optional(v.string()),
+    disclosureLabelVersion: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    unpublishedAt: v.optional(v.number()),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_event_version", ["eventId", "version"])
+    .index("by_created_at", ["createdAt"]),
 
   // =========================================================================
   // 3e. EVENT CLAIMS (Agreement/divergence graph for clustered coverage)
@@ -955,6 +1039,9 @@ export default defineSchema({
     feedUrl: v.string(),
     sourceId: v.id("sources"), // Every feed belongs to a source
     lastFeedFingerprint: v.optional(v.string()),
+    // L6 — conditional request state (If-None-Match / If-Modified-Since).
+    lastEtag: v.optional(v.string()),
+    lastModifiedHttp: v.optional(v.string()),
     lastIngestedAt: v.optional(v.number()),
     lastSuccessAt: v.optional(v.number()),
     consecutiveFailures: v.number(),

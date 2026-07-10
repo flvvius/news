@@ -28,6 +28,8 @@ import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
 import { truncateThirdPartySnippet } from "./lib/compliance";
+import { BOT_USER_AGENT, botFetchHeaders } from "./lib/botIdentity";
+import { politeFetch } from "./lib/politeFetch";
 import { namedAxisBias } from "./lib/biasAxis";
 import {
   GOOGLE_NEWS_RO_FEED_URL,
@@ -41,9 +43,8 @@ import {
 /** Max articles to ingest per feed per run (prevents runaway on first ingest) */
 const MAX_ARTICLES_PER_FEED = 25;
 
-/** User-Agent for RSS fetches. Be a good citizen. */
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+/** L6: honest crawler identity on RSS fetches too. */
+const USER_AGENT = BOT_USER_AGENT;
 
 /** Run-level lease for ingestAllFeeds; prevents overlapping cron/manual runs. */
 const INGEST_ALL_FEEDS_LOCK_KEY = "ingestAllFeeds";
@@ -1161,10 +1162,22 @@ export const upsertIngestionMeta = internalMutation({
     error: v.optional(v.string()),
     sourceId: v.id("sources"),
     feedFingerprint: v.optional(v.string()),
+    // L6 — conditional request state for the next fetch.
+    lastEtag: v.optional(v.string()),
+    lastModifiedHttp: v.optional(v.string()),
   },
   handler: async (
     ctx,
-    { feedUrl, success, articleCount, error, sourceId, feedFingerprint },
+    {
+      feedUrl,
+      success,
+      articleCount,
+      error,
+      sourceId,
+      feedFingerprint,
+      lastEtag,
+      lastModifiedHttp,
+    },
   ) => {
     const existing = await ctx.db
       .query("ingestionMeta")
@@ -1190,12 +1203,16 @@ export const upsertIngestionMeta = internalMutation({
         ...(feedFingerprint !== undefined && {
           lastFeedFingerprint: feedFingerprint,
         }),
+        ...(lastEtag !== undefined && { lastEtag }),
+        ...(lastModifiedHttp !== undefined && { lastModifiedHttp }),
       });
     } else {
       await ctx.db.insert("ingestionMeta", {
         feedUrl,
         sourceId,
         lastFeedFingerprint: feedFingerprint,
+        lastEtag,
+        lastModifiedHttp,
         lastIngestedAt: now,
         lastSuccessAt: success ? now : undefined,
         consecutiveFailures: success ? 0 : 1,
@@ -1324,24 +1341,48 @@ export const ingestSingleFeed = internalAction({
       );
       sourceId = resolvedSourceId;
 
-      // 1. Fetch RSS XML
-      const response = await fetch(feedUrl, {
-        headers: {
-          "User-Agent": USER_AGENT,
+      // L6: conditional request state from the previous run.
+      const previousMeta = await ctx.runQuery(
+        internal.ingestion.getIngestionMeta,
+        { feedUrl },
+      );
+
+      // 1. Fetch RSS XML — honest bot identity (L6), rate-limited with
+      // backoff, and conditional (If-None-Match / If-Modified-Since).
+      const response = await politeFetch(feedUrl, {
+        headers: botFetchHeaders({
           Accept:
             "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
-          Referer: "https://www.google.com/",
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
+          ...(previousMeta?.lastEtag
+            ? { "If-None-Match": previousMeta.lastEtag }
+            : {}),
+          ...(previousMeta?.lastModifiedHttp
+            ? { "If-Modified-Since": previousMeta.lastModifiedHttp }
+            : {}),
+        }),
         // Per-feed override for slow proxy/extractor feeds; default 15s.
-        signal: AbortSignal.timeout(fetchTimeoutMs ?? 15_000),
+        timeoutMs: fetchTimeoutMs ?? 15_000,
       });
+
+      if (response.status === 304) {
+        // Feed unchanged since last fetch — success with no work.
+        await ctx.runMutation(internal.ingestion.upsertIngestionMeta, {
+          feedUrl,
+          success: true,
+          articleCount: 0,
+          sourceId: resolvedSourceId,
+        });
+        return { inserted: 0, skipped: 0 };
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
       }
+
+      const responseEtag = response.headers.get("etag") ?? undefined;
+      const responseLastModified =
+        response.headers.get("last-modified") ?? undefined;
 
       const xml = await response.text();
       const parsed = parseRSSXml(xml);
@@ -1383,9 +1424,6 @@ export const ingestSingleFeed = internalAction({
         ).values(),
       );
       const currentFeedFingerprint = feedFingerprint(dedupedRecentArticles);
-      const previousMeta = await ctx.runQuery(internal.ingestion.getIngestionMeta, {
-        feedUrl,
-      });
       if (
         previousMeta?.lastFeedFingerprint === currentFeedFingerprint &&
         previousMeta.consecutiveFailures === 0
@@ -1396,6 +1434,8 @@ export const ingestSingleFeed = internalAction({
           articleCount: 0,
           sourceId: resolvedSourceId,
           feedFingerprint: currentFeedFingerprint,
+          lastEtag: responseEtag,
+          lastModifiedHttp: responseLastModified,
         });
         return { inserted: 0, skipped: recentArticles.length };
       }
@@ -1430,6 +1470,8 @@ export const ingestSingleFeed = internalAction({
           articleCount: 0,
           sourceId: resolvedSourceId,
           feedFingerprint: currentFeedFingerprint,
+          lastEtag: responseEtag,
+          lastModifiedHttp: responseLastModified,
         });
         return { inserted: 0, skipped: skippedArticles };
       }
@@ -1472,6 +1514,8 @@ export const ingestSingleFeed = internalAction({
           articleCount: articlesInserted,
           sourceId: resolvedSourceId,
           feedFingerprint: currentFeedFingerprint,
+          lastEtag: responseEtag,
+          lastModifiedHttp: responseLastModified,
         });
 
       console.log(

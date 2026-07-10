@@ -17,6 +17,7 @@ import { Route as SalvateRouteImport } from './routes/salvate'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as QuizRouteImport } from './routes/quiz'
+import { Route as PublishersRouteImport } from './routes/publishers'
 import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
@@ -25,12 +26,14 @@ import { Route as DespreRouteImport } from './routes/despre'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CumFunctioneazaRouteImport } from './routes/cum-functioneaza'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as BotRouteImport } from './routes/bot'
 import { Route as BookmarksRouteImport } from './routes/bookmarks'
 import { Route as ActivitateRouteImport } from './routes/activitate'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
 import { Route as EventSlugRouteImport } from './routes/event.$slug'
 import { Route as AdminReviewRouteImport } from './routes/admin.review'
+import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
 import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
@@ -74,6 +77,11 @@ const QuizRoute = QuizRouteImport.update({
   path: '/quiz',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PublishersRoute = PublishersRouteImport.update({
+  id: '/publishers',
+  path: '/publishers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfilRoute = ProfilRouteImport.update({
   id: '/profil',
   path: '/profil',
@@ -115,6 +123,11 @@ const ContactRoute = ContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BotRoute = BotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BookmarksRoute = BookmarksRouteImport.update({
   id: '/bookmarks',
   path: '/bookmarks',
@@ -145,6 +158,11 @@ const AdminReviewRoute = AdminReviewRouteImport.update({
   path: '/admin/review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminPublishersRoute = AdminPublishersRouteImport.update({
+  id: '/admin/publishers',
+  path: '/admin/publishers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminPipelineRoute = AdminPipelineRouteImport.update({
   id: '/admin/pipeline',
   path: '/admin/pipeline',
@@ -160,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/bot': typeof BotRoute
   '/contact': typeof ContactRoute
   '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
@@ -168,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/publishers': typeof PublishersRoute
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
@@ -177,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
+  '/admin/publishers': typeof AdminPublishersRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -186,6 +207,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/bot': typeof BotRoute
   '/contact': typeof ContactRoute
   '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
@@ -194,6 +216,7 @@ export interface FileRoutesByTo {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/publishers': typeof PublishersRoute
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
@@ -203,6 +226,7 @@ export interface FileRoutesByTo {
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
+  '/admin/publishers': typeof AdminPublishersRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -213,6 +237,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/activitate': typeof ActivitateRoute
   '/bookmarks': typeof BookmarksRoute
+  '/bot': typeof BotRoute
   '/contact': typeof ContactRoute
   '/cum-functioneaza': typeof CumFunctioneazaRoute
   '/dashboard': typeof DashboardRoute
@@ -221,6 +246,7 @@ export interface FileRoutesById {
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
+  '/publishers': typeof PublishersRoute
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
@@ -230,6 +256,7 @@ export interface FileRoutesById {
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
+  '/admin/publishers': typeof AdminPublishersRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -241,6 +268,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activitate'
     | '/bookmarks'
+    | '/bot'
     | '/contact'
     | '/cum-functioneaza'
     | '/dashboard'
@@ -249,6 +277,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/publishers'
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
@@ -258,6 +287,7 @@ export interface FileRouteTypes {
     | '/termeni'
     | '/unsubscribe'
     | '/admin/pipeline'
+    | '/admin/publishers'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -267,6 +297,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activitate'
     | '/bookmarks'
+    | '/bot'
     | '/contact'
     | '/cum-functioneaza'
     | '/dashboard'
@@ -275,6 +306,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/publishers'
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
@@ -284,6 +316,7 @@ export interface FileRouteTypes {
     | '/termeni'
     | '/unsubscribe'
     | '/admin/pipeline'
+    | '/admin/publishers'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -293,6 +326,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activitate'
     | '/bookmarks'
+    | '/bot'
     | '/contact'
     | '/cum-functioneaza'
     | '/dashboard'
@@ -301,6 +335,7 @@ export interface FileRouteTypes {
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
+    | '/publishers'
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
@@ -310,6 +345,7 @@ export interface FileRouteTypes {
     | '/termeni'
     | '/unsubscribe'
     | '/admin/pipeline'
+    | '/admin/publishers'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -320,6 +356,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivitateRoute: typeof ActivitateRoute
   BookmarksRoute: typeof BookmarksRoute
+  BotRoute: typeof BotRoute
   ContactRoute: typeof ContactRoute
   CumFunctioneazaRoute: typeof CumFunctioneazaRoute
   DashboardRoute: typeof DashboardRoute
@@ -328,6 +365,7 @@ export interface RootRouteChildren {
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ProfilRoute: typeof ProfilRoute
+  PublishersRoute: typeof PublishersRoute
   QuizRoute: typeof QuizRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
@@ -337,6 +375,7 @@ export interface RootRouteChildren {
   TermeniRoute: typeof TermeniRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   AdminPipelineRoute: typeof AdminPipelineRoute
+  AdminPublishersRoute: typeof AdminPublishersRoute
   AdminReviewRoute: typeof AdminReviewRoute
   EventSlugRoute: typeof EventSlugRoute
   SourceSourceIdRoute: typeof SourceSourceIdRoute
@@ -401,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuizRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/publishers': {
+      id: '/publishers'
+      path: '/publishers'
+      fullPath: '/publishers'
+      preLoaderRoute: typeof PublishersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profil': {
       id: '/profil'
       path: '/profil'
@@ -457,6 +503,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/bot': {
+      id: '/bot'
+      path: '/bot'
+      fullPath: '/bot'
+      preLoaderRoute: typeof BotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/bookmarks': {
       id: '/bookmarks'
       path: '/bookmarks'
@@ -499,6 +552,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/publishers': {
+      id: '/admin/publishers'
+      path: '/admin/publishers'
+      fullPath: '/admin/publishers'
+      preLoaderRoute: typeof AdminPublishersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/pipeline': {
       id: '/admin/pipeline'
       path: '/admin/pipeline'
@@ -520,6 +580,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivitateRoute: ActivitateRoute,
   BookmarksRoute: BookmarksRoute,
+  BotRoute: BotRoute,
   ContactRoute: ContactRoute,
   CumFunctioneazaRoute: CumFunctioneazaRoute,
   DashboardRoute: DashboardRoute,
@@ -528,6 +589,7 @@ const rootRouteChildren: RootRouteChildren = {
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ProfilRoute: ProfilRoute,
+  PublishersRoute: PublishersRoute,
   QuizRoute: QuizRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
@@ -537,6 +599,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermeniRoute: TermeniRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   AdminPipelineRoute: AdminPipelineRoute,
+  AdminPublishersRoute: AdminPublishersRoute,
   AdminReviewRoute: AdminReviewRoute,
   EventSlugRoute: EventSlugRoute,
   SourceSourceIdRoute: SourceSourceIdRoute,

@@ -27,3 +27,7 @@ Notes:
   the PostHog identity deletion request — that backend call no-ops unless the
   PostHog personal-API deletion credentials are configured on the production
   deployment. Verify they are set.
+- L6 crawler identity: BiviantBot's User-Agent and `From` header reference
+  `contact@biviant.com` (see `packages/backend/convex/lib/botIdentity.ts`).
+  That mailbox must be provisioned together with the site contact mailbox
+  before launch — same TODO as the contact e-mail row above.
