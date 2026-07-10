@@ -34,6 +34,7 @@ import type * as lib_aiCall from "../lib/aiCall.js";
 import type * as lib_articleExtraction from "../lib/articleExtraction.js";
 import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_biasAxis from "../lib/biasAxis.js";
+import type * as lib_compliance from "../lib/compliance.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
 import type * as lib_feedSerialization from "../lib/feedSerialization.js";
 import type * as lib_googleNews from "../lib/googleNews.js";
@@ -106,6 +107,7 @@ declare const fullApi: ApiFromModules<{
   "lib/articleExtraction": typeof lib_articleExtraction;
   "lib/betaAccess": typeof lib_betaAccess;
   "lib/biasAxis": typeof lib_biasAxis;
+  "lib/compliance": typeof lib_compliance;
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;
   "lib/feedSerialization": typeof lib_feedSerialization;
   "lib/googleNews": typeof lib_googleNews;

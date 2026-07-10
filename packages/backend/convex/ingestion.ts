@@ -27,6 +27,7 @@ import { ALL_FEEDS } from "./feeds";
 import { getSourceReputation } from "./sourceReputation";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
 import { normalizeRomanianDiacritics } from "./lib/romanian";
+import { truncateThirdPartySnippet } from "./lib/compliance";
 import { namedAxisBias } from "./lib/biasAxis";
 import {
   GOOGLE_NEWS_RO_FEED_URL,
@@ -805,7 +806,13 @@ export const insertArticles = internalMutation({
         }
       }
 
-      const id = await ctx.db.insert("articles", article);
+      // L2 (Art. 94¹): stored third-party snippets are display fields and
+      // must stay within the "very short extract" ceiling. Full text used
+      // for processing is only ever fetched transiently, never stored.
+      const id = await ctx.db.insert("articles", {
+        ...article,
+        rssSnippet: truncateThirdPartySnippet(article.rssSnippet),
+      });
       ids.push(id);
     }
     return ids;
