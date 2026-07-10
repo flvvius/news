@@ -299,6 +299,18 @@ async function enqueueEligibleEvents(
       continue;
     }
 
+    // L4: an event whose summary is parked in the review queue must not be
+    // re-enqueued — regeneration would flag again and spam the queue.
+    const pendingReview = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .first();
+    if (pendingReview) {
+      skipped++;
+      continue;
+    }
+
     const latestJob = await getLatestSummaryJob(ctx, event._id);
     if (await hasBlockingSummaryJob(ctx, event._id, now)) {
       skipped++;
@@ -724,6 +736,119 @@ export const getEventSummaryInput = internalQuery({
   },
 });
 
+// L4 — per-sentence grounding results attached to a summary write.
+const groundingResultValidator = v.object({
+  model: v.string(),
+  passed: v.boolean(),
+  results: v.array(
+    v.object({
+      field: v.string(),
+      sentence: v.string(),
+      supported: v.boolean(),
+      supportingArticleIds: v.array(v.id("articles")),
+    }),
+  ),
+  strippedSentences: v.array(
+    v.object({
+      field: v.string(),
+      sentence: v.string(),
+    }),
+  ),
+});
+
+async function upsertSummaryGrounding(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+  jobId: Id<"eventSummaryJobs"> | undefined,
+  grounding: {
+    model: string;
+    passed: boolean;
+    results: Array<{
+      field: string;
+      sentence: string;
+      supported: boolean;
+      supportingArticleIds: Id<"articles">[];
+    }>;
+    strippedSentences: Array<{ field: string; sentence: string }>;
+  },
+) {
+  const existing = await ctx.db
+    .query("summaryGrounding")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .unique();
+  const row = {
+    eventId,
+    jobId,
+    model: grounding.model,
+    results: grounding.results,
+    strippedSentences: grounding.strippedSentences,
+    passed: grounding.passed,
+    generatedAt: Date.now(),
+  };
+  if (existing) {
+    await ctx.db.replace(existing._id, row);
+  } else {
+    await ctx.db.insert("summaryGrounding", row);
+  }
+}
+
+/** L4 — record a grounding check that did NOT lead to publication. */
+export const recordSummaryGrounding = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    grounding: groundingResultValidator,
+  },
+  handler: async (ctx, { eventId, jobId, grounding }) => {
+    await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
+    return { recorded: true as const };
+  },
+});
+
+/** L4 — per-sentence attribution for the event page (public). */
+export const getSummaryGrounding = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const row = await ctx.db
+      .query("summaryGrounding")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (!row || !row.passed) return null;
+
+    const articleIds = Array.from(
+      new Set(row.results.flatMap((entry) => entry.supportingArticleIds)),
+    );
+    const articleRows = await Promise.all(
+      articleIds.map(async (articleId) => {
+        const article = await ctx.db.get(articleId);
+        if (!article) return null;
+        const source = await ctx.db.get(article.sourceId);
+        return [String(articleId), source?.name ?? null] as const;
+      }),
+    );
+    const sourceNameByArticle = new Map(
+      articleRows.filter(
+        (entry): entry is readonly [string, string | null] => entry !== null,
+      ),
+    );
+
+    return {
+      generatedAt: row.generatedAt,
+      results: row.results.map((entry) => ({
+        field: entry.field,
+        sentence: entry.sentence,
+        supportingSources: Array.from(
+          new Set(
+            entry.supportingArticleIds
+              .map((articleId) => sourceNameByArticle.get(String(articleId)))
+              .filter((name): name is string => Boolean(name)),
+          ),
+        ),
+      })),
+    };
+  },
+});
+
 export const applyEventSummaryResult = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
@@ -755,6 +880,8 @@ export const applyEventSummaryResult = internalMutation({
         ),
       }),
     ),
+    // L4 — grounding verification results for the applied summary text.
+    grounding: v.optional(groundingResultValidator),
   },
   handler: async (
     ctx,
@@ -770,6 +897,7 @@ export const applyEventSummaryResult = internalMutation({
       summarySignature,
       modelUsed,
       overlapCheck,
+      grounding,
     },
   ) => {
     const job = await ctx.db.get(jobId);
@@ -787,6 +915,12 @@ export const applyEventSummaryResult = internalMutation({
     // markSummaryJobBlockedVerbatim instead.
     if (overlapCheck && !overlapCheck.passed) {
       return { applied: false as const, reason: "overlap_check_failed" };
+    }
+
+    // L4 invariant: a failing grounding check must never publish — the node
+    // action strips unsupported sentences or blocks before calling this.
+    if (grounding && !grounding.passed) {
+      return { applied: false as const, reason: "grounding_check_failed" };
     }
 
     const event = await ctx.db.get(eventId);
@@ -845,6 +979,11 @@ export const applyEventSummaryResult = internalMutation({
       updatedAt: Date.now(),
     });
 
+    // L4: persist the per-sentence support map for the published text.
+    if (grounding) {
+      await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
+    }
+
     const updatedEvent = await ctx.db.get(eventId);
     if (updatedEvent) {
       await syncPublicEventPreview(ctx, eventId);
@@ -856,6 +995,226 @@ export const applyEventSummaryResult = internalMutation({
     }
 
     return { applied: true as const };
+  },
+});
+
+/**
+ * L4 — NER risk gate hold: the generated summary pairs a named person or
+ * organization with an accusation term, so it is parked in the review queue
+ * and NEVER auto-published. The job ends as skipped/held_for_review; the
+ * event keeps its previous state until an admin decides.
+ */
+export const holdSummaryForReview = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    eventId: v.id("events"),
+    runId: v.string(),
+    proposed: v.object({
+      neutral: v.string(),
+      reformist: v.string(),
+      suveranist: v.string(),
+      globalImpact: v.string(),
+      perspectiveApplicable: v.boolean(),
+      modelUsed: v.string(),
+      summarySignature: v.optional(v.string()),
+    }),
+    flaggedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        entity: v.string(),
+        term: v.string(),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (
+      !job ||
+      job.eventId !== args.eventId ||
+      job.status !== "processing" ||
+      job.processingRunId !== args.runId
+    ) {
+      return { held: false as const };
+    }
+
+    // One pending proposal per event: a fresh generation supersedes the old.
+    const existingPending = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .first();
+    const row = {
+      eventId: args.eventId,
+      jobId: args.jobId,
+      runId: args.runId,
+      proposed: args.proposed,
+      flaggedSentences: args.flaggedSentences,
+      overlapCheckJson: args.overlapCheckJson,
+      groundingJson: args.groundingJson,
+      status: "pending" as const,
+      createdAt: Date.now(),
+    };
+    if (existingPending) {
+      await ctx.db.replace(existingPending._id, row);
+    } else {
+      await ctx.db.insert("summaryReviewQueue", row);
+    }
+
+    await ctx.db.patch(args.jobId, {
+      status: "skipped",
+      processingRunId: undefined,
+      leaseExpiresAt: undefined,
+      lastError: "held_for_review",
+      overlapCheckJson: args.overlapCheckJson,
+      updatedAt: Date.now(),
+    });
+
+    return { held: true as const };
+  },
+});
+
+export const listSummaryReviewQueueForAdmin = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const rows = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_status_createdAt", (q) =>
+        q.eq("status", args.status ?? "pending"),
+      )
+      .order("desc")
+      .take(safeLimit);
+
+    return await Promise.all(
+      rows.map(async (row) => {
+        const event = await ctx.db.get(row.eventId);
+        return {
+          ...row,
+          eventTitle: event?.title ?? "(eveniment șters)",
+          eventSlug: event?.slug,
+          eventStatus: event?.status,
+        };
+      }),
+    );
+  },
+});
+
+/**
+ * L4 — admin decision on a held summary. Approve applies the (optionally
+ * edited) text to the event with humanReviewed=true and publishes it;
+ * reject discards the proposal and leaves the event untouched.
+ */
+export const decideSummaryReviewForAdmin = mutation({
+  args: {
+    reviewId: v.id("summaryReviewQueue"),
+    decision: v.union(v.literal("approve"), v.literal("reject")),
+    editedFields: v.optional(
+      v.object({
+        neutral: v.optional(v.string()),
+        reformist: v.optional(v.string()),
+        suveranist: v.optional(v.string()),
+        globalImpact: v.optional(v.string()),
+      }),
+    ),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, { reviewId, decision, editedFields, note }) => {
+    const admin = await requireAdminUser(ctx);
+    const review = await ctx.db.get(reviewId);
+    if (!review || review.status !== "pending") {
+      return { decided: false as const, reason: "not_pending" };
+    }
+
+    const decidedByEmail =
+      (admin as { email?: string } | null | undefined)?.email ?? undefined;
+
+    if (decision === "reject") {
+      await ctx.db.patch(reviewId, {
+        status: "rejected",
+        decidedAt: Date.now(),
+        decidedByEmail,
+        decisionNote: note,
+      });
+      return { decided: true as const, applied: false as const };
+    }
+
+    const event = await ctx.db.get(review.eventId);
+    if (!event) {
+      await ctx.db.patch(reviewId, {
+        status: "rejected",
+        decidedAt: Date.now(),
+        decidedByEmail,
+        decisionNote: "event_missing",
+      });
+      return { decided: true as const, applied: false as const };
+    }
+
+    const neutral = (editedFields?.neutral ?? review.proposed.neutral).trim();
+    const reformist = (
+      editedFields?.reformist ?? review.proposed.reformist
+    ).trim();
+    const suveranist = (
+      editedFields?.suveranist ?? review.proposed.suveranist
+    ).trim();
+    const globalImpact = (
+      editedFields?.globalImpact ?? review.proposed.globalImpact
+    ).trim();
+    const applicable = review.proposed.perspectiveApplicable;
+
+    await ctx.db.patch(review.eventId, {
+      perspectiveSummaries: applicable
+        ? { neutral, reformist, suveranist }
+        : { neutral },
+      perspectiveApplicable: applicable,
+      perspectiveSource: "ai",
+      globalImpact,
+      lastSummarizedAt: Date.now(),
+      lastSummarySignature:
+        review.proposed.summarySignature ?? event.lastSummarySignature,
+      lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      aiGenerated: true,
+      // The whole point of the queue: this text WAS human-reviewed.
+      humanReviewed: true,
+      modelUsed: review.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      lastOverlapCheckAt: Date.now(),
+      lastOverlapCheckPassed: true,
+      ...(event.status === "processing"
+        ? { status: "published" as const }
+        : {}),
+    });
+
+    await ctx.db.patch(reviewId, {
+      status: "approved",
+      decidedAt: Date.now(),
+      decidedByEmail,
+      decisionNote: note,
+    });
+
+    await syncPublicEventPreview(ctx, review.eventId);
+    const updatedEvent = await ctx.db.get(review.eventId);
+    if (updatedEvent) {
+      const shareData = await buildShareRenderData(ctx, updatedEvent);
+      await ctx.runMutation(internal.shareAssets.ensureEventShareAssetQueued, {
+        eventId: review.eventId,
+        renderSignature: buildEventShareRenderSignature(shareData),
+      });
+    }
+
+    return { decided: true as const, applied: true as const };
   },
 });
 

@@ -161,6 +161,11 @@ function EventDetailPage() {
   const loaderData = Route.useLoaderData();
   const search = Route.useSearch();
   const eventData = useQuery(api.events.getEventBySlug, { slug }) ?? loaderData;
+  // L4 — per-sentence source attribution for the summary tabs.
+  const grounding = useQuery(
+    api.summarization.getSummaryGrounding,
+    eventData?.event?._id ? { eventId: eventData.event._id } : "skip",
+  );
   const { isAuthenticated } = useConvexAuth();
   const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
   const navigate = useNavigate();
@@ -369,6 +374,7 @@ function EventDetailPage() {
             globalImpact={event.globalImpact}
             articles={articles}
             sourceCount={sourceCount}
+            grounding={grounding}
           />
 
           <ArticlesList eventId={event._id} articles={articles} />

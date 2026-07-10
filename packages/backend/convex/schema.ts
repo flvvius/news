@@ -387,6 +387,76 @@ export default defineSchema({
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
+  // 3d.2. SUMMARY GROUNDING (L4 — per-sentence support records)
+  // =========================================================================
+  // One row per event (latest check wins): every sentence of the published
+  // summary with its supported verdict and supporting article IDs. Feeds the
+  // per-sentence attribution UI and the L7 audit trail.
+  summaryGrounding: defineTable({
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    model: v.string(),
+    results: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        supported: v.boolean(),
+        supportingArticleIds: v.array(v.id("articles")),
+      }),
+    ),
+    strippedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+      }),
+    ),
+    passed: v.boolean(),
+    generatedAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
+  // =========================================================================
+  // 3d.3. SUMMARY REVIEW QUEUE (L4 — NER risk gate holds)
+  // =========================================================================
+  // Summaries pairing a named person/organization with an accusation term
+  // are parked here and never auto-published. Admin approves (optionally
+  // edited → humanReviewed=true), or rejects.
+  summaryReviewQueue: defineTable({
+    eventId: v.id("events"),
+    jobId: v.id("eventSummaryJobs"),
+    runId: v.string(),
+    proposed: v.object({
+      neutral: v.string(),
+      reformist: v.string(),
+      suveranist: v.string(),
+      globalImpact: v.string(),
+      perspectiveApplicable: v.boolean(),
+      modelUsed: v.string(),
+      summarySignature: v.optional(v.string()),
+    }),
+    flaggedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        entity: v.string(),
+        term: v.string(),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    decisionNote: v.optional(v.string()),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_event", ["eventId"]),
+
+  // =========================================================================
   // 3e. EVENT CLAIMS (Agreement/divergence graph for clustered coverage)
   // =========================================================================
   eventClaims: defineTable({

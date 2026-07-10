@@ -307,6 +307,63 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
   };
 }
 
+export type GroundingPromptInput = {
+  sentences: Array<{ index: number; sentence: string }>;
+  articles: Array<{
+    index: number;
+    sourceName: string;
+    title: string;
+    excerpt: string;
+  }>;
+};
+
+/**
+ * L4 — decisive entailment pass of the grounding check. One call verifies
+ * every summary sentence against the event's source excerpts and names the
+ * supporting article indexes. A sentence unsupported by every source must
+ * come back supported=false — publication strips or blocks it.
+ */
+export function buildGroundingVerificationPrompt(input: GroundingPromptInput): {
+  system: string;
+  user: string;
+} {
+  const articleBlocks = input.articles
+    .map((article) =>
+      [
+        `[Articolul ${article.index}]`,
+        `sursa: ${article.sourceName}`,
+        `titlu: ${trimField(article.title, 220)}`,
+        `extras: ${trimField(article.excerpt, 1600)}`,
+      ].join("\n"),
+    )
+    .join("\n\n");
+  const sentenceBlocks = input.sentences
+    .map(({ index, sentence }) => `${index}. ${trimField(sentence, 400)}`)
+    .join("\n");
+
+  return {
+    system: [
+      "Ești un verificator strict de fapte pentru un agregator de știri românesc.",
+      "Primești propoziții dintr-un rezumat generat automat și extrase din articolele de presă pe care rezumatul PRETINDE că se bazează.",
+      "Pentru FIECARE propoziție decide: este afirmația susținută explicit de cel puțin unul dintre extrasele furnizate?",
+      "",
+      "REGULI:",
+      '- "Susținută" înseamnă că un cititor găsește informația în extras — direct sau printr-o reformulare fidelă. Deducțiile, generalizările și detaliile care nu apar în niciun extras NU sunt susținute.',
+      "- Cifrele, datele, numele și atribuirile trebuie să corespundă extraselor. O cifră diferită sau un nume greșit = nesusținută.",
+      "- Formulările prudente de tip agregare (\"mai multe surse relatează...\") sunt susținute dacă esența apare în extrase.",
+      "- Nu folosi cunoștințe externe. Doar extrasele furnizate contează.",
+      "- Returnează DOAR JSON: {\"results\": [{\"index\": <număr propoziție>, \"supported\": <boolean>, \"articleIndexes\": [<indexurile articolelor care susțin>]}]} pentru TOATE propozițiile primite.",
+    ].join("\n"),
+    user: [
+      "Extrase din articole:",
+      articleBlocks,
+      "",
+      "Propoziții de verificat:",
+      sentenceBlocks,
+    ].join("\n"),
+  };
+}
+
 export function buildArticleFactExtractionPrompt(
   input: ArticleFactExtractionPromptInput,
 ): {

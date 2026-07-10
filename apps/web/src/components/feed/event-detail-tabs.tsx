@@ -29,6 +29,60 @@ type PerspectiveSummaries = {
   suveranist?: string | null;
 };
 
+export type GroundingData = {
+  results: Array<{
+    field: string;
+    sentence: string;
+    supportingSources: string[];
+  }>;
+} | null;
+
+/**
+ * L4 — per-sentence source attribution. When the stored grounding record
+ * matches the displayed text, each sentence carries its supporting outlets
+ * as a hover tooltip; otherwise the plain text renders unchanged.
+ */
+function GroundedText({
+  text,
+  field,
+  grounding,
+  className,
+}: {
+  text: string;
+  field: string;
+  grounding: GroundingData | undefined;
+  className: string;
+}) {
+  const sentences =
+    grounding?.results.filter((entry) => entry.field === field) ?? [];
+  const reconstructed = sentences.map((entry) => entry.sentence).join(" ");
+  if (sentences.length === 0 || reconstructed !== text) {
+    return <p className={className}>{text}</p>;
+  }
+  return (
+    <p className={className}>
+      {sentences.map((entry, index) => (
+        <span
+          key={index}
+          title={
+            entry.supportingSources.length > 0
+              ? `Susținut de: ${entry.supportingSources.join(", ")}`
+              : undefined
+          }
+          className={
+            entry.supportingSources.length > 0
+              ? "decoration-muted-foreground/40 underline-offset-4 hover:underline"
+              : undefined
+          }
+        >
+          {entry.sentence}
+          {index < sentences.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /**
  * The event-detail content region: perspective summaries, global impact and
  * source coverage — plus, only while the claimAnalysis feature flag is on
@@ -43,6 +97,7 @@ export function EventDetailTabs({
   globalImpact,
   articles,
   sourceCount,
+  grounding,
 }: {
   eventId: Id<"events">;
   perspectiveSummaries?: PerspectiveSummaries | null;
@@ -55,6 +110,8 @@ export function EventDetailTabs({
   // For the AI-disclosure label ("from N sources"); falls back to the
   // distinct sources present in `articles`.
   sourceCount?: number;
+  // L4: per-sentence attribution mapping (null/undefined = render plain).
+  grounding?: GroundingData;
 }) {
   const t = useT();
   const disclosureSourceCount =
@@ -118,19 +175,36 @@ export function EventDetailTabs({
 
             {perspectiveSummaries?.reformist && (
               <TabsContent value="left">
-                <p className={bodyText}>{perspectiveSummaries.reformist}</p>
+                <GroundedText
+                  text={perspectiveSummaries.reformist}
+                  field="reformist"
+                  grounding={grounding}
+                  className={bodyText}
+                />
               </TabsContent>
             )}
 
             <TabsContent value="center">
-              <p className={bodyText}>
-                {perspectiveSummaries?.neutral ?? t("event.summaryPending")}
-              </p>
+              {perspectiveSummaries?.neutral ? (
+                <GroundedText
+                  text={perspectiveSummaries.neutral}
+                  field="neutral"
+                  grounding={grounding}
+                  className={bodyText}
+                />
+              ) : (
+                <p className={bodyText}>{t("event.summaryPending")}</p>
+              )}
             </TabsContent>
 
             {perspectiveSummaries?.suveranist && (
               <TabsContent value="right">
-                <p className={bodyText}>{perspectiveSummaries.suveranist}</p>
+                <GroundedText
+                  text={perspectiveSummaries.suveranist}
+                  field="suveranist"
+                  grounding={grounding}
+                  className={bodyText}
+                />
               </TabsContent>
             )}
           </Tabs>
