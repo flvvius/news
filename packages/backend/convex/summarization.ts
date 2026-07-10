@@ -9,6 +9,10 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
+import {
+  appendGenerationAudit,
+  AUDIT_SOURCE_VALIDATOR,
+} from "./generationAudit";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { selectSummaryArticles } from "./lib/summaryArticleSelection";
@@ -801,6 +805,18 @@ export const recordSummaryGrounding = internalMutation({
   },
   handler: async (ctx, { eventId, jobId, grounding }) => {
     await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
+    // L7: a failed grounding check that blocks publication is audited here
+    // (the passing case is audited by applyEventSummaryResult).
+    if (!grounding.passed) {
+      await appendGenerationAudit(ctx, {
+        eventId,
+        jobId,
+        action: "blocked_ungrounded",
+        model: grounding.model,
+        promptVersion: String(SUMMARY_PROMPT_VERSION),
+        groundingJson: JSON.stringify(grounding),
+      });
+    }
     return { recorded: true as const };
   },
 });
@@ -882,6 +898,9 @@ export const applyEventSummaryResult = internalMutation({
     ),
     // L4 — grounding verification results for the applied summary text.
     grounding: v.optional(groundingResultValidator),
+    // L7 — source provenance for the audit record (hashes, fetch timestamps,
+    // permission state at fetch).
+    auditSources: v.optional(AUDIT_SOURCE_VALIDATOR),
   },
   handler: async (
     ctx,
@@ -898,6 +917,7 @@ export const applyEventSummaryResult = internalMutation({
       modelUsed,
       overlapCheck,
       grounding,
+      auditSources,
     },
   ) => {
     const job = await ctx.db.get(jobId);
@@ -983,6 +1003,28 @@ export const applyEventSummaryResult = internalMutation({
     if (grounding) {
       await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
     }
+
+    // L7: append the immutable publication record in the same transaction.
+    await appendGenerationAudit(ctx, {
+      eventId,
+      jobId,
+      runId,
+      action: "published",
+      model: modelUsed ?? "unrecorded",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral: neutral.trim(),
+        reformist: applicable ? reformist.trim() : "",
+        suveranist: applicable ? suveranist.trim() : "",
+        globalImpact: globalImpact.trim(),
+        perspectiveApplicable: applicable,
+      },
+      sourceArticles: auditSources,
+      overlapCheckJson: overlapCheck ? JSON.stringify(overlapCheck) : undefined,
+      groundingJson: grounding ? JSON.stringify(grounding) : undefined,
+      disclosureLabelVersion: "v1",
+      publishedAt: Date.now(),
+    });
 
     const updatedEvent = await ctx.db.get(eventId);
     if (updatedEvent) {
@@ -1072,6 +1114,28 @@ export const holdSummaryForReview = internalMutation({
       updatedAt: Date.now(),
     });
 
+    // L7: audit the hold with the proposed (unpublished) text.
+    await appendGenerationAudit(ctx, {
+      eventId: args.eventId,
+      jobId: args.jobId,
+      runId: args.runId,
+      action: "held_for_review",
+      model: args.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral: args.proposed.neutral,
+        reformist: args.proposed.reformist,
+        suveranist: args.proposed.suveranist,
+        globalImpact: args.proposed.globalImpact,
+        perspectiveApplicable: args.proposed.perspectiveApplicable,
+      },
+      overlapCheckJson: args.overlapCheckJson,
+      groundingJson: args.groundingJson,
+      note: args.flaggedSentences
+        .map((flag) => `${flag.entity} + "${flag.term}"`)
+        .join("; "),
+    });
+
     return { held: true as const };
   },
 });
@@ -1148,6 +1212,14 @@ export const decideSummaryReviewForAdmin = mutation({
         decidedByEmail,
         decisionNote: note,
       });
+      await appendGenerationAudit(ctx, {
+        eventId: review.eventId,
+        jobId: review.jobId,
+        runId: review.runId,
+        action: "review_rejected",
+        reviewOutcome: `rejected by ${decidedByEmail ?? "admin"}`,
+        note,
+      });
       return { decided: true as const, applied: false as const };
     }
 
@@ -1202,6 +1274,28 @@ export const decideSummaryReviewForAdmin = mutation({
       decidedAt: Date.now(),
       decidedByEmail,
       decisionNote: note,
+    });
+
+    // L7: the approval (possibly edited = a correction of the proposal) is a
+    // new audit version superseding the held_for_review record.
+    await appendGenerationAudit(ctx, {
+      eventId: review.eventId,
+      jobId: review.jobId,
+      runId: review.runId,
+      action: "review_approved",
+      model: review.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral,
+        reformist,
+        suveranist,
+        globalImpact,
+        perspectiveApplicable: applicable,
+      },
+      reviewOutcome: `approved by ${decidedByEmail ?? "admin"}${editedFields ? " (edited)" : ""}`,
+      disclosureLabelVersion: "v1",
+      publishedAt: Date.now(),
+      note,
     });
 
     await syncPublicEventPreview(ctx, review.eventId);
@@ -1277,6 +1371,16 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
       lastError: "blocked_verbatim",
       overlapCheckJson,
       updatedAt: Date.now(),
+    });
+
+    // L7: audit the block in the same transaction.
+    await appendGenerationAudit(ctx, {
+      eventId: job.eventId,
+      jobId,
+      runId,
+      action: "blocked_verbatim",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      overlapCheckJson,
     });
 
     return { updated: true as const };

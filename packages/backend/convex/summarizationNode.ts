@@ -547,9 +547,14 @@ async function fetchTransientArticleBodies(
   ctx: ActionCtx,
   articles: SummaryInputArticle[],
   settings: SummarySettings,
-): Promise<Map<string, string>> {
+): Promise<{
+  bodies: Map<string, string>;
+  permissionStates: Map<string, string>;
+}> {
   const bodies = new Map<string, string>();
-  if (!settings.bodyFetchEnabled || articles.length === 0) return bodies;
+  if (!settings.bodyFetchEnabled || articles.length === 0) {
+    return { bodies, permissionStates: new Map() };
+  }
 
   // L5 — resolve permission state per source domain and log it for the run.
   const permissionStates = await ensureDomainPermissions(
@@ -575,7 +580,7 @@ async function fetchTransientArticleBodies(
     );
   }
   articles = allowedArticles;
-  if (articles.length === 0) return bodies;
+  if (articles.length === 0) return { bodies, permissionStates };
 
   const perArticleCap = Math.max(
     MIN_BODY_CHARS_PER_ARTICLE,
@@ -624,7 +629,7 @@ async function fetchTransientArticleBodies(
       timedOut ? " (fan-out deadline hit — proceeding with partial bodies)" : ""
     }`,
   );
-  return bodies;
+  return { bodies, permissionStates };
 }
 
 type GroundingOutcome =
@@ -1251,11 +1256,9 @@ export const processSummaryJob = internalAction({
         };
       }
 
-      const transientBodies = await fetchTransientArticleBodies(
-        ctx,
-        input.articles,
-        settings,
-      );
+      const { bodies: transientBodies, permissionStates } =
+        await fetchTransientArticleBodies(ctx, input.articles, settings);
+      const bodyFetchedAt = Date.now();
 
       const prompt = buildEventSummaryPrompt({
         eventTitle: input.event.title,
@@ -1481,6 +1484,31 @@ export const processSummaryJob = internalAction({
         };
       }
 
+      // L7: source provenance for the audit record — content hash of the
+      // exact material each article contributed, fetch timestamp, and the
+      // TDM permission state at fetch time (L5).
+      const auditSources = input.articles.map(
+        (article: SummaryInputArticle) => ({
+          articleId: article._id as Id<"articles">,
+          canonicalUrl: article.canonicalUrl,
+          contentHash: createHash("sha256")
+            .update(
+              [
+                article.title,
+                article.summary ?? "",
+                article.rssSnippet ?? "",
+                article.atomicFacts.join("\n"),
+                transientBodies.get(article._id) ?? "",
+              ].join("\n "),
+            )
+            .digest("hex"),
+          fetchedAt: bodyFetchedAt,
+          permissionState:
+            permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+            "unknown",
+        }),
+      );
+
       const result = await ctx.runMutation(
         internal.summarization.applyEventSummaryResult,
         {
@@ -1496,6 +1524,7 @@ export const processSummaryJob = internalAction({
           modelUsed,
           overlapCheck,
           grounding: groundingRecord,
+          auditSources,
         },
       );
 
