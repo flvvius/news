@@ -233,6 +233,34 @@ crons.daily(
 );
 
 // ---------------------------------------------------------------------------
+// L11 Data Retention — Daily (see retention.RETENTION_POLICY)
+// ---------------------------------------------------------------------------
+// Automated minimization: unengaged waitlist signups (90d), reading history
+// (18mo), expired personalized insights. Each run logs the deleted count per
+// data class to pipelineRunLogs. Transient article body text has no purge job
+// because it is never persisted in the first place.
+crons.daily(
+  "retention-purge-stale-waitlist",
+  { hourUTC: 4, minuteUTC: 40 },
+  internal.retention.purgeStaleWaitlistEntries,
+  {},
+);
+
+crons.daily(
+  "retention-purge-reading-history",
+  { hourUTC: 4, minuteUTC: 50 },
+  internal.retention.purgeOldReadingHistory,
+  {},
+);
+
+crons.daily(
+  "retention-purge-expired-insights",
+  { hourUTC: 5, minuteUTC: 0 },
+  internal.retention.purgeExpiredUserInsights,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Pipeline Runtime Config Snapshot — Every 5 minutes
 // ---------------------------------------------------------------------------
 // Collapses the per-key clustering config reads into one compact document that

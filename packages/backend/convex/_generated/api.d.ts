@@ -71,6 +71,7 @@ import type * as publisherRequests from "../publisherRequests.js";
 import type * as quiz from "../quiz.js";
 import type * as quizNode from "../quizNode.js";
 import type * as reports from "../reports.js";
+import type * as retention from "../retention.js";
 import type * as seeds from "../seeds.js";
 import type * as shareAssets from "../shareAssets.js";
 import type * as shareAssetsNode from "../shareAssetsNode.js";
@@ -156,6 +157,7 @@ declare const fullApi: ApiFromModules<{
   quiz: typeof quiz;
   quizNode: typeof quizNode;
   reports: typeof reports;
+  retention: typeof retention;
   seeds: typeof seeds;
   shareAssets: typeof shareAssets;
   shareAssetsNode: typeof shareAssetsNode;
