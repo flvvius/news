@@ -30,6 +30,14 @@ function ensureInitialized() {
 		capture_pageleave: true,
 		// Avoid creating person profiles for anonymous visitors.
 		person_profiles: "identified_only",
+		// L13 — cookieless analytics: no cookies, no localStorage, ever.
+		// The default ("localStorage+cookie") plants a ph_* device id before
+		// any consent, which is exactly the ANSPDCP cookie-fine category.
+		// Memory persistence keeps events flowing (each visit is a fresh
+		// anonymous id) while the fresh-load storage test stays green.
+		persistence: "memory",
+		disable_surveys: true,
+		disable_session_recording: true,
 	});
 	initialized = true;
 }
