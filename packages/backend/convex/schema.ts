@@ -76,6 +76,33 @@ export default defineSchema({
     .index("by_rolling_bias_updated_at", ["rollingBiasUpdatedAt"]),
 
   // =========================================================================
+  // 2a. DOMAIN PERMISSIONS (L5 — TDM opt-out resolver cache, 24h TTL)
+  // =========================================================================
+  // full = extraction + full-text summarization input; rss_only = headline +
+  // link + snippet from RSS metadata only; blocked = publisher opt-out (L6).
+  // Any machine-readable opt-out signal caps a domain at rss_only. Both the
+  // fetcher and the summarizer gate on this state.
+  domainPermissions: defineTable({
+    domain: v.string(),
+    state: v.union(
+      v.literal("full"),
+      v.literal("rss_only"),
+      v.literal("blocked"),
+    ),
+    signals: v.array(v.string()),
+    // blocked set manually via the publisher opt-out flow is never loosened
+    // by the automatic resolver.
+    manualOverride: v.optional(v.boolean()),
+    crawlDelaySeconds: v.optional(v.number()),
+    resolvedAt: v.number(),
+    expiresAt: v.number(),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_domain", ["domain"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  // =========================================================================
   // 3. EVENTS (The Clusters/Stories)
   // =========================================================================
   events: defineTable({

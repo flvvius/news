@@ -31,6 +31,8 @@ import {
   type SentenceGroundingResult,
   type SummaryFieldName,
 } from "./lib/grounding";
+import { extractionAllowed, normalizeDomain } from "./lib/tdmPolicy";
+import { ensureDomainPermissions } from "./domainPermissionsNode";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Free-tier strategy: the primary model's daily quota (e.g. gemini-3.5-flash,
@@ -537,13 +539,43 @@ function safeNumber(
  * in memory and dropped — never persisted (copyright constraint; see
  * fetchArticleBodyText). Any article whose fetch fails or comes back blocked
  * simply contributes its stored summary/rssSnippet, as before.
+ *
+ * L5: gated on the per-domain TDM permission state — the summarizer refuses
+ * full-text input from any domain that is not `full`.
  */
 async function fetchTransientArticleBodies(
+  ctx: ActionCtx,
   articles: SummaryInputArticle[],
   settings: SummarySettings,
 ): Promise<Map<string, string>> {
   const bodies = new Map<string, string>();
   if (!settings.bodyFetchEnabled || articles.length === 0) return bodies;
+
+  // L5 — resolve permission state per source domain and log it for the run.
+  const permissionStates = await ensureDomainPermissions(
+    ctx,
+    articles.map((article) => article.canonicalUrl),
+  );
+  console.log(
+    `[summarization] Domain permission states for this run: ${Array.from(
+      permissionStates.entries(),
+    )
+      .map(([domain, state]) => `${domain}=${state}`)
+      .join(", ")}`,
+  );
+  const allowedArticles = articles.filter((article) =>
+    extractionAllowed(
+      permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+        "rss_only",
+    ),
+  );
+  if (allowedArticles.length < articles.length) {
+    console.log(
+      `[summarization] L5 gate: ${articles.length - allowedArticles.length}/${articles.length} article(s) restricted to RSS metadata (no full-text input)`,
+    );
+  }
+  articles = allowedArticles;
+  if (articles.length === 0) return bodies;
 
   const perArticleCap = Math.max(
     MIN_BODY_CHARS_PER_ARTICLE,
@@ -1220,6 +1252,7 @@ export const processSummaryJob = internalAction({
       }
 
       const transientBodies = await fetchTransientArticleBodies(
+        ctx,
         input.articles,
         settings,
       );

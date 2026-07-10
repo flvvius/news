@@ -1193,6 +1193,32 @@ async function fetchHtml(
   return lastHtmlResult ?? { ok: false };
 }
 
+/**
+ * L5 — no-network fallback for domains whose TDM permission state forbids
+ * extraction (rss_only/blocked): the article contributes only its RSS
+ * metadata (title + snippet) to embeddings and downstream processing.
+ */
+export function rssOnlyArticleContent(args: {
+  title: string;
+  rssSnippet: string;
+}): ExtractedArticleContent {
+  return {
+    embeddingText: buildEmbeddingText(args.title, "", args.rssSnippet),
+    summary: summarizeBody(args.rssSnippet),
+    method: "rss_fallback",
+    bodyChars: 0,
+    fetchSucceeded: false,
+    resolvedUrl: undefined,
+    imageUrl: undefined,
+    imageWidth: undefined,
+    imageHeight: undefined,
+    imageAlt: undefined,
+    imageSource: undefined,
+    entities: extractEntityCandidates(args.title, args.rssSnippet),
+    extractionQuality: "weak",
+  };
+}
+
 export async function extractArticleContentForEmbedding(args: {
   title: string;
   url: string;
