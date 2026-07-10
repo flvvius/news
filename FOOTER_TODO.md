@@ -9,10 +9,12 @@ stay in sync.
 
 | Placeholder | Page(s) | Field |
 |---|---|---|
-| `{{TODO: entitate juridică}}` | /despre („Cine suntem”), /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”), /termeni („Legea aplicabilă și modificări”) | Numele entității juridice care operează Biviant (SRL/PFA/etc.) |
-| `{{TODO: adresă sediu}}` | /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”) | Adresa sediului social |
+| `{{TODO: entitate juridică}}` | /despre („Cine suntem”), /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”), /termeni („Legea aplicabilă și modificări”), footer sitewide | Numele entității juridice care operează Biviant (SRL/PFA/etc.) |
+| `{{TODO: adresă sediu}}` | /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”), footer sitewide | Adresa sediului social |
+| `{{TODO: număr Registrul Comerțului}}` | /contact („Date de identificare”), footer sitewide | Numărul de înregistrare la Registrul Comerțului (J.../...) |
+| `{{TODO: cod unic de înregistrare}}` | /contact („Date de identificare”), footer sitewide | Codul unic de înregistrare fiscală |
 | `{{TODO: adresă de e-mail de contact}}` | /contact („Cum ne contactezi”), /politica-confidentialitate („Cine este operatorul”) | Adresa de e-mail de contact/suport pe domeniul biviant.com — de provizionat în Resend înainte de publicare (nu asertăm o adresă care nu există încă) |
-| `{{TODO: data intrării în vigoare}}` | /politica-confidentialitate („Modificări ale politicii”), /termeni („Legea aplicabilă și modificări”) | Data intrării în vigoare a documentelor legale (de stabilit la lansare, ideal după o revizuire juridică) |
+| `{{TODO: data intrării în vigoare}}` | /termeni („Legea aplicabilă și modificări”) | Data intrării în vigoare a documentelor legale (de stabilit la lansare, ideal după o revizuire juridică) |
 
 Notes:
 

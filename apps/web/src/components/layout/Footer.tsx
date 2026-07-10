@@ -16,6 +16,8 @@ const footerSections = [
     links: [
       { to: "/cum-functioneaza", labelKey: "footer.howItWorks" },
       { to: "/sursele-noastre", labelKey: "footer.sources" },
+      { to: "/publishers", labelKey: "footer.publishers" },
+      { to: "/bot", labelKey: "footer.bot" },
     ],
   },
   {
@@ -60,8 +62,17 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="mt-8 border-t border-border pt-4 text-sm text-muted-foreground">
-          © {new Date().getFullYear()} {BRAND_NAME}
+        <div className="mt-8 space-y-1 border-t border-border pt-4 text-sm text-muted-foreground">
+          <p>
+            © {new Date().getFullYear()} {BRAND_NAME}
+          </p>
+          {/* L14 — Legea 365/2002 identity disclosures; the placeholders are
+              cross-checked against FOOTER_TODO.md and must not be invented. */}
+          <p className="text-xs">
+            {"{{TODO: entitate juridică}}"} · Reg. Com.{" "}
+            {"{{TODO: număr Registrul Comerțului}}"} · cod fiscal{" "}
+            {"{{TODO: cod unic de înregistrare}}"} · {"{{TODO: adresă sediu}}"}
+          </p>
         </div>
       </div>
     </footer>

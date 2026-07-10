@@ -18,18 +18,10 @@ import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-export const RETENTION_POLICY = {
-  /** Waitlist signups that never engaged (still pending, never invited). */
-  waitlistUnengagedDays: 90,
-  /** Reading history / interaction log. */
-  readingHistoryDays: 548, // 18 months
-  /** Unverified accounts (enforced by authMaintenance). */
-  unverifiedAccountDays: 7,
-  /** Personalized insights (already enforced via userInsights.expiresAt). */
-  userInsightsDays: 30,
-  /** Transient article body text: never stored (retention zero). */
-  articleBodyTextDays: 0,
-} as const;
+// Moved to lib/retentionPolicy.ts (pure) so the web privacy policy renders
+// from the exact object the purge crons enforce.
+export { RETENTION_POLICY } from "./lib/retentionPolicy";
+import { RETENTION_POLICY } from "./lib/retentionPolicy";
 
 const PURGE_BATCH = 200;
 

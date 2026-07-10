@@ -8,7 +8,8 @@
     "./convex/_generated/dataModel": "./convex/_generated/dataModel.d.ts",
     "./convex/lib/streaks": "./convex/lib/streaks.ts",
     "./convex/lib/compliance": "./convex/lib/compliance.ts",
-    "./convex/lib/consent": "./convex/lib/consent.ts"
+    "./convex/lib/consent": "./convex/lib/consent.ts",
+    "./convex/lib/retentionPolicy": "./convex/lib/retentionPolicy.ts"
   },
   "scripts": {
     "build": "convex codegen",

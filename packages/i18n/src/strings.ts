@@ -285,6 +285,8 @@ const ro = {
   "footer.terms": "Termeni",
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
+  "footer.publishers": "Pentru publicații",
+  "footer.bot": "BiviantBot (crawler)",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
@@ -1033,6 +1035,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.terms": "Terms",
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
+  "footer.publishers": "For publishers",
+  "footer.bot": "BiviantBot (crawler)",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",

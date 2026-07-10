@@ -23,9 +23,8 @@ export function ContactPage() {
     >
       <StaticSection heading="Cum ne contactezi">
         <p>
-          Cel mai sigur canal este e-mailul
-          {/* :{" "}
-          {"{{TODO: adresă de e-mail de contact}}"} */}
+          Cel mai sigur canal este e-mailul:{" "}
+          {"{{TODO: adresă de e-mail de contact}}"}
           . Trimitem și primim mesaje de pe domeniul{" "}
           <strong>biviant.com</strong> — dacă primești un e-mail „de la{" "}
           {BRAND_NAME}” de pe alt domeniu, tratează-l cu suspiciune.
@@ -76,12 +75,14 @@ export function ContactPage() {
         </p>
       </StaticSection>
 
-      {/* <StaticSection heading="Date de identificare">
+      <StaticSection heading="Date de identificare">
         <p>
           Operator: {"{{TODO: entitate juridică}}"}, cu sediul la{" "}
-          {"{{TODO: adresă sediu}}"}.
+          {"{{TODO: adresă sediu}}"}, înregistrat la Registrul Comerțului cu
+          numărul {"{{TODO: număr Registrul Comerțului}}"}, cod fiscal{" "}
+          {"{{TODO: cod unic de înregistrare}}"} (Legea 365/2002).
         </p>
-      </StaticSection> */}
+      </StaticSection>
     </StaticPage>
   );
 }

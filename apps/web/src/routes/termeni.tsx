@@ -99,7 +99,28 @@ export function TermeniPage() {
         </p>
       </StaticSection>
 
-      {/* <StaticSection heading="Legea aplicabilă și modificări">
+      <StaticSection heading="Semnalarea conținutului și corecții (DSA)">
+        <p>
+          Orice eveniment are un buton „Raportează o eroare” — poți semnala
+          erori factuale, posibile defăimări, probleme de drepturi de autor
+          sau conținut ilegal, cu sau fără date de contact. Fiecare raport
+          primește o decizie motivată (respingere, corectare sau retragerea
+          conținutului), iar dacă ai lăsat un contact, primești decizia pe
+          e-mail. Conținutul retras dispare imediat din platformă.
+        </p>
+        <p>
+          Nu sunt permise pe platformă: conținut ilegal, abuz asupra
+          mecanismului de raportare (rapoarte vădit nefondate, repetate) sau
+          încercări de a manipula sistemele automate. Punctul de contact
+          pentru utilizatori și autorități este pagina de{" "}
+          <Link to="/contact" className="underline hover:text-foreground">
+            Contact
+          </Link>
+          .
+        </p>
+      </StaticSection>
+
+      <StaticSection heading="Legea aplicabilă și modificări">
         <p>
           Acești termeni sunt guvernați de legea română. Serviciul este
           operat de {"{{TODO: entitate juridică}}"}. Putem actualiza termenii;
@@ -107,7 +128,7 @@ export function TermeniPage() {
           versiunea curentă este în vigoare de la{" "}
           {"{{TODO: data intrării în vigoare}}"}.
         </p>
-      </StaticSection> */}
+      </StaticSection>
     </StaticPage>
   );
 }
