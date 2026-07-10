@@ -209,13 +209,21 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-10">
         <div className="flex flex-col gap-5 sm:gap-8">
-          <Link
-            to="/feed"
-            className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeftIcon className="size-4" />
-            {t("source.backToFeed")}
-          </Link>
+          <div className="flex items-center justify-between gap-4">
+            <Link
+              to="/feed"
+              className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeftIcon className="size-4" />
+              {t("source.backToFeed")}
+            </Link>
+            <Link
+              to="/surse"
+              className="text-sm font-medium text-muted-foreground underline transition-colors hover:text-foreground"
+            >
+              {t("sources.index.title")}
+            </Link>
+          </div>
 
           <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
             <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-8">
@@ -310,6 +318,22 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   <p className="font-medium text-card-foreground">
                     {formatOptional(source.mbfcCategory, t("source.notRated"))}
                   </p>
+                </div>
+                <div className="space-y-1 border-t border-border/70 pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    {t("source.ratingExplainer")}
+                  </p>
+                  {source.provenance && (
+                    <p className="text-sm text-muted-foreground">
+                      {source.provenance}
+                    </p>
+                  )}
+                  <Link
+                    to="/sursele-noastre"
+                    className="text-sm underline hover:text-foreground"
+                  >
+                    {t("sources.index.methodology")}
+                  </Link>
                 </div>
               </CardContent>
             </Card>

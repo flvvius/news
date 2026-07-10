@@ -81,7 +81,11 @@ export function SurseleNoastrePage() {
           Fiecare publicație are o pagină de profil în aplicație, cu scorul de
           fiabilitate, media orientării estimate pe articolele recente și
           relatările ei recente — o poți deschide dând clic pe numele sursei
-          oriunde apare.
+          oriunde apare, sau din{" "}
+          <Link to="/surse" className="underline hover:text-foreground">
+            lista completă a surselor monitorizate
+          </Link>
+          .
         </p>
       </StaticSection>
 
