@@ -1061,8 +1061,18 @@ export default defineSchema({
 
     // Invite management
     inviteCode: v.optional(v.string()), // Unique token for signup link
+
+    // L12 — provable consent (CJEU C-654/23): exact statement version+hash,
+    // when, from where, and the one-click unsubscribe token (no login).
+    consentAt: v.optional(v.number()),
+    consentIp: v.optional(v.string()),
+    consentTextVersion: v.optional(v.string()),
+    consentTextHash: v.optional(v.string()),
+    consentSourcePage: v.optional(v.string()),
+    unsubscribeToken: v.optional(v.string()),
   })
     .index("by_email", ["email"])
+    .index("by_unsubscribe_token", ["unsubscribeToken"])
     .index("by_status", ["status", "createdAt"])
     .index("by_status_invitedAt", ["status", "invitedAt"])
     .index("by_invite_code", ["inviteCode"])

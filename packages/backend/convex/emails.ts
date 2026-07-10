@@ -70,9 +70,27 @@ export const sendWelcomeEmail = internalAction({
   },
   handler: async (ctx, args) => {
     try {
+      // L12 — suppression gate: every send path refuses unsubscribed/bounced
+      // addresses, and every message links the one-click token unsubscribe.
+      const sendable = await ctx.runQuery(
+        internal.waitlist.getSendableWaitlistEntry,
+        { waitlistId: args.waitlistId },
+      );
+      if (!sendable) {
+        console.log(
+          `[emails] Welcome send suppressed for waitlist ${String(args.waitlistId)}`,
+        );
+        return { success: false, suppressed: true };
+      }
+      const token =
+        sendable.unsubscribeToken ??
+        (await ctx.runMutation(internal.waitlist.ensureUnsubscribeToken, {
+          waitlistId: args.waitlistId,
+        }));
+
       const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
-      const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
+      const unsubUrl = `${emailCfg.unsubBase}?token=${encodeURIComponent(token ?? "")}`;
 
       const { data, error } = await resend.emails.send({
         from: emailCfg.fromAddress,
@@ -84,18 +102,8 @@ export const sendWelcomeEmail = internalAction({
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           "X-Entity-Ref-ID": `welcome-${args.position}-${Date.now()}`,
         },
-        html: getWelcomeEmailHTML(
-          firstName,
-          args.position,
-          args.email,
-          emailCfg,
-        ),
-        text: getWelcomeEmailText(
-          firstName,
-          args.position,
-          args.email,
-          emailCfg,
-        ),
+        html: getWelcomeEmailHTML(firstName, args.position, unsubUrl, emailCfg),
+        text: getWelcomeEmailText(firstName, args.position, unsubUrl, emailCfg),
       });
 
       if (error) {
@@ -182,11 +190,28 @@ export const sendInviteEmail = internalAction({
   },
   handler: async (ctx, args) => {
     try {
+      // L12 — suppression gate + one-click token unsubscribe (see welcome).
+      const sendable = await ctx.runQuery(
+        internal.waitlist.getSendableWaitlistEntry,
+        { waitlistId: args.waitlistId },
+      );
+      if (!sendable) {
+        console.log(
+          `[emails] Invite send suppressed for waitlist ${String(args.waitlistId)}`,
+        );
+        return { success: false, suppressed: true };
+      }
+      const token =
+        sendable.unsubscribeToken ??
+        (await ctx.runMutation(internal.waitlist.ensureUnsubscribeToken, {
+          waitlistId: args.waitlistId,
+        }));
+
       const emailCfg = await getEmailConfig(ctx);
       const firstName = args.name?.split(" ")[0] || "there";
       const siteUrl = resolveSiteUrl();
       const inviteUrl = `${siteUrl}/dashboard?mode=signup&code=${encodeURIComponent(args.inviteCode)}`;
-      const unsubUrl = `${emailCfg.unsubBase}?email=${encodeURIComponent(args.email)}`;
+      const unsubUrl = `${emailCfg.unsubBase}?token=${encodeURIComponent(token ?? "")}`;
 
       const { data, error } = await resend.emails.send({
         from: emailCfg.fromAddress,
@@ -201,11 +226,18 @@ export const sendInviteEmail = internalAction({
         html: getInviteEmailHTML(
           firstName,
           inviteUrl,
+          unsubUrl,
           args.email,
           emailCfg,
           siteUrl,
         ),
-        text: getInviteEmailText(firstName, inviteUrl, args.email, emailCfg),
+        text: getInviteEmailText(
+          firstName,
+          inviteUrl,
+          unsubUrl,
+          args.email,
+          emailCfg,
+        ),
       });
 
       if (error) {
@@ -231,10 +263,9 @@ export const sendInviteEmail = internalAction({
 function getWelcomeEmailHTML(
   firstName: string,
   position: number,
-  email: string,
+  unsubUrl: string,
   cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="https://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -378,10 +409,9 @@ function getWelcomeEmailHTML(
 function getWelcomeEmailText(
   firstName: string,
   position: number,
-  email: string,
+  unsubUrl: string,
   cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `Hi ${firstName},
 
@@ -408,11 +438,11 @@ Unsubscribe: ${unsubUrl}`;
 function getInviteEmailHTML(
   firstName: string,
   inviteUrl: string,
+  unsubUrl: string,
   email: string,
   cfg: EmailConfig,
   siteUrl: string,
 ): string {
-  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="https://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -547,10 +577,10 @@ function getInviteEmailHTML(
 function getInviteEmailText(
   firstName: string,
   inviteUrl: string,
+  unsubUrl: string,
   email: string,
   cfg: EmailConfig,
 ): string {
-  const unsubUrl = `${cfg.unsubBase}?email=${encodeURIComponent(email)}`;
 
   return `Hi ${firstName},
 

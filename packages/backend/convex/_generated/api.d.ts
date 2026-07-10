@@ -40,6 +40,7 @@ import type * as lib_betaAccess from "../lib/betaAccess.js";
 import type * as lib_biasAxis from "../lib/biasAxis.js";
 import type * as lib_botIdentity from "../lib/botIdentity.js";
 import type * as lib_compliance from "../lib/compliance.js";
+import type * as lib_consent from "../lib/consent.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
 import type * as lib_feedSerialization from "../lib/feedSerialization.js";
 import type * as lib_googleNews from "../lib/googleNews.js";
@@ -126,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   "lib/biasAxis": typeof lib_biasAxis;
   "lib/botIdentity": typeof lib_botIdentity;
   "lib/compliance": typeof lib_compliance;
+  "lib/consent": typeof lib_consent;
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;
   "lib/feedSerialization": typeof lib_feedSerialization;
   "lib/googleNews": typeof lib_googleNews;
