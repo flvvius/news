@@ -159,6 +159,17 @@ async function getEventEligibility(
   minArticles: number,
   minSources: number,
 ): Promise<SummaryEligibility> {
+  // L8: unpublished events stay out of the pipeline entirely — regeneration
+  // must not resurrect content that was pulled from public view.
+  if (event.unpublishedAt) {
+    return {
+      eligible: false,
+      articleCount: 0,
+      sourceCount: 0,
+      reason: "event_unpublished",
+    };
+  }
+
   if (!shouldResummarize(event)) {
     return {
       eligible: false,

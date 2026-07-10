@@ -33,6 +33,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
 import { Route as EventSlugRouteImport } from './routes/event.$slug'
 import { Route as AdminReviewRouteImport } from './routes/admin.review'
+import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
 import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -158,6 +159,11 @@ const AdminReviewRoute = AdminReviewRouteImport.update({
   path: '/admin/review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminReportsRoute = AdminReportsRouteImport.update({
+  id: '/admin/reports',
+  path: '/admin/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminPublishersRoute = AdminPublishersRouteImport.update({
   id: '/admin/publishers',
   path: '/admin/publishers',
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
+  '/admin/reports': typeof AdminReportsRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -227,6 +234,7 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
+  '/admin/reports': typeof AdminReportsRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -257,6 +265,7 @@ export interface FileRoutesById {
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
+  '/admin/reports': typeof AdminReportsRoute
   '/admin/review': typeof AdminReviewRoute
   '/event/$slug': typeof EventSlugRoute
   '/source/$sourceId': typeof SourceSourceIdRoute
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/admin/pipeline'
     | '/admin/publishers'
+    | '/admin/reports'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -317,6 +327,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/admin/pipeline'
     | '/admin/publishers'
+    | '/admin/reports'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -346,6 +357,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/admin/pipeline'
     | '/admin/publishers'
+    | '/admin/reports'
     | '/admin/review'
     | '/event/$slug'
     | '/source/$sourceId'
@@ -376,6 +388,7 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   AdminPipelineRoute: typeof AdminPipelineRoute
   AdminPublishersRoute: typeof AdminPublishersRoute
+  AdminReportsRoute: typeof AdminReportsRoute
   AdminReviewRoute: typeof AdminReviewRoute
   EventSlugRoute: typeof EventSlugRoute
   SourceSourceIdRoute: typeof SourceSourceIdRoute
@@ -552,6 +565,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/reports': {
+      id: '/admin/reports'
+      path: '/admin/reports'
+      fullPath: '/admin/reports'
+      preLoaderRoute: typeof AdminReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/publishers': {
       id: '/admin/publishers'
       path: '/admin/publishers'
@@ -600,6 +620,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   AdminPipelineRoute: AdminPipelineRoute,
   AdminPublishersRoute: AdminPublishersRoute,
+  AdminReportsRoute: AdminReportsRoute,
   AdminReviewRoute: AdminReviewRoute,
   EventSlugRoute: EventSlugRoute,
   SourceSourceIdRoute: SourceSourceIdRoute,

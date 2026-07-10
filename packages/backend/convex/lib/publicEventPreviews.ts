@@ -172,7 +172,7 @@ export async function syncPublicEventPreview(
     return { synced: false as const, reason: "missing_event" as const };
   }
 
-  if (event.status !== "published") {
+  if (event.status !== "published" || event.unpublishedAt) {
     await deletePublicEventPreview(ctx, eventId);
     return { synced: false as const, reason: "not_published" as const };
   }

@@ -61,6 +61,21 @@ export function ContactPage() {
         </ul>
       </StaticSection>
 
+      <StaticSection heading="Punct de contact (DSA)">
+        <p>
+          Această pagină este punctul unic de contact al {BRAND_NAME} atât
+          pentru utilizatori, cât și pentru autorități (inclusiv în sensul
+          Regulamentului UE privind serviciile digitale — DSA). Comunicarea se
+          poate face în limba română sau în engleză.
+        </p>
+        <p>
+          Conținutul ilegal sau problematic poate fi semnalat direct din
+          pagina fiecărui eveniment, prin butonul „Raportează o eroare” —
+          fiecare raport primește o decizie motivată, iar raportorul care
+          lasă un contact este notificat.
+        </p>
+      </StaticSection>
+
       {/* <StaticSection heading="Date de identificare">
         <p>
           Operator: {"{{TODO: entitate juridică}}"}, cu sediul la{" "}

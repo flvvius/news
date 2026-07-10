@@ -118,6 +118,59 @@ export const sendWelcomeEmail = internalAction({
 });
 
 /**
+ * L8 — DSA statement-of-reasons notification to a reporter who left contact
+ * details. Plain text on purpose: it is a legal notice, not marketing.
+ */
+export const sendReportOutcomeEmail = internalAction({
+  args: {
+    reportId: v.id("contentReports"),
+    to: v.string(),
+    decision: v.string(),
+    statementOfReasons: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const decisionLabel =
+      args.decision === "unpublish"
+        ? "conținutul raportat a fost retras"
+        : args.decision === "correct"
+          ? "rezumatul raportat a fost corectat/regenerat"
+          : "raportul a fost analizat și respins";
+    try {
+      const emailCfg = await getEmailConfig(ctx);
+      const { error } = await resend.emails.send({
+        from: emailCfg.fromAddress,
+        replyTo: emailCfg.replyTo,
+        to: [args.to],
+        subject: `Raportul tău pe ${BRAND_NAME} — decizie`,
+        text: [
+          "Bună,",
+          "",
+          `Am analizat raportul tău: ${decisionLabel}.`,
+          "",
+          "Motivarea deciziei:",
+          args.statementOfReasons,
+          "",
+          `Dacă nu ești de acord cu decizia, ne poți răspunde la această adresă.`,
+          "",
+          `Echipa ${BRAND_NAME}`,
+        ].join("\n"),
+      });
+      if (error) {
+        console.error("Resend error (report outcome):", error);
+        return { success: false };
+      }
+      await ctx.runMutation(internal.reports.markReporterNotified, {
+        reportId: args.reportId,
+      });
+      return { success: true };
+    } catch (error) {
+      console.error("Error sending report outcome email:", error);
+      return { success: false };
+    }
+  },
+});
+
+/**
  * Send invite email with access code
  */
 export const sendInviteEmail = internalAction({

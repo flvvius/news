@@ -403,7 +403,9 @@ export const getEventBySlug = query({
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
 
-    if (!event || event.status !== "published") {
+    // L8: an unpublished event is gone from public view instantly — the
+    // route renders its not-found state.
+    if (!event || event.status !== "published" || event.unpublishedAt) {
       return null;
     }
 

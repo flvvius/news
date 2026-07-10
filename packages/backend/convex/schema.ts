@@ -153,6 +153,10 @@ export default defineSchema({
     globalImpact: v.optional(v.string()), // The "Consensus So What?" for guest users
 
     status: v.union(v.literal("processing"), v.literal("published")),
+    // L8 — one-click unpublish: set → the event disappears from every public
+    // surface (getEventBySlug returns null, preview deleted) without touching
+    // `status`, so the pipeline never re-publishes it behind our back.
+    unpublishedAt: v.optional(v.number()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
     lastArticleAt: v.optional(v.number()),
@@ -994,6 +998,36 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_token", ["token"]),
+
+  // =========================================================================
+  // 7d. CONTENT REPORTS (L8 — notice-and-action, DSA baseline)
+  // =========================================================================
+  contentReports: defineTable({
+    eventId: v.id("events"),
+    category: v.union(
+      v.literal("factual_error"),
+      v.literal("defamation"),
+      v.literal("copyright_takedown"),
+      v.literal("illegal_content"),
+    ),
+    message: v.string(),
+    claim: v.optional(v.string()),
+    reporterContact: v.optional(v.string()),
+    status: v.union(
+      v.literal("received"),
+      v.literal("dismissed"),
+      v.literal("corrected"),
+      v.literal("unpublished"),
+    ),
+    // DSA statement of reasons for whatever action was taken.
+    statementOfReasons: v.optional(v.string()),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    reporterNotifiedAt: v.optional(v.number()),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_event", ["eventId"]),
 
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)

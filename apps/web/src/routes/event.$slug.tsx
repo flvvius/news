@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
 import { EventDetailTabs } from "@/components/feed/event-detail-tabs";
+import { ReportErrorForm } from "@/components/feed/report-error-form";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import {
@@ -378,6 +379,10 @@ function EventDetailPage() {
           />
 
           <ArticlesList eventId={event._id} articles={articles} />
+
+          {/* L8 — notice-and-action entry point; #raporteaza is the anchor
+              the AI-disclosure label links to. */}
+          <ReportErrorForm eventId={event._id} />
         </div>
       </div>
     </div>

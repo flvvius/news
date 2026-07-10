@@ -3,14 +3,13 @@ import { useT } from "@/lib/i18n/LocaleContext";
 /**
  * L1 — AI Act art. 50(4) disclosure. Rendered adjacent to every AI summary
  * block (server-side, part of the initial HTML) — deliberately not in the
- * footer. The report link goes to the notice-and-action mechanism (L8);
- * until the on-page report form ships it points at /contact. Plain <a> on
- * purpose: the label must render in any context (SSR, tests, embeds)
- * without a router.
+ * footer. The report link jumps to the on-page notice-and-action form
+ * (#raporteaza, L8). Plain <a> on purpose: the label must render in any
+ * context (SSR, tests, embeds) without a router.
  */
 export function AiDisclosureLabel({
   sourceCount,
-  reportHref = "/contact",
+  reportHref = "#raporteaza",
 }: {
   sourceCount: number;
   reportHref?: string;
