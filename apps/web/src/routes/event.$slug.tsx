@@ -357,15 +357,39 @@ function EventDetailPage() {
               </div>
             </div>
 
-            {event.imageUrl && (
-              <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
-                <img
-                  src={event.imageUrl}
-                  alt={event.imageAlt ?? event.title}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            )}
+            {event.imageUrl &&
+              (() => {
+                // L9 tier (b): the thumbnail is hotlinked from the publisher,
+                // rendered small, attributed, and wrapped in a link to the
+                // original article it came from.
+                const imageArticle =
+                  articles.find(
+                    (article: Article) => article.imageUrl === event.imageUrl,
+                  ) ?? articles[0];
+                const imageSourceName =
+                  imageArticle?.source?.name ?? "sursa originală";
+                return (
+                  <figure className="max-w-xl">
+                    <a
+                      href={imageArticle?.canonicalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block overflow-hidden rounded-lg border border-border bg-muted"
+                    >
+                      <img
+                        src={event.imageUrl}
+                        alt={event.imageAlt ?? event.title}
+                        className="aspect-3/2 w-full object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                    <figcaption className="mt-1 text-xs text-muted-foreground">
+                      Foto: {imageSourceName} — imaginea aparține publicației
+                      și trimite către articolul original.
+                    </figcaption>
+                  </figure>
+                );
+              })()}
           </section>
 
           <EventDetailTabs

@@ -10,6 +10,7 @@ import { internalMutation, internalQuery, mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireAdminUser } from "./lib/betaAccess";
+import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 import type { DomainPermissionState } from "./lib/tdmPolicy";
 
 export const PERMISSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -85,6 +86,7 @@ async function applyPermissionUpsert(
     state: nextState,
     signals: args.signals,
     manualOverride: args.manualOverride ?? existing?.manualOverride,
+    imagesDisabled: existing?.imagesDisabled,
     crawlDelaySeconds: args.crawlDelaySeconds ?? existing?.crawlDelaySeconds,
     resolvedAt: now,
     expiresAt: now + PERMISSION_TTL_MS,
@@ -182,11 +184,17 @@ export const purgeDomainExtractedContent = internalMutation({
       if (
         article.summary !== undefined ||
         (article.atomicFacts?.length ?? 0) > 0 ||
+        article.imageUrl !== undefined ||
         article.extractionQuality === "strong"
       ) {
         await ctx.db.patch(article._id, {
           summary: undefined,
           atomicFacts: undefined,
+          // L9: an opted-out domain's og:image thumbnails are not displayed
+          // either — hotlinks are dropped alongside extracted text.
+          imageUrl: undefined,
+          imageWidth: undefined,
+          imageHeight: undefined,
           extractionQuality: article.extractionQuality ? "weak" : undefined,
         });
         purged++;
@@ -199,8 +207,103 @@ export const purgeDomainExtractedContent = internalMutation({
         internal.domainPermissions.purgeDomainExtractedContent,
         { domain, cursor: page.continueCursor },
       );
+    } else {
+      // L9: event hero images copied from this domain's articles must go too.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.domainPermissions.purgeDomainEventImages,
+        { domain },
+      );
     }
     return { purged, done: page.isDone };
+  },
+});
+
+/**
+ * L9 — clear event hero images hotlinked from an opted-out domain. Event
+ * images are copied from article og:image URLs, so matching the hostname
+ * catches every hero sourced from the domain.
+ */
+export const purgeDomainEventImages = internalMutation({
+  args: {
+    domain: v.string(),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, { domain, cursor }) => {
+    const page = await ctx.db.query("events").paginate({
+      cursor: cursor ?? null,
+      numItems: PURGE_PAGE_SIZE,
+    });
+
+    let cleared = 0;
+    for (const event of page.page) {
+      if (!event.imageUrl) continue;
+      let host = "";
+      try {
+        host = new URL(event.imageUrl).hostname.replace(/^www\./, "");
+      } catch {
+        continue;
+      }
+      if (host === domain || host.endsWith(`.${domain}`)) {
+        await ctx.db.patch(event._id, {
+          imageUrl: undefined,
+          imageWidth: undefined,
+          imageHeight: undefined,
+          imageAlt: undefined,
+        });
+        await syncPublicEventPreview(ctx, event._id);
+        cleared++;
+      }
+    }
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.domainPermissions.purgeDomainEventImages,
+        { domain, cursor: page.continueCursor },
+      );
+    }
+    return { cleared, done: page.isDone };
+  },
+});
+
+/** L9 — per-domain og:image kill switch. */
+export const setDomainImagePolicyForAdmin = mutation({
+  args: {
+    domain: v.string(),
+    imagesDisabled: v.boolean(),
+  },
+  handler: async (ctx, { domain, imagesDisabled }) => {
+    await requireAdminUser(ctx);
+    const existing = await ctx.db
+      .query("domainPermissions")
+      .withIndex("by_domain", (q) => q.eq("domain", domain))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        imagesDisabled,
+        updatedAt: Date.now(),
+      });
+    } else {
+      const now = Date.now();
+      await ctx.db.insert("domainPermissions", {
+        domain,
+        state: "full",
+        signals: [],
+        imagesDisabled,
+        resolvedAt: 0, // forces the resolver to refresh the TDM state
+        expiresAt: 0,
+        updatedAt: now,
+      });
+    }
+    if (imagesDisabled) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.domainPermissions.purgeDomainEventImages,
+        { domain },
+      );
+    }
+    return { domain, imagesDisabled };
   },
 });
 

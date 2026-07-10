@@ -93,6 +93,9 @@ export default defineSchema({
     // blocked set manually via the publisher opt-out flow is never loosened
     // by the automatic resolver.
     manualOverride: v.optional(v.boolean()),
+    // L9 per-domain kill switch: og:image thumbnails never displayed for
+    // this domain even while its state is `full`.
+    imagesDisabled: v.optional(v.boolean()),
     crawlDelaySeconds: v.optional(v.number()),
     resolvedAt: v.number(),
     expiresAt: v.number(),

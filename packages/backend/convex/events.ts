@@ -14,6 +14,7 @@ import {
   type PublicPreviewRow,
 } from "./lib/feedSerialization";
 import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
+import { filterEventImage } from "./lib/imagePolicy";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { foldDiacriticsToAscii } from "./lib/romanian";
 
@@ -446,13 +447,17 @@ export const getEventBySlug = query({
       source: sourcesById.get(article.sourceId) ?? null,
     }));
 
+    // L9: publisher og:image is a hotlinked thumbnail displayed only while
+    // the global + per-domain switches allow it.
+    const allowedImageUrl = await filterEventImage(ctx, event);
+
     return {
       event: {
         _id: event._id,
         slug: event.slug,
         title: event.title,
-        imageUrl: event.imageUrl,
-        imageAlt: event.imageAlt,
+        imageUrl: allowedImageUrl,
+        imageAlt: allowedImageUrl ? event.imageAlt : undefined,
         perspectiveSummaries: normalizedPerspectives(
           event.perspectiveSummaries,
         ),

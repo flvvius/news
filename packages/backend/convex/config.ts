@@ -748,6 +748,31 @@ export const seedDefaults = internalMutation({
           "When true, published events automatically generate custom social preview images in Convex file storage.",
       },
       {
+        key: "og_image_display_enabled",
+        value: true,
+        description:
+          "L9 global kill switch: when false, publisher og:image thumbnails are stripped from event pages and feed previews (per-domain opt-outs live in domainPermissions.imagesDisabled).",
+      },
+      // L1-L15 compliance knobs
+      {
+        key: "event_summary_max_verbatim_ngram",
+        value: 8,
+        description:
+          "L3: maximum shared contiguous word run between a generated summary and any source text before the verbatim gate blocks/regenerates.",
+      },
+      {
+        key: "event_grounding_enabled",
+        value: true,
+        description:
+          "L4: verify every summary sentence against source texts (embedding first pass + LLM entailment) before publication.",
+      },
+      {
+        key: "event_grounding_max_unsupported_ratio",
+        value: 0.34,
+        description:
+          "L4: above this fraction of unsupported sentences the summary is blocked instead of stripped.",
+      },
+      {
         key: "article_fact_extraction_enabled",
         value: false,
         description:

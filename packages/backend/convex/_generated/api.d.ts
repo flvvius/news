@@ -43,6 +43,7 @@ import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
 import type * as lib_feedSerialization from "../lib/feedSerialization.js";
 import type * as lib_googleNews from "../lib/googleNews.js";
 import type * as lib_grounding from "../lib/grounding.js";
+import type * as lib_imagePolicy from "../lib/imagePolicy.js";
 import type * as lib_imageSniff from "../lib/imageSniff.js";
 import type * as lib_imageVerification from "../lib/imageVerification.js";
 import type * as lib_modelRouting from "../lib/modelRouting.js";
@@ -126,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   "lib/feedSerialization": typeof lib_feedSerialization;
   "lib/googleNews": typeof lib_googleNews;
   "lib/grounding": typeof lib_grounding;
+  "lib/imagePolicy": typeof lib_imagePolicy;
   "lib/imageSniff": typeof lib_imageSniff;
   "lib/imageVerification": typeof lib_imageVerification;
   "lib/modelRouting": typeof lib_modelRouting;

@@ -481,10 +481,12 @@ export const generateEventShareAsset = internalAction({
     }
 
     try {
+      // L9: never download/rehost publisher editorial images. The share card
+      // renders the brand layout with source favicons/logos (tier a — allowed
+      // small) instead of baking the publisher's og:image into a stored JPEG,
+      // which would be exactly the rehosting the thumbnail policy forbids.
       const [backgroundDataUri, sourceLogos] = await Promise.all([
-        data.imageUrl
-          ? fetchImageAsDataUri(data.imageUrl)
-          : Promise.resolve(null),
+        Promise.resolve(null as string | null),
         fetchSourceLogoData(data.sources),
       ]);
 

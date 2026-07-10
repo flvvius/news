@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { encodeRankedCursor, toFeedEvent } from "./feedSerialization";
+import { filterEventImage } from "./imagePolicy";
 import { normalizedPerspectives } from "./biasAxis";
 import { foldDiacriticsToAscii } from "./romanian";
 
@@ -224,6 +225,8 @@ export async function syncPublicEventPreview(
   const perspectiveSummaries = normalizedPerspectives(
     event.perspectiveSummaries,
   );
+  // L9: feed thumbnails obey the same og:image policy as the event page.
+  const allowedImageUrl = await filterEventImage(ctx, event);
   const now = Date.now();
   const payload = {
     eventId,
@@ -231,8 +234,8 @@ export async function syncPublicEventPreview(
     title: event.title,
     // Feeds the diacritic-insensitive search index (see schema).
     searchText: foldDiacriticsToAscii(event.title),
-    imageUrl: event.imageUrl,
-    imageAlt: event.imageAlt,
+    imageUrl: allowedImageUrl,
+    imageAlt: allowedImageUrl ? event.imageAlt : undefined,
     perspectiveSummaries,
     perspectiveApplicable: event.perspectiveApplicable,
     globalImpact: event.globalImpact,
