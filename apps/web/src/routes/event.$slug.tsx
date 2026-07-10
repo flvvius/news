@@ -28,7 +28,12 @@ import {
   type Locale,
   type StringKey,
 } from "@/lib/i18n/strings";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  SITE,
+  absoluteSiteUrl,
+  eventArticleJsonLd,
+  jsonLdScript,
+} from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
@@ -165,6 +170,22 @@ export const Route = createFileRoute("/event/$slug")({
       links: [
         { rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) },
       ],
+      scripts: loaderData?.event
+        ? [
+            jsonLdScript(
+              eventArticleJsonLd({
+                slug: params.slug,
+                title: loaderData.event.title,
+                description,
+                imageUrl,
+                datePublished: loaderData.event.firstPublishedAt,
+                dateModified:
+                  loaderData.event.lastUpdatedAt ??
+                  loaderData.event.firstPublishedAt,
+              }),
+            ),
+          ]
+        : [],
     };
   },
   component: EventDetailPage,

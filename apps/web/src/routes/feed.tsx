@@ -44,7 +44,13 @@ import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  SITE,
+  absoluteSiteUrl,
+  jsonLdScript,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+} from "@/lib/seo";
 
 // Crawl archive: fixed pages behind ?page=N so a no-JS crawler can reach
 // every published event through real anchors (Googlebot does not scroll).
@@ -132,6 +138,14 @@ export const Route = createFileRoute("/feed")({
         { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
       ],
       links: [{ rel: "canonical", href: absoluteSiteUrl(canonicalPath) }],
+      // Org + app schema only on the de-facto landing page (/ redirects
+      // here), not on every archive page.
+      scripts: archivePage
+        ? []
+        : [
+            jsonLdScript(organizationJsonLd()),
+            jsonLdScript(softwareApplicationJsonLd(description)),
+          ],
     };
   },
   component: FeedComponent,

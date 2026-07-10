@@ -28,6 +28,75 @@ export function absoluteSiteUrl(pathname: string): string {
 }
 
 /**
+ * Official social/entity profiles for JSON-LD `sameAs`. Extend as profiles
+ * are created; never list a profile that doesn't exist yet.
+ */
+export const SOCIAL_PROFILES: string[] = [];
+
+type JsonLd = Record<string, unknown>;
+
+/** head() `scripts` entry that server-renders a JSON-LD block. */
+export function jsonLdScript(data: JsonLd) {
+  return { type: "application/ld+json", children: JSON.stringify(data) };
+}
+
+function organizationEntity(): JsonLd {
+  return {
+    "@type": "Organization",
+    name: SITE.name,
+    url: SITE.url,
+    logo: absoluteSiteUrl("/logo-biviant.png"),
+    ...(SOCIAL_PROFILES.length > 0 ? { sameAs: SOCIAL_PROFILES } : {}),
+  };
+}
+
+export function organizationJsonLd(): JsonLd {
+  return { "@context": "https://schema.org", ...organizationEntity() };
+}
+
+export function softwareApplicationJsonLd(description: string): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: SITE.name,
+    url: SITE.url,
+    description,
+    applicationCategory: "NewsApplication",
+    operatingSystem: "Web",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "RON" },
+    // aggregateRating deliberately omitted until real user ratings exist.
+  };
+}
+
+/**
+ * Event pages are AI-generated aggregation, not original reporting, so they
+ * get Article — never NewsArticle. Every field must match visible page text.
+ */
+export function eventArticleJsonLd(args: {
+  slug: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  datePublished: number;
+  dateModified: number;
+}): JsonLd {
+  const url = absoluteSiteUrl(`/event/${args.slug}`);
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: args.title,
+    ...(args.description ? { description: args.description } : {}),
+    ...(args.imageUrl ? { image: [args.imageUrl] } : {}),
+    datePublished: new Date(args.datePublished).toISOString(),
+    dateModified: new Date(args.dateModified).toISOString(),
+    mainEntityOfPage: url,
+    url,
+    inLanguage: "ro",
+    publisher: organizationEntity(),
+  };
+}
+
+/**
  * head() payload for indexable static pages: unique title/description plus
  * self-canonical and OG/Twitter tags, all in the initial server HTML.
  */
