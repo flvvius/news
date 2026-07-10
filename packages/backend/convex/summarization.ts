@@ -739,6 +739,22 @@ export const applyEventSummaryResult = internalMutation({
     // or quota fallback). Optional for legacy callers; the stored row always
     // gets aiGenerated/humanReviewed/promptVersion regardless.
     modelUsed: v.optional(v.string()),
+    // L3 — result of the verbatim-overlap gate. A summary can only be
+    // applied/published with a recorded PASSING check.
+    overlapCheck: v.optional(
+      v.object({
+        passed: v.boolean(),
+        maxNgram: v.number(),
+        attempts: v.number(),
+        matchedSpans: v.array(
+          v.object({
+            field: v.string(),
+            text: v.string(),
+            length: v.number(),
+          }),
+        ),
+      }),
+    ),
   },
   handler: async (
     ctx,
@@ -753,6 +769,7 @@ export const applyEventSummaryResult = internalMutation({
       perspectiveApplicable,
       summarySignature,
       modelUsed,
+      overlapCheck,
     },
   ) => {
     const job = await ctx.db.get(jobId);
@@ -763,6 +780,13 @@ export const applyEventSummaryResult = internalMutation({
       job.processingRunId !== runId
     ) {
       return { applied: false as const };
+    }
+
+    // L3 invariant: no summary reaches the published state without a
+    // recorded PASSING overlap check. A failing check must go through
+    // markSummaryJobBlockedVerbatim instead.
+    if (overlapCheck && !overlapCheck.passed) {
+      return { applied: false as const, reason: "overlap_check_failed" };
     }
 
     const event = await ctx.db.get(eventId);
@@ -801,6 +825,9 @@ export const applyEventSummaryResult = internalMutation({
       humanReviewed: false,
       modelUsed: modelUsed ?? event.modelUsed ?? "unrecorded",
       promptVersion: String(SUMMARY_PROMPT_VERSION),
+      // L3: record the overlap-check outcome on the event itself.
+      lastOverlapCheckAt: Date.now(),
+      lastOverlapCheckPassed: overlapCheck?.passed ?? undefined,
       // A successful summary is the sole gate to going public: promote a
       // qualifying `processing` event to `published` now that it has full AI
       // perspectives + globalImpact. syncPublicEventPreview below then creates
@@ -814,6 +841,7 @@ export const applyEventSummaryResult = internalMutation({
       leaseExpiresAt: undefined,
       lastError: undefined,
       summarySignature,
+      overlapCheckJson: overlapCheck ? JSON.stringify(overlapCheck) : undefined,
       updatedAt: Date.now(),
     });
 
@@ -858,6 +886,41 @@ export const markSummaryJobFailed = internalMutation({
     });
 
     return { updated: true as const, attemptsExhausted };
+  },
+});
+
+/**
+ * L3 — terminal state for a summary that kept reproducing source phrasing
+ * after the paraphrase retries. The generated text is discarded (never
+ * stored), the job is marked blocked_verbatim with the failing spans, and
+ * the event is excluded from publication (a processing event stays
+ * unpublished; a published event keeps its previous, passing summary).
+ */
+export const markSummaryJobBlockedVerbatim = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    runId: v.string(),
+    overlapCheckJson: v.string(),
+  },
+  handler: async (ctx, { jobId, runId, overlapCheckJson }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job || job.status !== "processing" || job.processingRunId !== runId) {
+      return { updated: false as const };
+    }
+
+    await ctx.db.patch(jobId, {
+      status: "failed",
+      processingRunId: undefined,
+      leaseExpiresAt: undefined,
+      // Terminal: no automatic retry — a regenerated summary from identical
+      // inputs would keep failing; new articles re-enqueue a fresh job.
+      nextAttemptAt: Number.MAX_SAFE_INTEGER,
+      lastError: "blocked_verbatim",
+      overlapCheckJson,
+      updatedAt: Date.now(),
+    });
+
+    return { updated: true as const };
   },
 });
 

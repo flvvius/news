@@ -50,6 +50,7 @@ import type * as lib_sourceBias from "../lib/sourceBias.js";
 import type * as lib_streaks from "../lib/streaks.js";
 import type * as lib_summaryArticleSelection from "../lib/summaryArticleSelection.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
+import type * as lib_verbatimOverlap from "../lib/verbatimOverlap.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
 import type * as pipeline from "../pipeline.js";
@@ -123,6 +124,7 @@ declare const fullApi: ApiFromModules<{
   "lib/streaks": typeof lib_streaks;
   "lib/summaryArticleSelection": typeof lib_summaryArticleSelection;
   "lib/userProfile": typeof lib_userProfile;
+  "lib/verbatimOverlap": typeof lib_verbatimOverlap;
   migrations: typeof migrations;
   notifications: typeof notifications;
   pipeline: typeof pipeline;

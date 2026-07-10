@@ -113,6 +113,11 @@ export default defineSchema({
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
     lastClaimAnalysisSignature: v.optional(v.string()),
 
+    // L3 — verbatim-overlap gate: set on every summary write; publication
+    // requires a recorded passing check (see applyEventSummaryResult).
+    lastOverlapCheckAt: v.optional(v.number()),
+    lastOverlapCheckPassed: v.optional(v.boolean()),
+
     // L1 — AI Act art. 50(4) disclosure. Written by applyEventSummaryResult
     // whenever a summary lands; a summary can never publish with aiGenerated
     // unset (see summarizationPublishGate tests). Optional only for rows that
@@ -370,6 +375,10 @@ export default defineSchema({
     articleCount: v.optional(v.number()),
     sourceCount: v.optional(v.number()),
     summarySignature: v.optional(v.string()),
+    // L3 — serialized OverlapCheckResult (pass/fail + matched spans) for the
+    // last generation attempt of this job; "blocked_verbatim" jobs keep the
+    // failing spans here for the audit trail (L7).
+    overlapCheckJson: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
     .index("by_event_updatedAt", ["eventId", "updatedAt"])

@@ -17,6 +17,11 @@ import {
 } from "./prompts";
 
 import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
+import {
+  checkSummaryOverlap,
+  MAX_VERBATIM_NGRAM,
+  type OverlapCheckResult,
+} from "./lib/verbatimOverlap";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Free-tier strategy: the primary model's daily quota (e.g. gemini-3.5-flash,
@@ -62,6 +67,8 @@ type SummarySettings = {
   maxInputArticles: number;
   bodyFetchEnabled: boolean;
   bodyChars: number;
+  // L3 — verbatim-overlap gate threshold (shared contiguous words).
+  maxVerbatimNgram: number;
 };
 
 type SummaryQueueHealthResult = {
@@ -301,6 +308,8 @@ async function generateSummaryWithModel(
   prompt: { system: string; user: string },
   eventId: Id<"events">,
   eventTitle: string,
+  // L3: extra paraphrase instruction injected by the overlap retry loop.
+  paraphraseInstruction?: string,
 ): Promise<{
   summary: EventSummaryOutput;
   inputTokens: number;
@@ -323,6 +332,9 @@ async function generateSummaryWithModel(
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
+        ...(paraphraseInstruction
+          ? [{ role: "user" as const, content: paraphraseInstruction }]
+          : []),
         ...(retryInstruction
           ? [{ role: "user" as const, content: retryInstruction }]
           : []),
@@ -382,6 +394,7 @@ async function loadSummarySettings(
       "event_summary_max_input_articles",
       "event_summary_body_fetch_enabled",
       "event_summary_body_chars",
+      "event_summary_max_verbatim_ngram",
     ],
   })) as Record<string, unknown>;
 
@@ -438,6 +451,12 @@ async function loadSummarySettings(
       DEFAULT_BODY_CHARS,
       500,
       6000,
+    ),
+    maxVerbatimNgram: safeInteger(
+      cfg.event_summary_max_verbatim_ngram,
+      MAX_VERBATIM_NGRAM,
+      4,
+      20,
     ),
   };
 }
@@ -932,6 +951,90 @@ export const processSummaryJob = internalAction({
         );
         modelUsed = settings.fallbackModel;
       }
+
+      // L3 — verbatim-overlap gate: the summary must not reproduce ≥N
+      // consecutive source words. On failure regenerate with a stronger
+      // paraphrase instruction (max 2 retries), else block publication.
+      const overlapSourceTexts: Array<string | undefined> = [
+        ...input.articles.flatMap((article: SummaryInputArticle) => [
+          article.title,
+          article.summary,
+          article.rssSnippet,
+          ...article.atomicFacts,
+        ]),
+        ...transientBodies.values(),
+      ];
+      const overlapFieldsOf = (summary: EventSummaryOutput) => ({
+        neutral: summary.neutral,
+        reformist: summary.reformist,
+        suveranist: summary.suveranist,
+        globalImpact: summary.globalImpact,
+      });
+
+      let overlap = checkSummaryOverlap(
+        overlapFieldsOf(generated.summary),
+        overlapSourceTexts,
+        settings.maxVerbatimNgram,
+      );
+      let overlapAttempts = 0;
+      while (!overlap.passed && overlapAttempts < 2) {
+        overlapAttempts++;
+        console.warn(
+          `[summarization] Verbatim overlap detected for event ${job.eventId} (attempt ${overlapAttempts}): ${overlap.matchedSpans
+            .slice(0, 3)
+            .map((span) => `"${span.text}"`)
+            .join("; ")}`,
+        );
+        const paraphraseInstruction = [
+          "Răspunsul tău anterior a copiat literal fragmente din articolele sursă, ceea ce este interzis:",
+          ...overlap.matchedSpans
+            .slice(0, 5)
+            .map((span) => `- (${span.field}) „${span.text}”`),
+          `Rescrie TOATE câmpurile parafrazând integral în propriile tale cuvinte. Nicio secvență de ${settings.maxVerbatimNgram} sau mai multe cuvinte consecutive nu are voie să coincidă cu textul sursă. Schimbă construcția frazelor, nu doar cuvinte izolate. Citatele scurte sunt permise doar între ghilimele, cu numele sursei.`,
+        ].join("\n");
+        generated = await generateSummaryWithModel(
+          ctx,
+          modelUsed,
+          prompt,
+          input.event._id,
+          input.event.title,
+          paraphraseInstruction,
+        );
+        overlap = checkSummaryOverlap(
+          overlapFieldsOf(generated.summary),
+          overlapSourceTexts,
+          settings.maxVerbatimNgram,
+        );
+      }
+
+      const overlapCheck: OverlapCheckResult = {
+        passed: overlap.passed,
+        maxNgram: settings.maxVerbatimNgram,
+        attempts: overlapAttempts,
+        matchedSpans: overlap.matchedSpans.slice(0, 20),
+      };
+
+      if (!overlap.passed) {
+        console.error(
+          `[summarization] Summary blocked_verbatim for event ${job.eventId} after ${overlapAttempts} paraphrase retries`,
+        );
+        await ctx.runMutation(
+          internal.summarization.markSummaryJobBlockedVerbatim,
+          {
+            jobId: job._id,
+            runId,
+            overlapCheckJson: JSON.stringify(overlapCheck),
+          },
+        );
+        return {
+          processed: true,
+          succeeded: false,
+          failed: true,
+          skipped: false,
+          budgetExhausted,
+        };
+      }
+
       const { summary, inputTokens, outputTokens } = generated;
 
       const result = await ctx.runMutation(
@@ -947,6 +1050,7 @@ export const processSummaryJob = internalAction({
           perspectiveApplicable: summary.perspectiveApplicable,
           summarySignature,
           modelUsed,
+          overlapCheck,
         },
       );
 

@@ -112,8 +112,11 @@ function trimField(value: string | undefined, maxLength: number): string {
  * v5 = CASE D wired into the precomputed case lines + explicit step-0
  * decision order (v4 still fired 0/18 — the "tratează ca adevăr" case
  * lines left no D option at the point of writing).
+ * v6 = L3 paraphrase mandate: never copy ≥8 consecutive source words or
+ * sentence structure; quotes only inside quotation marks with attribution
+ * (enforced post-generation by the verbatim-overlap gate).
  */
-export const SUMMARY_PROMPT_VERSION = 5;
+export const SUMMARY_PROMPT_VERSION = 6;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
@@ -236,6 +239,12 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Preferă sursele cu fiabilitateaSursei >= 7 pentru nucleul factual. Atribuie explicit afirmațiile surselor cu fiabilitateaSursei < 5.",
       "- Când articolele intră în conflict, folosește cel mai recent publicatLa drept stare curentă doar dacă abordează direct conflictul.",
       "- Scrie proză neutră, ancorată în surse. Fără liste cu puncte. Fără limbaj de marketing. Fără editorializare.",
+      "",
+      "PARAFRAZARE (regulă absolută — încălcarea blochează publicarea):",
+      "- Reformulează integral în propriile tale cuvinte. NU copia niciodată o secvență de 8 sau mai multe cuvinte consecutive din vreun articol furnizat.",
+      "- NU copia structura frazelor sursă: schimbă ordinea ideilor, topica și construcția propozițiilor, nu doar câteva cuvinte.",
+      "- Citatele directe sunt permise NUMAI între ghilimele („...”), cu numele sursei atașat, și au maxim 10 cuvinte. Orice text preluat literal fără ghilimele este interzis.",
+      "- Numele proprii, instituțiile, cifrele și datele se preiau exact — acestea nu sunt parafrazabile.",
       "",
       "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
