@@ -229,8 +229,14 @@ const ro = {
   "profile.changePassword": "Schimbă parola",
   "profile.passwordBody":
     "Primești prin e-mail un link sigur pentru resetarea parolei.",
-  "profile.deleteAccount": "Solicită ștergerea contului",
   "profile.requestDeletion": "Solicită ștergerea contului",
+  "profile.downloadData": "Descarcă datele mele (JSON)",
+  "profile.downloadDataFailed": "Exportul a eșuat. Încearcă din nou.",
+  "profile.deleteAccount": "Șterge contul definitiv",
+  "profile.deleteConfirm":
+    "Apasă din nou pentru confirmare — ștergerea este permanentă și include toate datele tale.",
+  "profile.deleteFailed": "Ștergerea a eșuat. Încearcă din nou.",
+  "profile.deleteDone": "Contul și datele au fost șterse.",
   "profile.emailLabel": "E-mail",
   "profile.security": "Siguranța contului",
   "profile.securityBody":
@@ -971,8 +977,14 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.changePassword": "Change password",
   "profile.passwordBody":
     "You’ll receive a secure password-reset link by email.",
-  "profile.deleteAccount": "Request account deletion",
   "profile.requestDeletion": "Request deletion",
+  "profile.downloadData": "Download my data (JSON)",
+  "profile.downloadDataFailed": "Export failed. Please try again.",
+  "profile.deleteAccount": "Delete my account permanently",
+  "profile.deleteConfirm":
+    "Click again to confirm — deletion is permanent and includes all your data.",
+  "profile.deleteFailed": "Deletion failed. Please try again.",
+  "profile.deleteDone": "Your account and data have been deleted.",
   "profile.emailLabel": "Email",
   "profile.security": "Account security",
   "profile.securityBody":

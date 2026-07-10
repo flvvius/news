@@ -20,6 +20,7 @@ import type * as clustering from "../clustering.js";
 import type * as clusteringTuning from "../clusteringTuning.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
+import type * as dataRights from "../dataRights.js";
 import type * as domainPermissions from "../domainPermissions.js";
 import type * as domainPermissionsNode from "../domainPermissionsNode.js";
 import type * as emails from "../emails.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   clusteringTuning: typeof clusteringTuning;
   config: typeof config;
   crons: typeof crons;
+  dataRights: typeof dataRights;
   domainPermissions: typeof domainPermissions;
   domainPermissionsNode: typeof domainPermissionsNode;
   emails: typeof emails;
