@@ -91,6 +91,8 @@ export const Route = createFileRoute("/quiz")({
       meta: [
         { title },
         { name: "description", content: description },
+        // Feature-flagged, account-centric tool — keep out of indexes.
+        { name: "robots", content: "noindex, nofollow" },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
         { property: "og:site_name", content: SITE.name },

@@ -107,10 +107,19 @@ export const Route = createFileRoute("/event/$slug")({
     const imageUrl =
       loaderData?.event?.shareImageUrl ?? loaderData?.event?.imageUrl;
 
+    // Thin-page discipline: without an AI summary the page is mostly
+    // third-party RSS text, so keep it out of indexes (follow links so
+    // crawlers still traverse) until the summary lands. Mirrors the
+    // sitemap gate in convex/sitemap.ts.
+    const isThin =
+      !!loaderData?.event &&
+      !loaderData.event.perspectiveSummaries?.neutral?.trim();
+
     return {
       meta: [
         { title },
         { name: "description", content: description },
+        ...(isThin ? [{ name: "robots", content: "noindex, follow" }] : []),
         { property: "og:title", content: title },
         { property: "og:site_name", content: SITE.name },
         { property: "og:description", content: description },

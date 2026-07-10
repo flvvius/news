@@ -13,7 +13,10 @@ export const Route = createFileRoute("/profil")({
     const locale = getLocaleFromMatches(matches);
 
     return {
-      meta: [{ title: getString(locale, "profile.metaTitle") }],
+      meta: [
+        { title: getString(locale, "profile.metaTitle") },
+        { name: "robots", content: "noindex, nofollow" },
+      ],
     };
   },
   component: ProfilPage,
