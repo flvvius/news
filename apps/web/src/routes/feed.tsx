@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { z } from "zod";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
@@ -45,11 +46,74 @@ import { getString } from "@/lib/i18n/strings";
 import { cn } from "@/lib/utils";
 import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
+// Crawl archive: fixed pages behind ?page=N so a no-JS crawler can reach
+// every published event through real anchors (Googlebot does not scroll).
+const ARCHIVE_PAGE_SIZE = 20;
+// Matches the client-side default page size so hydration swaps the SSR list
+// for the live subscription without a visible jump.
+const SSR_FEED_PAGE_SIZE = 6;
+
+const feedSearchSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().catch(undefined),
+});
+
 export const Route = createFileRoute("/feed")({
-  head: ({ matches }) => {
+  validateSearch: feedSearchSchema,
+  loaderDeps: ({ search }) => ({ page: search.page }),
+  loader: async ({ context, deps }) => {
+    const client =
+      context.convexQueryClient.serverHttpClient ?? context.convexClient;
+
+    if (deps.page !== undefined) {
+      let archive;
+      try {
+        archive = await client.query(
+          api.events.getPublishedEventsArchivePage,
+          { page: deps.page, pageSize: ARCHIVE_PAGE_SIZE },
+        );
+      } catch (error) {
+        console.error(
+          `[Route loader] Failed to load feed archive page ${deps.page}:`,
+          error,
+        );
+        return { archive: null };
+      }
+      if (archive.events.length === 0 && deps.page > 1) {
+        // Out-of-range page numbers must 404, not mirror another page.
+        throw notFound();
+      }
+      return { archive };
+    }
+
+    // Interactive feed: server-render the first page of events so the feed
+    // is not a loading shell for crawlers; the live subscription takes over
+    // after hydration. The anonymous trending snapshot keeps this cheap.
+    try {
+      const first = await client.query(api.events.getPublishedEvents, {
+        ...buildFeedQueryArgs("all", "trending"),
+        paginationOpts: { numItems: SSR_FEED_PAGE_SIZE, cursor: null },
+      });
+      return { initialEvents: first.page };
+    } catch (error) {
+      console.error("[Route loader] Failed to load initial feed page:", error);
+      return { initialEvents: [] };
+    }
+  },
+  head: ({ matches, loaderData }) => {
     const locale = getLocaleFromMatches(matches);
-    const title = getString(locale, "feed.meta.title");
+    const archivePage =
+      loaderData && "archive" in loaderData
+        ? (loaderData.archive?.page ?? null)
+        : null;
+    const baseTitle = getString(locale, "feed.meta.title");
+    const title = archivePage
+      ? `${baseTitle} — ${getString(locale, "feed.archive.page").replace("{page}", String(archivePage))}`
+      : baseTitle;
     const description = getString(locale, "feed.meta.description");
+    // Paginated archive pages self-canonicalize.
+    const canonicalPath = archivePage
+      ? `/feed?page=${archivePage}`
+      : "/feed";
 
     return {
       meta: [
@@ -62,12 +126,12 @@ export const Route = createFileRoute("/feed")({
         { name: "twitter:description", content: description },
         { property: "og:image", content: SITE.ogImage },
         { name: "twitter:image", content: SITE.ogImage },
-        { property: "og:url", content: absoluteSiteUrl("/feed") },
+        { property: "og:url", content: absoluteSiteUrl(canonicalPath) },
         { property: "og:type", content: "website" },
         { name: "twitter:card", content: "summary_large_image" },
         { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
       ],
-      links: [{ rel: "canonical", href: absoluteSiteUrl("/feed") }],
+      links: [{ rel: "canonical", href: absoluteSiteUrl(canonicalPath) }],
     };
   },
   component: FeedComponent,
@@ -246,14 +310,122 @@ function TopicFilter({
   );
 }
 
+function useTopicNamesById() {
+  const topics = useQuery(api.topics.getTopics);
+  const topicNamesById = useMemo(() => {
+    const map: Record<string, string> = {};
+    topics?.forEach((topic) => {
+      map[topic._id] = topic.displayName;
+    });
+    return map;
+  }, [topics]);
+  return { topics, topicNamesById };
+}
+
 function FeedComponent() {
+  const { page } = Route.useSearch();
+  if (page !== undefined) {
+    return <FeedArchive />;
+  }
   return <FeedContent />;
+}
+
+/**
+ * Static, crawlable slice of the feed (/feed?page=N): server-rendered event
+ * list in stable recent order with real previous/next anchors. Infinite
+ * scroll on /feed stays the interactive experience layered on top.
+ */
+function FeedArchive() {
+  const t = useT();
+  const loaderData = Route.useLoaderData();
+  const { topicNamesById } = useTopicNamesById();
+  const archive =
+    loaderData && "archive" in loaderData ? loaderData.archive : null;
+
+  if (!archive) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-8">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+          {t("feed.loading")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-background">
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
+        <div className="flex flex-col gap-6">
+          <header className="flex flex-col gap-2 border-b border-border pb-4">
+            <SectionTitle>{t("feed.archive.title")}</SectionTitle>
+            <p className="text-sm text-muted-foreground">
+              {t("feed.archive.page").replace("{page}", String(archive.page))}
+            </p>
+            <Link
+              to="/feed"
+              className="text-sm text-muted-foreground underline hover:text-foreground"
+            >
+              {t("feed.archive.backToFeed")}
+            </Link>
+          </header>
+
+          {archive.events.length === 0 ? (
+            <p className="py-8 text-sm text-muted-foreground">
+              {t("feed.archive.empty")}
+            </p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border">
+              {archive.events.map((event) => (
+                <div key={event._id} className="py-5">
+                  <EventCard event={event} topicNamesById={topicNamesById} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <nav
+            aria-label={t("feed.archive.title")}
+            className="flex items-center justify-between border-t border-border pt-4 text-sm"
+          >
+            {archive.page > 1 ? (
+              <Link
+                to="/feed"
+                search={{ page: archive.page - 1 }}
+                className="text-muted-foreground underline hover:text-foreground"
+              >
+                ← {t("feed.archive.prev")}
+              </Link>
+            ) : (
+              <Link
+                to="/feed"
+                className="text-muted-foreground underline hover:text-foreground"
+              >
+                ← {t("feed.archive.backToFeed")}
+              </Link>
+            )}
+            {archive.hasMore && (
+              <Link
+                to="/feed"
+                search={{ page: archive.page + 1 }}
+                className="text-muted-foreground underline hover:text-foreground"
+              >
+                {t("feed.archive.next")} →
+              </Link>
+            )}
+          </nav>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FeedContent() {
   const t = useT();
+  const loaderData = Route.useLoaderData();
+  const initialEvents =
+    loaderData && "initialEvents" in loaderData ? loaderData.initialEvents : [];
   const { isAuthenticated } = useConvexAuth();
-  const topics = useQuery(api.topics.getTopics);
+  const { topics, topicNamesById } = useTopicNamesById();
   const currentUser = useQuery(
     api.user.getCurrentUser,
     isAuthenticated ? {} : "skip",
@@ -328,7 +500,7 @@ function FeedContent() {
   }, []);
 
   const {
-    results: events,
+    results: liveEvents,
     status,
     loadMore,
   } = usePaginatedQuery(
@@ -336,6 +508,13 @@ function FeedContent() {
     buildFeedQueryArgs(selectedTopic, feedSort),
     { initialNumItems: pageSize },
   );
+  // Until the live subscription delivers its first page, fall back to the
+  // loader's server-fetched events so the initial (and crawler-visible)
+  // HTML contains real content instead of a loading shell.
+  const events =
+    status === "LoadingFirstPage" && liveEvents.length === 0
+      ? initialEvents
+      : liveEvents;
   const searchResults = useQuery(
     api.events.searchPublishedEvents,
     isSearching
@@ -448,14 +627,6 @@ function FeedContent() {
       JSON.stringify(next),
     );
   }, [debouncedSearch, recentSearches, searchResults]);
-
-  const topicNamesById = useMemo(() => {
-    const map: Record<string, string> = {};
-    topics?.forEach((topic) => {
-      map[topic._id] = topic.displayName;
-    });
-    return map;
-  }, [topics]);
 
   const featuredEvent = events?.[0];
   const remainingEvents = featuredEvent ? events.slice(1) : events;
@@ -605,7 +776,7 @@ function FeedContent() {
                 {t("feed.searching")}
               </p>
             )}
-            {status === "LoadingFirstPage" && (
+            {status === "LoadingFirstPage" && events.length === 0 && (
               <p
                 role="status"
                 aria-live="polite"
@@ -724,6 +895,24 @@ function FeedContent() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Crawlable entry into the paginated archive: a real anchor a
+              no-JS crawler can follow, since it cannot trigger the
+              infinite-scroll observer above. */}
+          {!isSearching && (
+            <nav
+              aria-label={t("feed.archive.title")}
+              className="border-t border-border pt-4"
+            >
+              <Link
+                to="/feed"
+                search={{ page: 1 }}
+                className="text-sm text-muted-foreground underline hover:text-foreground"
+              >
+                {t("feed.archive.browse")} →
+              </Link>
+            </nav>
           )}
         </div>
       </div>

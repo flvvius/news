@@ -217,6 +217,47 @@ export const getPublishedEvents = query({
   },
 });
 
+// Crawlable feed archive (/feed?page=N): fixed, index-backed pages in
+// recent order, so every published event stays reachable through the
+// next/previous anchor chain regardless of trending churn. Offset paging
+// costs page*pageSize rows per read, hence the hard scan cap.
+const ARCHIVE_MAX_SCAN = 4000;
+const ARCHIVE_DEFAULT_PAGE_SIZE = 20;
+
+export const getPublishedEventsArchivePage = query({
+  args: {
+    page: v.number(),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const pageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? ARCHIVE_DEFAULT_PAGE_SIZE), 1),
+      50,
+    );
+    const page = Math.max(Math.floor(args.page), 1);
+    const maxPage = Math.floor(ARCHIVE_MAX_SCAN / pageSize);
+    if (page > maxPage) {
+      // Never serve duplicate content under an out-of-range URL; the web
+      // loader turns an empty page into a 404.
+      return { page, pageSize, events: [], hasMore: false };
+    }
+
+    const rows = await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_last_updated_at")
+      .order("desc")
+      .take(page * pageSize + 1);
+    const start = (page - 1) * pageSize;
+
+    return {
+      page,
+      pageSize,
+      events: rows.slice(start, start + pageSize).map(toFeedEvent),
+      hasMore: rows.length > page * pageSize,
+    };
+  },
+});
+
 export const searchPublishedEvents = query({
   args: {
     query: v.string(),
