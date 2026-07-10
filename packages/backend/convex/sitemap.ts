@@ -7,7 +7,6 @@ import type { MutationCtx } from "./_generated/server";
 const SITEMAP_KEY = "public";
 const DEFAULT_SITE_URL = "https://biviant.com";
 const DEFAULT_LIMIT = 5000;
-const SITEMAP_PAGE_SIZE = 1000;
 
 function escapeXml(value: string) {
   return value
@@ -83,34 +82,24 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
     const siteUrl = args.siteUrl?.trim() || DEFAULT_SITE_URL;
     const now = Date.now();
 
-    const events: Array<Doc<"publicEventPreviews">> = [];
-    let eventCursor: string | null = null;
-    while (events.length < limit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, limit - events.length);
-      const page = await ctx.db
-        .query("publicEventPreviews")
-        .withIndex("by_last_updated_at")
-        .order("desc")
-        .paginate({ cursor: eventCursor, numItems: pageSize });
-      events.push(...page.page);
-      if (page.isDone) break;
-      eventCursor = page.continueCursor;
-    }
+    // `.take` instead of `.paginate`: Convex allows only ONE paginated query
+    // per function, so the original two paginate loops threw on every run
+    // and the sitemap never left its fallback state.
+    const events: Array<Doc<"publicEventPreviews">> = await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_last_updated_at")
+      .order("desc")
+      .take(limit);
 
     const sourceLimit = Math.max(0, limit - events.length);
-    const sources: Array<Doc<"sources">> = [];
-    let sourceCursor: string | null = null;
-    while (sources.length < sourceLimit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, sourceLimit - sources.length);
-      const page = await ctx.db
-        .query("sources")
-        .withIndex("by_rolling_bias_updated_at")
-        .order("desc")
-        .paginate({ cursor: sourceCursor, numItems: pageSize });
-      sources.push(...page.page);
-      if (page.isDone) break;
-      sourceCursor = page.continueCursor;
-    }
+    const sources: Array<Doc<"sources">> =
+      sourceLimit > 0
+        ? await ctx.db
+            .query("sources")
+            .withIndex("by_rolling_bias_updated_at")
+            .order("desc")
+            .take(sourceLimit)
+        : [];
 
     const entries = [
       toSitemapUrl(siteUrl, "/"),
