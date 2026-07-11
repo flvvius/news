@@ -146,9 +146,10 @@ export function EventDetailTabs({
         <section className="space-y-4">
           <SectionTitle>{t("event.multiplePerspectives")}</SectionTitle>
           <Tabs defaultValue="center" className="w-full gap-4">
-            {/* overflow-x-auto: labels that outgrow 360px scroll inside the
-                row instead of making the whole page x-scrollable (BIV-811). */}
-            <TabsList className="flex h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0">
+            {/* flex-wrap: labels that outgrow the row wrap to a new line
+                instead of scrolling, while still never making the whole page
+                x-scrollable (BIV-811). */}
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
               {perspectiveSummaries?.reformist && (
                 <TabsTrigger
                   value="left"
