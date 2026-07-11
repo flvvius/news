@@ -4,6 +4,7 @@ import { getConfig } from "./config";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { normalizedPerspectives } from "./lib/biasAxis";
 
 export const SHARE_IMAGE_WIDTH = 1080;
 export const SHARE_IMAGE_HEIGHT = 566;
@@ -112,7 +113,9 @@ export const getEventShareRenderData = internalQuery({
 
     return {
       title: event.title,
-      summary: event.perspectiveSummaries?.neutral ?? event.globalImpact,
+      summary:
+        normalizedPerspectives(event.perspectiveSummaries)?.neutral ??
+        event.globalImpact,
       imageUrl: event.imageUrl,
       imageAlt: event.imageAlt,
       lastUpdatedAt: event.lastUpdatedAt ?? event.firstPublishedAt,

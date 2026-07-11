@@ -160,7 +160,19 @@ export async function resolveGoogleNewsUrl(
     if (typeof rawPayload !== "string") return null;
 
     const decoded = JSON.parse(rawPayload) as unknown[];
-    return typeof decoded[1] === "string" ? decoded[1] : null;
+    const resolvedUrl = decoded[1];
+    if (typeof resolvedUrl !== "string") return null;
+    // Fail closed: the resolved value is handed straight to downstream
+    // fetches, so only expose a well-formed http(s) publisher URL.
+    try {
+      const parsed = new URL(resolvedUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+    return resolvedUrl;
   } catch {
     return null;
   }

@@ -393,7 +393,6 @@ export const TOPIC_CATALOG: TopicCatalogEntry[] = [
       "ministerul culturii",
       "patrimoniu cultural",
       "premiera filmului",
-      "premiera filmului",
     ],
   },
   {

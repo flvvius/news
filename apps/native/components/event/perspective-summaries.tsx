@@ -46,7 +46,12 @@ export function PerspectiveSummaries({
   ).filter((perspective) => Boolean(perspectiveSummaries?.[perspective]));
   const initial =
     available.find((perspective) => perspective !== "neutral") ?? "neutral";
-  const [active, setActive] = useState<Perspective>(initial);
+  // Derive the default tab from the current data on every render so a
+  // directional perspective that only lands after mount still gets selected;
+  // a manual tap wins until it is no longer in the available set.
+  const [override, setOverride] = useState<Perspective | null>(null);
+  const active =
+    override && available.includes(override) ? override : initial;
 
   if (perspectiveApplicable === false) {
     return (
@@ -85,7 +90,7 @@ export function PerspectiveSummaries({
               accessibilityRole="tab"
               accessibilityLabel={label}
               accessibilityState={{ selected: isActive }}
-              onPress={() => setActive(perspective)}
+              onPress={() => setOverride(perspective)}
               className="min-h-11 flex-1 items-center justify-center active:opacity-70"
             >
               <Text
