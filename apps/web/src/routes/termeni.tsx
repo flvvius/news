@@ -122,8 +122,7 @@ export function TermeniPage() {
         <p>
           Acești termeni sunt guvernați de legea română. Putem actualiza
           termenii; modificările substanțiale vor fi anunțate în aplicație, iar
-          versiunea curentă este în vigoare de la{" "}
-          {"{{TODO: data intrării în vigoare}}"}.
+          versiunea curentă este în vigoare de la 11.07.2026.
         </p>
       </StaticSection>
     </StaticPage>
