@@ -1,8 +1,7 @@
-// BIV-803: every footer page renders real, non-placeholder Romanian content;
-// any remaining {{TODO: …}} placeholder is mirrored in FOOTER_TODO.md at the
-// repo root.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+// BIV-803: every footer page renders real, non-placeholder Romanian content.
+// The former {{TODO: …}} contact-email placeholders have been removed; the
+// pages now route users to the „Raportează o eroare" complaint form and the
+// /contact page. This test guards that no {{TODO}} placeholder is reintroduced.
 import { describe, expect, test } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { beforeEach } from "vitest";
@@ -46,12 +45,6 @@ const FOOTER_PAGES: Array<[string, ComponentType]> = [
 
 const TODO_PATTERN = /\{\{TODO: [^}]+\}\}/g;
 
-// vitest runs with cwd = apps/web; FOOTER_TODO.md lives at the repo root.
-const footerTodoMd = readFileSync(
-  resolve(process.cwd(), "../../FOOTER_TODO.md"),
-  "utf8",
-);
-
 function renderPageText(Page: ComponentType): string {
   const { container } = render(<Page />);
   return container.textContent ?? "";
@@ -71,36 +64,11 @@ describe("footer pages (BIV-803)", () => {
     },
   );
 
-  test("every {{TODO}} placeholder in the pages is listed in FOOTER_TODO.md", () => {
-    const seen = new Set<string>();
-    for (const [, Page] of FOOTER_PAGES) {
-      for (const token of renderPageText(Page).match(TODO_PATTERN) ?? []) {
-        seen.add(token);
-      }
-    }
-    expect(seen.size).toBeGreaterThan(0);
-    for (const token of seen) {
-      expect(footerTodoMd, `${token} missing from FOOTER_TODO.md`).toContain(
-        token,
-      );
-    }
-  });
-
-  test("every placeholder listed in FOOTER_TODO.md still exists in a page", () => {
-    const pagesText = FOOTER_PAGES.map(([, Page]) =>
-      renderPageText(Page),
-    ).join("\n");
-    // Only table rows list concrete placeholders; the intro's generic
-    // "{{TODO: …}}" mention is not a token.
-    const listed = new Set(
-      [...footerTodoMd.matchAll(/^\| `(\{\{TODO: [^}]+\}\})`/gm)].map(
-        (m) => m[1],
-      ),
-    );
-    expect(listed.size).toBeGreaterThan(0);
-    for (const token of listed) {
-      expect(pagesText, `${token} listed but absent from pages`).toContain(
-        token,
+  test("no {{TODO}} placeholder remains in any footer page", () => {
+    for (const [path, Page] of FOOTER_PAGES) {
+      const matches = renderPageText(Page).match(TODO_PATTERN) ?? [];
+      expect(matches, `${path} still has: ${matches.join(", ")}`).toHaveLength(
+        0,
       );
     }
   });
