@@ -113,17 +113,31 @@ describe("event summary prompt v3 (full bodies + CASE D)", () => {
   test("defines CASE D with the perspectiveApplicable flag and a political guardrail", () => {
     expect(prompt.system).toContain("CAZUL D");
     expect(prompt.system).toContain("perspectiveApplicable");
-    expect(prompt.system).toContain("are prioritate față de A/B/C");
+    expect(prompt.system).toContain("are prioritate față de A/C");
     // The guardrail: political/justice/EU/budget/election stories never CASE D.
     expect(prompt.system).toMatch(/NU folosi CAZUL D.*politic/);
     expect(prompt.user).toContain("perspectiveApplicable (boolean)");
   });
 
-  test("CASE C demands concrete emphases/omissions and allows short quotes; CASE B forbids invented tone", () => {
+  test("v7: CASE C demands concrete emphases/omissions and allows short quotes", () => {
     expect(prompt.system).toContain("ce omite");
     expect(prompt.system).toContain("maxim 10 cuvinte");
+    // Perspective boxes must lead with the concrete difference.
+    expect(prompt.system).toContain("ÎNCEP cu diferența concretă");
+  });
+
+  test("v7: bans the 'nucleul factual comun' boilerplate and allows an empty side", () => {
+    // The banned meta-statement must never be written as perspective text; a
+    // non-diverging side is left empty instead (UI hides the tab).
     expect(prompt.system).toContain(
-      "NU inventa o diferență de ton care nu există",
+      'INTERZIS ca text de perspectivă: sintagma „nucleul factual comun"',
+    );
+    expect(prompt.system).toContain('lasă câmpul șir gol ("")');
+    // No CASE B remains; the pre-v7 boilerplate instruction is gone.
+    expect(prompt.system).not.toContain("au reflectat în mare nucleul factual");
+    // Do not fabricate a tonal difference the articles do not support.
+    expect(prompt.system).toContain(
+      "Nu scrie o diferență de ton pe care articolele nu o susțin",
     );
   });
 

@@ -115,8 +115,15 @@ function trimField(value: string | undefined, maxLength: number): string {
  * v6 = L3 paraphrase mandate: never copy ≥8 consecutive source words or
  * sentence structure; quotes only inside quotation marks with attribution
  * (enforced post-generation by the verbatim-overlap gate).
+ * v7 = perspective boxes must show a genuine difference or nothing: dropped
+ * the old CASE B "reflected the shared factual core" boilerplate. A side with
+ * ≥2 articles either diverges concretely (write it, lead with the difference)
+ * or is materially identical to neutral (return empty string → UI hides the
+ * tab). The phrase "nucleul factual comun" and any "reflected the common core"
+ * meta-statement are banned. NOTE: pairs with the summarization.ts
+ * `sidesComplete` relaxation — empty sides are now a valid terminal state.
  */
-export const SUMMARY_PROMPT_VERSION = 6;
+export const SUMMARY_PROMPT_VERSION = 7;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
@@ -163,7 +170,7 @@ function perspectiveCaseFor(
   if (count <= 1) {
     return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}". (Ignoră acest caz dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
   }
-  return `CAZUL B sau C — ${count} articole cu cadrare ${sideLabel} în input; alege CAZUL B dacă ele reflectă nucleul factual comun. Alege CAZUL C dacă au o cadrare, un accent sau fapte exclusive distincte. (Ignoră ambele dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
+  return `CAZUL C sau GOL — ${count} articole cu cadrare ${sideLabel} în input. Decide dacă acoperirea acestei părți diferă concret de nucleul neutral: cadrare, accent, omisiuni sau fapte exclusive proprii. Dacă DA, alege CAZUL C și scrie diferența. Dacă NU (acoperirea acestei părți repetă în esență faptele din neutral, fără un unghi propriu), lasă câmpul șir gol (""). NU scrie niciodată că sursele „au reflectat nucleul factual comun" sau o formulare echivalentă — dacă nu există o diferență de raportat, câmpul rămâne gol. (Lasă gol și în CAZUL D.)`;
 }
 
 export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
@@ -246,7 +253,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Citatele directe sunt permise NUMAI între ghilimele („...”), cu numele sursei atașat, și au maxim 10 cuvinte. Orice text preluat literal fără ghilimele este interzis.",
       "- Numele proprii, instituțiile, cifrele și datele se preiau exact — acestea nu sunt parafrazabile.",
       "",
-      "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
+      "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
       '- Dacă subiectul este apolitic (meteo, sport, loterie, rezultate sportive, sondaje de divertisment, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică), setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
       "- Aplică CAZUL D chiar dacă ambele părți au articole în input: faptul că surse cu orientări diferite au relatat aceeași știre apolitică NU creează o axă politică. Întrebarea decisivă este: conțin articolele poziționări politice divergente? Dacă nu, este CAZUL D.",
@@ -262,10 +269,12 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "DEFINIȚIILE CAZURILOR:",
       "- CAZUL A: folosește exact textul de rezervă furnizat mai sus. Nu adăuga explicații.",
-      "- CAZUL B: scrie 50-100 de cuvinte notând că sursele acelei părți au reflectat în mare nucleul factual comun. Numește 1-2 surse și elementele concrete pe care le-au pus în titlu sau în prim-plan. NU inventa o diferență de ton care nu există în articole — dacă acoperirea e identică, spune asta direct.",
-      "- CAZUL C: scrie 50-100 de cuvinte descriind concret cum diferă acoperirea acelei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
+      "- CAZUL C: scrie 50-100 de cuvinte care ÎNCEP cu diferența concretă a acestei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează, sau ce au pus în titlu/prim-plan. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
+      '- CÂMP GOL: dacă acoperirea acestei părți nu diferă concret de neutral (repetă aceleași fapte, fără un unghi propriu), lasă câmpul șir gol (""). Este un rezultat valid și preferabil unei umpluturi.',
+      '- INTERZIS ca text de perspectivă: sintagma „nucleul factual comun" și orice afirmație că sursele „au reflectat / au preluat / au oglindit" faptele comune. Dacă asta ai vrea să scrii, câmpul rămâne gol în loc.',
+      '- Nu scrie o diferență de ton pe care articolele nu o susțin. Fără o diferență reală, câmpul este gol — nu inventa una.',
       '- Nu folosi niciodată un text de rezervă "Acoperire limitată..." pentru o parte cu 2 sau mai multe articole.',
-      '- Etichetele "CAZUL A/B/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
+      '- Etichetele "CAZUL A/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
       "",
       "REGULI PENTRU globalImpact:",
       "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",
@@ -294,8 +303,8 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "Scrie:",
       "- Pasul 0, înainte de orice: stabilește perspectiveApplicable aplicând VERIFICAREA AXEI POLITICE. Pentru știri despre loterie, sport, meteo, sondaje de divertisment sau fapt divers fără poziționări politice divergente, răspunsul corect este false — chiar dacă ambele părți au articole în input.",
       "- neutral (70-120 cuvinte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
-      '- reformist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
-      '- suveranist (50-100 de cuvinte pentru CAZUL B sau C; șir gol "" în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
+      '- reformist (50-100 de cuvinte în CAZUL C; șir gol "" dacă nu diferă concret de neutral sau în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
+      '- suveranist (50-100 de cuvinte în CAZUL C; șir gol "" dacă nu diferă concret de neutral sau în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
       "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Începe cu consecința, nu repeta neutral. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
       "- perspectiveApplicable (boolean): false doar dacă ai aplicat CAZUL D.",
       "",
