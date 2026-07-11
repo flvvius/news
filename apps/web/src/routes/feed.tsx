@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { z } from "zod";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -51,6 +51,11 @@ import {
   organizationJsonLd,
   softwareApplicationJsonLd,
 } from "@/lib/seo";
+
+// The event shape EventCard consumes. Loader/query results feed straight
+// into it; annotating the .map callbacks explicitly keeps the typecheck
+// stable even when the generated loader types resolve loosely in CI.
+type FeedEventCardData = ComponentProps<typeof EventCard>["event"];
 
 // Crawl archive: fixed pages behind ?page=N so a no-JS crawler can reach
 // every published event through real anchors (Googlebot does not scroll).
@@ -389,7 +394,7 @@ function FeedArchive() {
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-border">
-              {archive.events.map((event) => (
+              {archive.events.map((event: FeedEventCardData) => (
                 <div key={event._id} className="py-5">
                   <EventCard event={event} topicNamesById={topicNamesById} />
                 </div>
@@ -839,7 +844,7 @@ function FeedContent() {
                 </SectionTitle>
                 <div className="flex flex-col divide-y divide-border">
                   {(isSearching ? remainingSearchEvents : remainingEvents)?.map(
-                    (event) => (
+                    (event: FeedEventCardData) => (
                       <div key={event._id} className="py-5">
                         <EventCard
                           event={event}
