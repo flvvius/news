@@ -7,6 +7,7 @@ const ro = {
   "seo.siteDescription":
     `${BRAND_NAME} nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.`,
   "router.notFound": "Pagina nu a fost găsită",
+  "router.backToFeed": "Înapoi la feed",
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
   "tabs.saved": "Salvate",
@@ -754,6 +755,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "seo.siteDescription":
     `${BRAND_NAME} doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.`,
   "router.notFound": "Page not found",
+  "router.backToFeed": "Back to feed",
   "tabs.saved": "Saved",
   "tabs.activity": "Activity",
   "tabs.profile": "Profile",

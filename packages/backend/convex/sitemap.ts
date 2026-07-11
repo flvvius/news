@@ -98,32 +98,38 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
     const siteUrl = args.siteUrl?.trim() || DEFAULT_SITE_URL;
     const now = Date.now();
 
-    // Convex allows only one .paginate() per mutation, so both scans use
-    // index-range cursors with .take() instead (the previous double-paginate
-    // version threw on every cron run and the snapshot never built).
+    // Convex allows only one .paginate() per mutation, so events (the only
+    // unbounded scan) uses it and sources falls back to .take() (the previous
+    // double-paginate version threw on every cron run and the snapshot never
+    // built). .paginate()'s opaque continueCursor is a stable, unique position
+    // — it encodes the index tiebreaker, so events sharing a lastUpdatedAt are
+    // never skipped at a page boundary the way a bare `lt(lastUpdatedAt)`
+    // range cursor would skip them.
     const events: Array<Doc<"publicEventPreviews">> = [];
-    let eventCursor: number | undefined;
+    let eventCursor: string | null = null;
     let readRows = 0;
     while (events.length < limit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, limit - events.length);
-      const cursor = eventCursor;
-      const page = await ctx.db
+      const result = await ctx.db
         .query("publicEventPreviews")
-        .withIndex("by_last_updated_at", (q) =>
-          cursor === undefined ? q : q.lt("lastUpdatedAt", cursor),
-        )
+        .withIndex("by_last_updated_at")
         .order("desc")
-        .take(pageSize);
-      readRows += page.length;
+        .paginate({ numItems: SITEMAP_PAGE_SIZE, cursor: eventCursor });
+      readRows += result.page.length;
       // Thin-page gate: an event page without an AI summary is mostly
       // third-party RSS text — keep it out of the sitemap until summarized.
-      events.push(
-        ...page.filter((event) => event.perspectiveSummaries?.neutral?.trim()),
-      );
-      if (page.length < pageSize) break;
-      eventCursor = page[page.length - 1]!.lastUpdatedAt;
+      for (const event of result.page) {
+        if (event.perspectiveSummaries?.neutral?.trim()) {
+          events.push(event);
+          if (events.length >= limit) break;
+        }
+      }
+      if (result.isDone || events.length >= limit) break;
+      eventCursor = result.continueCursor;
     }
 
+    // Sources are few dozen in practice, so a single .take() capped at
+    // SITEMAP_PAGE_SIZE covers the whole table; the cap only guards against a
+    // runaway payload and never truncates the real source directory.
     const sourceLimit = Math.max(0, limit - events.length);
     const sources: Array<Doc<"sources">> =
       sourceLimit === 0

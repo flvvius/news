@@ -20,14 +20,14 @@ import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
-    const trimmedSourceId = params.sourceId.trim();
-    if (!/^[a-z0-9]{16,64}$/i.test(trimmedSourceId)) {
+    const sourceId = parseSourceId(params.sourceId);
+    if (sourceId === null) {
       // Malformed id can never resolve — real HTTP 404, not a soft-404.
       throw notFound();
     }
 
     const args = {
-      sourceId: trimmedSourceId as Id<"sources">,
+      sourceId,
       limit: 60,
     };
     const httpClient = context.convexQueryClient.serverHttpClient;
