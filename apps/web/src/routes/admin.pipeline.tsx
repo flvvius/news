@@ -21,6 +21,12 @@ import { Input } from "@/components/ui/input";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 
 export const Route = createFileRoute("/admin/pipeline")({
+  head: () => ({
+    meta: [
+      { title: "Pipeline admin" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: AdminPipelineRoute,
 });
 

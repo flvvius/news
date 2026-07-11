@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
@@ -20,34 +20,53 @@ import { SITE, absoluteSiteUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
-    const trimmedSourceId = params.sourceId.trim();
-    if (!/^[a-z0-9]{16,64}$/i.test(trimmedSourceId)) {
-      return null;
+    const sourceId = parseSourceId(params.sourceId);
+    if (sourceId === null) {
+      // Malformed id can never resolve — real HTTP 404, not a soft-404.
+      throw notFound();
     }
 
     const args = {
-      sourceId: trimmedSourceId as Id<"sources">,
+      sourceId,
       limit: 60,
     };
     const httpClient = context.convexQueryClient.serverHttpClient;
+    let data;
 
     try {
       if (httpClient) {
-        return await httpClient.query(api.sources.getSourceProfile, args);
+        data = await httpClient.query(api.sources.getSourceProfile, args);
+      } else {
+        data = await context.convexClient.query(
+          api.sources.getSourceProfile,
+          args,
+        );
       }
-
-      return await context.convexClient.query(
-        api.sources.getSourceProfile,
-        args,
-      );
     } catch (error) {
+      // A well-formed id that doesn't decode to the sources table fails
+      // argument validation — that URL can never resolve, so 404 it.
+      if (
+        error instanceof Error &&
+        error.message.includes("ArgumentValidationError")
+      ) {
+        throw notFound();
+      }
       console.error(
         `[Route loader] Failed to load source profile (${params.sourceId}):`,
         error,
       );
-      return null;
+      // Transient backend failure: degrade to the loading shell and let the
+      // client-side subscription retry, instead of mislabeling the URL.
+      return undefined;
     }
+
+    if (data === null) {
+      throw notFound();
+    }
+
+    return data;
   },
+  notFoundComponent: SourceNotFound,
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
     const sourceName = loaderData?.source?.name;
@@ -116,6 +135,21 @@ function isNumberArray(value: unknown): value is number[] {
   );
 }
 
+function SourceNotFound() {
+  const t = useT();
+  return (
+    <div className="container mx-auto max-w-5xl px-4 py-8">
+      <div className="text-center">
+        <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
+        <p className="mb-4 text-muted-foreground">{t("source.notFoundBody")}</p>
+        <Button asChild>
+          <Link to="/feed">{t("source.backToFeed")}</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SourceProfilePage() {
   const { sourceId } = Route.useParams();
   const parsedSourceId = parseSourceId(sourceId);
@@ -164,21 +198,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   }
 
   if (data === null) {
-    return (
-      <div className="container mx-auto max-w-5xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">
-            {t("source.notFound")}
-          </h1>
-          <p className="mb-4 text-muted-foreground">
-            {t("source.notFoundBody")}
-          </p>
-          <Button asChild>
-            <Link to="/feed">{t("source.backToFeed")}</Link>
-          </Button>
-        </div>
-      </div>
-    );
+    // Client-side path only; the server path throws notFound() in the loader
+    // and returns HTTP 404.
+    return <SourceNotFound />;
   }
 
   const { source, stats, articles } = data;
@@ -187,13 +209,21 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
     <div className="bg-linear-to-b from-background via-background to-muted/35">
       <div className="container mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-10">
         <div className="flex flex-col gap-5 sm:gap-8">
-          <Link
-            to="/feed"
-            className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeftIcon className="size-4" />
-            {t("source.backToFeed")}
-          </Link>
+          <div className="flex items-center justify-between gap-4">
+            <Link
+              to="/feed"
+              className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeftIcon className="size-4" />
+              {t("source.backToFeed")}
+            </Link>
+            <Link
+              to="/surse"
+              className="text-sm font-medium text-muted-foreground underline transition-colors hover:text-foreground"
+            >
+              {t("sources.index.title")}
+            </Link>
+          </div>
 
           <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
             <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-8">
@@ -288,6 +318,22 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   <p className="font-medium text-card-foreground">
                     {formatOptional(source.mbfcCategory, t("source.notRated"))}
                   </p>
+                </div>
+                <div className="space-y-1 border-t border-border/70 pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    {t("source.ratingExplainer")}
+                  </p>
+                  {source.provenance && (
+                    <p className="text-sm text-muted-foreground">
+                      {source.provenance}
+                    </p>
+                  )}
+                  <Link
+                    to="/sursele-noastre"
+                    className="text-sm underline hover:text-foreground"
+                  >
+                    {t("sources.index.methodology")}
+                  </Link>
                 </div>
               </CardContent>
             </Card>

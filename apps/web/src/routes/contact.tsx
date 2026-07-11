@@ -1,17 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/contact")({
-  head: () => ({
-    meta: [
-      { title: `Contact — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Cum poți contacta echipa ${BRAND_NAME}: întrebări, corecții, cereri legate de date personale sau propuneri de colaborare.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Contact — ${BRAND_NAME}`,
+      description: `Cum poți contacta echipa ${BRAND_NAME}: întrebări, corecții, cereri legate de date personale sau propuneri de colaborare.`,
+      path: "/contact",
+    }),
   component: ContactPage,
 });
 

@@ -214,11 +214,14 @@ const EventCard = ({
     <article className="flex flex-col gap-3">
       {event.imageUrl && (
         <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
+          {/* Feature card sits above the fold and is the feed's LCP
+              element — eager + high priority, never lazy. */}
           <img
             src={event.imageUrl}
             alt={event.title}
             className="h-full w-full object-cover"
-            loading="lazy"
+            loading="eager"
+            fetchPriority="high"
           />
         </div>
       )}

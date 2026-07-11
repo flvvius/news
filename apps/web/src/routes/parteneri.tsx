@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/parteneri")({
-  head: () => ({
-    meta: [
-      { title: `Parteneri — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Colaborări ${BRAND_NAME}: publicații, organizații de educație media și cercetători interesați de pluralismul surselor de știri.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Parteneri — ${BRAND_NAME}`,
+      description: `Colaborări ${BRAND_NAME}: publicații, organizații de educație media și cercetători interesați de pluralismul surselor de știri.`,
+      path: "/parteneri",
+    }),
   component: ParteneriPage,
 });
 

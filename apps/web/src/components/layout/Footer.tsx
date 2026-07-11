@@ -16,6 +16,7 @@ const footerSections = [
     links: [
       { to: "/cum-functioneaza", labelKey: "footer.howItWorks" },
       { to: "/sursele-noastre", labelKey: "footer.sources" },
+      { to: "/surse", labelKey: "footer.sourcesIndex" },
     ],
   },
   {

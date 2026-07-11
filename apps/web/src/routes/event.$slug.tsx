@@ -1,4 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  notFound,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
@@ -23,7 +28,12 @@ import {
   type Locale,
   type StringKey,
 } from "@/lib/i18n/strings";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  SITE,
+  absoluteSiteUrl,
+  eventArticleJsonLd,
+  jsonLdScript,
+} from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
@@ -56,24 +66,35 @@ export const Route = createFileRoute("/event/$slug")({
   validateSearch: searchSchema,
   loader: async ({ context, params }) => {
     const httpClient = context.convexQueryClient.serverHttpClient;
+    let data;
     try {
       if (httpClient) {
-        return await httpClient.query(api.events.getEventBySlug, {
+        data = await httpClient.query(api.events.getEventBySlug, {
+          slug: params.slug,
+        });
+      } else {
+        data = await context.convexClient.query(api.events.getEventBySlug, {
           slug: params.slug,
         });
       }
-
-      return await context.convexClient.query(api.events.getEventBySlug, {
-        slug: params.slug,
-      });
     } catch (error) {
       console.error(
         `[Route loader] Failed to load event (slug: ${params.slug}):`,
         error,
       );
-      return null;
+      // Transient backend failure: degrade to the loading shell and let the
+      // client-side subscription retry, instead of mislabeling the URL.
+      return undefined;
     }
+
+    if (data === null) {
+      // Unknown slug must be a real HTTP 404, not a soft-404 page with 200.
+      throw notFound();
+    }
+
+    return data;
   },
+  notFoundComponent: EventNotFound,
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
     const title = loaderData?.event?.title
@@ -86,10 +107,19 @@ export const Route = createFileRoute("/event/$slug")({
     const imageUrl =
       loaderData?.event?.shareImageUrl ?? loaderData?.event?.imageUrl;
 
+    // Thin-page discipline: without an AI summary the page is mostly
+    // third-party RSS text, so keep it out of indexes (follow links so
+    // crawlers still traverse) until the summary lands. Mirrors the
+    // sitemap gate in convex/sitemap.ts.
+    const isThin =
+      !!loaderData?.event &&
+      !loaderData.event.perspectiveSummaries?.neutral?.trim();
+
     return {
       meta: [
         { title },
         { name: "description", content: description },
+        ...(isThin ? [{ name: "robots", content: "noindex, follow" }] : []),
         { property: "og:title", content: title },
         { property: "og:site_name", content: SITE.name },
         { property: "og:description", content: description },
@@ -149,10 +179,41 @@ export const Route = createFileRoute("/event/$slug")({
       links: [
         { rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) },
       ],
+      scripts: loaderData?.event
+        ? [
+            jsonLdScript(
+              eventArticleJsonLd({
+                slug: params.slug,
+                title: loaderData.event.title,
+                description,
+                imageUrl,
+                datePublished: loaderData.event.firstPublishedAt,
+                dateModified:
+                  loaderData.event.lastUpdatedAt ??
+                  loaderData.event.firstPublishedAt,
+              }),
+            ),
+          ]
+        : [],
     };
   },
   component: EventDetailPage,
 });
+
+function EventNotFound() {
+  const t = useT();
+  return (
+    <div className="container mx-auto max-w-4xl px-4 py-8">
+      <div className="text-center">
+        <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
+        <p className="mb-4 text-muted-foreground">{t("event.notFoundBody")}</p>
+        <Button asChild>
+          <Link to="/feed">{t("event.backToFeed")}</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function EventDetailPage() {
   const locale = useLocale();
@@ -231,19 +292,9 @@ function EventDetailPage() {
   }
 
   if (eventData === null) {
-    return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
-          <p className="mb-4 text-muted-foreground">
-            {t("event.notFoundBody")}
-          </p>
-          <Button asChild>
-            <Link to="/feed">{t("event.backToFeed")}</Link>
-          </Button>
-        </div>
-      </div>
-    );
+    // Client-side path only (e.g. event unpublished after navigation); the
+    // server path throws notFound() in the loader and returns HTTP 404.
+    return <EventNotFound />;
   }
 
   const { event, articles } = eventData;
@@ -318,10 +369,14 @@ function EventDetailPage() {
 
             {event.imageUrl && (
               <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
+                {/* Hero photo is the page's LCP element (Lighthouse mobile
+                    baseline: LCP 4.3s) — hint the browser to fetch it first. */}
                 <img
                   src={event.imageUrl}
                   alt={event.imageAlt ?? event.title}
                   className="h-full w-full object-cover"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               </div>
             )}

@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/sursele-noastre")({
-  head: () => ({
-    meta: [
-      { title: `Sursele noastre — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Sursele noastre — ${BRAND_NAME}`,
+      description: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
+      path: "/sursele-noastre",
+    }),
   component: SurseleNoastrePage,
 });
 
@@ -83,7 +81,11 @@ export function SurseleNoastrePage() {
           Fiecare publicație are o pagină de profil în aplicație, cu scorul de
           fiabilitate, media orientării estimate pe articolele recente și
           relatările ei recente — o poți deschide dând clic pe numele sursei
-          oriunde apare.
+          oriunde apare, sau din{" "}
+          <Link to="/surse" className="underline hover:text-foreground">
+            lista completă a surselor monitorizate
+          </Link>
+          .
         </p>
       </StaticSection>
 

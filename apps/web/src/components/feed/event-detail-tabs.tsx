@@ -100,20 +100,25 @@ export function EventDetailTabs({
               )}
             </TabsList>
 
+            {/* forceMount keeps the inactive perspective texts in the
+                server-rendered DOM (Radix unmounts them by default, which
+                left the left/right summaries invisible to crawlers). Radix
+                still puts `hidden` on non-selected panels, so the visual
+                tab behavior is unchanged. */}
             {perspectiveSummaries?.reformist && (
-              <TabsContent value="left">
+              <TabsContent value="left" forceMount>
                 <p className={bodyText}>{perspectiveSummaries.reformist}</p>
               </TabsContent>
             )}
 
-            <TabsContent value="center">
+            <TabsContent value="center" forceMount>
               <p className={bodyText}>
                 {perspectiveSummaries?.neutral ?? t("event.summaryPending")}
               </p>
             </TabsContent>
 
             {perspectiveSummaries?.suveranist && (
-              <TabsContent value="right">
+              <TabsContent value="right" forceMount>
                 <p className={bodyText}>{perspectiveSummaries.suveranist}</p>
               </TabsContent>
             )}

@@ -5,9 +5,24 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
 const SITEMAP_KEY = "public";
-const DEFAULT_SITE_URL = "https://biviant.com";
+// Must match the canonical host (apex 307-redirects to www).
+const DEFAULT_SITE_URL = "https://www.biviant.com";
 const DEFAULT_LIMIT = 5000;
 const SITEMAP_PAGE_SIZE = 1000;
+
+// Public indexable routes without per-row lastmod.
+const STATIC_PATHS = [
+  "/",
+  "/feed",
+  "/surse",
+  "/cum-functioneaza",
+  "/sursele-noastre",
+  "/despre",
+  "/parteneri",
+  "/contact",
+  "/termeni",
+  "/politica-confidentialitate",
+];
 
 function escapeXml(value: string) {
   return value
@@ -83,38 +98,50 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
     const siteUrl = args.siteUrl?.trim() || DEFAULT_SITE_URL;
     const now = Date.now();
 
+    // Convex allows only one .paginate() per mutation, so events (the only
+    // unbounded scan) uses it and sources falls back to .take() (the previous
+    // double-paginate version threw on every cron run and the snapshot never
+    // built). .paginate()'s opaque continueCursor is a stable, unique position
+    // — it encodes the index tiebreaker, so events sharing a lastUpdatedAt are
+    // never skipped at a page boundary the way a bare `lt(lastUpdatedAt)`
+    // range cursor would skip them.
     const events: Array<Doc<"publicEventPreviews">> = [];
     let eventCursor: string | null = null;
+    let readRows = 0;
     while (events.length < limit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, limit - events.length);
-      const page = await ctx.db
+      const result = await ctx.db
         .query("publicEventPreviews")
         .withIndex("by_last_updated_at")
         .order("desc")
-        .paginate({ cursor: eventCursor, numItems: pageSize });
-      events.push(...page.page);
-      if (page.isDone) break;
-      eventCursor = page.continueCursor;
+        .paginate({ numItems: SITEMAP_PAGE_SIZE, cursor: eventCursor });
+      readRows += result.page.length;
+      // Thin-page gate: an event page without an AI summary is mostly
+      // third-party RSS text — keep it out of the sitemap until summarized.
+      for (const event of result.page) {
+        if (event.perspectiveSummaries?.neutral?.trim()) {
+          events.push(event);
+          if (events.length >= limit) break;
+        }
+      }
+      if (result.isDone || events.length >= limit) break;
+      eventCursor = result.continueCursor;
     }
 
+    // Sources are few dozen in practice, so a single .take() capped at
+    // SITEMAP_PAGE_SIZE covers the whole table; the cap only guards against a
+    // runaway payload and never truncates the real source directory.
     const sourceLimit = Math.max(0, limit - events.length);
-    const sources: Array<Doc<"sources">> = [];
-    let sourceCursor: string | null = null;
-    while (sources.length < sourceLimit) {
-      const pageSize = Math.min(SITEMAP_PAGE_SIZE, sourceLimit - sources.length);
-      const page = await ctx.db
-        .query("sources")
-        .withIndex("by_rolling_bias_updated_at")
-        .order("desc")
-        .paginate({ cursor: sourceCursor, numItems: pageSize });
-      sources.push(...page.page);
-      if (page.isDone) break;
-      sourceCursor = page.continueCursor;
-    }
+    const sources: Array<Doc<"sources">> =
+      sourceLimit === 0
+        ? []
+        : await ctx.db
+            .query("sources")
+            .withIndex("by_rolling_bias_updated_at")
+            .order("desc")
+            .take(Math.min(sourceLimit, SITEMAP_PAGE_SIZE));
 
     const entries = [
-      toSitemapUrl(siteUrl, "/"),
-      toSitemapUrl(siteUrl, "/feed"),
+      ...STATIC_PATHS.map((path) => toSitemapUrl(siteUrl, path)),
       ...events.map((event) =>
         toSitemapUrl(siteUrl, `/event/${event.slug}`, event.lastUpdatedAt),
       ),
@@ -148,7 +175,7 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
       internal.pipeline.recordPipelineIoRollup,
       {
         jobName: "rebuildPublicSitemapSnapshot",
-        readRows: events.length + sources.length,
+        readRows: readRows + sources.length,
         writeRows: 1,
         vectorSearches: 0,
         status: "ok",

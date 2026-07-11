@@ -7,6 +7,7 @@ const ro = {
   "seo.siteDescription":
     `${BRAND_NAME} nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.`,
   "router.notFound": "Pagina nu a fost găsită",
+  "router.backToFeed": "Înapoi la feed",
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
   "tabs.saved": "Salvate",
@@ -279,6 +280,7 @@ const ro = {
   "footer.terms": "Termeni",
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
+  "footer.sourcesIndex": "Lista surselor",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
@@ -349,6 +351,13 @@ const ro = {
   "feed.none": "Nu am găsit evenimente.",
   "feed.loadMore": "Încarcă mai mult",
   "feed.filter.clear": "Elimină filtrul",
+  "feed.archive.title": "Arhiva știrilor",
+  "feed.archive.page": "Pagina {page}",
+  "feed.archive.prev": "Pagina anterioară",
+  "feed.archive.next": "Pagina următoare",
+  "feed.archive.backToFeed": "Înapoi la feed",
+  "feed.archive.browse": "Răsfoiește arhiva completă a știrilor",
+  "feed.archive.empty": "Nu există evenimente pe această pagină.",
   "event.general": "General",
   "event.summaryPending": "Rezumatul se pregătește...",
   "event.coveragePreview":
@@ -611,6 +620,15 @@ const ro = {
   "source.aiBias": "Bias AI {count}",
   "source.outlier": "Anomalie",
   "source.notClustered": "Negrupat",
+  "source.ratingExplainer":
+    "Scorul de orientare pornește de la o evaluare editorială documentată a publicației (cu note de proveniență) și este rafinat în timp de analiza automată a formulării articolelor. Scorul de fiabilitate este atribuit separat și nu depinde de orientare.",
+  "sources.index.metaTitle": `Sursele monitorizate — ${BRAND_NAME}`,
+  "sources.index.metaDescription": `Toate publicațiile monitorizate de ${BRAND_NAME}, cu scorul de orientare pe axa reformist–suveranist și scorul de fiabilitate al fiecăreia.`,
+  "sources.index.title": "Sursele monitorizate",
+  "sources.index.intro":
+    "Fiecare publicație are o pagină de profil cu scorul de orientare, scorul de fiabilitate și relatările recente.",
+  "sources.index.empty": "Nu există surse de afișat.",
+  "sources.index.methodology": "Cum atribuim scorurile",
 
   // Native app (apps/native) — keys without a web equivalent
   "native.error.title": "Ceva nu a mers bine",
@@ -737,6 +755,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "seo.siteDescription":
     `${BRAND_NAME} doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.`,
   "router.notFound": "Page not found",
+  "router.backToFeed": "Back to feed",
   "tabs.saved": "Saved",
   "tabs.activity": "Activity",
   "tabs.profile": "Profile",
@@ -1000,6 +1019,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.terms": "Terms",
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
+  "footer.sourcesIndex": "Sources directory",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
@@ -1068,6 +1088,13 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.none": "No events found.",
   "feed.loadMore": "Load more",
   "feed.filter.clear": "Clear filter",
+  "feed.archive.title": "News archive",
+  "feed.archive.page": "Page {page}",
+  "feed.archive.prev": "Previous page",
+  "feed.archive.next": "Next page",
+  "feed.archive.backToFeed": "Back to feed",
+  "feed.archive.browse": "Browse the full news archive",
+  "feed.archive.empty": "No events on this page.",
   "event.general": "General",
   "event.summaryPending": "Summary is on the way...",
   "event.coveragePreview":
@@ -1326,6 +1353,15 @@ const en: { [K in keyof BaseStrings]: string } = {
   "source.aiBias": "AI bias {count}",
   "source.outlier": "Outlier",
   "source.notClustered": "Not clustered",
+  "source.ratingExplainer":
+    "The bias score starts from a documented editorial assessment of the outlet (with provenance notes) and is refined over time by automated analysis of article framing. The reliability score is assigned separately and does not depend on bias.",
+  "sources.index.metaTitle": `Monitored sources — ${BRAND_NAME}`,
+  "sources.index.metaDescription": `Every outlet ${BRAND_NAME} monitors, with each one's bias score on the reformist–sovereigntist axis and its reliability score.`,
+  "sources.index.title": "Monitored sources",
+  "sources.index.intro":
+    "Every outlet has a profile page with its bias score, reliability score and recent reporting.",
+  "sources.index.empty": "No sources to display.",
+  "sources.index.methodology": "How we assign the scores",
   "source.relatedEvent": "Related event",
 
   // Native app (apps/native) — keys without a web equivalent

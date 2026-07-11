@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as TermeniRouteImport } from './routes/termeni'
 import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
+import { Route as SurseRouteImport } from './routes/surse'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SalvateRouteImport } from './routes/salvate'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
@@ -46,6 +47,11 @@ const TermeniRoute = TermeniRouteImport.update({
 const SurseleNoastreRoute = SurseleNoastreRouteImport.update({
   id: '/sursele-noastre',
   path: '/sursele-noastre',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SurseRoute = SurseRouteImport.update({
+  id: '/surse',
+  path: '/surse',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/surse': typeof SurseRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -192,6 +199,7 @@ export interface FileRoutesByTo {
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/surse': typeof SurseRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/robots.txt': typeof RobotsDottxtRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/surse': typeof SurseRoute
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/salvate'
     | '/sitemap.xml'
+    | '/surse'
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/salvate'
     | '/sitemap.xml'
+    | '/surse'
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
@@ -295,6 +306,7 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/salvate'
     | '/sitemap.xml'
+    | '/surse'
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
@@ -321,6 +333,7 @@ export interface RootRouteChildren {
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SalvateRoute: typeof SalvateRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  SurseRoute: typeof SurseRoute
   SurseleNoastreRoute: typeof SurseleNoastreRoute
   TermeniRoute: typeof TermeniRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -351,6 +364,13 @@ declare module '@tanstack/react-router' {
       path: '/sursele-noastre'
       fullPath: '/sursele-noastre'
       preLoaderRoute: typeof SurseleNoastreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/surse': {
+      id: '/surse'
+      path: '/surse'
+      fullPath: '/surse'
+      preLoaderRoute: typeof SurseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -513,6 +533,7 @@ const rootRouteChildren: RootRouteChildren = {
   RobotsDottxtRoute: RobotsDottxtRoute,
   SalvateRoute: SalvateRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  SurseRoute: SurseRoute,
   SurseleNoastreRoute: SurseleNoastreRoute,
   TermeniRoute: TermeniRoute,
   UnsubscribeRoute: UnsubscribeRoute,

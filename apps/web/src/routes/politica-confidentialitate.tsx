@@ -1,17 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/politica-confidentialitate")({
-  head: () => ({
-    meta: [
-      { title: `Politica de confidențialitate — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Ce date colectează ${BRAND_NAME}, cu ce scop, cine le procesează și ce drepturi ai asupra lor.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Politica de confidențialitate — ${BRAND_NAME}`,
+      description: `Ce date colectează ${BRAND_NAME}, cu ce scop, cine le procesează și ce drepturi ai asupra lor.`,
+      path: "/politica-confidentialitate",
+    }),
   component: PoliticaConfidentialitatePage,
 });
 

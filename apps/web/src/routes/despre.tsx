@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/despre")({
-  head: () => ({
-    meta: [
-      { title: `Despre noi — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Ce este ${BRAND_NAME}, de ce există și cum arătăm aceeași știre din perspective multiple, cu orientarea și fiabilitatea fiecărei surse la vedere.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Despre noi — ${BRAND_NAME}`,
+      description: `Ce este ${BRAND_NAME}, de ce există și cum arătăm aceeași știre din perspective multiple, cu orientarea și fiabilitatea fiecărei surse la vedere.`,
+      path: "/despre",
+    }),
   component: DesprePage,
 });
 

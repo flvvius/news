@@ -1,17 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/termeni")({
-  head: () => ({
-    meta: [
-      { title: `Termeni și condiții — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content: `Condițiile de utilizare a platformei ${BRAND_NAME}: ce oferă serviciul, ce reguli se aplică și care sunt limitele răspunderii.`,
-      },
-    ],
-  }),
+  head: () =>
+    staticPageHead({
+      title: `Termeni și condiții — ${BRAND_NAME}`,
+      description: `Condițiile de utilizare a platformei ${BRAND_NAME}: ce oferă serviciul, ce reguli se aplică și care sunt limitele răspunderii.`,
+      path: "/termeni",
+    }),
   component: TermeniPage,
 });
 

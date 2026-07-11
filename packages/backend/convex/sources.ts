@@ -132,6 +132,27 @@ export const getSourceProfile = query({
   },
 });
 
+// Public sources directory (/surse): every monitored outlet with the fields
+// the index page renders. Small table (tens of rows), so a plain take.
+export const listPublicSources = query({
+  args: {},
+  handler: async (ctx) => {
+    const sources = await ctx.db.query("sources").take(1000);
+    return sources
+      .map((source) => ({
+        _id: source._id,
+        name: source.name,
+        domain: source.domain,
+        logoUrl: source.logoUrl,
+        baseBias: source.baseBias,
+        biasLabel: sourceBiasLabel(source),
+        reliabilityScore: source.reliabilityScore,
+        mbfcCategory: source.mbfcCategory,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+  },
+});
+
 export const getSitemapSources = query({
   args: {
     limit: v.optional(v.number()),
