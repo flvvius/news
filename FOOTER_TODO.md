@@ -10,7 +10,6 @@ stay in sync.
 | Placeholder | Page(s) | Field |
 |---|---|---|
 | `{{TODO: adresă de e-mail de contact}}` | /contact („Cum ne contactezi”), /politica-confidentialitate („Cum ne contactezi pentru datele tale”) | Adresa de e-mail de contact/suport pe domeniul biviant.com — de provizionat în Resend înainte de publicare (nu asertăm o adresă care nu există încă) |
-| `{{TODO: data intrării în vigoare}}` | /termeni („Legea aplicabilă și modificări”) | Data intrării în vigoare a documentelor legale (de stabilit la lansare, ideal după o revizuire juridică) |
 
 Notes:
 
