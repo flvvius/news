@@ -3,6 +3,8 @@
 import { normalizeRomanianDiacritics } from "./romanian";
 import { resolveGoogleNewsUrl } from "./googleNews";
 import { verifyImageUrl, type ImageUrlVerdict } from "./imageVerification";
+import { BOT_USER_AGENT, botFetchHeaders } from "./botIdentity";
+import { politeFetch } from "./politeFetch";
 
 type ExtractionMethod =
   | "article"
@@ -29,8 +31,8 @@ export type ExtractedArticleContent = {
   extractionQuality: "strong" | "weak";
 };
 
-const EXTRACTION_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+// L6: honest crawler identity on every fetch — no browser masquerading.
+const EXTRACTION_USER_AGENT = BOT_USER_AGENT;
 const FETCH_TIMEOUT_MS = 8000;
 const MIN_EXTRACTED_BODY_CHARS = 350;
 const MAX_BODY_CHARS = 6000;
@@ -41,8 +43,6 @@ const PRIORITY_PATTERNS = [
   /<main\b[\s\S]*?<\/main>/gi,
   /<(div|section)\b[^>]*(?:itemprop=["']articleBody["']|data-testid=["']article-body["']|class=["'][^"']*(?:article-body|story-body|entry-content|post-content|article__content|story-content)[^"']*["'])[^>]*>[\s\S]*?<\/\1>/gi,
 ];
-const GOOGLE_REFERER = "https://news.google.com/";
-const GOOGLE_SEARCH_REFERER = "https://www.google.com/";
 const BLOCKED_PAGE_PATTERNS = [
   /please enable js/i,
   /disable (?:your )?ad blocker/i,
@@ -390,79 +390,23 @@ function isLikelyBlockedHtml(html: string): boolean {
   return BLOCKED_PAGE_PATTERNS.some((pattern) => pattern.test(sample));
 }
 
-function getBaseBrowserHeaders(): Record<string, string> {
-  return {
-    "User-Agent": EXTRACTION_USER_AGENT,
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-User": "?1",
-    "Sec-Fetch-Dest": "document",
-  };
-}
-
-function buildFetchAttempts(url: string, preferGoogleReferer: boolean): FetchAttempt[] {
-  const base = getBaseBrowserHeaders();
-  const hostname = getHostname(url);
-  const attempts: FetchAttempt[] = [
+/**
+ * L6: one honest fetch profile. The pre-compliance code rotated browser
+ * header disguises (Chrome UA, spoofed Google referers, a fake iPhone UA
+ * for Reuters) to get past bot checks — the opposite of provable good-faith
+ * crawling. If a publisher blocks BiviantBot, we take the RSS fallback.
+ */
+function buildFetchAttempts(): FetchAttempt[] {
+  return [
     {
-      name: "browser-default",
-      headers: base,
+      name: "biviantbot",
+      headers: botFetchHeaders({
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ro-RO,ro;q=0.9,en;q=0.8",
+      }),
     },
   ];
-
-  if (preferGoogleReferer) {
-    attempts.push({
-      name: "browser-google-referer",
-      headers: {
-        ...base,
-        Referer: GOOGLE_REFERER,
-      },
-    });
-  }
-
-  if (hostname.endsWith("reuters.com")) {
-    attempts.push(
-      {
-        name: "reuters-google-search-referer",
-        headers: {
-          ...base,
-          Referer: GOOGLE_SEARCH_REFERER,
-          Origin: "https://www.google.com",
-        },
-      },
-      {
-        name: "reuters-mobile",
-        headers: {
-          ...base,
-          "User-Agent":
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1",
-          Referer: GOOGLE_SEARCH_REFERER,
-        },
-      },
-    );
-  }
-
-  if (
-    hostname.endsWith("apnews.com") ||
-    hostname.endsWith("politico.com") ||
-    hostname.endsWith("cnn.com")
-  ) {
-    attempts.push({
-      name: "browser-google-search-referer",
-      headers: {
-        ...base,
-        Referer: GOOGLE_SEARCH_REFERER,
-      },
-    });
-  }
-
-  return attempts;
 }
 
 function stripNoise(html: string): string {
@@ -1145,19 +1089,17 @@ function extractMetaDescription(html: string): string | undefined {
 
 async function fetchHtml(
   url: string,
-  preferGoogleReferer = false,
+  _preferGoogleReferer = false,
 ): Promise<FetchResult> {
-  const attempts = buildFetchAttempts(url, preferGoogleReferer);
+  const attempts = buildFetchAttempts();
   let lastHtmlResult: FetchResult | null = null;
 
   for (const attempt of attempts) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
     try {
-      const response = await fetch(url, {
+      // L6: per-domain rate limiting + backoff via politeFetch.
+      const response = await politeFetch(url, {
         redirect: "follow",
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
         headers: attempt.headers,
       });
 
@@ -1184,13 +1126,37 @@ async function fetchHtml(
 
       lastHtmlResult = result;
     } catch {
-      // Try the next fetch profile.
-    } finally {
-      clearTimeout(timeout);
+      // Network failure — fall through to the RSS fallback.
     }
   }
 
   return lastHtmlResult ?? { ok: false };
+}
+
+/**
+ * L5 — no-network fallback for domains whose TDM permission state forbids
+ * extraction (rss_only/blocked): the article contributes only its RSS
+ * metadata (title + snippet) to embeddings and downstream processing.
+ */
+export function rssOnlyArticleContent(args: {
+  title: string;
+  rssSnippet: string;
+}): ExtractedArticleContent {
+  return {
+    embeddingText: buildEmbeddingText(args.title, "", args.rssSnippet),
+    summary: summarizeBody(args.rssSnippet),
+    method: "rss_fallback",
+    bodyChars: 0,
+    fetchSucceeded: false,
+    resolvedUrl: undefined,
+    imageUrl: undefined,
+    imageWidth: undefined,
+    imageHeight: undefined,
+    imageAlt: undefined,
+    imageSource: undefined,
+    entities: extractEntityCandidates(args.title, args.rssSnippet),
+    extractionQuality: "weak",
+  };
 }
 
 export async function extractArticleContentForEmbedding(args: {

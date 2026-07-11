@@ -9,10 +9,8 @@ stay in sync.
 
 | Placeholder | Page(s) | Field |
 |---|---|---|
-| `{{TODO: entitate juridică}}` | /despre („Cine suntem”), /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”), /termeni („Legea aplicabilă și modificări”) | Numele entității juridice care operează Biviant (SRL/PFA/etc.) |
-| `{{TODO: adresă sediu}}` | /contact („Date de identificare”), /politica-confidentialitate („Cine este operatorul”) | Adresa sediului social |
-| `{{TODO: adresă de e-mail de contact}}` | /contact („Cum ne contactezi”), /politica-confidentialitate („Cine este operatorul”) | Adresa de e-mail de contact/suport pe domeniul biviant.com — de provizionat în Resend înainte de publicare (nu asertăm o adresă care nu există încă) |
-| `{{TODO: data intrării în vigoare}}` | /politica-confidentialitate („Modificări ale politicii”), /termeni („Legea aplicabilă și modificări”) | Data intrării în vigoare a documentelor legale (de stabilit la lansare, ideal după o revizuire juridică) |
+| `{{TODO: adresă de e-mail de contact}}` | /contact („Cum ne contactezi”), /politica-confidentialitate („Cum ne contactezi pentru datele tale”) | Adresa de e-mail de contact/suport pe domeniul biviant.com — de provizionat în Resend înainte de publicare (nu asertăm o adresă care nu există încă) |
+| `{{TODO: data intrării în vigoare}}` | /termeni („Legea aplicabilă și modificări”) | Data intrării în vigoare a documentelor legale (de stabilit la lansare, ideal după o revizuire juridică) |
 
 Notes:
 
@@ -27,3 +25,7 @@ Notes:
   the PostHog identity deletion request — that backend call no-ops unless the
   PostHog personal-API deletion credentials are configured on the production
   deployment. Verify they are set.
+- L6 crawler identity: BiviantBot's User-Agent and `From` header reference
+  `contact@biviant.com` (see `packages/backend/convex/lib/botIdentity.ts`).
+  That mailbox must be provisioned together with the site contact mailbox
+  before launch — same TODO as the contact e-mail row above.

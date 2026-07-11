@@ -12,6 +12,7 @@ import {
 import BiasIndicator from "@/components/bias-indicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Snippet } from "@/components/ui/snippet";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
@@ -380,11 +381,12 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                             <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-card-foreground">
                               {article.title}
                             </h2>
-                            {shownText && (
-                              <p className="line-clamp-2 break-words text-sm text-muted-foreground">
-                                {shownText}
-                              </p>
-                            )}
+                            {/* L2: third-party text renders only through
+                                <Snippet>; canonical link sits just below. */}
+                            <Snippet
+                              text={shownText}
+                              className="line-clamp-2 break-words text-sm text-muted-foreground"
+                            />
                             <div className="flex flex-wrap gap-2 pt-1">
                               {article.event && (
                                 <Link

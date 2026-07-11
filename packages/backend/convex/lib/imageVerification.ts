@@ -12,6 +12,7 @@
  */
 
 import { sniffImageFormat, type SniffedImageFormat } from "./imageSniff";
+import { BOT_USER_AGENT } from "./botIdentity";
 
 export type ImageUrlVerdict = "image" | "not-image" | "unreachable";
 
@@ -41,8 +42,8 @@ const DEFAULT_VERIFY_TIMEOUT_MS = 8000;
 // Redirects are followed manually so every hop can be re-validated; cap the
 // chain so a redirect loop can't spin.
 const MAX_REDIRECT_HOPS = 5;
-const DEFAULT_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+// L6: honest crawler identity (no browser masquerading).
+const DEFAULT_USER_AGENT = BOT_USER_AGENT;
 
 /**
  * Block SSRF to internal infrastructure. Image URLs come from attacker-shaped

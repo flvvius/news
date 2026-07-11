@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import {
   demoteRepeatedSourceBodies,
   extractArticleContentForEmbedding,
+  rssOnlyArticleContent,
 } from "./lib/articleExtraction";
 import { v } from "convex/values";
 import { callLLM } from "./lib/aiCall";
@@ -33,6 +34,8 @@ import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_EMBEDDING_MODEL,
 } from "./lib/modelRouting";
+import { extractionAllowed, normalizeDomain } from "./lib/tdmPolicy";
+import { ensureDomainPermissions } from "./domainPermissionsNode";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -801,15 +804,42 @@ async function runEnrichmentBatch(
 }> {
   console.log(`[enrichment] Processing ${articles.length} articles`);
 
+  // L5 — TDM permission gate: extraction requires the domain's permission
+  // state to be `full`; anything else contributes RSS metadata only.
+  const permissionStates = await ensureDomainPermissions(
+    ctx,
+    articles.map((article) => article.canonicalUrl),
+  );
+  const restrictedCount = articles.filter(
+    (article) =>
+      !extractionAllowed(
+        permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+          "rss_only",
+      ),
+  ).length;
+  if (restrictedCount > 0) {
+    console.log(
+      `[enrichment] L5 gate: ${restrictedCount}/${articles.length} article(s) restricted to RSS metadata (TDM opt-out)`,
+    );
+  }
+
   const preparedArticles = await mapWithConcurrency(
     articles,
     EXTRACTION_CONCURRENCY,
     async (article) => {
-      const extracted = await extractArticleContentForEmbedding({
-        title: article.title,
-        url: article.url,
-        rssSnippet: article.rssSnippet ?? "",
-      });
+      const permissionState =
+        permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+        "rss_only";
+      const extracted = extractionAllowed(permissionState)
+        ? await extractArticleContentForEmbedding({
+            title: article.title,
+            url: article.url,
+            rssSnippet: article.rssSnippet ?? "",
+          })
+        : rssOnlyArticleContent({
+            title: article.title,
+            rssSnippet: article.rssSnippet ?? "",
+          });
 
       return {
         ...article,

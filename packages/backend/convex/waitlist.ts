@@ -1,5 +1,10 @@
 import { v, ConvexError } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
   getWaitlistRecordByEmail,
@@ -7,6 +12,11 @@ import {
   normalizeEmail,
   requireAdminUser,
 } from "./lib/betaAccess";
+import {
+  hashConsentText,
+  WAITLIST_CONSENT_TEXT,
+  WAITLIST_CONSENT_TEXT_VERSION,
+} from "./lib/consent";
 import { authComponent } from "./auth";
 
 export const addToWaitlist = mutation({
@@ -14,6 +24,9 @@ export const addToWaitlist = mutation({
     email: v.string(),
     name: v.optional(v.string()),
     referralSource: v.optional(v.string()),
+    // L12 — consent provenance recorded per signup.
+    consentSourcePage: v.optional(v.string()),
+    clientIp: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Validate email format
@@ -24,12 +37,26 @@ export const addToWaitlist = mutation({
 
     const normalizedEmail = normalizeEmail(args.email);
 
+    // L12 — exact consent statement version + hash, timestamp, IP, source.
+    const consentRecord = {
+      consentAt: Date.now(),
+      consentIp: args.clientIp?.slice(0, 64),
+      consentTextVersion: WAITLIST_CONSENT_TEXT_VERSION,
+      consentTextHash: hashConsentText(WAITLIST_CONSENT_TEXT),
+      consentSourcePage: args.consentSourcePage?.slice(0, 200),
+    };
+
     // Check if email already exists
     const existing = await getWaitlistRecordByEmail(ctx, normalizedEmail);
 
     if (existing) {
       if (existing.status === "unsubscribed") {
-        await ctx.db.patch(existing._id, { status: "pending" });
+        // Re-subscribing is a fresh consent event.
+        await ctx.db.patch(existing._id, {
+          status: "pending",
+          ...consentRecord,
+          unsubscribeToken: existing.unsubscribeToken ?? crypto.randomUUID(),
+        });
         return {
           success: true,
           alreadyExists: false,
@@ -60,6 +87,8 @@ export const addToWaitlist = mutation({
       referralSource: args.referralSource,
       createdAt: Date.now(),
       status: "pending",
+      ...consentRecord,
+      unsubscribeToken: crypto.randomUUID(),
     });
 
     // Schedule welcome email (only if RESEND_API_KEY is set)
@@ -116,6 +145,72 @@ export const unsubscribe = mutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * L12 — one-click unsubscribe by token (no login, no e-mail knowledge
+ * required). Takes effect immediately: `unsubscribed` suppresses every send
+ * path (checked server-side in getSendableWaitlistEntry).
+ */
+export const unsubscribeByToken = mutation({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const token = args.token.trim();
+    if (!token) {
+      return { success: false as const };
+    }
+    const record = await ctx.db
+      .query("waitlist")
+      .withIndex("by_unsubscribe_token", (q) =>
+        q.eq("unsubscribeToken", token),
+      )
+      .unique();
+    if (!record) {
+      // Do not reveal token validity beyond a generic failure.
+      return { success: false as const };
+    }
+    await ctx.db.patch(record._id, { status: "unsubscribed" });
+    return { success: true as const, email: record.email };
+  },
+});
+
+/**
+ * L12 — suppression gate for every send path: returns the entry only when
+ * it may still receive e-mail, and guarantees it carries an unsubscribe
+ * token (legacy rows get one lazily via ensureUnsubscribeToken).
+ */
+export const getSendableWaitlistEntry = internalQuery({
+  args: { waitlistId: v.id("waitlist") },
+  handler: async (ctx, { waitlistId }) => {
+    const entry = await ctx.db.get(waitlistId);
+    if (!entry) return null;
+    if (entry.status === "unsubscribed" || entry.status === "bounced") {
+      return null;
+    }
+    return {
+      _id: entry._id,
+      email: entry.email,
+      name: entry.name,
+      position: entry.position,
+      status: entry.status,
+      unsubscribeToken: entry.unsubscribeToken ?? null,
+    };
+  },
+});
+
+/** Assign a token to a legacy row (called from send actions when missing). */
+export const ensureUnsubscribeToken = internalMutation({
+  args: { waitlistId: v.id("waitlist") },
+  handler: async (ctx, { waitlistId }) => {
+    const entry = await ctx.db.get(waitlistId);
+    if (!entry) return null;
+    if (entry.unsubscribeToken) return entry.unsubscribeToken;
+    const token = crypto.randomUUID();
+    await ctx.db.patch(waitlistId, { unsubscribeToken: token });
+    return token;
   },
 });
 

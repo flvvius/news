@@ -30,6 +30,7 @@ import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getConfig } from "./config";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { foldDiacriticsToAscii, romanianCount } from "./lib/romanian";
+import { truncateThirdPartySnippet } from "./lib/compliance";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { requireAdminUser } from "./lib/betaAccess";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
@@ -1624,12 +1625,16 @@ async function refreshEventPresentation(
   const resolvedArticleCount = totalArticleCount ?? recentArticles.length;
   const resolvedSourceCount = totalSourceCount ?? uniqueSources.size;
 
+  // L2 (Art. 94¹): the representative snippet is verbatim third-party text
+  // and must respect the 120-char "very short extract" ceiling even inside
+  // the heuristic summary (the surrounding coverage line is our own text).
   const representativeSnippet =
-    summarizeText(
+    truncateThirdPartySnippet(
       normalizeSnippetForClustering(best.article.rssSnippet),
-      220,
     ) ??
-    summarizeText(normalizeTitleForClustering(best.article.title), 160) ??
+    truncateThirdPartySnippet(
+      normalizeTitleForClustering(best.article.title),
+    ) ??
     "Acoperirea este încă în curs de agregare din mai multe surse.";
 
   const coverageLine =

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
 import { EventDetailTabs } from "@/components/feed/event-detail-tabs";
+import { ReportErrorForm } from "@/components/feed/report-error-form";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import {
@@ -222,6 +223,11 @@ function EventDetailPage() {
   const loaderData = Route.useLoaderData();
   const search = Route.useSearch();
   const eventData = useQuery(api.events.getEventBySlug, { slug }) ?? loaderData;
+  // L4 — per-sentence source attribution for the summary tabs.
+  const grounding = useQuery(
+    api.summarization.getSummaryGrounding,
+    eventData?.event?._id ? { eventId: eventData.event._id } : "skip",
+  );
   const { isAuthenticated } = useConvexAuth();
   const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
   const navigate = useNavigate();
@@ -307,8 +313,43 @@ function EventDetailPage() {
     articles.map((article: Article) => article.source),
   );
 
+  // L1 (AI Act art. 50(4)) — machine-readable marking, server-rendered into
+  // the initial HTML. digitalSourceType is the IPTC term for fully
+  // AI-generated content; creativeWorkStatus discloses the missing human
+  // review in-band.
+  const jsonLd = {
+    "@context": [
+      "https://schema.org",
+      { digitalSourceType: "https://cv.iptc.org/newscodes/digitalsourcetype/" },
+    ],
+    "@type": "NewsArticle",
+    headline: event.title,
+    inLanguage: locale,
+    url: absoluteSiteUrl(`/event/${event.slug}`),
+    datePublished: new Date(event.firstPublishedAt).toISOString(),
+    dateModified: new Date(lastUpdatedAt).toISOString(),
+    isAccessibleForFree: true,
+    creativeWorkStatus:
+      "AI-generated summary; not independently human-reviewed",
+    digitalSourceType:
+      "https://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+    author: {
+      "@type": "Organization",
+      name: SITE.name,
+      url: SITE.url,
+    },
+    ...(event.imageUrl ? { image: [event.imageUrl] } : {}),
+    isBasedOn: articles
+      .slice(0, 25)
+      .map((article: Article) => article.canonicalUrl),
+  };
+
   return (
     <div className="bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
         <div className="flex flex-col gap-6 sm:gap-8">
           <button
@@ -367,19 +408,41 @@ function EventDetailPage() {
               </div>
             </div>
 
-            {event.imageUrl && (
-              <div className="aspect-3/2 w-full overflow-hidden rounded-lg border border-border bg-muted">
-                {/* Hero photo is the page's LCP element (Lighthouse mobile
-                    baseline: LCP 4.3s) — hint the browser to fetch it first. */}
-                <img
-                  src={event.imageUrl}
-                  alt={event.imageAlt ?? event.title}
-                  className="h-full w-full object-cover"
-                  loading="eager"
-                  fetchPriority="high"
-                />
-              </div>
-            )}
+            {event.imageUrl &&
+              (() => {
+                // L9 tier (b): the hero is hotlinked from the publisher,
+                // attributed, and wrapped in a link to the original article it
+                // came from. It is also the page's LCP element, so fetch it
+                // eagerly with a high-priority hint.
+                const imageArticle =
+                  articles.find(
+                    (article: Article) => article.imageUrl === event.imageUrl,
+                  ) ?? articles[0];
+                const imageSourceName =
+                  imageArticle?.source?.name ?? "sursa originală";
+                return (
+                  <figure className="w-full">
+                    <a
+                      href={imageArticle?.canonicalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block overflow-hidden rounded-lg border border-border bg-muted"
+                    >
+                      <img
+                        src={event.imageUrl}
+                        alt={event.imageAlt ?? event.title}
+                        className="aspect-3/2 w-full object-cover"
+                        loading="eager"
+                        fetchPriority="high"
+                      />
+                    </a>
+                    <figcaption className="mt-1 text-xs text-muted-foreground">
+                      Foto: {imageSourceName} — imaginea aparține publicației
+                      și trimite către articolul original.
+                    </figcaption>
+                  </figure>
+                );
+              })()}
           </section>
 
           <EventDetailTabs
@@ -388,9 +451,15 @@ function EventDetailPage() {
             perspectiveApplicable={event.perspectiveApplicable}
             globalImpact={event.globalImpact}
             articles={articles}
+            sourceCount={sourceCount}
+            grounding={grounding}
           />
 
           <ArticlesList eventId={event._id} articles={articles} />
+
+          {/* L8 — notice-and-action entry point; #raporteaza is the anchor
+              the AI-disclosure label links to. */}
+          <ReportErrorForm eventId={event._id} />
         </div>
       </div>
     </div>

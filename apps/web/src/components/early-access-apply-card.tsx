@@ -1,10 +1,13 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
+import { Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
+import { WAITLIST_CONSENT_TEXT } from "@news-app/backend/convex/lib/consent";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getClientIp } from "@/lib/getClientIp";
 
 type WaitlistResponse = {
   success: boolean;
@@ -32,7 +35,12 @@ export default function EarlyAccessApplyCard({
   const addToWaitlist = useMutation<
     WaitlistResponse,
     Error,
-    { email: string; name?: string }
+    {
+      email: string;
+      name?: string;
+      consentSourcePage?: string;
+      clientIp?: string;
+    }
   >({
     mutationFn: useConvexMutation(api.waitlist.addToWaitlist),
     onSuccess: (result) => {
@@ -72,10 +80,20 @@ export default function EarlyAccessApplyCard({
               setMessage("Please enter a valid email");
               return;
             }
-            addToWaitlist.mutate({
-              email: normalizedEmail,
-              name: name.trim() || undefined,
-            });
+            // L12: record consent provenance (source page + requester IP).
+            void getClientIp()
+              .catch(() => null)
+              .then((clientIp) => {
+                addToWaitlist.mutate({
+                  email: normalizedEmail,
+                  name: name.trim() || undefined,
+                  consentSourcePage:
+                    typeof window !== "undefined"
+                      ? window.location.pathname
+                      : undefined,
+                  clientIp: clientIp ?? undefined,
+                });
+              });
           }}
           className="space-y-3"
         >
@@ -100,6 +118,21 @@ export default function EarlyAccessApplyCard({
             aria-label="Name"
             disabled={addToWaitlist.isPending}
           />
+          {/* L12: explicit affirmative consent statement, privacy policy link
+              adjacent to submit, opt-out control named at the point of
+              collection — no pre-checked boxes, no ToS bundling. */}
+          <p
+            data-waitlist-consent
+            className="text-xs leading-relaxed text-muted-foreground"
+          >
+            {WAITLIST_CONSENT_TEXT}{" "}
+            <Link
+              to="/politica-confidentialitate"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              Politica de confidențialitate
+            </Link>
+          </p>
           <Button
             type="submit"
             className="w-full"

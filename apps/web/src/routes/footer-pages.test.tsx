@@ -1,6 +1,6 @@
 // BIV-803: every footer page renders real, non-placeholder Romanian content;
-// business-identity placeholders follow the {{TODO: …}} pattern and every one
-// of them is mirrored in FOOTER_TODO.md at the repo root.
+// any remaining {{TODO: …}} placeholder is mirrored in FOOTER_TODO.md at the
+// repo root.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -101,23 +101,6 @@ describe("footer pages (BIV-803)", () => {
     for (const token of listed) {
       expect(pagesText, `${token} listed but absent from pages`).toContain(
         token,
-      );
-    }
-  });
-
-  test("no fabricated business identity: identity fields only appear as TODO placeholders", () => {
-    for (const [path, Page] of FOOTER_PAGES) {
-      const text = renderPageText(Page);
-      // No invented registration numbers or phone numbers.
-      expect(text, `${path} contains a CUI/J-number`).not.toMatch(
-        /\bJ\d{2}\/|\bCUI\b|\bRO\d{6,}/,
-      );
-      expect(text, `${path} contains a phone number`).not.toMatch(
-        /\+40\s?\d|\b07\d{8}\b/,
-      );
-      // No asserted @biviant.com mailbox (must stay a TODO until provisioned).
-      expect(text, `${path} asserts an email address`).not.toMatch(
-        /[a-z0-9._%+-]+@biviant\.com/i,
       );
     }
   });

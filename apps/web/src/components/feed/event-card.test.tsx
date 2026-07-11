@@ -94,13 +94,17 @@ describe("EventCard editorial row (BIV-807)", () => {
     );
     const image = thumbnail?.querySelector("img");
 
-    expect(row?.className).toContain("flex gap-4");
+    // Stacks on mobile, side-by-side from `sm:` up (responsive row layout);
+    // the image keeps a reserved box (sm:h-36 sm:w-48) beside the copy.
+    expect(row?.className).toContain("flex flex-col gap-3");
+    expect(row?.className).toContain("sm:flex-row");
     expect(copy?.className).toContain("min-w-0 flex-1");
-    expect(thumbnail?.className).toContain("h-24 w-32 shrink-0");
+    expect(thumbnail?.className).toContain("shrink-0");
+    expect(thumbnail?.className).toContain("sm:h-36 sm:w-48");
     expect(image?.getAttribute("width")).toBe("128");
     expect(image?.getAttribute("height")).toBe("96");
-    expect(row?.children[0]).toBe(copy);
-    expect(row?.children[1]).toBe(thumbnail);
+    // Thumbnail renders first in the DOM but displays last (sm:order-last).
+    expect(thumbnail?.className).toContain("sm:order-last");
   });
 
   test("saved page row keeps the same side-by-side thumbnail with bookmark action", () => {
@@ -111,8 +115,8 @@ describe("EventCard editorial row (BIV-807)", () => {
     );
 
     expect(screen.getByRole("button", { name: "bookmark" })).toBeTruthy();
-    expect(row?.className).toContain("flex gap-4");
-    expect(thumbnail?.className).toContain("h-24 w-32 shrink-0");
+    expect(row?.className).toContain("sm:flex-row");
+    expect(thumbnail?.className).toContain("sm:h-36 sm:w-48");
   });
 
   test("feature row keeps the full-width image treatment unchanged", () => {

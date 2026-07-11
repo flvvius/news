@@ -8,6 +8,7 @@ import { Resvg } from "@resvg/resvg-js";
 import decodeIco from "decode-ico";
 import sharp from "sharp";
 import { sniffImageFormat } from "./lib/imageSniff";
+import { BOT_USER_AGENT } from "./lib/botIdentity";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -20,8 +21,8 @@ import {
 
 const BIVIANT_BLUE = "#5AA6F7";
 const BIVIANT_BLUE_SOFT = "#87BBFF";
-const USER_AGENT =
-  "Mozilla/5.0 (compatible; BiviantBot/1.0; +https://biviant.com)";
+// L6: single crawler identity everywhere.
+const USER_AGENT = BOT_USER_AGENT;
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_FETCH_BYTES = 8 * 1024 * 1024;
 const WHATSAPP_TARGET_BYTES = 280 * 1024;
@@ -480,10 +481,12 @@ export const generateEventShareAsset = internalAction({
     }
 
     try {
+      // L9: never download/rehost publisher editorial images. The share card
+      // renders the brand layout with source favicons/logos (tier a — allowed
+      // small) instead of baking the publisher's og:image into a stored JPEG,
+      // which would be exactly the rehosting the thumbnail policy forbids.
       const [backgroundDataUri, sourceLogos] = await Promise.all([
-        data.imageUrl
-          ? fetchImageAsDataUri(data.imageUrl)
-          : Promise.resolve(null),
+        Promise.resolve(null as string | null),
         fetchSourceLogoData(data.sources),
       ]);
 

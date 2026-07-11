@@ -1,13 +1,15 @@
 import { useState } from "react";
 import {
   CheckCircle2,
+  Download,
   Globe2,
   KeyRound,
   LogOut,
   Palette,
-  ShieldCheck,
+  Trash2,
 } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { useConvex, useMutation } from "convex/react";
+import { api } from "@news-app/backend/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { ThemePicker } from "@/components/theme/ThemePicker";
@@ -64,6 +66,56 @@ export function AuthenticatedProfile({
   const avatarFallback = getAvatarFallback(displayName, user.email);
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [resetStatusMessage, setResetStatusMessage] = useState("");
+  // L10 — GDPR self-service export + deletion.
+  const convex = useConvex();
+  const deleteMyAccount = useMutation(api.dataRights.deleteMyAccount);
+  const [isExporting, setIsExporting] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDownloadData = async () => {
+    setIsExporting(true);
+    try {
+      const data = await convex.query(api.dataRights.exportMyData, {});
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `biviant-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Data export failed:", error);
+      toast.error(t("profile.downloadDataFailed"));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      toast.warning(t("profile.deleteConfirm"));
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await deleteMyAccount({});
+      toast.success(t("profile.deleteDone"));
+      try {
+        await authClient.signOut({});
+      } finally {
+        location.href = "/";
+      }
+    } catch (error) {
+      console.error("Account deletion failed:", error);
+      toast.error(t("profile.deleteFailed"));
+      setIsDeleting(false);
+      setDeleteArmed(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -235,11 +287,15 @@ export function AuthenticatedProfile({
                     <KeyRound className="size-4" />
                   </Button>
 
-                  <Button asChild variant="outline" className="w-full justify-between">
-                    <Link to="/contact">
-                      <span>{t("profile.requestDeletion")}</span>
-                      <ShieldCheck className="size-4" />
-                    </Link>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between"
+                    disabled={isExporting}
+                    onClick={() => void handleDownloadData()}
+                  >
+                    <span>{t("profile.downloadData")}</span>
+                    <Download className="size-4" />
                   </Button>
 
                   <Button
@@ -249,6 +305,21 @@ export function AuthenticatedProfile({
                   >
                     <span>{t("auth.signOut")}</span>
                     <LogOut className="size-4" />
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={isDeleting}
+                    onClick={() => void handleDeleteAccount()}
+                  >
+                    <span>
+                      {deleteArmed
+                        ? t("profile.deleteConfirm")
+                        : t("profile.deleteAccount")}
+                    </span>
+                    <Trash2 className="size-4" />
                   </Button>
                 </div>
 

@@ -11,12 +11,28 @@ import { callLLM } from "./lib/aiCall";
 import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
+  buildGroundingVerificationPrompt,
   SIDE_COVERAGE_FALLBACK,
   SUMMARY_PROMPT_VERSION,
   type EventSummaryOutput,
 } from "./prompts";
 
-import { DEFAULT_CHAT_MODEL } from "./lib/modelRouting";
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from "./lib/modelRouting";
+import {
+  checkSummaryOverlap,
+  MAX_VERBATIM_NGRAM,
+  type OverlapCheckResult,
+} from "./lib/verbatimOverlap";
+import {
+  collectSummarySentences,
+  cosineSimilarity,
+  DEFAULT_ACCUSATION_LEXICON,
+  findRiskySentences,
+  type SentenceGroundingResult,
+  type SummaryFieldName,
+} from "./lib/grounding";
+import { extractionAllowed, normalizeDomain } from "./lib/tdmPolicy";
+import { ensureDomainPermissions } from "./domainPermissionsNode";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Free-tier strategy: the primary model's daily quota (e.g. gemini-3.5-flash,
@@ -62,6 +78,14 @@ type SummarySettings = {
   maxInputArticles: number;
   bodyFetchEnabled: boolean;
   bodyChars: number;
+  // L3 — verbatim-overlap gate threshold (shared contiguous words).
+  maxVerbatimNgram: number;
+  // L4 — grounding + NER risk gate.
+  groundingEnabled: boolean;
+  groundingModel: string;
+  groundingEmbeddingThreshold: number;
+  maxUnsupportedRatio: number;
+  accusationLexicon: string[];
 };
 
 type SummaryQueueHealthResult = {
@@ -301,6 +325,8 @@ async function generateSummaryWithModel(
   prompt: { system: string; user: string },
   eventId: Id<"events">,
   eventTitle: string,
+  // L3: extra paraphrase instruction injected by the overlap retry loop.
+  paraphraseInstruction?: string,
 ): Promise<{
   summary: EventSummaryOutput;
   inputTokens: number;
@@ -323,6 +349,9 @@ async function generateSummaryWithModel(
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user },
+        ...(paraphraseInstruction
+          ? [{ role: "user" as const, content: paraphraseInstruction }]
+          : []),
         ...(retryInstruction
           ? [{ role: "user" as const, content: retryInstruction }]
           : []),
@@ -382,8 +411,36 @@ async function loadSummarySettings(
       "event_summary_max_input_articles",
       "event_summary_body_fetch_enabled",
       "event_summary_body_chars",
+      "event_summary_max_verbatim_ngram",
+      "event_grounding_enabled",
+      "event_grounding_model",
+      "event_grounding_embedding_threshold",
+      "event_grounding_max_unsupported_ratio",
+      "accusation_lexicon",
     ],
   })) as Record<string, unknown>;
+
+  let accusationLexicon = DEFAULT_ACCUSATION_LEXICON;
+  if (typeof cfg.accusation_lexicon === "string") {
+    try {
+      const parsed = JSON.parse(cfg.accusation_lexicon) as unknown;
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((term) => typeof term === "string")
+      ) {
+        accusationLexicon = parsed;
+      }
+    } catch {
+      // Keep the built-in lexicon on malformed config.
+    }
+  } else if (
+    Array.isArray(cfg.accusation_lexicon) &&
+    (cfg.accusation_lexicon as unknown[]).every(
+      (term) => typeof term === "string",
+    )
+  ) {
+    accusationLexicon = cfg.accusation_lexicon as string[];
+  }
 
   const fallbackModel = safeString(
     cfg.event_summary_model_fallback,
@@ -439,7 +496,42 @@ async function loadSummarySettings(
       500,
       6000,
     ),
+    maxVerbatimNgram: safeInteger(
+      cfg.event_summary_max_verbatim_ngram,
+      MAX_VERBATIM_NGRAM,
+      4,
+      20,
+    ),
+    groundingEnabled: safeBoolean(cfg.event_grounding_enabled, true),
+    groundingModel: safeString(
+      cfg.event_grounding_model,
+      DEFAULT_FALLBACK_MODEL,
+    ),
+    groundingEmbeddingThreshold: safeNumber(
+      cfg.event_grounding_embedding_threshold,
+      0.5,
+      0,
+      1,
+    ),
+    maxUnsupportedRatio: safeNumber(
+      cfg.event_grounding_max_unsupported_ratio,
+      0.34,
+      0,
+      1,
+    ),
+    accusationLexicon,
   };
+}
+
+function safeNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 /**
@@ -447,13 +539,48 @@ async function loadSummarySettings(
  * in memory and dropped — never persisted (copyright constraint; see
  * fetchArticleBodyText). Any article whose fetch fails or comes back blocked
  * simply contributes its stored summary/rssSnippet, as before.
+ *
+ * L5: gated on the per-domain TDM permission state — the summarizer refuses
+ * full-text input from any domain that is not `full`.
  */
 async function fetchTransientArticleBodies(
+  ctx: ActionCtx,
   articles: SummaryInputArticle[],
   settings: SummarySettings,
-): Promise<Map<string, string>> {
+): Promise<{
+  bodies: Map<string, string>;
+  permissionStates: Map<string, string>;
+}> {
   const bodies = new Map<string, string>();
-  if (!settings.bodyFetchEnabled || articles.length === 0) return bodies;
+  if (!settings.bodyFetchEnabled || articles.length === 0) {
+    return { bodies, permissionStates: new Map() };
+  }
+
+  // L5 — resolve permission state per source domain and log it for the run.
+  const permissionStates = await ensureDomainPermissions(
+    ctx,
+    articles.map((article) => article.canonicalUrl),
+  );
+  console.log(
+    `[summarization] Domain permission states for this run: ${Array.from(
+      permissionStates.entries(),
+    )
+      .map(([domain, state]) => `${domain}=${state}`)
+      .join(", ")}`,
+  );
+  const allowedArticles = articles.filter((article) =>
+    extractionAllowed(
+      permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+        "rss_only",
+    ),
+  );
+  if (allowedArticles.length < articles.length) {
+    console.log(
+      `[summarization] L5 gate: ${articles.length - allowedArticles.length}/${articles.length} article(s) restricted to RSS metadata (no full-text input)`,
+    );
+  }
+  articles = allowedArticles;
+  if (articles.length === 0) return { bodies, permissionStates };
 
   const perArticleCap = Math.max(
     MIN_BODY_CHARS_PER_ARTICLE,
@@ -502,7 +629,262 @@ async function fetchTransientArticleBodies(
       timedOut ? " (fan-out deadline hit — proceeding with partial bodies)" : ""
     }`,
   );
-  return bodies;
+  return { bodies, permissionStates };
+}
+
+type GroundingOutcome =
+  | { action: "publish"; fields: SummaryFields; grounding: GroundingRecord }
+  | { action: "blocked"; grounding: GroundingRecord };
+
+type SummaryFields = Record<SummaryFieldName, string>;
+
+type GroundingRecord = {
+  model: string;
+  passed: boolean;
+  results: Array<{
+    field: string;
+    sentence: string;
+    supported: boolean;
+    supportingArticleIds: Id<"articles">[];
+  }>;
+  strippedSentences: Array<{ field: string; sentence: string }>;
+};
+
+const GROUNDING_JSON_SCHEMA = {
+  name: "GroundingVerification",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      results: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            index: { type: "number" },
+            supported: { type: "boolean" },
+            articleIndexes: { type: "array", items: { type: "number" } },
+          },
+          required: ["index", "supported", "articleIndexes"],
+        },
+      },
+    },
+    required: ["results"],
+  },
+} as const;
+
+/**
+ * L4 — verify every summary sentence against the event's source texts.
+ * First pass: embedding cosine similarity shortlists candidate articles per
+ * sentence. Decisive pass: one LLM entailment call marks each sentence
+ * supported/unsupported with its supporting article indexes. Unsupported
+ * sentences are stripped; too many failures (or an empty neutral) block the
+ * summary entirely.
+ */
+async function verifySummaryGrounding(
+  ctx: ActionCtx,
+  settings: SummarySettings,
+  eventId: Id<"events">,
+  articles: SummaryInputArticle[],
+  transientBodies: Map<string, string>,
+  fields: SummaryFields,
+): Promise<GroundingOutcome> {
+  const sentences = collectSummarySentences(fields);
+  const emptyRecord: GroundingRecord = {
+    model: settings.groundingModel,
+    passed: true,
+    results: [],
+    strippedSentences: [],
+  };
+  if (sentences.length === 0) {
+    return { action: "publish", fields, grounding: emptyRecord };
+  }
+
+  const excerpts = articles.map((article) =>
+    [
+      article.summary ?? "",
+      article.rssSnippet ?? "",
+      article.atomicFacts.join(" "),
+      (transientBodies.get(article._id) ?? "").slice(0, 1600),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+  // First pass — embedding similarity (advisory: shortlists supporting
+  // articles and feeds the fallback attribution; the LLM pass is decisive).
+  let candidateIndexes: number[][] = sentences.map(() =>
+    articles.map((_, index) => index),
+  );
+  try {
+    const embeddingResponse = await callLLM<number[][]>({
+      kind: "embedding",
+      model: DEFAULT_EMBEDDING_MODEL,
+      dimensions: 512,
+      input: [
+        ...sentences.map(({ sentence }) => sentence),
+        ...articles.map(
+          (article, index) =>
+            `${article.title} ${excerpts[index] ?? ""}`.slice(0, 2000),
+        ),
+      ],
+      context: { callType: "event_summary", eventId },
+      runtime: ctx,
+    });
+    const vectors = embeddingResponse.result;
+    if (vectors && vectors.length === sentences.length + articles.length) {
+      const sentenceVectors = vectors.slice(0, sentences.length);
+      const articleVectors = vectors.slice(sentences.length);
+      candidateIndexes = sentenceVectors.map((sentenceVector) => {
+        const scored = articleVectors
+          .map((articleVector, index) => ({
+            index,
+            score: cosineSimilarity(sentenceVector, articleVector),
+          }))
+          .sort((a, b) => b.score - a.score);
+        const aboveThreshold = scored.filter(
+          (entry) => entry.score >= settings.groundingEmbeddingThreshold,
+        );
+        return (aboveThreshold.length > 0 ? aboveThreshold : scored)
+          .slice(0, 3)
+          .map((entry) => entry.index);
+      });
+    }
+  } catch (error) {
+    console.warn(
+      `[grounding] Embedding first pass failed for event ${eventId} — falling back to full-candidate entailment: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  // Decisive pass — LLM entailment over all sentences in one call.
+  const prompt = buildGroundingVerificationPrompt({
+    sentences: sentences.map(({ index, sentence }) => ({ index, sentence })),
+    articles: articles.map((article, index) => ({
+      index,
+      sourceName: article.source?.name ?? "Sursă necunoscută",
+      title: article.title,
+      excerpt: excerpts[index] ?? "",
+    })),
+  });
+  const entailment = await callLLM<unknown>({
+    kind: "chat",
+    model: settings.groundingModel,
+    temperature: 0,
+    maxTokens: 2000,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: GROUNDING_JSON_SCHEMA,
+    },
+    messages: [
+      { role: "system", content: prompt.system },
+      { role: "user", content: prompt.user },
+    ],
+    context: { callType: "event_summary", eventId },
+    runtime: ctx,
+  });
+  if (!entailment.result) {
+    throw new Error(
+      entailment.error ?? "Grounding entailment returned no result",
+    );
+  }
+  let parsed: {
+    results: Array<{
+      index: number;
+      supported: boolean;
+      articleIndexes: number[];
+    }>;
+  };
+  try {
+    parsed =
+      typeof entailment.result === "string"
+        ? JSON.parse(entailment.result)
+        : (entailment.result as typeof parsed);
+  } catch (error) {
+    throw new Error(
+      `Grounding entailment returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const byIndex = new Map(
+    (parsed.results ?? []).map((entry) => [entry.index, entry]),
+  );
+
+  const results: SentenceGroundingResult[] = sentences.map(
+    ({ field, index, sentence }) => {
+      const verdict = byIndex.get(index);
+      // A sentence the verifier did not return is treated as unsupported —
+      // fail closed, per the Munich ruling's allocation of liability.
+      const supported = verdict?.supported === true;
+      const indexes =
+        verdict && verdict.articleIndexes.length > 0
+          ? verdict.articleIndexes
+          : (candidateIndexes[index] ?? []);
+      return {
+        field,
+        sentence,
+        supported,
+        supportingArticleIds: supported
+          ? indexes
+              .filter((i) => i >= 0 && i < articles.length)
+              .map((i) => articles[i]!._id)
+          : [],
+      };
+    },
+  );
+
+  const unsupported = results.filter((entry) => !entry.supported);
+  const grounding: GroundingRecord = {
+    model: settings.groundingModel,
+    passed: true,
+    results: results
+      .filter((entry) => entry.supported)
+      .map((entry) => ({
+        field: entry.field,
+        sentence: entry.sentence,
+        supported: true,
+        supportingArticleIds: entry.supportingArticleIds as Id<"articles">[],
+      })),
+    strippedSentences: unsupported.map((entry) => ({
+      field: entry.field,
+      sentence: entry.sentence,
+    })),
+  };
+
+  if (unsupported.length / results.length > settings.maxUnsupportedRatio) {
+    return { action: "blocked", grounding: { ...grounding, passed: false } };
+  }
+
+  if (unsupported.length === 0) {
+    return { action: "publish", fields, grounding };
+  }
+
+  // Strip unsupported sentences; keep field text = supported sentences only.
+  const strippedFields: SummaryFields = { ...fields };
+  for (const fieldName of [
+    "neutral",
+    "reformist",
+    "suveranist",
+    "globalImpact",
+  ] as const) {
+    const fieldSentences = results.filter(
+      (entry) => entry.field === fieldName,
+    );
+    if (fieldSentences.length === 0) continue;
+    strippedFields[fieldName] = fieldSentences
+      .filter((entry) => entry.supported)
+      .map((entry) => entry.sentence)
+      .join(" ");
+  }
+  if (!strippedFields.neutral.trim()) {
+    // The factual core itself is unsupported — nothing publishable remains.
+    return { action: "blocked", grounding: { ...grounding, passed: false } };
+  }
+  return { action: "publish", fields: strippedFields, grounding };
 }
 
 export const summarizeQueuedEvents = internalAction({
@@ -874,10 +1256,9 @@ export const processSummaryJob = internalAction({
         };
       }
 
-      const transientBodies = await fetchTransientArticleBodies(
-        input.articles,
-        settings,
-      );
+      const { bodies: transientBodies, permissionStates } =
+        await fetchTransientArticleBodies(ctx, input.articles, settings);
+      const bodyFetchedAt = Date.now();
 
       const prompt = buildEventSummaryPrompt({
         eventTitle: input.event.title,
@@ -900,6 +1281,7 @@ export const processSummaryJob = internalAction({
         inputTokens: number;
         outputTokens: number;
       };
+      let modelUsed = settings.model;
       try {
         generated = await generateSummaryWithModel(
           ctx,
@@ -929,8 +1311,203 @@ export const processSummaryJob = internalAction({
           input.event._id,
           input.event.title,
         );
+        modelUsed = settings.fallbackModel;
       }
+
+      // L3 — verbatim-overlap gate: the summary must not reproduce ≥N
+      // consecutive source words. On failure regenerate with a stronger
+      // paraphrase instruction (max 2 retries), else block publication.
+      const overlapSourceTexts: Array<string | undefined> = [
+        ...input.articles.flatMap((article: SummaryInputArticle) => [
+          article.title,
+          article.summary,
+          article.rssSnippet,
+          ...article.atomicFacts,
+        ]),
+        ...transientBodies.values(),
+      ];
+      const overlapFieldsOf = (summary: EventSummaryOutput) => ({
+        neutral: summary.neutral,
+        reformist: summary.reformist,
+        suveranist: summary.suveranist,
+        globalImpact: summary.globalImpact,
+      });
+
+      let overlap = checkSummaryOverlap(
+        overlapFieldsOf(generated.summary),
+        overlapSourceTexts,
+        settings.maxVerbatimNgram,
+      );
+      let overlapAttempts = 0;
+      while (!overlap.passed && overlapAttempts < 2) {
+        overlapAttempts++;
+        console.warn(
+          `[summarization] Verbatim overlap detected for event ${job.eventId} (attempt ${overlapAttempts}): ${overlap.matchedSpans
+            .slice(0, 3)
+            .map((span) => `"${span.text}"`)
+            .join("; ")}`,
+        );
+        const paraphraseInstruction = [
+          "Răspunsul tău anterior a copiat literal fragmente din articolele sursă, ceea ce este interzis:",
+          ...overlap.matchedSpans
+            .slice(0, 5)
+            .map((span) => `- (${span.field}) „${span.text}”`),
+          `Rescrie TOATE câmpurile parafrazând integral în propriile tale cuvinte. Nicio secvență de ${settings.maxVerbatimNgram} sau mai multe cuvinte consecutive nu are voie să coincidă cu textul sursă. Schimbă construcția frazelor, nu doar cuvinte izolate. Citatele scurte sunt permise doar între ghilimele, cu numele sursei.`,
+        ].join("\n");
+        generated = await generateSummaryWithModel(
+          ctx,
+          modelUsed,
+          prompt,
+          input.event._id,
+          input.event.title,
+          paraphraseInstruction,
+        );
+        overlap = checkSummaryOverlap(
+          overlapFieldsOf(generated.summary),
+          overlapSourceTexts,
+          settings.maxVerbatimNgram,
+        );
+      }
+
+      const overlapCheck: OverlapCheckResult = {
+        passed: overlap.passed,
+        maxNgram: settings.maxVerbatimNgram,
+        attempts: overlapAttempts,
+        matchedSpans: overlap.matchedSpans.slice(0, 20),
+      };
+
+      if (!overlap.passed) {
+        console.error(
+          `[summarization] Summary blocked_verbatim for event ${job.eventId} after ${overlapAttempts} paraphrase retries`,
+        );
+        await ctx.runMutation(
+          internal.summarization.markSummaryJobBlockedVerbatim,
+          {
+            jobId: job._id,
+            runId,
+            overlapCheckJson: JSON.stringify(overlapCheck),
+          },
+        );
+        return {
+          processed: true,
+          succeeded: false,
+          failed: true,
+          skipped: false,
+          budgetExhausted,
+        };
+      }
+
       const { summary, inputTokens, outputTokens } = generated;
+
+      // L4 — grounding verification (embedding first pass + LLM entailment).
+      let finalFields: SummaryFields = overlapFieldsOf(summary);
+      let groundingRecord: GroundingRecord | undefined;
+      if (settings.groundingEnabled) {
+        const outcome = await verifySummaryGrounding(
+          ctx,
+          settings,
+          input.event._id,
+          input.articles,
+          transientBodies,
+          finalFields,
+        );
+        if (outcome.action === "blocked") {
+          console.error(
+            `[summarization] Summary blocked_ungrounded for event ${job.eventId}: ${outcome.grounding.strippedSentences.length} unsupported sentence(s)`,
+          );
+          await ctx.runMutation(internal.summarization.recordSummaryGrounding, {
+            eventId: input.event._id,
+            jobId: job._id,
+            grounding: outcome.grounding,
+          });
+          await ctx.runMutation(internal.summarization.markSummaryJobFailed, {
+            jobId: job._id,
+            runId,
+            error: "blocked_ungrounded",
+            retryAfterMs: Number.MAX_SAFE_INTEGER,
+            maxAttempts: 0,
+          });
+          return {
+            processed: true,
+            succeeded: false,
+            failed: true,
+            skipped: false,
+            budgetExhausted,
+          };
+        }
+        finalFields = outcome.fields;
+        groundingRecord = outcome.grounding;
+        if (outcome.grounding.strippedSentences.length > 0) {
+          console.warn(
+            `[summarization] Stripped ${outcome.grounding.strippedSentences.length} unsupported sentence(s) for event ${job.eventId}`,
+          );
+        }
+      }
+
+      // L4 — NER risk gate: named person/org + accusation term → hold for
+      // human review, never auto-publish.
+      const riskFlags = findRiskySentences(
+        finalFields,
+        settings.accusationLexicon,
+      );
+      if (riskFlags.length > 0) {
+        console.warn(
+          `[summarization] Summary held for review (event ${job.eventId}): ${riskFlags
+            .map((flag) => `${flag.entity}+"${flag.term}"`)
+            .join("; ")}`,
+        );
+        await ctx.runMutation(internal.summarization.holdSummaryForReview, {
+          jobId: job._id,
+          eventId: input.event._id,
+          runId,
+          proposed: {
+            neutral: finalFields.neutral,
+            reformist: finalFields.reformist,
+            suveranist: finalFields.suveranist,
+            globalImpact: finalFields.globalImpact,
+            perspectiveApplicable: summary.perspectiveApplicable,
+            modelUsed,
+            summarySignature,
+          },
+          flaggedSentences: riskFlags,
+          overlapCheckJson: JSON.stringify(overlapCheck),
+          groundingJson: groundingRecord
+            ? JSON.stringify(groundingRecord)
+            : undefined,
+        });
+        return {
+          processed: true,
+          succeeded: false,
+          failed: false,
+          skipped: true,
+          budgetExhausted,
+        };
+      }
+
+      // L7: source provenance for the audit record — content hash of the
+      // exact material each article contributed, fetch timestamp, and the
+      // TDM permission state at fetch time (L5).
+      const auditSources = input.articles.map(
+        (article: SummaryInputArticle) => ({
+          articleId: article._id as Id<"articles">,
+          canonicalUrl: article.canonicalUrl,
+          contentHash: createHash("sha256")
+            .update(
+              [
+                article.title,
+                article.summary ?? "",
+                article.rssSnippet ?? "",
+                article.atomicFacts.join("\n"),
+                transientBodies.get(article._id) ?? "",
+              ].join("\n "),
+            )
+            .digest("hex"),
+          fetchedAt: bodyFetchedAt,
+          permissionState:
+            permissionStates.get(normalizeDomain(article.canonicalUrl)) ??
+            "unknown",
+        }),
+      );
 
       const result = await ctx.runMutation(
         internal.summarization.applyEventSummaryResult,
@@ -938,12 +1515,16 @@ export const processSummaryJob = internalAction({
           jobId: job._id,
           eventId: input.event._id,
           runId,
-          neutral: summary.neutral,
-          reformist: summary.reformist,
-          suveranist: summary.suveranist,
-          globalImpact: summary.globalImpact,
+          neutral: finalFields.neutral,
+          reformist: finalFields.reformist,
+          suveranist: finalFields.suveranist,
+          globalImpact: finalFields.globalImpact,
           perspectiveApplicable: summary.perspectiveApplicable,
           summarySignature,
+          modelUsed,
+          overlapCheck,
+          grounding: groundingRecord,
+          auditSources,
         },
       );
 

@@ -230,8 +230,14 @@ const ro = {
   "profile.changePassword": "Schimbă parola",
   "profile.passwordBody":
     "Primești prin e-mail un link sigur pentru resetarea parolei.",
-  "profile.deleteAccount": "Solicită ștergerea contului",
   "profile.requestDeletion": "Solicită ștergerea contului",
+  "profile.downloadData": "Descarcă datele mele (JSON)",
+  "profile.downloadDataFailed": "Exportul a eșuat. Încearcă din nou.",
+  "profile.deleteAccount": "Șterge contul definitiv",
+  "profile.deleteConfirm":
+    "Apasă din nou pentru confirmare — ștergerea este permanentă și include toate datele tale.",
+  "profile.deleteFailed": "Ștergerea a eșuat. Încearcă din nou.",
+  "profile.deleteDone": "Contul și datele au fost șterse.",
   "profile.emailLabel": "E-mail",
   "profile.security": "Siguranța contului",
   "profile.securityBody":
@@ -281,6 +287,8 @@ const ro = {
   "footer.howItWorks": "Cum funcționează",
   "footer.sources": "Sursele noastre",
   "footer.sourcesIndex": "Lista surselor",
+  "footer.publishers": "Pentru publicații",
+  "footer.bot": "BiviantBot (crawler)",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
@@ -395,6 +403,27 @@ const ro = {
   "event.right": "Suveranistă",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
+  "event.aiDisclosure.one":
+    "Rezumat generat de AI din 1 sursă. Neverificat independent de un editor uman.",
+  "event.aiDisclosure":
+    "Rezumat generat de AI din {count} surse. Neverificat independent de un editor uman.",
+  "event.aiDisclosure.report": "Raportează o eroare",
+  "event.aiDisclosure.learnMore": "Cum generăm rezumatele",
+  "report.title": "Raportează o eroare",
+  "report.intro":
+    "Ai găsit o greșeală în acest rezumat generat de AI? Spune-ne și o corectăm sau retragem conținutul.",
+  "report.category": "Categoria",
+  "report.category.factual_error": "Eroare factuală",
+  "report.category.defamation": "Posibilă defăimare",
+  "report.category.copyright_takedown": "Drepturi de autor / eliminare",
+  "report.category.illegal_content": "Conținut ilegal",
+  "report.message": "Ce este greșit?",
+  "report.claim": "Afirmația vizată (opțional)",
+  "report.contact": "Contact pentru răspuns (opțional)",
+  "report.submit": "Trimite raportul",
+  "report.sent":
+    "Mulțumim. Raportul a fost înregistrat și va fi analizat; dacă ai lăsat un contact, primești decizia motivată.",
+  "report.error": "Trimiterea a eșuat. Încearcă din nou.",
   "event.sourceCount.one": "1 sursă",
   "event.sourceCount.few": "{count} surse",
   "event.sourceCount.many": "{count} surse",
@@ -969,8 +998,14 @@ const en: { [K in keyof BaseStrings]: string } = {
   "profile.changePassword": "Change password",
   "profile.passwordBody":
     "You’ll receive a secure password-reset link by email.",
-  "profile.deleteAccount": "Request account deletion",
   "profile.requestDeletion": "Request deletion",
+  "profile.downloadData": "Download my data (JSON)",
+  "profile.downloadDataFailed": "Export failed. Please try again.",
+  "profile.deleteAccount": "Delete my account permanently",
+  "profile.deleteConfirm":
+    "Click again to confirm — deletion is permanent and includes all your data.",
+  "profile.deleteFailed": "Deletion failed. Please try again.",
+  "profile.deleteDone": "Your account and data have been deleted.",
   "profile.emailLabel": "Email",
   "profile.security": "Account security",
   "profile.securityBody":
@@ -1020,6 +1055,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.howItWorks": "How it works",
   "footer.sources": "Our sources",
   "footer.sourcesIndex": "Sources directory",
+  "footer.publishers": "For publishers",
+  "footer.bot": "BiviantBot (crawler)",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
@@ -1132,6 +1169,27 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.right": "Sovereigntist",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
+  "event.aiDisclosure.one":
+    "AI-generated summary from 1 source. Not independently human-reviewed.",
+  "event.aiDisclosure":
+    "AI-generated summary from {count} sources. Not independently human-reviewed.",
+  "event.aiDisclosure.report": "Report an error",
+  "event.aiDisclosure.learnMore": "How we generate summaries",
+  "report.title": "Report an error",
+  "report.intro":
+    "Found a mistake in this AI-generated summary? Tell us and we will correct it or take the content down.",
+  "report.category": "Category",
+  "report.category.factual_error": "Factual error",
+  "report.category.defamation": "Possible defamation",
+  "report.category.copyright_takedown": "Copyright / takedown",
+  "report.category.illegal_content": "Illegal content",
+  "report.message": "What is wrong?",
+  "report.claim": "The claim in question (optional)",
+  "report.contact": "Contact for a reply (optional)",
+  "report.submit": "Send report",
+  "report.sent":
+    "Thank you. Your report has been logged and will be reviewed; if you left contact details you will receive the reasoned decision.",
+  "report.error": "Submission failed. Please try again.",
   "event.sourceCount.one": "1 source",
   "event.sourceCount.few": "{count} sources",
   "event.sourceCount.many": "{count} sources",

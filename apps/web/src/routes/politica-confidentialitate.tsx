@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { RETENTION_POLICY } from "@news-app/backend/convex/lib/retentionPolicy";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
 import { staticPageHead } from "@/lib/seo";
@@ -19,18 +20,16 @@ export function PoliticaConfidentialitatePage() {
       title="Politica de confidențialitate"
       intro={`Pe scurt: poți citi ${BRAND_NAME} fără cont; un cont adaugă funcții personale, iar datele tale rămân ale tale — le poți șterge oricând, complet.`}
     >
-      {/* <StaticSection heading="Cine este operatorul">
+      <StaticSection heading="Cum ne contactezi pentru datele tale">
         <p>
-          Operatorul datelor este {"{{TODO: entitate juridică}}"}, cu sediul
-          la {"{{TODO: adresă sediu}}"}. Pentru orice cerere legată de datele
-          tale ne poți scrie la {"{{TODO: adresă de e-mail de contact}}"} sau
-          prin pagina de{" "}
+          Pentru orice cerere legată de datele tale ne poți scrie la{" "}
+          {"{{TODO: adresă de e-mail de contact}}"} sau prin pagina de{" "}
           <Link to="/contact" className="underline hover:text-foreground">
             Contact
           </Link>
           .
         </p>
-      </StaticSection> */}
+      </StaticSection>
 
       <StaticSection heading="Ce date colectăm">
         <ul className="list-disc space-y-2 pl-5">
@@ -60,10 +59,18 @@ export function PoliticaConfidentialitatePage() {
 
       <StaticSection heading="Cookie-uri și tehnologii similare">
         <p>
-          Folosim cookie-uri strict necesare pentru sesiunea de autentificare și
-          pentru preferințe (de exemplu limba aleasă), plus identificatori de
-          analiză pseudonimizați pentru statistici de utilizare. Nu folosim
-          cookie-uri de publicitate ale terților.
+          La o simplă vizită nu setăm niciun cookie și nicio intrare de
+          stocare locală în afara poziției de derulare (sessionStorage,
+          funcțională, fără identificatori). Analiza de utilizare (PostHog,
+          instanța din UE) rulează complet fără cookie-uri și fără stocare
+          locală — de aceea nu ai nevoie de un banner de consimțământ.
+        </p>
+        <p>
+          Doar după acțiuni explicite apar: cookie-urile de sesiune la
+          autentificare (strict necesare), preferința de limbă, preferința de
+          temă și lista căutărilor recente. Inventarul complet este documentat
+          în depozitul proiectului (docs/compliance-storage-inventory.md). Nu
+          folosim cookie-uri de publicitate ale terților.
         </p>
       </StaticSection>
 
@@ -80,14 +87,39 @@ export function PoliticaConfidentialitatePage() {
 
       <StaticSection heading="Cât timp păstrăm datele">
         <p>
-          Datele contului și activitatea de citire se păstrează cât timp există
-          contul. Conturile create cu e-mail și neverificate se șterg automat
-          după 7 zile. Ștergerea contului o poți solicita din pagina de profil
-          sau printr-o cerere scrisă; la ștergere se elimină datele asociate —
-          profilul, salvările, istoricul de lectură și statisticile — și se
-          declanșează cererea de ștergere a identității tale de analiză din
-          PostHog.
+          Datele contului se păstrează cât timp există contul; ștergerea o
+          faci direct din pagina de profil (imediată și completă, inclusiv
+          cererea de ștergere a identității tale de analiză din PostHog) sau
+          printr-o cerere scrisă. Perioadele de mai jos sunt aplicate automat
+          de joburi zilnice de minimizare și provin din aceeași configurație
+          pe care o rulează serverul:
         </p>
+        <ul className="list-disc space-y-2 pl-5">
+          <li>
+            Conturi create cu e-mail și neverificate:{" "}
+            <strong>{RETENTION_POLICY.unverifiedAccountDays} zile</strong>.
+          </li>
+          <li>
+            Înscrieri în lista de așteptare fără nicio activitate:{" "}
+            <strong>{RETENTION_POLICY.waitlistUnengagedDays} de zile</strong>.
+          </li>
+          <li>
+            Istoricul de lectură:{" "}
+            <strong>
+              {Math.round(RETENTION_POLICY.readingHistoryDays / 30.44)} luni
+            </strong>
+            .
+          </li>
+          <li>
+            Analize personalizate („Ce înseamnă pentru tine”):{" "}
+            <strong>{RETENTION_POLICY.userInsightsDays} de zile</strong>.
+          </li>
+          <li>
+            Textul integral al articolelor presei:{" "}
+            <strong>nu este stocat niciodată</strong> — este folosit doar
+            trecător la generarea rezumatelor.
+          </li>
+        </ul>
       </StaticSection>
 
       <StaticSection heading="Drepturile tale">

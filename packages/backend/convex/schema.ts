@@ -76,6 +76,63 @@ export default defineSchema({
     .index("by_rolling_bias_updated_at", ["rollingBiasUpdatedAt"]),
 
   // =========================================================================
+  // 2a. DOMAIN PERMISSIONS (L5 — TDM opt-out resolver cache, 24h TTL)
+  // =========================================================================
+  // full = extraction + full-text summarization input; rss_only = headline +
+  // link + snippet from RSS metadata only; blocked = publisher opt-out (L6).
+  // Any machine-readable opt-out signal caps a domain at rss_only. Both the
+  // fetcher and the summarizer gate on this state.
+  domainPermissions: defineTable({
+    domain: v.string(),
+    state: v.union(
+      v.literal("full"),
+      v.literal("rss_only"),
+      v.literal("blocked"),
+    ),
+    signals: v.array(v.string()),
+    // blocked set manually via the publisher opt-out flow is never loosened
+    // by the automatic resolver.
+    manualOverride: v.optional(v.boolean()),
+    // L9 per-domain kill switch: og:image thumbnails never displayed for
+    // this domain even while its state is `full`.
+    imagesDisabled: v.optional(v.boolean()),
+    crawlDelaySeconds: v.optional(v.number()),
+    resolvedAt: v.number(),
+    expiresAt: v.number(),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_domain", ["domain"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  // =========================================================================
+  // 2b. PUBLISHER REQUESTS (L6 — opt-out/takedown form, full lifecycle log)
+  // =========================================================================
+  publisherRequests: defineTable({
+    domain: v.string(),
+    contact: v.string(),
+    requestType: v.union(
+      v.literal("opt_out"),
+      v.literal("takedown"),
+      v.literal("other"),
+    ),
+    message: v.optional(v.string()),
+    status: v.union(
+      v.literal("received"),
+      v.literal("approved"),
+      v.literal("denied"),
+      v.literal("executed"),
+    ),
+    receivedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    decisionNote: v.optional(v.string()),
+    executedAt: v.optional(v.number()),
+  })
+    .index("by_status_receivedAt", ["status", "receivedAt"])
+    .index("by_domain", ["domain"]),
+
+  // =========================================================================
   // 3. EVENTS (The Clusters/Stories)
   // =========================================================================
   events: defineTable({
@@ -99,6 +156,10 @@ export default defineSchema({
     globalImpact: v.optional(v.string()), // The "Consensus So What?" for guest users
 
     status: v.union(v.literal("processing"), v.literal("published")),
+    // L8 — one-click unpublish: set → the event disappears from every public
+    // surface (getEventBySlug returns null, preview deleted) without touching
+    // `status`, so the pipeline never re-publishes it behind our back.
+    unpublishedAt: v.optional(v.number()),
     firstPublishedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
     lastArticleAt: v.optional(v.number()),
@@ -112,6 +173,20 @@ export default defineSchema({
     lastSummaryPromptVersion: v.optional(v.number()),
     lastClaimAnalysisAt: v.optional(v.number()), // Set after claim divergence analysis
     lastClaimAnalysisSignature: v.optional(v.string()),
+
+    // L3 — verbatim-overlap gate: set on every summary write; publication
+    // requires a recorded passing check (see applyEventSummaryResult).
+    lastOverlapCheckAt: v.optional(v.number()),
+    lastOverlapCheckPassed: v.optional(v.boolean()),
+
+    // L1 — AI Act art. 50(4) disclosure. Written by applyEventSummaryResult
+    // whenever a summary lands; a summary can never publish with aiGenerated
+    // unset (see summarizationPublishGate tests). Optional only for rows that
+    // predate the backfill (migrations.backfillAiDisclosureFields).
+    aiGenerated: v.optional(v.boolean()),
+    humanReviewed: v.optional(v.boolean()),
+    modelUsed: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
     lastFactualUpdateAt: v.optional(v.number()),
@@ -249,6 +324,10 @@ export default defineSchema({
     topicIds: v.array(v.id("topics")),
     factualArticleCount: v.optional(v.number()),
     factualSourceCount: v.optional(v.number()),
+    // L1 — machine-readable AI disclosure mirrored from the event so every
+    // public API payload can carry it.
+    aiGenerated: v.optional(v.boolean()),
+    humanReviewed: v.optional(v.boolean()),
     trendingScore: v.number(),
     createdAt: v.optional(v.number()),
     sourceBiasCounts: v.object({
@@ -357,12 +436,143 @@ export default defineSchema({
     articleCount: v.optional(v.number()),
     sourceCount: v.optional(v.number()),
     summarySignature: v.optional(v.string()),
+    // L3 — serialized OverlapCheckResult (pass/fail + matched spans) for the
+    // last generation attempt of this job; "blocked_verbatim" jobs keep the
+    // failing spans here for the audit trail (L7).
+    overlapCheckJson: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
     .index("by_event_updatedAt", ["eventId", "updatedAt"])
     .index("by_event_status", ["eventId", "status"])
     .index("by_status_next_attempt", ["status", "nextAttemptAt"])
     .index("by_status_updatedAt", ["status", "updatedAt"]),
+
+  // =========================================================================
+  // 3d.2. SUMMARY GROUNDING (L4 — per-sentence support records)
+  // =========================================================================
+  // One row per event (latest check wins): every sentence of the published
+  // summary with its supported verdict and supporting article IDs. Feeds the
+  // per-sentence attribution UI and the L7 audit trail.
+  summaryGrounding: defineTable({
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    model: v.string(),
+    results: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        supported: v.boolean(),
+        supportingArticleIds: v.array(v.id("articles")),
+      }),
+    ),
+    strippedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+      }),
+    ),
+    passed: v.boolean(),
+    generatedAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
+  // =========================================================================
+  // 3d.3. SUMMARY REVIEW QUEUE (L4 — NER risk gate holds)
+  // =========================================================================
+  // Summaries pairing a named person/organization with an accusation term
+  // are parked here and never auto-published. Admin approves (optionally
+  // edited → humanReviewed=true), or rejects.
+  summaryReviewQueue: defineTable({
+    eventId: v.id("events"),
+    jobId: v.id("eventSummaryJobs"),
+    runId: v.string(),
+    proposed: v.object({
+      neutral: v.string(),
+      reformist: v.string(),
+      suveranist: v.string(),
+      globalImpact: v.string(),
+      perspectiveApplicable: v.boolean(),
+      modelUsed: v.string(),
+      summarySignature: v.optional(v.string()),
+    }),
+    flaggedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        entity: v.string(),
+        term: v.string(),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    decisionNote: v.optional(v.string()),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_event", ["eventId"]),
+
+  // =========================================================================
+  // 3d.4. GENERATION AUDIT (L7 — append-only, one record per pipeline action)
+  // =========================================================================
+  // Proves diligence per published summary: sources (IDs + content hashes +
+  // fetch timestamps + permission state at fetch), check results, review
+  // outcome, publication timestamps. NO update/delete mutation exists for
+  // this table — corrections append a new version referencing the old via
+  // supersedesAuditId. All writes go through generationAudit.append.
+  generationAudit: defineTable({
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    runId: v.optional(v.string()),
+    // Monotonically increasing per event.
+    version: v.number(),
+    supersedesAuditId: v.optional(v.id("generationAudit")),
+    action: v.union(
+      v.literal("published"),
+      v.literal("blocked_verbatim"),
+      v.literal("blocked_ungrounded"),
+      v.literal("held_for_review"),
+      v.literal("review_approved"),
+      v.literal("review_rejected"),
+      v.literal("corrected"),
+      v.literal("unpublished"),
+    ),
+    model: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
+    summary: v.optional(
+      v.object({
+        neutral: v.string(),
+        reformist: v.string(),
+        suveranist: v.string(),
+        globalImpact: v.string(),
+        perspectiveApplicable: v.boolean(),
+      }),
+    ),
+    sourceArticles: v.array(
+      v.object({
+        articleId: v.id("articles"),
+        canonicalUrl: v.string(),
+        contentHash: v.optional(v.string()),
+        fetchedAt: v.optional(v.number()),
+        permissionState: v.optional(v.string()),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+    reviewOutcome: v.optional(v.string()),
+    disclosureLabelVersion: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    unpublishedAt: v.optional(v.number()),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_event_version", ["eventId", "version"])
+    .index("by_created_at", ["createdAt"]),
 
   // =========================================================================
   // 3e. EVENT CLAIMS (Agreement/divergence graph for clustered coverage)
@@ -793,6 +1003,36 @@ export default defineSchema({
     .index("by_token", ["token"]),
 
   // =========================================================================
+  // 7d. CONTENT REPORTS (L8 — notice-and-action, DSA baseline)
+  // =========================================================================
+  contentReports: defineTable({
+    eventId: v.id("events"),
+    category: v.union(
+      v.literal("factual_error"),
+      v.literal("defamation"),
+      v.literal("copyright_takedown"),
+      v.literal("illegal_content"),
+    ),
+    message: v.string(),
+    claim: v.optional(v.string()),
+    reporterContact: v.optional(v.string()),
+    status: v.union(
+      v.literal("received"),
+      v.literal("dismissed"),
+      v.literal("corrected"),
+      v.literal("unpublished"),
+    ),
+    // DSA statement of reasons for whatever action was taken.
+    statementOfReasons: v.optional(v.string()),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+    reporterNotifiedAt: v.optional(v.number()),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_event", ["eventId"]),
+
+  // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
   // =========================================================================
   waitlist: defineTable({
@@ -821,8 +1061,18 @@ export default defineSchema({
 
     // Invite management
     inviteCode: v.optional(v.string()), // Unique token for signup link
+
+    // L12 — provable consent (CJEU C-654/23): exact statement version+hash,
+    // when, from where, and the one-click unsubscribe token (no login).
+    consentAt: v.optional(v.number()),
+    consentIp: v.optional(v.string()),
+    consentTextVersion: v.optional(v.string()),
+    consentTextHash: v.optional(v.string()),
+    consentSourcePage: v.optional(v.string()),
+    unsubscribeToken: v.optional(v.string()),
   })
     .index("by_email", ["email"])
+    .index("by_unsubscribe_token", ["unsubscribeToken"])
     .index("by_status", ["status", "createdAt"])
     .index("by_status_invitedAt", ["status", "invitedAt"])
     .index("by_invite_code", ["inviteCode"])
@@ -836,6 +1086,9 @@ export default defineSchema({
     feedUrl: v.string(),
     sourceId: v.id("sources"), // Every feed belongs to a source
     lastFeedFingerprint: v.optional(v.string()),
+    // L6 — conditional request state (If-None-Match / If-Modified-Since).
+    lastEtag: v.optional(v.string()),
+    lastModifiedHttp: v.optional(v.string()),
     lastIngestedAt: v.optional(v.number()),
     lastSuccessAt: v.optional(v.number()),
     consecutiveFailures: v.number(),

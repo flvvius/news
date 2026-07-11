@@ -10,6 +10,7 @@ import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { refreshEventClaimCoverage } from "./lib/eventClaimCoverage";
+import { truncateThirdPartySnippet } from "./lib/compliance";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { namedAxisBias } from "./lib/biasAxis";
 
@@ -747,7 +748,9 @@ export const markArticleEnriched = internalMutation({
             biasDetectionLastAttemptAt: biasAnalyzedAt ?? Date.now(),
           }
         : {}),
-      summary: summary ?? article.summary,
+      // L2 (Art. 94¹): the extracted summary is third-party text (meta
+      // description / body lead) destined for display — cap at write time.
+      summary: truncateThirdPartySnippet(summary) ?? article.summary,
       atomicFacts: atomicFacts ?? article.atomicFacts,
       ...(factExtractionStatus !== undefined
         ? {

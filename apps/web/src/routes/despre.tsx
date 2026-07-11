@@ -77,7 +77,6 @@ export function DesprePage() {
 
       <StaticSection heading="Cine suntem">
         <p>
-          {/* {BRAND_NAME} este operat de {"{{TODO: entitate juridică}}"}.  */}
           Ne poți scrie oricând prin pagina de{" "}
           <Link to="/contact" className="underline hover:text-foreground">
             Contact

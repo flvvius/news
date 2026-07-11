@@ -9,6 +9,10 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdminUser } from "./lib/betaAccess";
+import {
+  appendGenerationAudit,
+  AUDIT_SOURCE_VALIDATOR,
+} from "./generationAudit";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { selectSummaryArticles } from "./lib/summaryArticleSelection";
@@ -155,6 +159,17 @@ async function getEventEligibility(
   minArticles: number,
   minSources: number,
 ): Promise<SummaryEligibility> {
+  // L8: unpublished events stay out of the pipeline entirely — regeneration
+  // must not resurrect content that was pulled from public view.
+  if (event.unpublishedAt) {
+    return {
+      eligible: false,
+      articleCount: 0,
+      sourceCount: 0,
+      reason: "event_unpublished",
+    };
+  }
+
   if (!shouldResummarize(event)) {
     return {
       eligible: false,
@@ -295,6 +310,18 @@ async function enqueueEligibleEvents(
       minSources,
     );
     if (!eligibility.eligible) {
+      skipped++;
+      continue;
+    }
+
+    // L4: an event whose summary is parked in the review queue must not be
+    // re-enqueued — regeneration would flag again and spam the queue.
+    const pendingReview = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_event", (q) => q.eq("eventId", event._id))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .first();
+    if (pendingReview) {
       skipped++;
       continue;
     }
@@ -724,6 +751,131 @@ export const getEventSummaryInput = internalQuery({
   },
 });
 
+// L4 — per-sentence grounding results attached to a summary write.
+const groundingResultValidator = v.object({
+  model: v.string(),
+  passed: v.boolean(),
+  results: v.array(
+    v.object({
+      field: v.string(),
+      sentence: v.string(),
+      supported: v.boolean(),
+      supportingArticleIds: v.array(v.id("articles")),
+    }),
+  ),
+  strippedSentences: v.array(
+    v.object({
+      field: v.string(),
+      sentence: v.string(),
+    }),
+  ),
+});
+
+async function upsertSummaryGrounding(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+  jobId: Id<"eventSummaryJobs"> | undefined,
+  grounding: {
+    model: string;
+    passed: boolean;
+    results: Array<{
+      field: string;
+      sentence: string;
+      supported: boolean;
+      supportingArticleIds: Id<"articles">[];
+    }>;
+    strippedSentences: Array<{ field: string; sentence: string }>;
+  },
+) {
+  const existing = await ctx.db
+    .query("summaryGrounding")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .unique();
+  const row = {
+    eventId,
+    jobId,
+    model: grounding.model,
+    results: grounding.results,
+    strippedSentences: grounding.strippedSentences,
+    passed: grounding.passed,
+    generatedAt: Date.now(),
+  };
+  if (existing) {
+    await ctx.db.replace(existing._id, row);
+  } else {
+    await ctx.db.insert("summaryGrounding", row);
+  }
+}
+
+/** L4 — record a grounding check that did NOT lead to publication. */
+export const recordSummaryGrounding = internalMutation({
+  args: {
+    eventId: v.id("events"),
+    jobId: v.optional(v.id("eventSummaryJobs")),
+    grounding: groundingResultValidator,
+  },
+  handler: async (ctx, { eventId, jobId, grounding }) => {
+    await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
+    // L7: a failed grounding check that blocks publication is audited here
+    // (the passing case is audited by applyEventSummaryResult).
+    if (!grounding.passed) {
+      await appendGenerationAudit(ctx, {
+        eventId,
+        jobId,
+        action: "blocked_ungrounded",
+        model: grounding.model,
+        promptVersion: String(SUMMARY_PROMPT_VERSION),
+        groundingJson: JSON.stringify(grounding),
+      });
+    }
+    return { recorded: true as const };
+  },
+});
+
+/** L4 — per-sentence attribution for the event page (public). */
+export const getSummaryGrounding = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const row = await ctx.db
+      .query("summaryGrounding")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (!row || !row.passed) return null;
+
+    const articleIds = Array.from(
+      new Set(row.results.flatMap((entry) => entry.supportingArticleIds)),
+    );
+    const articleRows = await Promise.all(
+      articleIds.map(async (articleId) => {
+        const article = await ctx.db.get(articleId);
+        if (!article) return null;
+        const source = await ctx.db.get(article.sourceId);
+        return [String(articleId), source?.name ?? null] as const;
+      }),
+    );
+    const sourceNameByArticle = new Map(
+      articleRows.filter(
+        (entry): entry is readonly [string, string | null] => entry !== null,
+      ),
+    );
+
+    return {
+      generatedAt: row.generatedAt,
+      results: row.results.map((entry) => ({
+        field: entry.field,
+        sentence: entry.sentence,
+        supportingSources: Array.from(
+          new Set(
+            entry.supportingArticleIds
+              .map((articleId) => sourceNameByArticle.get(String(articleId)))
+              .filter((name): name is string => Boolean(name)),
+          ),
+        ),
+      })),
+    };
+  },
+});
+
 export const applyEventSummaryResult = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
@@ -735,6 +887,31 @@ export const applyEventSummaryResult = internalMutation({
     globalImpact: v.string(),
     perspectiveApplicable: v.optional(v.boolean()),
     summarySignature: v.optional(v.string()),
+    // L1 disclosure: the model that actually produced this summary (primary
+    // or quota fallback). Optional for legacy callers; the stored row always
+    // gets aiGenerated/humanReviewed/promptVersion regardless.
+    modelUsed: v.optional(v.string()),
+    // L3 — result of the verbatim-overlap gate. A summary can only be
+    // applied/published with a recorded PASSING check.
+    overlapCheck: v.optional(
+      v.object({
+        passed: v.boolean(),
+        maxNgram: v.number(),
+        attempts: v.number(),
+        matchedSpans: v.array(
+          v.object({
+            field: v.string(),
+            text: v.string(),
+            length: v.number(),
+          }),
+        ),
+      }),
+    ),
+    // L4 — grounding verification results for the applied summary text.
+    grounding: v.optional(groundingResultValidator),
+    // L7 — source provenance for the audit record (hashes, fetch timestamps,
+    // permission state at fetch).
+    auditSources: v.optional(AUDIT_SOURCE_VALIDATOR),
   },
   handler: async (
     ctx,
@@ -748,6 +925,10 @@ export const applyEventSummaryResult = internalMutation({
       globalImpact,
       perspectiveApplicable,
       summarySignature,
+      modelUsed,
+      overlapCheck,
+      grounding,
+      auditSources,
     },
   ) => {
     const job = await ctx.db.get(jobId);
@@ -758,6 +939,19 @@ export const applyEventSummaryResult = internalMutation({
       job.processingRunId !== runId
     ) {
       return { applied: false as const };
+    }
+
+    // L3 invariant: no summary reaches the published state without a
+    // recorded PASSING overlap check. A failing check must go through
+    // markSummaryJobBlockedVerbatim instead.
+    if (overlapCheck && !overlapCheck.passed) {
+      return { applied: false as const, reason: "overlap_check_failed" };
+    }
+
+    // L4 invariant: a failing grounding check must never publish — the node
+    // action strips unsupported sentences or blocks before calling this.
+    if (grounding && !grounding.passed) {
+      return { applied: false as const, reason: "grounding_check_failed" };
     }
 
     const event = await ctx.db.get(eventId);
@@ -789,6 +983,16 @@ export const applyEventSummaryResult = internalMutation({
       lastSummarizedAt: Date.now(),
       lastSummarySignature: summarySignature ?? event.lastSummarySignature,
       lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      // L1 (AI Act art. 50(4)): every stored summary is marked AI-generated
+      // at write time — publication is impossible with these unset because
+      // this mutation is the sole path that writes summaries/publishes.
+      aiGenerated: true,
+      humanReviewed: false,
+      modelUsed: modelUsed ?? event.modelUsed ?? "unrecorded",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      // L3: record the overlap-check outcome on the event itself.
+      lastOverlapCheckAt: Date.now(),
+      lastOverlapCheckPassed: overlapCheck?.passed ?? undefined,
       // A successful summary is the sole gate to going public: promote a
       // qualifying `processing` event to `published` now that it has full AI
       // perspectives + globalImpact. syncPublicEventPreview below then creates
@@ -802,7 +1006,35 @@ export const applyEventSummaryResult = internalMutation({
       leaseExpiresAt: undefined,
       lastError: undefined,
       summarySignature,
+      overlapCheckJson: overlapCheck ? JSON.stringify(overlapCheck) : undefined,
       updatedAt: Date.now(),
+    });
+
+    // L4: persist the per-sentence support map for the published text.
+    if (grounding) {
+      await upsertSummaryGrounding(ctx, eventId, jobId, grounding);
+    }
+
+    // L7: append the immutable publication record in the same transaction.
+    await appendGenerationAudit(ctx, {
+      eventId,
+      jobId,
+      runId,
+      action: "published",
+      model: modelUsed ?? "unrecorded",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral: neutral.trim(),
+        reformist: applicable ? reformist.trim() : "",
+        suveranist: applicable ? suveranist.trim() : "",
+        globalImpact: globalImpact.trim(),
+        perspectiveApplicable: applicable,
+      },
+      sourceArticles: auditSources,
+      overlapCheckJson: overlapCheck ? JSON.stringify(overlapCheck) : undefined,
+      groundingJson: grounding ? JSON.stringify(grounding) : undefined,
+      disclosureLabelVersion: "v1",
+      publishedAt: Date.now(),
     });
 
     const updatedEvent = await ctx.db.get(eventId);
@@ -816,6 +1048,278 @@ export const applyEventSummaryResult = internalMutation({
     }
 
     return { applied: true as const };
+  },
+});
+
+/**
+ * L4 — NER risk gate hold: the generated summary pairs a named person or
+ * organization with an accusation term, so it is parked in the review queue
+ * and NEVER auto-published. The job ends as skipped/held_for_review; the
+ * event keeps its previous state until an admin decides.
+ */
+export const holdSummaryForReview = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    eventId: v.id("events"),
+    runId: v.string(),
+    proposed: v.object({
+      neutral: v.string(),
+      reformist: v.string(),
+      suveranist: v.string(),
+      globalImpact: v.string(),
+      perspectiveApplicable: v.boolean(),
+      modelUsed: v.string(),
+      summarySignature: v.optional(v.string()),
+    }),
+    flaggedSentences: v.array(
+      v.object({
+        field: v.string(),
+        sentence: v.string(),
+        entity: v.string(),
+        term: v.string(),
+      }),
+    ),
+    overlapCheckJson: v.optional(v.string()),
+    groundingJson: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (
+      !job ||
+      job.eventId !== args.eventId ||
+      job.status !== "processing" ||
+      job.processingRunId !== args.runId
+    ) {
+      return { held: false as const };
+    }
+
+    // One pending proposal per event: a fresh generation supersedes the old.
+    const existingPending = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .first();
+    const row = {
+      eventId: args.eventId,
+      jobId: args.jobId,
+      runId: args.runId,
+      proposed: args.proposed,
+      flaggedSentences: args.flaggedSentences,
+      overlapCheckJson: args.overlapCheckJson,
+      groundingJson: args.groundingJson,
+      status: "pending" as const,
+      createdAt: Date.now(),
+    };
+    if (existingPending) {
+      await ctx.db.replace(existingPending._id, row);
+    } else {
+      await ctx.db.insert("summaryReviewQueue", row);
+    }
+
+    await ctx.db.patch(args.jobId, {
+      status: "skipped",
+      processingRunId: undefined,
+      leaseExpiresAt: undefined,
+      lastError: "held_for_review",
+      overlapCheckJson: args.overlapCheckJson,
+      updatedAt: Date.now(),
+    });
+
+    // L7: audit the hold with the proposed (unpublished) text.
+    await appendGenerationAudit(ctx, {
+      eventId: args.eventId,
+      jobId: args.jobId,
+      runId: args.runId,
+      action: "held_for_review",
+      model: args.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral: args.proposed.neutral,
+        reformist: args.proposed.reformist,
+        suveranist: args.proposed.suveranist,
+        globalImpact: args.proposed.globalImpact,
+        perspectiveApplicable: args.proposed.perspectiveApplicable,
+      },
+      overlapCheckJson: args.overlapCheckJson,
+      groundingJson: args.groundingJson,
+      note: args.flaggedSentences
+        .map((flag) => `${flag.entity} + "${flag.term}"`)
+        .join("; "),
+    });
+
+    return { held: true as const };
+  },
+});
+
+export const listSummaryReviewQueueForAdmin = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminUser(ctx);
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const rows = await ctx.db
+      .query("summaryReviewQueue")
+      .withIndex("by_status_createdAt", (q) =>
+        q.eq("status", args.status ?? "pending"),
+      )
+      .order("desc")
+      .take(safeLimit);
+
+    return await Promise.all(
+      rows.map(async (row) => {
+        const event = await ctx.db.get(row.eventId);
+        return {
+          ...row,
+          eventTitle: event?.title ?? "(eveniment șters)",
+          eventSlug: event?.slug,
+          eventStatus: event?.status,
+        };
+      }),
+    );
+  },
+});
+
+/**
+ * L4 — admin decision on a held summary. Approve applies the (optionally
+ * edited) text to the event with humanReviewed=true and publishes it;
+ * reject discards the proposal and leaves the event untouched.
+ */
+export const decideSummaryReviewForAdmin = mutation({
+  args: {
+    reviewId: v.id("summaryReviewQueue"),
+    decision: v.union(v.literal("approve"), v.literal("reject")),
+    editedFields: v.optional(
+      v.object({
+        neutral: v.optional(v.string()),
+        reformist: v.optional(v.string()),
+        suveranist: v.optional(v.string()),
+        globalImpact: v.optional(v.string()),
+      }),
+    ),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, { reviewId, decision, editedFields, note }) => {
+    const admin = await requireAdminUser(ctx);
+    const review = await ctx.db.get(reviewId);
+    if (!review || review.status !== "pending") {
+      return { decided: false as const, reason: "not_pending" };
+    }
+
+    const decidedByEmail =
+      (admin as { email?: string } | null | undefined)?.email ?? undefined;
+
+    if (decision === "reject") {
+      await ctx.db.patch(reviewId, {
+        status: "rejected",
+        decidedAt: Date.now(),
+        decidedByEmail,
+        decisionNote: note,
+      });
+      await appendGenerationAudit(ctx, {
+        eventId: review.eventId,
+        jobId: review.jobId,
+        runId: review.runId,
+        action: "review_rejected",
+        reviewOutcome: `rejected by ${decidedByEmail ?? "admin"}`,
+        note,
+      });
+      return { decided: true as const, applied: false as const };
+    }
+
+    const event = await ctx.db.get(review.eventId);
+    if (!event) {
+      await ctx.db.patch(reviewId, {
+        status: "rejected",
+        decidedAt: Date.now(),
+        decidedByEmail,
+        decisionNote: "event_missing",
+      });
+      return { decided: true as const, applied: false as const };
+    }
+
+    const neutral = (editedFields?.neutral ?? review.proposed.neutral).trim();
+    const reformist = (
+      editedFields?.reformist ?? review.proposed.reformist
+    ).trim();
+    const suveranist = (
+      editedFields?.suveranist ?? review.proposed.suveranist
+    ).trim();
+    const globalImpact = (
+      editedFields?.globalImpact ?? review.proposed.globalImpact
+    ).trim();
+    const applicable = review.proposed.perspectiveApplicable;
+
+    await ctx.db.patch(review.eventId, {
+      perspectiveSummaries: applicable
+        ? { neutral, reformist, suveranist }
+        : { neutral },
+      perspectiveApplicable: applicable,
+      perspectiveSource: "ai",
+      globalImpact,
+      lastSummarizedAt: Date.now(),
+      lastSummarySignature:
+        review.proposed.summarySignature ?? event.lastSummarySignature,
+      lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      aiGenerated: true,
+      // The whole point of the queue: this text WAS human-reviewed.
+      humanReviewed: true,
+      modelUsed: review.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      lastOverlapCheckAt: Date.now(),
+      lastOverlapCheckPassed: true,
+      ...(event.status === "processing"
+        ? { status: "published" as const }
+        : {}),
+    });
+
+    await ctx.db.patch(reviewId, {
+      status: "approved",
+      decidedAt: Date.now(),
+      decidedByEmail,
+      decisionNote: note,
+    });
+
+    // L7: the approval (possibly edited = a correction of the proposal) is a
+    // new audit version superseding the held_for_review record.
+    await appendGenerationAudit(ctx, {
+      eventId: review.eventId,
+      jobId: review.jobId,
+      runId: review.runId,
+      action: "review_approved",
+      model: review.proposed.modelUsed,
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      summary: {
+        neutral,
+        reformist,
+        suveranist,
+        globalImpact,
+        perspectiveApplicable: applicable,
+      },
+      reviewOutcome: `approved by ${decidedByEmail ?? "admin"}${editedFields ? " (edited)" : ""}`,
+      disclosureLabelVersion: "v1",
+      publishedAt: Date.now(),
+      note,
+    });
+
+    await syncPublicEventPreview(ctx, review.eventId);
+    const updatedEvent = await ctx.db.get(review.eventId);
+    if (updatedEvent) {
+      const shareData = await buildShareRenderData(ctx, updatedEvent);
+      await ctx.runMutation(internal.shareAssets.ensureEventShareAssetQueued, {
+        eventId: review.eventId,
+        renderSignature: buildEventShareRenderSignature(shareData),
+      });
+    }
+
+    return { decided: true as const, applied: true as const };
   },
 });
 
@@ -846,6 +1350,51 @@ export const markSummaryJobFailed = internalMutation({
     });
 
     return { updated: true as const, attemptsExhausted };
+  },
+});
+
+/**
+ * L3 — terminal state for a summary that kept reproducing source phrasing
+ * after the paraphrase retries. The generated text is discarded (never
+ * stored), the job is marked blocked_verbatim with the failing spans, and
+ * the event is excluded from publication (a processing event stays
+ * unpublished; a published event keeps its previous, passing summary).
+ */
+export const markSummaryJobBlockedVerbatim = internalMutation({
+  args: {
+    jobId: v.id("eventSummaryJobs"),
+    runId: v.string(),
+    overlapCheckJson: v.string(),
+  },
+  handler: async (ctx, { jobId, runId, overlapCheckJson }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job || job.status !== "processing" || job.processingRunId !== runId) {
+      return { updated: false as const };
+    }
+
+    await ctx.db.patch(jobId, {
+      status: "failed",
+      processingRunId: undefined,
+      leaseExpiresAt: undefined,
+      // Terminal: no automatic retry — a regenerated summary from identical
+      // inputs would keep failing; new articles re-enqueue a fresh job.
+      nextAttemptAt: Number.MAX_SAFE_INTEGER,
+      lastError: "blocked_verbatim",
+      overlapCheckJson,
+      updatedAt: Date.now(),
+    });
+
+    // L7: audit the block in the same transaction.
+    await appendGenerationAudit(ctx, {
+      eventId: job.eventId,
+      jobId,
+      runId,
+      action: "blocked_verbatim",
+      promptVersion: String(SUMMARY_PROMPT_VERSION),
+      overlapCheckJson,
+    });
+
+    return { updated: true as const };
   },
 });
 

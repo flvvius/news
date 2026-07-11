@@ -112,8 +112,11 @@ function trimField(value: string | undefined, maxLength: number): string {
  * v5 = CASE D wired into the precomputed case lines + explicit step-0
  * decision order (v4 still fired 0/18 — the "tratează ca adevăr" case
  * lines left no D option at the point of writing).
+ * v6 = L3 paraphrase mandate: never copy ≥8 consecutive source words or
+ * sentence structure; quotes only inside quotation marks with attribution
+ * (enforced post-generation by the verbatim-overlap gate).
  */
-export const SUMMARY_PROMPT_VERSION = 5;
+export const SUMMARY_PROMPT_VERSION = 6;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
@@ -237,6 +240,12 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Când articolele intră în conflict, folosește cel mai recent publicatLa drept stare curentă doar dacă abordează direct conflictul.",
       "- Scrie proză neutră, ancorată în surse. Fără liste cu puncte. Fără limbaj de marketing. Fără editorializare.",
       "",
+      "PARAFRAZARE (regulă absolută — încălcarea blochează publicarea):",
+      "- Reformulează integral în propriile tale cuvinte. NU copia niciodată o secvență de 8 sau mai multe cuvinte consecutive din vreun articol furnizat.",
+      "- NU copia structura frazelor sursă: schimbă ordinea ideilor, topica și construcția propozițiilor, nu doar câteva cuvinte.",
+      "- Citatele directe sunt permise NUMAI între ghilimele („...”), cu numele sursei atașat, și au maxim 10 cuvinte. Orice text preluat literal fără ghilimele este interzis.",
+      "- Numele proprii, instituțiile, cifrele și datele se preiau exact — acestea nu sunt parafrazabile.",
+      "",
       "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
       '- Dacă subiectul este apolitic (meteo, sport, loterie, rezultate sportive, sondaje de divertisment, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică), setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
@@ -294,6 +303,63 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "Articole:",
       articleBlocks,
+    ].join("\n"),
+  };
+}
+
+export type GroundingPromptInput = {
+  sentences: Array<{ index: number; sentence: string }>;
+  articles: Array<{
+    index: number;
+    sourceName: string;
+    title: string;
+    excerpt: string;
+  }>;
+};
+
+/**
+ * L4 — decisive entailment pass of the grounding check. One call verifies
+ * every summary sentence against the event's source excerpts and names the
+ * supporting article indexes. A sentence unsupported by every source must
+ * come back supported=false — publication strips or blocks it.
+ */
+export function buildGroundingVerificationPrompt(input: GroundingPromptInput): {
+  system: string;
+  user: string;
+} {
+  const articleBlocks = input.articles
+    .map((article) =>
+      [
+        `[Articolul ${article.index}]`,
+        `sursa: ${article.sourceName}`,
+        `titlu: ${trimField(article.title, 220)}`,
+        `extras: ${trimField(article.excerpt, 1600)}`,
+      ].join("\n"),
+    )
+    .join("\n\n");
+  const sentenceBlocks = input.sentences
+    .map(({ index, sentence }) => `${index}. ${trimField(sentence, 400)}`)
+    .join("\n");
+
+  return {
+    system: [
+      "Ești un verificator strict de fapte pentru un agregator de știri românesc.",
+      "Primești propoziții dintr-un rezumat generat automat și extrase din articolele de presă pe care rezumatul PRETINDE că se bazează.",
+      "Pentru FIECARE propoziție decide: este afirmația susținută explicit de cel puțin unul dintre extrasele furnizate?",
+      "",
+      "REGULI:",
+      '- "Susținută" înseamnă că un cititor găsește informația în extras — direct sau printr-o reformulare fidelă. Deducțiile, generalizările și detaliile care nu apar în niciun extras NU sunt susținute.',
+      "- Cifrele, datele, numele și atribuirile trebuie să corespundă extraselor. O cifră diferită sau un nume greșit = nesusținută.",
+      "- Formulările prudente de tip agregare (\"mai multe surse relatează...\") sunt susținute dacă esența apare în extrase.",
+      "- Nu folosi cunoștințe externe. Doar extrasele furnizate contează.",
+      "- Returnează DOAR JSON: {\"results\": [{\"index\": <număr propoziție>, \"supported\": <boolean>, \"articleIndexes\": [<indexurile articolelor care susțin>]}]} pentru TOATE propozițiile primite.",
+    ].join("\n"),
+    user: [
+      "Extrase din articole:",
+      articleBlocks,
+      "",
+      "Propoziții de verificat:",
+      sentenceBlocks,
     ].join("\n"),
   };
 }
@@ -402,7 +468,7 @@ export function buildArticleBiasScoringPrompt(
       'AXA DE CADRARE (bias.axis = "reformist_suveranist", bias.score de la -5 la +5):',
       "-5: Puternic reformist. Cadrează evenimentele prin lentila pro-europeană/reformistă ca voce proprie: statul de drept, anticorupția, integrarea europeană prezentate ca bine implicit; vocile suveraniste apar doar pentru a fi combătute.",
       "-2: Moderat reformist. Cadrare reformistă subtilă în alegerea cuvintelor; citează preponderent voci pro-europene și neutre.",
-      " 0: Stil agenție de presă. Modelul Agerpres de știre factuală: atribuire simetrică și limbaj descriptiv, fără vocabularul niciunei tabere adoptat ca voce proprie.",
+      " 0: Stil agenție de presă. Știre factuală în stil de agenție: atribuire simetrică și limbaj descriptiv, fără vocabularul niciunei tabere adoptat ca voce proprie.",
       '+2: Moderat suveranist. Cadrare suveranistă subtilă; preia necitat termeni precum "dictatul Bruxelles-ului" sau prezintă instituțiile anticorupție drept abuzive.',
       '+5: Puternic suveranist. Cadrează evenimentele prin lentila suveranistă ca voce proprie: "statul paralel", "interese străine", "globaliști", valorile naționale sub asediu; vocile pro-europene apar doar pentru a fi combătute.',
       "- Scorul măsoară cadrarea TEXTULUI, nu subiectul. Un articol despre un miting suveranist nu este suveranist din cauza subiectului; contează al cui vocabular îl adoptă articolul ca voce proprie.",

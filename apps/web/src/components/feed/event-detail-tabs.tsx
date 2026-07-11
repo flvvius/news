@@ -1,5 +1,6 @@
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AiDisclosureLabel } from "@/components/feed/ai-disclosure-label";
 import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import { SectionTitle } from "@/components/ui/section-title";
@@ -28,6 +29,60 @@ type PerspectiveSummaries = {
   suveranist?: string | null;
 };
 
+export type GroundingData = {
+  results: Array<{
+    field: string;
+    sentence: string;
+    supportingSources: string[];
+  }>;
+} | null;
+
+/**
+ * L4 — per-sentence source attribution. When the stored grounding record
+ * matches the displayed text, each sentence carries its supporting outlets
+ * as a hover tooltip; otherwise the plain text renders unchanged.
+ */
+function GroundedText({
+  text,
+  field,
+  grounding,
+  className,
+}: {
+  text: string;
+  field: string;
+  grounding: GroundingData | undefined;
+  className: string;
+}) {
+  const sentences =
+    grounding?.results.filter((entry) => entry.field === field) ?? [];
+  const reconstructed = sentences.map((entry) => entry.sentence).join(" ");
+  if (sentences.length === 0 || reconstructed !== text) {
+    return <p className={className}>{text}</p>;
+  }
+  return (
+    <p className={className}>
+      {sentences.map((entry, index) => (
+        <span
+          key={index}
+          title={
+            entry.supportingSources.length > 0
+              ? `Susținut de: ${entry.supportingSources.join(", ")}`
+              : undefined
+          }
+          className={
+            entry.supportingSources.length > 0
+              ? "decoration-muted-foreground/40 underline-offset-4 hover:underline"
+              : undefined
+          }
+        >
+          {entry.sentence}
+          {index < sentences.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /**
  * The event-detail content region: perspective summaries, global impact and
  * source coverage — plus, only while the claimAnalysis feature flag is on
@@ -41,6 +96,8 @@ export function EventDetailTabs({
   perspectiveApplicable,
   globalImpact,
   articles,
+  sourceCount,
+  grounding,
 }: {
   eventId: Id<"events">;
   perspectiveSummaries?: PerspectiveSummaries | null;
@@ -50,8 +107,24 @@ export function EventDetailTabs({
   perspectiveApplicable?: boolean | null;
   globalImpact?: string | null;
   articles: EventDetailArticle[];
+  // For the AI-disclosure label ("from N sources"); falls back to the
+  // distinct sources present in `articles`.
+  sourceCount?: number;
+  // L4: per-sentence attribution mapping (null/undefined = render plain).
+  grounding?: GroundingData;
 }) {
   const t = useT();
+  const disclosureSourceCount =
+    sourceCount ??
+    new Set(
+      articles.map((article) => article.source?._id).filter(Boolean),
+    ).size;
+  const hasAiSummary = Boolean(
+    perspectiveSummaries?.neutral ||
+      perspectiveSummaries?.reformist ||
+      perspectiveSummaries?.suveranist ||
+      globalImpact,
+  );
   const hasPerspectives =
     perspectiveApplicable !== false &&
     Boolean(
@@ -107,22 +180,45 @@ export function EventDetailTabs({
                 tab behavior is unchanged. */}
             {perspectiveSummaries?.reformist && (
               <TabsContent value="left" forceMount>
-                <p className={bodyText}>{perspectiveSummaries.reformist}</p>
+                <GroundedText
+                  text={perspectiveSummaries.reformist}
+                  field="reformist"
+                  grounding={grounding}
+                  className={bodyText}
+                />
               </TabsContent>
             )}
 
             <TabsContent value="center" forceMount>
-              <p className={bodyText}>
-                {perspectiveSummaries?.neutral ?? t("event.summaryPending")}
-              </p>
+              {perspectiveSummaries?.neutral ? (
+                <GroundedText
+                  text={perspectiveSummaries.neutral}
+                  field="neutral"
+                  grounding={grounding}
+                  className={bodyText}
+                />
+              ) : (
+                <p className={bodyText}>{t("event.summaryPending")}</p>
+              )}
             </TabsContent>
 
             {perspectiveSummaries?.suveranist && (
               <TabsContent value="right" forceMount>
-                <p className={bodyText}>{perspectiveSummaries.suveranist}</p>
+                <GroundedText
+                  text={perspectiveSummaries.suveranist}
+                  field="suveranist"
+                  grounding={grounding}
+                  className={bodyText}
+                />
               </TabsContent>
             )}
           </Tabs>
+          {/* L1 (AI Act art. 50(4)): sits under the tab container so it is
+              adjacent to whichever perspective tab is active, and is part of
+              the server-rendered HTML. */}
+          {hasAiSummary && (
+            <AiDisclosureLabel sourceCount={disclosureSourceCount} />
+          )}
         </section>
       ) : (
         <section className="space-y-4">
@@ -134,6 +230,9 @@ export function EventDetailTabs({
             <p className="text-sm text-muted-foreground">
               {t("event.noPoliticalAxis")}
             </p>
+          )}
+          {hasAiSummary && (
+            <AiDisclosureLabel sourceCount={disclosureSourceCount} />
           )}
         </section>
       )}

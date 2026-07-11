@@ -29,6 +29,8 @@ export type PublicPreviewRow = Pick<
   | "topicIds"
   | "factualArticleCount"
   | "factualSourceCount"
+  | "aiGenerated"
+  | "humanReviewed"
   | "trendingScore"
 >;
 
@@ -111,6 +113,9 @@ export function toFeedEvent(row: PublicPreviewRow) {
     sourceCount: row.sourceCount,
     sourceBiasCounts: row.sourceBiasCounts,
     sources: row.sources,
+    // L1: machine-readable AI-generation disclosure on every public payload.
+    aiGenerated: row.aiGenerated ?? true,
+    humanReviewed: row.humanReviewed ?? false,
   };
 }
 

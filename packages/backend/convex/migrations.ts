@@ -23,6 +23,7 @@ import {
   type AuthUserForProfile,
 } from "./lib/userProfile";
 import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
+import { truncateThirdPartySnippet } from "./lib/compliance";
 import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
@@ -363,132 +364,6 @@ export const backfillLogoUrls = mutation({
     }
 
     return { totalSources: sources.length, updated };
-  },
-});
-
-// Known image URLs that are actually HTML pages: Agerpres articles without a
-// photo emit og:image pointing at their photo-detail page, which the
-// extractor stored verbatim before image-byte verification existed
-// (fixed in lib/imageVerification.ts).
-const HTML_PAGE_IMAGE_URL_PATTERNS = ["foto.agerpres.ro/foto/detaliu/"];
-
-function isHtmlPageImageUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  return HTML_PAGE_IMAGE_URL_PATTERNS.some((pattern) => url.includes(pattern));
-}
-
-export const clearHtmlPageImageUrls = internalMutation({
-  args: {
-    cursor: v.optional(v.string()),
-    pageSize: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const safePageSize = Math.min(
-      Math.max(Math.floor(args.pageSize ?? 200), 1),
-      1000,
-    );
-    const page = await ctx.db.query("articles").paginate({
-      cursor: args.cursor ?? null,
-      numItems: safePageSize,
-    });
-
-    let clearedArticles = 0;
-    const affectedEventIds = new Set<Doc<"articles">["eventId"]>();
-
-    for (const article of page.page) {
-      if (!isHtmlPageImageUrl(article.imageUrl)) continue;
-      await ctx.db.patch(article._id, {
-        imageUrl: undefined,
-        imageWidth: undefined,
-        imageHeight: undefined,
-        imageAlt: undefined,
-        imageSource: undefined,
-      });
-      clearedArticles++;
-      if (article.eventId) affectedEventIds.add(article.eventId);
-    }
-
-    let clearedEvents = 0;
-    for (const eventId of affectedEventIds) {
-      if (!eventId) continue;
-      const event = await ctx.db.get(eventId);
-      if (!event) continue;
-      if (isHtmlPageImageUrl(event.imageUrl)) {
-        await ctx.db.patch(eventId, {
-          imageUrl: undefined,
-          imageWidth: undefined,
-          imageHeight: undefined,
-          imageAlt: undefined,
-        });
-        clearedEvents++;
-      }
-      // Re-pick presentation (including the image) from the remaining
-      // articles now that the broken candidate is gone.
-      await ctx.scheduler.runAfter(
-        0,
-        internal.clustering.refreshEventPresentationById,
-        { eventId },
-      );
-    }
-
-    return {
-      processed: page.page.length,
-      clearedArticles,
-      clearedEvents,
-      isDone: page.isDone,
-      continueCursor: page.continueCursor,
-    };
-  },
-});
-
-// Targeted variant of clearHtmlPageImageUrls for a single event, e.g. when a
-// user reports one broken event photo. Only touches rows whose imageUrl
-// matches a known HTML-page pattern, so it is safe to re-run.
-export const clearHtmlPageImageForEventSlug = internalMutation({
-  args: { slug: v.string() },
-  handler: async (ctx, args) => {
-    const event = await ctx.db
-      .query("events")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .unique();
-    if (!event) return { found: false };
-
-    const articles = await ctx.db
-      .query("articles")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .collect();
-
-    let clearedArticles = 0;
-    for (const article of articles) {
-      if (!isHtmlPageImageUrl(article.imageUrl)) continue;
-      await ctx.db.patch(article._id, {
-        imageUrl: undefined,
-        imageWidth: undefined,
-        imageHeight: undefined,
-        imageAlt: undefined,
-        imageSource: undefined,
-      });
-      clearedArticles++;
-    }
-
-    let clearedEvent = false;
-    if (isHtmlPageImageUrl(event.imageUrl)) {
-      await ctx.db.patch(event._id, {
-        imageUrl: undefined,
-        imageWidth: undefined,
-        imageHeight: undefined,
-        imageAlt: undefined,
-      });
-      clearedEvent = true;
-    }
-
-    await ctx.scheduler.runAfter(
-      0,
-      internal.clustering.refreshEventPresentationById,
-      { eventId: event._id },
-    );
-
-    return { found: true, clearedArticles, clearedEvent };
   },
 });
 
@@ -1140,6 +1015,135 @@ export const revertUnsummarizablePublishedEvents = internalMutation({
  * insensitive search index covers rows written before the field existed.
  * Run: npx convex run migrations:backfillPreviewSearchText
  */
+/**
+ * L2 (Art. 94¹) — truncate already-stored third-party display text to the
+ * 120-char "very short extract" ceiling: articles.rssSnippet and
+ * articles.summary. Heuristic event summaries are rewritten by the next
+ * clustering pass; AI summaries are our own text and unaffected.
+ */
+export const backfillSnippetCeiling = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      500,
+    );
+    const page = await ctx.db.query("articles").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+
+    for (const article of page.page) {
+      const nextSnippet = truncateThirdPartySnippet(article.rssSnippet);
+      const nextSummary = truncateThirdPartySnippet(article.summary);
+      const patch: Partial<Doc<"articles">> = {};
+      if (article.rssSnippet !== undefined && nextSnippet !== article.rssSnippet) {
+        patch.rssSnippet = nextSnippet;
+      }
+      if (article.summary !== undefined && nextSummary !== article.summary) {
+        patch.summary = nextSummary;
+      }
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(article._id, patch);
+        updated++;
+      }
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/**
+ * L1 (AI Act art. 50(4)) — stamp the AI-disclosure fields onto every event
+ * that already carries an AI summary, plus mirror aiGenerated/humanReviewed
+ * onto its public preview. The model that produced legacy summaries was not
+ * recorded, so those rows get "unrecorded".
+ */
+export const backfillAiDisclosureFields = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 200), 1),
+      500,
+    );
+    const page = await ctx.db.query("events").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+
+    for (const event of page.page) {
+      const hasSummary = Boolean(
+        normalizedPerspectives(event.perspectiveSummaries)?.neutral?.trim() ||
+          event.globalImpact?.trim() ||
+          event.lastSummarizedAt,
+      );
+      if (!hasSummary || event.aiGenerated !== undefined) continue;
+      await ctx.db.patch(event._id, {
+        aiGenerated: true,
+        humanReviewed: false,
+        modelUsed: event.modelUsed ?? "unrecorded",
+        promptVersion:
+          event.promptVersion ??
+          String(event.lastSummaryPromptVersion ?? "pre-l1"),
+      });
+      updated++;
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/** L1 companion: mirror aiGenerated/humanReviewed onto existing previews. */
+export const backfillPreviewAiDisclosure = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const safePageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 500), 1),
+      2000,
+    );
+    const page = await ctx.db.query("publicEventPreviews").paginate({
+      cursor: args.cursor ?? null,
+      numItems: safePageSize,
+    });
+    let updated = 0;
+    for (const preview of page.page) {
+      if (preview.aiGenerated !== undefined) continue;
+      await ctx.db.patch(preview._id, {
+        aiGenerated: true,
+        humanReviewed: false,
+      });
+      updated++;
+    }
+    return {
+      processed: page.page.length,
+      updated,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
 export const backfillPreviewSearchText = mutation({
   args: {
     cursor: v.optional(v.string()),

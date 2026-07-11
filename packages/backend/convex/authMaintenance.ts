@@ -12,6 +12,12 @@ type BetterAuthUser = {
   createdAt: number;
 };
 
+/**
+ * L10 — full GDPR cascade over every table holding a userId reference (the
+ * gdprCascade test cross-checks this list against `v.id("users")` usages in
+ * schema.ts, so adding a new user-linked table without covering it here
+ * fails the build). The waitlist row is keyed by email and removed too.
+ */
 export const deleteAppUserData = internalMutation({
   args: { authUserId: v.string() },
   handler: async (ctx, args) => {
@@ -23,40 +29,57 @@ export const deleteAppUserData = internalMutation({
     if (!localUser) {
       return;
     }
+    const userId = localUser._id;
 
-    const userStats = await ctx.db
-      .query("userStats")
-      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
-      .unique();
-    if (userStats) {
-      await ctx.db.delete(userStats._id);
-    }
+    const deleteByUserIndex = async (
+      table:
+        | "userStats"
+        | "userPrivateContext"
+        | "userInsights"
+        | "interactions"
+        | "guestMerges"
+        | "pushTokens"
+        | "briefingSends",
+    ) => {
+      const rows = await ctx.db
+        .query(table)
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+      }
+    };
 
-    const privateContext = await ctx.db
-      .query("userPrivateContext")
-      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
-      .unique();
-    if (privateContext) {
-      await ctx.db.delete(privateContext._id);
-    }
+    await deleteByUserIndex("userStats");
+    await deleteByUserIndex("userPrivateContext");
+    await deleteByUserIndex("userInsights");
+    await deleteByUserIndex("interactions");
+    await deleteByUserIndex("guestMerges");
+    await deleteByUserIndex("pushTokens");
+    await deleteByUserIndex("briefingSends");
 
-    const userInsights = await ctx.db
-      .query("userInsights")
-      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
+    // quizAttempts indexes start with (userId, quizId/dateKey) — the prefix
+    // matches on userId alone.
+    const quizAttempts = await ctx.db
+      .query("quizAttempts")
+      .withIndex("by_user_quiz", (q) => q.eq("userId", userId))
       .collect();
-    for (const insight of userInsights) {
-      await ctx.db.delete(insight._id);
+    for (const attempt of quizAttempts) {
+      await ctx.db.delete(attempt._id);
     }
 
-    const interactions = await ctx.db
-      .query("interactions")
-      .withIndex("by_user", (q) => q.eq("userId", localUser._id))
-      .collect();
-    for (const interaction of interactions) {
-      await ctx.db.delete(interaction._id);
+    // Waitlist entry (keyed by email, not userId).
+    const waitlistRow = await ctx.db
+      .query("waitlist")
+      .withIndex("by_email", (q) =>
+        q.eq("email", localUser.email.toLowerCase()),
+      )
+      .first();
+    if (waitlistRow) {
+      await ctx.db.delete(waitlistRow._id);
     }
 
-    await ctx.db.delete(localUser._id);
+    await ctx.db.delete(userId);
   },
 });
 

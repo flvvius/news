@@ -8,6 +8,7 @@ import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import BiasIndicator from "@/components/bias-indicator";
 import { SectionTitle } from "@/components/ui/section-title";
+import { Snippet } from "@/components/ui/snippet";
 import { getClientDeviceType } from "@/lib/interaction-tracking";
 import { useT } from "@/lib/i18n/LocaleContext";
 
@@ -145,11 +146,13 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
                   {article.title}
                 </h3>
 
-                {(article.summary || article.rssSnippet) && (
-                  <p className="max-w-full break-words text-sm text-muted-foreground">
-                    {article.summary ?? article.rssSnippet}
-                  </p>
-                )}
+                {/* L2: third-party text renders only through <Snippet>
+                    (hard 120-char ceiling); the canonical "read original"
+                    link below stays adjacent to it. */}
+                <Snippet
+                  text={article.summary ?? article.rssSnippet}
+                  className="max-w-full break-words text-sm text-muted-foreground"
+                />
               </div>
 
               <div>

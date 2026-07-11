@@ -1,0 +1,48 @@
+# L15 — CI gate. Runs typechecks + the full unit suites (which include the
+# compliance regression tests: snippet ceiling, verbatim/grounding gates,
+# TDM permissions, audit immutability, GDPR cascade, consent hygiene,
+# retention, image policy, no-ODR, cookieless analytics).
+#
+# Deploy blocking: mark this workflow as a required status check in branch
+# protection for `main`; Vercel promotes only after checks pass. The
+# Playwright e2e specs (consent-free storage, event-page AI label) run
+# against a live deployment and are executed separately (locally or against
+# a preview URL via PW_BASE_URL).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  compliance-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck backend
+        working-directory: packages/backend
+        run: pnpm exec tsc -p convex --noEmit
+
+      - name: Typecheck web
+        working-directory: apps/web
+        run: pnpm exec tsc -p . --noEmit
+
+      - name: Backend tests (includes compliance suite)
+        working-directory: packages/backend
+        run: pnpm exec vitest run
+
+      - name: Web tests (includes snippet/label/footer compliance)
+        working-directory: apps/web
+        run: pnpm exec vitest run

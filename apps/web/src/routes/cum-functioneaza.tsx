@@ -127,7 +127,7 @@ export function CumFunctioneazaPage({
         </p>
       </StaticSection>
 
-      <StaticSection heading="Cum sunt generate rezumatele?">
+      <StaticSection id="rezumate-ai" heading="Cum sunt generate rezumatele?">
         <p>
           Pentru fiecare eveniment, sistemul generează automat un rezumat
           neutru al nucleului factual și, unde acoperirea o permite, câte un
@@ -137,11 +137,30 @@ export function CumFunctioneazaPage({
           semnaleze dezacordurile în loc să aleagă în tăcere o variantă.
         </p>
         <p>
+          <strong>Ce anume este generat de AI:</strong> rezumatul neutru,
+          rezumatele celor două cadrări (reformistă și suveranistă) și
+          secțiunea „Ce înseamnă asta” de pe pagina fiecărui eveniment sunt
+          integral generate de inteligență artificială, fără verificare
+          editorială umană independentă înainte de publicare. Titlurile și
+          fragmentele articolelor listate sub rezumat aparțin publicațiilor
+          originale și nu sunt generate de AI.
+        </p>
+        <p>
+          <strong>Cum semnalăm asta:</strong> fiecare rezumat afișează o
+          etichetă vizibilă („Rezumat generat de AI…”), iar paginile de
+          eveniment includ o marcare și în format citibil de mașini
+          (metadate schema.org cu tipul de sursă digitală IPTC{" "}
+          <em>trainedAlgorithmicMedia</em>), conform obligațiilor de
+          transparență din Regulamentul european privind inteligența
+          artificială (art. 50).
+        </p>
+        <p>
           <strong>Limită importantă:</strong> rezumatele generate automat pot
           conține erori. De aceea articolele originale sunt legate direct de
-          fiecare eveniment — verificarea sursei rămâne la un clic distanță.
-          Evenimentele care nu au încă un rezumat generat sunt tratate drept
-          incomplete.
+          fiecare eveniment — verificarea sursei rămâne la un clic distanță,
+          iar orice eroare poate fi semnalată prin linkul „Raportează o
+          eroare” de lângă rezumat. Evenimentele care nu au încă un rezumat
+          generat sunt tratate drept incomplete.
         </p>
       </StaticSection>
 

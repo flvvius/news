@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { encodeRankedCursor, toFeedEvent } from "./feedSerialization";
+import { filterEventImage } from "./imagePolicy";
 import { normalizedPerspectives } from "./biasAxis";
 import { foldDiacriticsToAscii } from "./romanian";
 
@@ -172,7 +173,7 @@ export async function syncPublicEventPreview(
     return { synced: false as const, reason: "missing_event" as const };
   }
 
-  if (event.status !== "published") {
+  if (event.status !== "published" || event.unpublishedAt) {
     await deletePublicEventPreview(ctx, eventId);
     return { synced: false as const, reason: "not_published" as const };
   }
@@ -224,6 +225,8 @@ export async function syncPublicEventPreview(
   const perspectiveSummaries = normalizedPerspectives(
     event.perspectiveSummaries,
   );
+  // L9: feed thumbnails obey the same og:image policy as the event page.
+  const allowedImageUrl = await filterEventImage(ctx, event);
   const now = Date.now();
   const payload = {
     eventId,
@@ -231,8 +234,8 @@ export async function syncPublicEventPreview(
     title: event.title,
     // Feeds the diacritic-insensitive search index (see schema).
     searchText: foldDiacriticsToAscii(event.title),
-    imageUrl: event.imageUrl,
-    imageAlt: event.imageAlt,
+    imageUrl: allowedImageUrl,
+    imageAlt: allowedImageUrl ? event.imageAlt : undefined,
     perspectiveSummaries,
     perspectiveApplicable: event.perspectiveApplicable,
     globalImpact: event.globalImpact,
@@ -243,6 +246,10 @@ export async function syncPublicEventPreview(
     topicIds: topics,
     factualArticleCount: event.factualArticleCount,
     factualSourceCount: event.factualSourceCount,
+    // L1 disclosure mirror: previews exist only for events whose summary came
+    // out of the AI pipeline, so default the legacy-row gap to true/false.
+    aiGenerated: event.aiGenerated ?? true,
+    humanReviewed: event.humanReviewed ?? false,
     trendingScore: computeTrendingScore({
       factualArticleCount: event.factualArticleCount,
       factualSourceCount: event.factualSourceCount,

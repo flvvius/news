@@ -21,9 +21,8 @@ export function ContactPage() {
     >
       <StaticSection heading="Cum ne contactezi">
         <p>
-          Cel mai sigur canal este e-mailul
-          {/* :{" "}
-          {"{{TODO: adresă de e-mail de contact}}"} */}
+          Cel mai sigur canal este e-mailul:{" "}
+          {"{{TODO: adresă de e-mail de contact}}"}
           . Trimitem și primim mesaje de pe domeniul{" "}
           <strong>biviant.com</strong> — dacă primești un e-mail „de la{" "}
           {BRAND_NAME}” de pe alt domeniu, tratează-l cu suspiciune.
@@ -59,12 +58,20 @@ export function ContactPage() {
         </ul>
       </StaticSection>
 
-      {/* <StaticSection heading="Date de identificare">
+      <StaticSection heading="Punct de contact (DSA)">
         <p>
-          Operator: {"{{TODO: entitate juridică}}"}, cu sediul la{" "}
-          {"{{TODO: adresă sediu}}"}.
+          Această pagină este punctul unic de contact al {BRAND_NAME} atât
+          pentru utilizatori, cât și pentru autorități (inclusiv în sensul
+          Regulamentului UE privind serviciile digitale — DSA). Comunicarea se
+          poate face în limba română sau în engleză.
         </p>
-      </StaticSection> */}
+        <p>
+          Conținutul ilegal sau problematic poate fi semnalat direct din
+          pagina fiecărui eveniment, prin butonul „Raportează o eroare” —
+          fiecare raport primește o decizie motivată, iar raportorul care
+          lasă un contact este notificat.
+        </p>
+      </StaticSection>
     </StaticPage>
   );
 }
