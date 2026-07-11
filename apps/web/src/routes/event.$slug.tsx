@@ -369,7 +369,7 @@ function EventDetailPage() {
                 const imageSourceName =
                   imageArticle?.source?.name ?? "sursa originală";
                 return (
-                  <figure className="max-w-xl">
+                  <figure className="w-full">
                     <a
                       href={imageArticle?.canonicalUrl}
                       target="_blank"
