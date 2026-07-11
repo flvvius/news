@@ -62,15 +62,40 @@ describe("EventDetailTabs (BIV-804)", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(3);
 
-    // Neutral (center) is the default visible panel.
-    expect(screen.getByText("Rezumat neutru")).toBeTruthy();
+    const panelFor = (text: string) => {
+      const panel = screen.getByText(text).closest('[role="tabpanel"]');
+      if (!panel) throw new Error(`No tabpanel for "${text}"`);
+      return panel as HTMLElement;
+    };
+    const stateOf = (text: string) => panelFor(text).getAttribute("data-state");
+
+    // All panels are force-mounted for SSR/crawlers, so every summary is in
+    // the DOM at once — the bug was that nothing hid the inactive ones, so
+    // switching tabs did nothing. Each panel must carry the hide class, and
+    // only the selected one may be in the active state.
+    for (const text of [
+      "Rezumat neutru",
+      "Perspectiva reformistă",
+      "Perspectiva suveranistă",
+    ]) {
+      expect(panelFor(text).className).toContain(
+        "data-[state=inactive]:hidden",
+      );
+    }
+
+    // Neutral (center) is the default active panel; the others are inactive.
+    expect(stateOf("Rezumat neutru")).toBe("active");
+    expect(stateOf("Perspectiva reformistă")).toBe("inactive");
+    expect(stateOf("Perspectiva suveranistă")).toBe("inactive");
 
     // Radix tab triggers activate on mousedown, not click.
     fireEvent.mouseDown(screen.getByText(getString("ro", "event.left")));
-    expect(screen.getByText("Perspectiva reformistă")).toBeTruthy();
+    expect(stateOf("Perspectiva reformistă")).toBe("active");
+    expect(stateOf("Rezumat neutru")).toBe("inactive");
 
     fireEvent.mouseDown(screen.getByText(getString("ro", "event.right")));
-    expect(screen.getByText("Perspectiva suveranistă")).toBeTruthy();
+    expect(stateOf("Perspectiva suveranistă")).toBe("active");
+    expect(stateOf("Perspectiva reformistă")).toBe("inactive");
   });
 
   test("tab layout stays intentional with fewer perspectives", () => {
