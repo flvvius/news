@@ -67,6 +67,21 @@ export const submitPublisherRequest = mutation({
       createdAt: Date.now(),
     });
 
+    // Email the operators so a rights-holder request is actioned promptly
+    // rather than only when someone opens /admin/publishers. Best-effort
+    // (scheduled action); the request is already persisted above.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.emails.sendPublisherRequestAlertEmail,
+      {
+        requestId,
+        domain,
+        requestType: args.requestType,
+        contact,
+        message: args.message?.slice(0, MAX_MESSAGE_CHARS),
+      },
+    );
+
     return { received: true as const, requestId };
   },
 });

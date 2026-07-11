@@ -246,6 +246,66 @@ export const sendReportAlertEmail = internalAction({
 });
 
 /**
+ * L6 — operator alert: notify the admins as soon as a publisher opt-out /
+ * takedown request lands, so a rights-holder complaint reaches a human
+ * quickly instead of waiting to be spotted in the admin queue. Plain text,
+ * sent to ADMIN_EMAILS; internal ops notice, so no unsubscribe footer.
+ */
+export const sendPublisherRequestAlertEmail = internalAction({
+  args: {
+    requestId: v.id("publisherRequests"),
+    domain: v.string(),
+    requestType: v.string(),
+    contact: v.string(),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admins = getAdminEmails();
+    if (admins.length === 0) {
+      console.warn(
+        "[emails] No ADMIN_EMAILS configured; publisher-request alert not sent",
+      );
+      return { success: false as const, reason: "no-admins" as const };
+    }
+    try {
+      const emailCfg = await getEmailConfig(ctx);
+      const siteUrl = resolveSiteUrl();
+      const adminUrl = `${siteUrl}/admin/publishers`;
+      // takedown implies published content stays up until actioned — flag it.
+      const urgentTag = args.requestType === "takedown" ? "[URGENT] " : "";
+      const { error } = await resend.emails.send({
+        from: emailCfg.fromAddress,
+        replyTo: emailCfg.replyTo,
+        to: admins,
+        subject: `${urgentTag}Cerere publicație (${args.requestType}) pentru ${args.domain}`,
+        text: [
+          `A fost trimisă o cerere de la o publicație pe ${BRAND_NAME}.`,
+          "",
+          `Tip cerere: ${args.requestType}${
+            args.requestType === "takedown" ? " — prioritate ridicată" : ""
+          }`,
+          `Domeniu: ${args.domain}`,
+          `Contact solicitant: ${args.contact}`,
+          "",
+          args.message ? "Mesajul cererii:" : "Fără mesaj suplimentar.",
+          ...(args.message ? [args.message] : []),
+          "",
+          `Analizează și decide aici: ${adminUrl}`,
+        ].join("\n"),
+      });
+      if (error) {
+        console.error("Resend error (publisher request alert):", error);
+        return { success: false as const };
+      }
+      return { success: true as const };
+    } catch (error) {
+      console.error("Error sending publisher request alert email:", error);
+      return { success: false as const };
+    }
+  },
+});
+
+/**
  * Send invite email with access code
  */
 export const sendInviteEmail = internalAction({

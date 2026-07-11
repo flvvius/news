@@ -42,6 +42,35 @@ describe("publisher opt-out requests (L6)", () => {
     );
   });
 
+  test("submitting a request schedules an admin alert email", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(api.publisherRequests.submitPublisherRequest, {
+      domain: "exemplu.ro",
+      contact: "redactia@exemplu.ro",
+      requestType: "takedown",
+      message: "Retrageți articolele noastre.",
+    });
+
+    // The email is a scheduled internal action (it hits Resend), so we assert
+    // it was enqueued rather than running it.
+    const scheduled = await t.run(async (ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    const emailJob = scheduled.find((fn) =>
+      fn.name.includes("sendPublisherRequestAlertEmail"),
+    );
+    expect(
+      emailJob,
+      "publisher request submit must schedule the admin alert",
+    ).toBeTruthy();
+    const jobArgs = emailJob?.args?.[0] as
+      | { domain?: string; requestType?: string; contact?: string }
+      | undefined;
+    expect(jobArgs?.domain).toBe("exemplu.ro");
+    expect(jobArgs?.requestType).toBe("takedown");
+    expect(jobArgs?.contact).toBe("redactia@exemplu.ro");
+  });
+
   test("invalid domains are rejected", async () => {
     const t = convexTest(schema, modules);
     await expect(
