@@ -401,6 +401,10 @@ const ro = {
   "event.left": "Reformistă",
   "event.centerTab": "Neutră",
   "event.right": "Suveranistă",
+  // MIEZ-3: the restructured story view — "miezul" (core) + two "coji" (crusts).
+  "event.core": "Miezul",
+  "event.crustReformist": "Coaja reformistă",
+  "event.crustSuveranist": "Coaja suveranistă",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.aiDisclosure.one":
@@ -1167,6 +1171,9 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.left": "Reformist",
   "event.centerTab": "Neutral",
   "event.right": "Sovereigntist",
+  "event.core": "The core",
+  "event.crustReformist": "Reformist take",
+  "event.crustSuveranist": "Sovereigntist take",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
   "event.aiDisclosure.one":

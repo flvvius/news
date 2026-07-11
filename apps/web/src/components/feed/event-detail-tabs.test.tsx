@@ -1,5 +1,6 @@
-// BIV-804: the "Analiza afirmațiilor" (claims) tab must not ship while claim
-// analysis is paused; the remaining perspective tabs must render and switch.
+// MIEZ-3: the restructured story view — "Miezul" (neutral) core block on top,
+// two equal-weight crusts (Coaja reformistă / Coaja suveranistă) below, sources
+// beneath. BIV-804: the "Analiza afirmațiilor" claims tab must stay off.
 import { describe, expect, test } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach } from "vitest";
@@ -31,85 +32,108 @@ function renderTabs(
   );
 }
 
-beforeEach(cleanup);
+const CORE = getString("ro", "event.core");
+const CRUST_REFORMIST = getString("ro", "event.crustReformist");
+const CRUST_SUVERANIST = getString("ro", "event.crustSuveranist");
 
-describe("EventDetailTabs (BIV-804)", () => {
+describe("EventDetailTabs — Miezul + crusts (MIEZ-3)", () => {
+  beforeEach(cleanup);
+
   test("claim analysis flag is off for launch", () => {
     expect(FEATURE_FLAGS.claimAnalysis).toBe(false);
   });
 
-  test("does not render the claims tab or panel", () => {
+  test("promotes the neutral summary to the Miezul core block", () => {
     renderTabs({
       neutral: "Rezumat neutru",
       reformist: "Perspectiva reformistă",
       suveranist: "Perspectiva suveranistă",
     });
 
-    const claimsLabel = getString("ro", "event.claimBreakdown");
-    expect(screen.queryByText(claimsLabel)).toBeNull();
-    // No leftover single-tab outer chrome either: the only tablist is the
-    // perspectives one.
+    // The core heading and neutral text render outside any tabpanel — the
+    // neutral summary is no longer a tab.
+    expect(screen.getByText(CORE)).toBeTruthy();
+    const core = screen.getByText("Rezumat neutru");
+    expect(core.closest('[role="tabpanel"]')).toBeNull();
+
+    // No claims tab.
+    expect(
+      screen.queryByText(getString("ro", "event.claimBreakdown")),
+    ).toBeNull();
+  });
+
+  test("renders both crusts, equal weight, both in the DOM at once", () => {
+    renderTabs({
+      neutral: "Rezumat neutru",
+      reformist: "Perspectiva reformistă",
+      suveranist: "Perspectiva suveranistă",
+    });
+
+    // Both crust bodies are present at once (forceMount for crawlers).
+    expect(screen.getByText("Perspectiva reformistă")).toBeTruthy();
+    expect(screen.getByText("Perspectiva suveranistă")).toBeTruthy();
+
+    // Exactly one tablist (the mobile crust switcher) with two tabs, each
+    // labelled by its camp.
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: CRUST_REFORMIST })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: CRUST_SUVERANIST })).toBeTruthy();
+
+    // The two crust panels carry the mobile-hide class but stay on desktop.
+    const panel = screen
+      .getByText("Perspectiva reformistă")
+      .closest('[role="tabpanel"]');
+    expect(panel?.className).toContain("data-[state=inactive]:hidden");
+    expect(panel?.className).toContain("md:data-[state=inactive]:block");
   });
 
-  test("remaining perspective tabs render and switch correctly", () => {
+  test("mobile crust tabs switch the active panel", () => {
     renderTabs({
       neutral: "Rezumat neutru",
       reformist: "Perspectiva reformistă",
       suveranist: "Perspectiva suveranistă",
     });
 
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(3);
+    const panelState = (text: string) =>
+      screen
+        .getByText(text)
+        .closest('[role="tabpanel"]')
+        ?.getAttribute("data-state");
 
-    const panelFor = (text: string) => {
-      const panel = screen.getByText(text).closest('[role="tabpanel"]');
-      if (!panel) throw new Error(`No tabpanel for "${text}"`);
-      return panel as HTMLElement;
-    };
-    const stateOf = (text: string) => panelFor(text).getAttribute("data-state");
+    // Switching to a crust makes its panel active and the other inactive
+    // (Radix triggers activate on mousedown). This holds regardless of the
+    // per-session random default.
+    fireEvent.mouseDown(screen.getByRole("tab", { name: CRUST_SUVERANIST }));
+    expect(panelState("Perspectiva suveranistă")).toBe("active");
+    expect(panelState("Perspectiva reformistă")).toBe("inactive");
 
-    // All panels are force-mounted for SSR/crawlers, so every summary is in
-    // the DOM at once — the bug was that nothing hid the inactive ones, so
-    // switching tabs did nothing. Each panel must carry the hide class, and
-    // only the selected one may be in the active state.
-    for (const text of [
-      "Rezumat neutru",
-      "Perspectiva reformistă",
-      "Perspectiva suveranistă",
-    ]) {
-      expect(panelFor(text).className).toContain(
-        "data-[state=inactive]:hidden",
-      );
-    }
-
-    // Neutral (center) is the default active panel; the others are inactive.
-    expect(stateOf("Rezumat neutru")).toBe("active");
-    expect(stateOf("Perspectiva reformistă")).toBe("inactive");
-    expect(stateOf("Perspectiva suveranistă")).toBe("inactive");
-
-    // Radix tab triggers activate on mousedown, not click.
-    fireEvent.mouseDown(screen.getByText(getString("ro", "event.left")));
-    expect(stateOf("Perspectiva reformistă")).toBe("active");
-    expect(stateOf("Rezumat neutru")).toBe("inactive");
-
-    fireEvent.mouseDown(screen.getByText(getString("ro", "event.right")));
-    expect(stateOf("Perspectiva suveranistă")).toBe("active");
-    expect(stateOf("Perspectiva reformistă")).toBe("inactive");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: CRUST_REFORMIST }));
+    expect(panelState("Perspectiva reformistă")).toBe("active");
+    expect(panelState("Perspectiva suveranistă")).toBe("inactive");
   });
 
-  test("tab layout stays intentional with fewer perspectives", () => {
+  test("a single diverging crust renders full width, no tab bar", () => {
+    renderTabs({
+      neutral: "Rezumat neutru",
+      reformist: "Doar reformistă",
+    });
+
+    expect(screen.queryAllByRole("tablist")).toHaveLength(0);
+    expect(screen.getByText("Doar reformistă")).toBeTruthy();
+    expect(screen.queryByText(CRUST_SUVERANIST)).toBeNull();
+  });
+
+  test("no crusts: just the Miezul core block, no tab bar", () => {
     renderTabs({ neutral: "Doar rezumat" });
 
-    // With no reformist/suveranist summaries there is no tab bar at all —
-    // just the summary card.
     expect(screen.queryAllByRole("tablist")).toHaveLength(0);
+    expect(screen.getByText(CORE)).toBeTruthy();
     expect(screen.getByText("Doar rezumat")).toBeTruthy();
+    expect(screen.queryByText(CRUST_REFORMIST)).toBeNull();
   });
 
-  test("CASE D (perspectiveApplicable=false) shows the no-axis note instead of tabs", () => {
-    // Directional summaries present on purpose: the guard must suppress the
-    // tab bar even when hasPerspectives would otherwise be true.
+  test("CASE D (perspectiveApplicable=false) suppresses the crusts + notes it", () => {
     renderTabs(
       {
         neutral: "Rezumat apolitic",
