@@ -93,6 +93,20 @@ export const submitContentReport = mutation({
       createdAt: Date.now(),
     });
 
+    // Email the operators so a report is actioned promptly rather than only
+    // when someone happens to open /admin/reports. Best-effort (scheduled
+    // action); the report is already persisted above.
+    await ctx.scheduler.runAfter(0, internal.emails.sendReportAlertEmail, {
+      reportId,
+      eventTitle: event.title,
+      eventSlug: event.slug,
+      category: args.category,
+      message,
+      reporterContact:
+        args.reporterContact?.trim().slice(0, 200) || undefined,
+      urgent,
+    });
+
     return { received: true as const, reportId };
   },
 });
