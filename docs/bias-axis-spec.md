@@ -53,8 +53,8 @@ abused ("binomul", "statul paralel").
 ### Neutral (0)
 
 Wire-service style: symmetric attribution, descriptive language, no camp's
-vocabulary adopted as the article's own voice. Agerpres straight news is the
-anchor example.
+vocabulary adopted as the article's own voice. Straight agency-wire reporting
+is the anchor example.
 
 ## What the score measures
 

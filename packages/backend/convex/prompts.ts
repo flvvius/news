@@ -468,7 +468,7 @@ export function buildArticleBiasScoringPrompt(
       'AXA DE CADRARE (bias.axis = "reformist_suveranist", bias.score de la -5 la +5):',
       "-5: Puternic reformist. Cadrează evenimentele prin lentila pro-europeană/reformistă ca voce proprie: statul de drept, anticorupția, integrarea europeană prezentate ca bine implicit; vocile suveraniste apar doar pentru a fi combătute.",
       "-2: Moderat reformist. Cadrare reformistă subtilă în alegerea cuvintelor; citează preponderent voci pro-europene și neutre.",
-      " 0: Stil agenție de presă. Modelul Agerpres de știre factuală: atribuire simetrică și limbaj descriptiv, fără vocabularul niciunei tabere adoptat ca voce proprie.",
+      " 0: Stil agenție de presă. Știre factuală în stil de agenție: atribuire simetrică și limbaj descriptiv, fără vocabularul niciunei tabere adoptat ca voce proprie.",
       '+2: Moderat suveranist. Cadrare suveranistă subtilă; preia necitat termeni precum "dictatul Bruxelles-ului" sau prezintă instituțiile anticorupție drept abuzive.',
       '+5: Puternic suveranist. Cadrează evenimentele prin lentila suveranistă ca voce proprie: "statul paralel", "interese străine", "globaliști", valorile naționale sub asediu; vocile pro-europene apar doar pentru a fi combătute.',
       "- Scorul măsoară cadrarea TEXTULUI, nu subiectul. Un articol despre un miting suveranist nu este suveranist din cauza subiectului; contează al cui vocabular îl adoptă articolul ca voce proprie.",

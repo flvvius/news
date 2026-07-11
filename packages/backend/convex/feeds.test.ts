@@ -8,7 +8,6 @@ const TIER_1_DOMAINS = [
   "hotnews.ro",
   "g4media.ro",
   "recorder.ro",
-  "agerpres.ro",
   "zf.ro",
   "riseproject.ro",
   "romania.europalibera.org",
@@ -26,11 +25,12 @@ describe("Romanian feed list (BIV-101)", () => {
     const reformist = ALL_FEEDS.filter((f) => f.baseBias < 0).length;
     const neutral = ALL_FEEDS.filter((f) => f.baseBias === 0).length;
     const suveranist = ALL_FEEDS.filter((f) => f.baseBias > 0).length;
-    // Pinned to the BIV-806 outcome (8:5:6). A future deliberate rebalance
-    // must update this test AND docs/source-balance-biv806.md together.
+    // BIV-806 landed 8:5:6; dropping Agerpres (a neutral wire feed) leaves
+    // 8:4:6. A future deliberate rebalance must update this test AND
+    // docs/source-balance-biv806.md together.
     expect({ reformist, neutral, suveranist }).toEqual({
       reformist: 8,
-      neutral: 5,
+      neutral: 4,
       suveranist: 6,
     });
     // Invariant behind the numbers: never equal or inverted.

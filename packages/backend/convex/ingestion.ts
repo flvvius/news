@@ -103,8 +103,6 @@ const KNOWN_HEADLINE_SUFFIXES = [
   "G4Media",
   "G4Media.ro",
   "Recorder",
-  "Agerpres",
-  "AGERPRES",
   "Ziarul Financiar",
   "RISE Project",
   "Europa Liberă România",

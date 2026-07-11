@@ -75,14 +75,6 @@ export const ROMANIAN_SOURCE_REPUTATION: SourceReputationEntry[] = [
       "Ethical Media Alliance whitelist; independent investigative outlet, reformist framing. Hand-scored 2026-07.",
   },
   {
-    domain: "agerpres.ro",
-    name: "Agerpres",
-    biasScore: 0,
-    reliabilityScore: 9,
-    provenance:
-      "National wire service; wire-style neutral framing is the axis anchor. Hand-scored 2026-07.",
-  },
-  {
     domain: "zf.ro",
     name: "Ziarul Financiar",
     biasScore: 0,
