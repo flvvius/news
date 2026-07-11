@@ -72,6 +72,36 @@ describe("design-system enforcement (BIV-807)", () => {
     expect(missing, "tokens missing a .dark override").toEqual([]);
   });
 
+  test("camp tokens exist and stay perceptually symmetric (MIEZ-1)", () => {
+    const css = readFileSync(join(SRC_DIR, "index.css"), "utf8");
+
+    // Both camps + the neutral core must be defined.
+    for (const token of ["--camp-a", "--camp-b", "--core"]) {
+      expect(css, `${token} missing`).toContain(`${token}:`);
+    }
+
+    // Neither camp may reuse a party-colour hue accidentally: parse the base
+    // camp tokens from each block and assert near-equal lightness/chroma so
+    // one camp can't read louder or more saturated than the other.
+    const parseOklch = (block: string, token: string) => {
+      const m = block.match(
+        new RegExp(`${token}:\\s*oklch\\(([0-9.]+)\\s+([0-9.]+)\\s+([0-9.]+)`),
+      );
+      if (!m) throw new Error(`could not parse ${token}`);
+      return { l: Number(m[1]), c: Number(m[2]), h: Number(m[3]) };
+    };
+
+    for (const [name, block] of [
+      [":root", css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""],
+      [".dark", css.match(/\.dark\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""],
+    ] as const) {
+      const a = parseOklch(block, "--camp-a");
+      const b = parseOklch(block, "--camp-b");
+      expect(Math.abs(a.l - b.l), `${name} camp lightness gap`).toBeLessThanOrEqual(0.04);
+      expect(Math.abs(a.c - b.c), `${name} camp chroma gap`).toBeLessThanOrEqual(0.03);
+    }
+  });
+
   test("bias spectrum stays on the non-political indigo/amber tokens", () => {
     const css = readFileSync(join(SRC_DIR, "index.css"), "utf8");
     for (const token of [

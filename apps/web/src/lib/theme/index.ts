@@ -1,4 +1,4 @@
-export const THEME_STORAGE_KEY = "biviant-theme-preference";
+export const THEME_STORAGE_KEY = "miez-theme-preference";
 export const THEME_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 export type ThemePreference = "system" | "light" | "dark";
