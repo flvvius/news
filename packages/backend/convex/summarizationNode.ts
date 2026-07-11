@@ -12,7 +12,6 @@ import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
   buildGroundingVerificationPrompt,
-  SIDE_COVERAGE_FALLBACK,
   SUMMARY_PROMPT_VERSION,
   type EventSummaryOutput,
 } from "./prompts";
@@ -196,6 +195,20 @@ function cleanSummaryField(value: unknown, fallback: string): string {
   return cleaned.length > 0 ? cleaned.slice(0, 1200) : fallback;
 }
 
+// v7: a perspective side is intentionally empty when its coverage does not
+// diverge from neutral (or in CASE D). Preserve that empty value — never
+// substitute filler — so the UI hides the tab instead of showing repetitive
+// "no distinct perspective" boilerplate. Same cleaning as cleanSummaryField
+// but empty in → empty out.
+function cleanOptionalField(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/^\s*CAZUL\s+[A-D]\s*[:—-]\s*/i, "")
+    .trim()
+    .slice(0, 1200);
+}
+
 function parseSummaryOutput(
   raw: unknown,
   eventTitle: string,
@@ -217,19 +230,19 @@ function parseSummaryOutput(
 
   const record = parsed as Record<string, unknown>;
   const neutralFallback = `Acoperirea subiectului „${eventTitle}" este în curs de dezvoltare.`;
-  const sideFallback = SIDE_COVERAGE_FALLBACK;
   // Missing/invalid flag defaults to true (legacy behavior). When the model
   // declares CASE D, the side fields are force-cleared even if it wrote
-  // something into them.
+  // something into them. v7: an empty side under perspectiveApplicable=true is
+  // also intentional (no divergence from neutral) and is preserved as empty.
   const perspectiveApplicable = record.perspectiveApplicable !== false;
 
   return {
     neutral: cleanSummaryField(record.neutral, neutralFallback),
     reformist: perspectiveApplicable
-      ? cleanSummaryField(record.reformist, sideFallback)
+      ? cleanOptionalField(record.reformist)
       : "",
     suveranist: perspectiveApplicable
-      ? cleanSummaryField(record.suveranist, sideFallback)
+      ? cleanOptionalField(record.suveranist)
       : "",
     globalImpact: cleanSummaryField(
       record.globalImpact,

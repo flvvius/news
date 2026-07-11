@@ -69,17 +69,14 @@ function shouldResummarize(event: Doc<"events">): boolean {
   // normalizedPerspectives falls back to legacy center/left/right keys so
   // pre-BIV-303 events are not needlessly resummarized before the backfill.
   const perspectives = normalizedPerspectives(event.perspectiveSummaries);
-  // CASE D events (perspectiveApplicable=false) intentionally have empty
-  // side fields — neutral + globalImpact alone make them complete, otherwise
-  // they would re-enqueue on every cron forever.
-  const sidesComplete =
-    event.perspectiveApplicable === false ||
-    Boolean(
-      perspectives?.reformist?.trim() && perspectives?.suveranist?.trim(),
-    );
+  // A completed run is defined by neutral + globalImpact + lastSummarizedAt.
+  // Empty side fields are a legitimate terminal state, NOT an incomplete run:
+  // CASE D (perspectiveApplicable=false, no political axis) and, since prompt
+  // v7, a side whose coverage does not diverge from neutral both leave the
+  // reformist/suveranist field empty on purpose. Requiring both sides here
+  // would re-enqueue those events on every cron forever (burning model quota).
   const hasFullAiSummary = Boolean(
     perspectives?.neutral?.trim() &&
-    sidesComplete &&
     event.globalImpact?.trim() &&
     event.lastSummarizedAt,
   );

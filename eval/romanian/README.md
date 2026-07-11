@@ -3,7 +3,7 @@
 Repeatable eval that gates the Romanian launch and triggers BIV-203
 (two-stage escalation) / BIV-603 (NER microservice) if it fails. It runs
 the **production prompts** (`packages/backend/convex/prompts.ts`) against
-the configured model and scores three things.
+the configured model and scores four things.
 
 ## Metrics and pass/fail bars
 
@@ -13,6 +13,7 @@ the configured model and scores three things.
 | Summary faithfulness | judge model lists unsupported claims vs the supplied articles | ≥ **95%** of checked claims supported | < 90% → block launch, consider BIV-203 |
 | Named-entity accuracy | judge model lists entity errors (politicians, parties, counties) | ≥ **95%** entities correct | < 90% → block launch, consider BIV-603 |
 | Bias-score sanity | deterministic: side summaries must be backed by sources on that pole of the reformist↔suveranist axis (reputation seed), and 2+ articles on a pole must not yield the fallback | ≥ **80%** of events with zero sanity issues | < 80% → review prompts / BIV-203 |
+| Perspective distinctiveness (v7) | deterministic: `bannedPhraseRate` (the "nucleul factual comun" boilerplate), plus `neutralOnlyRate` / `bothSidesShownRate` / `highOverlapRate` (side word-overlap with neutral > 0.5) as informational shape metrics | `bannedPhraseRate` = **0%**; `highOverlapRate` low | any banned-phrase hit → prompt regression |
 
 The judge model defaults to `gemini-3.5-flash` (stronger than the
 generator, still managed — ADR-001). Judge outputs are spot-checked by a
@@ -47,8 +48,7 @@ env or `eval/romanian/.env.local` (gitignored).
 ## Baseline record
 
 Re-run and append here whenever the model or the prompts change
-(`SUMMARY_PROMPT_VERSION` bumps in summarizationNode.ts are the usual
-trigger).
+(`SUMMARY_PROMPT_VERSION` bumps in prompts.ts are the usual trigger).
 
 | Date | Model | Judge | Events | RO+schema | Faithfulness | Entity acc. | Bias sanity | Verdict |
 |---|---|---|---|---|---|---|---|---|

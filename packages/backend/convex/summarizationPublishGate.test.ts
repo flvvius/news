@@ -249,4 +249,76 @@ describe("publish is gated on a successful AI summary", () => {
     );
     expect(result.queued).toBe(1);
   });
+
+  // v7: a side that does not diverge from neutral is stored empty on purpose
+  // (UI hides the tab). Such an event is complete — it must NOT re-enqueue on
+  // every cron, which would burn model quota forever.
+  test("an applicable event with empty side fields is not re-enqueued", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("events", {
+        title: "Genuine Divergence On One Side Only",
+        slug: "one-sided-divergence",
+        status: "published",
+        firstPublishedAt: now,
+        lastUpdatedAt: now,
+        lastArticleAt: now,
+        articleCount: 3,
+        sourceCount: 2,
+        sourceIds: [],
+        perspectiveApplicable: true,
+        perspectiveSummaries: {
+          neutral: "n",
+          reformist: "Digi24 a accentuat alinierea la UE.",
+          // suveranist did not diverge from neutral → empty on purpose.
+          suveranist: "",
+        },
+        perspectiveSource: "ai",
+        globalImpact: "g",
+        lastSummarizedAt: now,
+        lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.summarization.enqueueEligibleEventSummaries,
+      { limit: 10, minArticles: 3, minSources: 2 },
+    );
+    expect(result.queued).toBe(0);
+  });
+
+  test("an applicable event with both side fields empty is not re-enqueued", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("events", {
+        title: "Sources Agreed, No Genuine Split",
+        slug: "no-genuine-split",
+        status: "published",
+        firstPublishedAt: now,
+        lastUpdatedAt: now,
+        lastArticleAt: now,
+        articleCount: 3,
+        sourceCount: 2,
+        sourceIds: [],
+        perspectiveApplicable: true,
+        perspectiveSummaries: {
+          neutral: "n",
+          reformist: "",
+          suveranist: "",
+        },
+        perspectiveSource: "ai",
+        globalImpact: "g",
+        lastSummarizedAt: now,
+        lastSummaryPromptVersion: SUMMARY_PROMPT_VERSION,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.summarization.enqueueEligibleEventSummaries,
+      { limit: 10, minArticles: 3, minSources: 2 },
+    );
+    expect(result.queued).toBe(0);
+  });
 });
