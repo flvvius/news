@@ -175,11 +175,17 @@ export function EventDetailTabs({
 
             {/* forceMount keeps the inactive perspective texts in the
                 server-rendered DOM (Radix unmounts them by default, which
-                left the left/right summaries invisible to crawlers). Radix
-                still puts `hidden` on non-selected panels, so the visual
-                tab behavior is unchanged. */}
+                left the left/right summaries invisible to crawlers). With
+                forceMount Radix treats every panel as "present" and never
+                sets `hidden`, so we hide the inactive ones ourselves via
+                data-[state=inactive]:hidden — content stays in the HTML, but
+                only the selected tab shows. */}
             {perspectiveSummaries?.reformist && (
-              <TabsContent value="left" forceMount>
+              <TabsContent
+                value="left"
+                forceMount
+                className="data-[state=inactive]:hidden"
+              >
                 <GroundedText
                   text={perspectiveSummaries.reformist}
                   field="reformist"
@@ -189,7 +195,11 @@ export function EventDetailTabs({
               </TabsContent>
             )}
 
-            <TabsContent value="center" forceMount>
+            <TabsContent
+              value="center"
+              forceMount
+              className="data-[state=inactive]:hidden"
+            >
               {perspectiveSummaries?.neutral ? (
                 <GroundedText
                   text={perspectiveSummaries.neutral}
@@ -203,7 +213,11 @@ export function EventDetailTabs({
             </TabsContent>
 
             {perspectiveSummaries?.suveranist && (
-              <TabsContent value="right" forceMount>
+              <TabsContent
+                value="right"
+                forceMount
+                className="data-[state=inactive]:hidden"
+              >
                 <GroundedText
                   text={perspectiveSummaries.suveranist}
                   field="suveranist"
