@@ -883,7 +883,11 @@ function FeedContent() {
             {!isSearching &&
               status !== "LoadingFirstPage" &&
               (!events || events.length === 0) && (
-                <p className="py-8 text-sm text-muted-foreground">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="py-8 text-sm text-muted-foreground"
+                >
                   {t("feed.none")}
                 </p>
               )}

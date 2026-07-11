@@ -12,6 +12,7 @@ import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
   buildGroundingVerificationPrompt,
+  GLOBAL_IMPACT_FALLBACK,
   SUMMARY_PROMPT_VERSION,
   type EventSummaryOutput,
 } from "./prompts";
@@ -244,10 +245,7 @@ function parseSummaryOutput(
     suveranist: perspectiveApplicable
       ? cleanOptionalField(record.suveranist)
       : "",
-    globalImpact: cleanSummaryField(
-      record.globalImpact,
-      "Această știre poate influența dezbaterea publică pe măsură ce apar noi relatări.",
-    ),
+    globalImpact: cleanSummaryField(record.globalImpact, GLOBAL_IMPACT_FALLBACK),
     perspectiveApplicable,
   };
 }

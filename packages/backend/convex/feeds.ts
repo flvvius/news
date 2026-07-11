@@ -1,9 +1,11 @@
 /**
  * Curated RSS feed list for ingestion — Romanian sources (BIV-101).
  *
- * The product ingests Romanian news only. Feeds are split in two tiers:
+ * The product ingests Romanian news only. Feeds are split in three tiers:
  *  - Tier 1: verified-direct set (fetch-tested 2026-07-02), the launch core.
  *  - Tier 2: mainstream reach feeds, also fetch-verified live before adding.
+ *  - Tier 3: suveranist balance additions (BIV-806) — included for axis
+ *    balance, never for credibility; reliability scores stay honest and low.
  *
  * Staged ramp: start at 15 feeds; expand only after clustering and the
  * Romanian eval harness (BIV-701) prove stable. Do NOT jump to 100+.

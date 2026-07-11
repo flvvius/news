@@ -430,7 +430,7 @@ async function buildDashboardEventPreview(
       title: preview.title,
       imageUrl: preview.imageUrl,
       summary:
-        preview.perspectiveSummaries?.neutral ??
+        normalizedPerspectives(preview.perspectiveSummaries)?.neutral ??
         preview.globalImpact ??
         "Open the event to compare coverage from multiple sources.",
       firstPublishedAt: preview.firstPublishedAt,
@@ -473,7 +473,7 @@ async function buildDashboardEventPreview(
     title: event.title,
     imageUrl: event.imageUrl,
     summary:
-      event.perspectiveSummaries?.neutral ??
+      normalizedPerspectives(event.perspectiveSummaries)?.neutral ??
       event.globalImpact ??
       "Open the event to compare coverage from multiple sources.",
     firstPublishedAt: event.firstPublishedAt,
@@ -603,6 +603,11 @@ export const getBookmarkedEvents = query({
 
         return {
           ...event,
+          // Match the public-preview branch: emit canonical perspective keys
+          // so legacy center/left/right never leak from pre-backfill rows.
+          perspectiveSummaries: normalizedPerspectives(
+            event.perspectiveSummaries,
+          ),
           articleCount: articleCount ?? 0,
           sourceCount: event.sourceCount ?? sourceIds?.length ?? 0,
           sources: sources.filter((s) => s !== null),
