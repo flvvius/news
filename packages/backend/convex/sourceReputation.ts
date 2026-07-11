@@ -126,10 +126,10 @@ export const ROMANIAN_SOURCE_REPUTATION: SourceReputationEntry[] = [
   {
     domain: "antena3.ro",
     name: "Antena 3 CNN",
-    biasScore: 3,
+    biasScore: 2,
     reliabilityScore: 4,
     provenance:
-      "MBFC-Romania: right/mixed factual; recurrent 'stat paralel' framing; Veridica-flagged narratives. Hand-scored 2026-07.",
+      "MBFC-Romania: right/mixed factual; sovereignist-leaning framing ('stat paralel' recurs but is not the outlet's constant voice); Veridica-flagged narratives. Hand-scored 2026-07 (lean, not strong).",
   },
   {
     domain: "gandul.ro",
