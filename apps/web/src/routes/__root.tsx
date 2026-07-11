@@ -110,11 +110,16 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         { name: "twitter:description", content: description },
         { name: "twitter:image", content: SITE.ogImage },
         { name: "twitter:image:alt", content: title },
-        { name: "theme-color", content: "#0f172a" },
+        { name: "theme-color", content: "#17181c" },
       ],
       links: [
         { rel: "stylesheet", href: appCss },
+        { rel: "manifest", href: "/manifest.webmanifest" },
+        // SVG mark first (modern browsers); PNG kept as the legacy fallback.
+        { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
         { rel: "icon", type: "image/png", href: "/logo-mark.png" },
+        // TODO(assets): regenerate apple-touch-icon.png (180×180) with the new
+        // Miez mark; still points at the old raster mark.
         { rel: "apple-touch-icon", href: "/logo-mark.png" },
         {
           rel: "preload",

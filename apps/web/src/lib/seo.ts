@@ -45,7 +45,7 @@ function organizationEntity(): JsonLd {
     "@type": "Organization",
     name: SITE.name,
     url: SITE.url,
-    logo: absoluteSiteUrl("/logo-biviant.png"),
+    logo: absoluteSiteUrl("/favicon.svg"),
     ...(SOCIAL_PROFILES.length > 0 ? { sameAs: SOCIAL_PROFILES } : {}),
   };
 }

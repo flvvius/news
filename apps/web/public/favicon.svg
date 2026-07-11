@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Miez">
+  <!-- Miez core mark: dark disc with the cream ring + centre dot (the miez).
+       Placeholder until the final logo lands. Self-contained; reads on both
+       light and dark browser-tab backgrounds thanks to the filled disc. -->
+  <rect width="32" height="32" rx="7" fill="#17181c"/>
+  <circle cx="16" cy="16" r="8" fill="none" stroke="#f3ede0" stroke-width="3"/>
+  <circle cx="16" cy="16" r="3" fill="#f3ede0"/>
+</svg>

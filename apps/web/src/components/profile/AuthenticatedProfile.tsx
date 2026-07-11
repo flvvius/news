@@ -83,7 +83,7 @@ export function AuthenticatedProfile({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `biviant-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = `miez-data-export-${new Date().toISOString().slice(0, 10)}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
