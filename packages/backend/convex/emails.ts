@@ -4,6 +4,7 @@ import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Resend } from "resend";
 import { BRAND_NAME } from "./brand";
+import { getAdminEmails } from "./lib/betaAccess";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -174,6 +175,72 @@ export const sendReportOutcomeEmail = internalAction({
     } catch (error) {
       console.error("Error sending report outcome email:", error);
       return { success: false };
+    }
+  },
+});
+
+/**
+ * L8 — operator alert: notify the admins as soon as a content report lands,
+ * so defamation / illegal-content notices reach a human quickly instead of
+ * waiting to be spotted in the admin queue. Plain text, sent to ADMIN_EMAILS;
+ * it is an internal ops notice, so no unsubscribe footer.
+ */
+export const sendReportAlertEmail = internalAction({
+  args: {
+    reportId: v.id("contentReports"),
+    eventTitle: v.string(),
+    eventSlug: v.string(),
+    category: v.string(),
+    message: v.string(),
+    reporterContact: v.optional(v.string()),
+    urgent: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const admins = getAdminEmails();
+    if (admins.length === 0) {
+      console.warn(
+        "[emails] No ADMIN_EMAILS configured; content-report alert not sent",
+      );
+      return { success: false as const, reason: "no-admins" as const };
+    }
+    try {
+      const emailCfg = await getEmailConfig(ctx);
+      const siteUrl = resolveSiteUrl();
+      const adminUrl = `${siteUrl}/admin/reports`;
+      const eventUrl = `${siteUrl}/event/${args.eventSlug}`;
+      const urgentTag = args.urgent ? "[URGENT] " : "";
+      const { error } = await resend.emails.send({
+        from: emailCfg.fromAddress,
+        replyTo: emailCfg.replyTo,
+        to: admins,
+        subject: `${urgentTag}Raport nou (${args.category}) pe ${BRAND_NAME}`,
+        text: [
+          `A fost trimis un raport de conținut pe ${BRAND_NAME}.`,
+          "",
+          `Categorie: ${args.category}${
+            args.urgent ? " — prioritate ridicată" : ""
+          }`,
+          `Eveniment: ${args.eventTitle}`,
+          `Link eveniment: ${eventUrl}`,
+          "",
+          "Mesajul raportului:",
+          args.message,
+          "",
+          args.reporterContact
+            ? `Contact raportor: ${args.reporterContact}`
+            : "Raportorul nu a lăsat date de contact.",
+          "",
+          `Analizează și decide aici: ${adminUrl}`,
+        ].join("\n"),
+      });
+      if (error) {
+        console.error("Resend error (report alert):", error);
+        return { success: false as const };
+      }
+      return { success: true as const };
+    } catch (error) {
+      console.error("Error sending report alert email:", error);
+      return { success: false as const };
     }
   },
 });

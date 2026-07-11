@@ -86,6 +86,34 @@ describe("content reports (L8)", () => {
     expect(alert?.severity).toBe("error");
   });
 
+  test("submitting a report schedules an admin alert email", async () => {
+    const t = convexTest(schema, modules);
+    const eventId = await seedPublishedEvent(t, "raport-alert");
+
+    await t.mutation(api.reports.submitContentReport, {
+      eventId,
+      category: "illegal_content",
+      message: "Conținut care necesită atenție imediată.",
+      reporterContact: "cititor@example.com",
+    });
+
+    // The email is a scheduled internal action (it hits Resend), so we assert
+    // it was enqueued rather than running it.
+    const scheduled = await t.run(async (ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    const emailJob = scheduled.find((fn) =>
+      fn.name.includes("sendReportAlertEmail"),
+    );
+    expect(emailJob, "report submit must schedule the admin alert").toBeTruthy();
+    const jobArgs = emailJob?.args?.[0] as
+      | { eventSlug?: string; urgent?: boolean; category?: string }
+      | undefined;
+    expect(jobArgs?.eventSlug).toBe("raport-alert");
+    expect(jobArgs?.urgent).toBe(true);
+    expect(jobArgs?.category).toBe("illegal_content");
+  });
+
   test("unpublish decision removes the event from every public surface", async () => {
     vi.useFakeTimers();
     try {
