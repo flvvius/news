@@ -18,9 +18,10 @@ import {
   robotsCrawlDelay,
   type DomainPermissionState,
 } from "./lib/tdmPolicy";
+import { BOT_USER_AGENT } from "./lib/botIdentity";
 
 const RESOLVER_TIMEOUT_MS = 8000;
-const RESOLVER_USER_AGENT = `${BOT_UA_TOKEN}/1.0 (+https://biviant.com/bot; contact@biviant.com)`;
+const RESOLVER_USER_AGENT = BOT_USER_AGENT;
 
 async function fetchWithTimeout(
   url: string,
@@ -33,7 +34,6 @@ async function fetchWithTimeout(
       redirect: "follow",
       headers: {
         "User-Agent": RESOLVER_USER_AGENT,
-        From: "contact@biviant.com",
       },
     });
     const body = response.ok ? await response.text() : undefined;

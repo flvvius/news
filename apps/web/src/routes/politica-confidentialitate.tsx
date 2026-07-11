@@ -22,12 +22,13 @@ export function PoliticaConfidentialitatePage() {
     >
       <StaticSection heading="Cum ne contactezi pentru datele tale">
         <p>
-          Pentru orice cerere legată de datele tale ne poți scrie la{" "}
-          {"{{TODO: adresă de e-mail de contact}}"} sau prin pagina de{" "}
+          Pentru orice cerere legată de datele tale ne poți scrie prin pagina
+          de{" "}
           <Link to="/contact" className="underline hover:text-foreground">
             Contact
           </Link>
-          .
+          , punctul nostru unic de contact — inclusiv prin formularul
+          „Raportează o eroare” din pagina fiecărui eveniment.
         </p>
       </StaticSection>
 

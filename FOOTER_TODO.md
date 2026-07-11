@@ -1,15 +1,13 @@
-# FOOTER_TODO — placeholders awaiting real business details (BIV-803)
+# FOOTER — business-identity notes (BIV-803)
 
-The footer pages contain real product content, but business identity details
-must not be invented. Every `{{TODO: …}}` placeholder in the pages is listed
-here; fill them in once the legal/operational details exist, then delete the
-corresponding row. The test `apps/web/src/routes/footer-pages.test.tsx`
-cross-checks that the placeholders in the pages and the rows in this file
-stay in sync.
-
-| Placeholder | Page(s) | Field |
-|---|---|---|
-| `{{TODO: adresă de e-mail de contact}}` | /contact („Cum ne contactezi”), /politica-confidentialitate („Cum ne contactezi pentru datele tale”) | Adresa de e-mail de contact/suport pe domeniul biviant.com — de provizionat în Resend înainte de publicare (nu asertăm o adresă care nu există încă) |
+The footer pages render real product content. The former
+`{{TODO: adresă de e-mail de contact}}` placeholders on /contact and
+/politica-confidentialitate have been **removed**: there is no public contact
+mailbox, so the pages route users to the existing complaint channel — the
+„Raportează o eroare" form, opened in a dialog on the current screen from the
+AI-disclosure label on every event — and to the /contact page.
+`apps/web/src/routes/footer-pages.test.tsx` enforces that no `{{TODO: …}}`
+placeholder is reintroduced into a footer page.
 
 Notes:
 
@@ -24,7 +22,3 @@ Notes:
   the PostHog identity deletion request — that backend call no-ops unless the
   PostHog personal-API deletion credentials are configured on the production
   deployment. Verify they are set.
-- L6 crawler identity: BiviantBot's User-Agent and `From` header reference
-  `contact@biviant.com` (see `packages/backend/convex/lib/botIdentity.ts`).
-  That mailbox must be provisioned together with the site contact mailbox
-  before launch — same TODO as the contact e-mail row above.

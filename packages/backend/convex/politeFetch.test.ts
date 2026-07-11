@@ -1,6 +1,6 @@
 // L6: crawler identity + per-domain rate limiting. Outbound requests carry
-// the BiviantBot UA and From headers; the limiter proves per-domain spacing
-// and concurrency; backoff honors Retry-After on 429.
+// the BiviantBot UA header; the limiter proves per-domain spacing and
+// concurrency; backoff honors Retry-After on 429.
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { BOT_USER_AGENT, botFetchHeaders } from "./lib/botIdentity";
@@ -12,13 +12,13 @@ afterEach(() => {
 
 describe("bot identity (L6)", () => {
   test("UA is the BiviantBot product token with bot page link", () => {
-    expect(BOT_USER_AGENT).toMatch(/^BiviantBot\/1\.0 \(\+https:\/\/biviant\.com\/bot; [^)]+\)$/);
+    expect(BOT_USER_AGENT).toMatch(/^BiviantBot\/1\.0 \(\+https:\/\/biviant\.com\/bot\)$/);
   });
 
-  test("every outbound request carries User-Agent and From", () => {
+  test("every outbound request carries the crawler User-Agent", () => {
     const headers = botFetchHeaders({ Accept: "text/html" });
     expect(headers["User-Agent"]).toBe(BOT_USER_AGENT);
-    expect(headers.From).toContain("@");
+    expect(headers.From).toBeUndefined();
     expect(headers.Accept).toBe("text/html");
   });
 });
@@ -116,7 +116,7 @@ describe("politeFetch (L6)", () => {
     );
     expect(response.status).toBe(200);
     expect(seenHeaders[0]!["User-Agent"]).toBe(BOT_USER_AGENT);
-    expect(seenHeaders[0]!.From).toBeDefined();
+    expect(seenHeaders[0]!.From).toBeUndefined();
   });
 
   test("backs off on 429 honoring Retry-After and retries", async () => {

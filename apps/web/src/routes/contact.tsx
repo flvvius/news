@@ -21,11 +21,10 @@ export function ContactPage() {
     >
       <StaticSection heading="Cum ne contactezi">
         <p>
-          Cel mai sigur canal este e-mailul:{" "}
-          {"{{TODO: adresă de e-mail de contact}}"}
-          . Trimitem și primim mesaje de pe domeniul{" "}
-          <strong>biviant.com</strong> — dacă primești un e-mail „de la{" "}
-          {BRAND_NAME}” de pe alt domeniu, tratează-l cu suspiciune.
+          Canalul nostru pentru corecții și semnalări este butonul{" "}
+          <strong>„Raportează o eroare”</strong> din pagina fiecărui eveniment:
+          alegi tipul problemei, ne scrii pe scurt și, dacă lași un contact,
+          ești notificat cu decizia motivată.
         </p>
         <p>
           Răspundem de regulă în câteva zile lucrătoare. Suntem o echipă mică,

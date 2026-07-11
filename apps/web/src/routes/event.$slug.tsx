@@ -12,7 +12,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
 import { EventDetailTabs } from "@/components/feed/event-detail-tabs";
-import { ReportErrorForm } from "@/components/feed/report-error-form";
+import { ReportDialogProvider } from "@/components/feed/report-error-form";
 import BookmarkButton from "@/components/bookmark-button";
 import ShareEventButton from "@/components/share-event-button";
 import {
@@ -350,118 +350,116 @@ function EventDetailPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
-        <div className="flex flex-col gap-6 sm:gap-8">
-          <button
-            type="button"
-            onClick={handleBackToFeed}
-            className="inline-flex items-center self-start text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            &larr; {t("event.backToFeed")}
-          </button>
+      <ReportDialogProvider eventId={event._id}>
+        <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
+          <div className="flex flex-col gap-6 sm:gap-8">
+            <button
+              type="button"
+              onClick={handleBackToFeed}
+              className="inline-flex items-center self-start text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              &larr; {t("event.backToFeed")}
+            </button>
 
-          {/* Editorial-calm hero (BIV-807, native DESIGN_LOG): typographic,
-              no card shell; 3:2 content-width photo with hairline border;
-              header actions are plain icon buttons. */}
-          <section className="flex flex-col gap-4">
-            <h1 className="max-w-full break-words text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
-              {event.title}
-            </h1>
-            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
-              <p
-                className="text-sm sm:text-md text-muted-foreground"
-                title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
-              >
-                {t("event.updated").replace(
-                  "{time}",
-                  formatRelativeTimestamp(lastUpdatedAt, locale),
-                )}
-                {" · "}
-                {getPluralizedCountLabel(
-                  locale,
-                  "event.sourceCount",
-                  sourceCount,
-                )}
-                {" · "}
-                {getPluralizedCountLabel(
-                  locale,
-                  "event.articles",
-                  articles.length,
-                )}
-              </p>
+            {/* Editorial-calm hero (BIV-807, native DESIGN_LOG): typographic,
+                no card shell; 3:2 content-width photo with hairline border;
+                header actions are plain icon buttons. */}
+            <section className="flex flex-col gap-4">
+              <h1 className="max-w-full break-words text-2xl font-semibold leading-tight tracking-tight text-foreground text-balance sm:text-4xl">
+                {event.title}
+              </h1>
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <p
+                  className="text-sm sm:text-md text-muted-foreground"
+                  title={formatAbsoluteTimestamp(lastUpdatedAt, locale)}
+                >
+                  {t("event.updated").replace(
+                    "{time}",
+                    formatRelativeTimestamp(lastUpdatedAt, locale),
+                  )}
+                  {" · "}
+                  {getPluralizedCountLabel(
+                    locale,
+                    "event.sourceCount",
+                    sourceCount,
+                  )}
+                  {" · "}
+                  {getPluralizedCountLabel(
+                    locale,
+                    "event.articles",
+                    articles.length,
+                  )}
+                </p>
 
-              <div className="ml-auto flex gap-1 sm:justify-end">
-                <BookmarkButton
-                  eventId={event._id}
-                  interactionContext={interactionContext}
-                  redirectTo={`/event/${event.slug}`}
-                />
-                <ShareEventButton
-                  eventId={event._id}
-                  interactionContext={interactionContext}
-                  slug={event.slug}
-                  title={event.title}
-                  summary={
-                    event.perspectiveSummaries?.neutral ?? event.globalImpact
-                  }
-                />
+                <div className="ml-auto flex gap-1 sm:justify-end">
+                  <BookmarkButton
+                    eventId={event._id}
+                    interactionContext={interactionContext}
+                    redirectTo={`/event/${event.slug}`}
+                  />
+                  <ShareEventButton
+                    eventId={event._id}
+                    interactionContext={interactionContext}
+                    slug={event.slug}
+                    title={event.title}
+                    summary={
+                      event.perspectiveSummaries?.neutral ?? event.globalImpact
+                    }
+                  />
+                </div>
               </div>
-            </div>
 
-            {event.imageUrl &&
-              (() => {
-                // L9 tier (b): the hero is hotlinked from the publisher,
-                // attributed, and wrapped in a link to the original article it
-                // came from. It is also the page's LCP element, so fetch it
-                // eagerly with a high-priority hint.
-                const imageArticle =
-                  articles.find(
-                    (article: Article) => article.imageUrl === event.imageUrl,
-                  ) ?? articles[0];
-                const imageSourceName =
-                  imageArticle?.source?.name ?? "sursa originală";
-                return (
-                  <figure className="w-full">
-                    <a
-                      href={imageArticle?.canonicalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block overflow-hidden rounded-lg border border-border bg-muted"
-                    >
-                      <img
-                        src={event.imageUrl}
-                        alt={event.imageAlt ?? event.title}
-                        className="aspect-3/2 w-full object-cover"
-                        loading="eager"
-                        fetchPriority="high"
-                      />
-                    </a>
-                    <figcaption className="mt-1 text-xs text-muted-foreground">
-                      Foto: {imageSourceName} — imaginea aparține publicației
-                      și trimite către articolul original.
-                    </figcaption>
-                  </figure>
-                );
-              })()}
-          </section>
+              {event.imageUrl &&
+                (() => {
+                  // L9 tier (b): the hero is hotlinked from the publisher,
+                  // attributed, and wrapped in a link to the original article it
+                  // came from. It is also the page's LCP element, so fetch it
+                  // eagerly with a high-priority hint.
+                  const imageArticle =
+                    articles.find(
+                      (article: Article) => article.imageUrl === event.imageUrl,
+                    ) ?? articles[0];
+                  const imageSourceName =
+                    imageArticle?.source?.name ?? "sursa originală";
+                  return (
+                    <figure className="w-full">
+                      <a
+                        href={imageArticle?.canonicalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block overflow-hidden rounded-lg border border-border bg-muted"
+                      >
+                        <img
+                          src={event.imageUrl}
+                          alt={event.imageAlt ?? event.title}
+                          className="aspect-3/2 w-full object-cover"
+                          loading="eager"
+                          fetchPriority="high"
+                        />
+                      </a>
+                      <figcaption className="mt-1 text-xs text-muted-foreground">
+                        Foto: {imageSourceName} — imaginea aparține publicației
+                        și trimite către articolul original.
+                      </figcaption>
+                    </figure>
+                  );
+                })()}
+            </section>
 
-          <EventDetailTabs
-            eventId={event._id}
-            perspectiveSummaries={event.perspectiveSummaries}
-            perspectiveApplicable={event.perspectiveApplicable}
-            globalImpact={event.globalImpact}
-            articles={articles}
-            sourceCount={sourceCount}
-            grounding={grounding}
-          />
+            <EventDetailTabs
+              eventId={event._id}
+              perspectiveSummaries={event.perspectiveSummaries}
+              perspectiveApplicable={event.perspectiveApplicable}
+              globalImpact={event.globalImpact}
+              articles={articles}
+              sourceCount={sourceCount}
+              grounding={grounding}
+            />
 
-          <ArticlesList eventId={event._id} articles={articles} />
-
-          {/* L8 — notice-and-action entry point; #raporteaza is the anchor
-              the AI-disclosure label links to. */}
-          <ReportErrorForm eventId={event._id} />
+            <ArticlesList eventId={event._id} articles={articles} />
+          </div>
         </div>
-      </div>
+      </ReportDialogProvider>
     </div>
   );
 }
