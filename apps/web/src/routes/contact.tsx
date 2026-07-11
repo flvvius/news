@@ -74,15 +74,6 @@ export function ContactPage() {
           lasă un contact este notificat.
         </p>
       </StaticSection>
-
-      <StaticSection heading="Date de identificare">
-        <p>
-          Operator: {"{{TODO: entitate juridică}}"}, cu sediul la{" "}
-          {"{{TODO: adresă sediu}}"}, înregistrat la Registrul Comerțului cu
-          numărul {"{{TODO: număr Registrul Comerțului}}"}, cod fiscal{" "}
-          {"{{TODO: cod unic de înregistrare}}"} (Legea 365/2002).
-        </p>
-      </StaticSection>
     </StaticPage>
   );
 }

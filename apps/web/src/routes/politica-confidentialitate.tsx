@@ -22,12 +22,10 @@ export function PoliticaConfidentialitatePage() {
       title="Politica de confidențialitate"
       intro={`Pe scurt: poți citi ${BRAND_NAME} fără cont; un cont adaugă funcții personale, iar datele tale rămân ale tale — le poți șterge oricând, complet.`}
     >
-      <StaticSection heading="Cine este operatorul">
+      <StaticSection heading="Cum ne contactezi pentru datele tale">
         <p>
-          Operatorul datelor este {"{{TODO: entitate juridică}}"}, cu sediul
-          la {"{{TODO: adresă sediu}}"}. Pentru orice cerere legată de datele
-          tale ne poți scrie la {"{{TODO: adresă de e-mail de contact}}"} sau
-          prin pagina de{" "}
+          Pentru orice cerere legată de datele tale ne poți scrie la{" "}
+          {"{{TODO: adresă de e-mail de contact}}"} sau prin pagina de{" "}
           <Link to="/contact" className="underline hover:text-foreground">
             Contact
           </Link>

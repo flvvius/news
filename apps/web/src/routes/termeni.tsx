@@ -122,9 +122,8 @@ export function TermeniPage() {
 
       <StaticSection heading="Legea aplicabilă și modificări">
         <p>
-          Acești termeni sunt guvernați de legea română. Serviciul este
-          operat de {"{{TODO: entitate juridică}}"}. Putem actualiza termenii;
-          modificările substanțiale vor fi anunțate în aplicație, iar
+          Acești termeni sunt guvernați de legea română. Putem actualiza
+          termenii; modificările substanțiale vor fi anunțate în aplicație, iar
           versiunea curentă este în vigoare de la{" "}
           {"{{TODO: data intrării în vigoare}}"}.
         </p>

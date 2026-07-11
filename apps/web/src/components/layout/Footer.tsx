@@ -66,13 +66,6 @@ export function Footer() {
           <p>
             © {new Date().getFullYear()} {BRAND_NAME}
           </p>
-          {/* L14 — Legea 365/2002 identity disclosures; the placeholders are
-              cross-checked against FOOTER_TODO.md and must not be invented. */}
-          <p className="text-xs">
-            {"{{TODO: entitate juridică}}"} · Reg. Com.{" "}
-            {"{{TODO: număr Registrul Comerțului}}"} · cod fiscal{" "}
-            {"{{TODO: cod unic de înregistrare}}"} · {"{{TODO: adresă sediu}}"}
-          </p>
         </div>
       </div>
     </footer>
