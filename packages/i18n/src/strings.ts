@@ -405,6 +405,8 @@ const ro = {
   "event.core": "Miezul",
   "event.crustReformist": "Coaja reformistă",
   "event.crustSuveranist": "Coaja suveranistă",
+  // MIEZ-4: global impact demoted into a closed-by-default accordion.
+  "event.globalContext": "Context global",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.aiDisclosure.one":
@@ -1174,6 +1176,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.core": "The core",
   "event.crustReformist": "Reformist take",
   "event.crustSuveranist": "Sovereigntist take",
+  "event.globalContext": "Global context",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
   "event.aiDisclosure.one":

@@ -1,15 +1,21 @@
 // MIEZ-3: the restructured story view — "Miezul" (neutral) core block on top,
 // two equal-weight crusts (Coaja reformistă / Coaja suveranistă) below, sources
 // beneath. BIV-804: the "Analiza afirmațiilor" claims tab must stay off.
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach } from "vitest";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
+
+vi.mock("@/lib/posthog", () => ({
+  captureEvent: vi.fn(),
+  PostHogAnalytics: () => null,
+}));
 
 import { EventDetailTabs } from "./event-detail-tabs";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
+import { captureEvent } from "@/lib/posthog";
 
 const eventId = "event123" as Id<"events">;
 
@@ -158,5 +164,36 @@ describe("EventDetailTabs — Miezul + crusts (MIEZ-3)", () => {
     expect(
       screen.queryByText(getString("ro", "event.noPoliticalAxis")),
     ).toBeNull();
+  });
+
+  test("global impact is a closed-by-default accordion that reports expansion (MIEZ-4)", () => {
+    vi.mocked(captureEvent).mockClear();
+    const { container } = render(
+      <LocaleProvider locale="ro">
+        <EventDetailTabs
+          eventId={eventId}
+          perspectiveSummaries={{ neutral: "Rezumat neutru" }}
+          globalImpact="Impactul global al acestei știri."
+          articles={[]}
+        />
+      </LocaleProvider>,
+    );
+
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    // Closed on load → content is off the initial viewport.
+    expect(details?.open).toBe(false);
+    expect(
+      screen.getByText(getString("ro", "event.globalContext")),
+    ).toBeTruthy();
+    expect(captureEvent).not.toHaveBeenCalled();
+
+    // Expanding fires exactly one analytics event.
+    details!.open = true;
+    fireEvent(details!, new Event("toggle"));
+    expect(captureEvent).toHaveBeenCalledWith(
+      "global_impact_expand",
+      expect.objectContaining({ eventId }),
+    );
   });
 });
