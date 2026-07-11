@@ -67,7 +67,15 @@ function ReportErrorFields({
   };
 
   if (state === "sent") {
-    return <p className="text-sm text-muted-foreground">{t("report.sent")}</p>;
+    return (
+      <p
+        role="status"
+        aria-live="polite"
+        className="text-sm text-muted-foreground"
+      >
+        {t("report.sent")}
+      </p>
+    );
   }
 
   return (
@@ -128,7 +136,13 @@ function ReportErrorFields({
         />
       </div>
       {state === "error" && (
-        <p className="text-sm text-destructive">{t("report.error")}</p>
+        <p
+          role="alert"
+          aria-live="assertive"
+          className="text-sm text-destructive"
+        >
+          {t("report.error")}
+        </p>
       )}
       <Button type="submit" size="sm" disabled={state === "busy"}>
         {t("report.submit")}

@@ -18,9 +18,10 @@ import {
   robotsCrawlDelay,
   type DomainPermissionState,
 } from "./lib/tdmPolicy";
+import { BOT_USER_AGENT } from "./lib/botIdentity";
 
 const RESOLVER_TIMEOUT_MS = 8000;
-const RESOLVER_USER_AGENT = `${BOT_UA_TOKEN}/1.0 (+https://biviant.com/bot)`;
+const RESOLVER_USER_AGENT = BOT_USER_AGENT;
 
 async function fetchWithTimeout(
   url: string,

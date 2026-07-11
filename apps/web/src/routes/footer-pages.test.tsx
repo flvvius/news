@@ -64,12 +64,13 @@ describe("footer pages (BIV-803)", () => {
     },
   );
 
-  test("no {{TODO}} placeholder remains in any footer page", () => {
-    for (const [path, Page] of FOOTER_PAGES) {
+  test.each(FOOTER_PAGES)(
+    "%s has no {{TODO}} placeholder",
+    (path, Page) => {
       const matches = renderPageText(Page).match(TODO_PATTERN) ?? [];
       expect(matches, `${path} still has: ${matches.join(", ")}`).toHaveLength(
         0,
       );
-    }
-  });
+    },
+  );
 });
