@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { z } from "zod";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import { buildFeedQueryArgs } from "@/lib/feed-query";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  FilterIcon,
-  XIcon,
-} from "lucide-react";
-import AuthPromptBanner from "@/components/auth-prompt-banner";
+import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react";
 import { QuizCta } from "@/components/quiz-cta";
 import EventCard from "@/components/feed/event-card";
 import { Button } from "@/components/ui/button";
@@ -78,10 +78,10 @@ export const Route = createFileRoute("/feed")({
     if (deps.page !== undefined) {
       let archive;
       try {
-        archive = await client.query(
-          api.events.getPublishedEventsArchivePage,
-          { page: deps.page, pageSize: ARCHIVE_PAGE_SIZE },
-        );
+        archive = await client.query(api.events.getPublishedEventsArchivePage, {
+          page: deps.page,
+          pageSize: ARCHIVE_PAGE_SIZE,
+        });
       } catch (error) {
         console.error(
           `[Route loader] Failed to load feed archive page ${deps.page}:`,
@@ -122,9 +122,7 @@ export const Route = createFileRoute("/feed")({
       : baseTitle;
     const description = getString(locale, "feed.meta.description");
     // Paginated archive pages self-canonicalize.
-    const canonicalPath = archivePage
-      ? `/feed?page=${archivePage}`
-      : "/feed";
+    const canonicalPath = archivePage ? `/feed?page=${archivePage}` : "/feed";
 
     return {
       meta: [
@@ -364,7 +362,11 @@ function FeedArchive() {
   if (!archive) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
-        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-sm text-muted-foreground"
+        >
           {t("feed.loading")}
         </p>
       </div>
@@ -775,14 +777,6 @@ function FeedContent() {
             )}
           </header>
 
-          {!isAuthenticated && (
-            <AuthPromptBanner
-              redirectTo="/feed"
-              compact
-              title={t("feed.authTitle")}
-            />
-          )}
-
           {!isSearching && <QuizCta variant="feed" />}
 
           <div className="flex flex-col gap-8">
@@ -869,9 +863,7 @@ function FeedContent() {
                 </div>
                 {fallbackEvents && fallbackEvents.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <SectionTitle>
-                      {t("feed.preferredTopics")}
-                    </SectionTitle>
+                    <SectionTitle>{t("feed.preferredTopics")}</SectionTitle>
                     <div className="flex flex-col divide-y divide-border">
                       {fallbackEvents.map((event) => (
                         <div key={event._id} className="py-5">
