@@ -6,7 +6,6 @@ import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import { SectionTitle } from "@/components/ui/section-title";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useT } from "@/lib/i18n/LocaleContext";
-import { captureEvent } from "@/lib/posthog";
 
 type EventDetailArticle = {
   _id: Id<"articles">;
@@ -253,31 +252,11 @@ export function EventDetailTabs({
         </section>
       )}
 
-      {/* Global impact demoted (MIEZ-4): closed-by-default accordion below the
-          perspectives, off the initial viewport. Native <details> keeps it
-          collapsed with no JS and stays keyboard-accessible; expanding fires a
-          one-off analytics event so we have data to justify killing or fixing
-          it. */}
       {globalImpact && (
-        <details
-          className={`${sectionBreak} group`}
-          onToggle={(event) => {
-            if (event.currentTarget.open) {
-              captureEvent("global_impact_expand", { eventId });
-            }
-          }}
-        >
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
-            {t("event.globalContext")}
-            <span
-              aria-hidden="true"
-              className="transition-transform group-open:rotate-180"
-            >
-              ⌄
-            </span>
-          </summary>
-          <p className={`mt-4 ${bodyText}`}>{globalImpact}</p>
-        </details>
+        <section className={`${sectionBreak} space-y-4`}>
+          <SectionTitle>{t("event.meaning")}</SectionTitle>
+          <p className={bodyText}>{globalImpact}</p>
+        </section>
       )}
 
       <div className={sectionBreak}>

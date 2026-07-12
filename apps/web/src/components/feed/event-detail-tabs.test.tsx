@@ -1,22 +1,15 @@
 // BIV-804: the "Analiza afirmațiilor" (claims) tab must not ship while claim
 // analysis is paused; the remaining perspective tabs must render and switch.
-// MIEZ: the centre (neutral) tab is relabelled "Miezul"; global impact is a
-// closed-by-default accordion.
-import { describe, expect, test, vi } from "vitest";
+// MIEZ: the centre (neutral) tab is relabelled "Miezul".
+import { describe, expect, test } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach } from "vitest";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
-
-vi.mock("@/lib/posthog", () => ({
-  captureEvent: vi.fn(),
-  PostHogAnalytics: () => null,
-}));
 
 import { EventDetailTabs } from "./event-detail-tabs";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { captureEvent } from "@/lib/posthog";
 
 const eventId = "event123" as Id<"events">;
 
@@ -160,9 +153,8 @@ describe("EventDetailTabs (BIV-804)", () => {
     ).toBeNull();
   });
 
-  test("global impact is a closed-by-default accordion that reports expansion (MIEZ-4)", () => {
-    vi.mocked(captureEvent).mockClear();
-    const { container } = render(
+  test("global impact renders as its own section", () => {
+    render(
       <LocaleProvider locale="ro">
         <EventDetailTabs
           eventId={eventId}
@@ -173,19 +165,9 @@ describe("EventDetailTabs (BIV-804)", () => {
       </LocaleProvider>,
     );
 
-    const details = container.querySelector("details");
-    expect(details).not.toBeNull();
-    expect(details?.open).toBe(false);
+    expect(screen.getByText(getString("ro", "event.meaning"))).toBeTruthy();
     expect(
-      screen.getByText(getString("ro", "event.globalContext")),
+      screen.getByText("Impactul global al acestei știri."),
     ).toBeTruthy();
-    expect(captureEvent).not.toHaveBeenCalled();
-
-    details!.open = true;
-    fireEvent(details!, new Event("toggle"));
-    expect(captureEvent).toHaveBeenCalledWith(
-      "global_impact_expand",
-      expect.objectContaining({ eventId }),
-    );
   });
 });
