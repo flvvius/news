@@ -2,17 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { absoluteSiteUrl } from "@/lib/seo";
+import { escapeXml } from "@/lib/syndication";
 
 const convexUrl = process.env.VITE_CONVEX_URL!;
-
-function escapeXml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 function toSitemapUrl(pathname: string, lastModifiedAt?: number) {
   const url = absoluteSiteUrl(pathname);

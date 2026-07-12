@@ -292,7 +292,7 @@ const ro = {
   // MIEZ-7: methodology + funding transparency pages.
   "footer.methodology": "Metodologie",
   "footer.funding": "Cine finanțează Miez",
-  "feed.meta.title": `${BRAND_NAME} - știri din ambele tabere`,
+  "feed.meta.title": `${BRAND_NAME} — știri din ambele tabere`,
   "feed.meta.description":
     "Urmărește știrile zilei din ambele tabere, reformistă și suveranistă. Același eveniment, toate sursele, fără cont.",
   "feed.topic.search": "Caută topicuri...",
@@ -369,6 +369,8 @@ const ro = {
   "feed.archive.backToFeed": "Înapoi la feed",
   "feed.archive.browse": "Răsfoiește arhiva completă a știrilor",
   "feed.archive.empty": "Nu există evenimente pe această pagină.",
+  "feed.archive.error": "Nu am putut încărca arhiva.",
+  "feed.archive.retry": "Încearcă din nou",
   "event.general": "General",
   "event.summaryPending": "Rezumatul se pregătește...",
   "event.coveragePreview":
@@ -1174,6 +1176,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.archive.backToFeed": "Back to feed",
   "feed.archive.browse": "Browse the full news archive",
   "feed.archive.empty": "No events on this page.",
+  "feed.archive.error": "We couldn't load the archive.",
+  "feed.archive.retry": "Try again",
   "event.general": "General",
   "event.summaryPending": "Summary is on the way...",
   "event.coveragePreview":

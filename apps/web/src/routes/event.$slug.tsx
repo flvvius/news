@@ -284,6 +284,9 @@ function EventDetailPage() {
   // popping unrelated history.
   const [cameFromFeed, setCameFromFeed] = useState(false);
   useEffect(() => {
+    // Start each event navigation clean so a client-side jump to an event that
+    // wasn't opened from the feed doesn't inherit the previous event's flag.
+    setCameFromFeed(false);
     try {
       if (window.sessionStorage.getItem(RETURN_TO_FEED_KEY) === "1") {
         setCameFromFeed(true);

@@ -8,20 +8,12 @@ import {
   truncateAtWordBoundary,
 } from "@/lib/seo";
 import { getString } from "@/lib/i18n/strings";
+import { escapeXml, type SyndicationEvent } from "@/lib/syndication";
 
 const convexUrl = process.env.VITE_CONVEX_URL!;
 
 // Latest N summarized events (thin-page gated in Convex).
 const RSS_ITEM_LIMIT = 50;
-
-function escapeXml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 function buildRssHeaders() {
   return {
@@ -30,14 +22,6 @@ function buildRssHeaders() {
     "cache-control": "public, max-age=600, s-maxage=600",
   };
 }
-
-type SyndicationEvent = {
-  slug: string;
-  title: string;
-  summary: string;
-  firstPublishedAt: number;
-  lastUpdatedAt: number;
-};
 
 function buildRssXml(events: SyndicationEvent[]) {
   const feedTitle = SITE.name;

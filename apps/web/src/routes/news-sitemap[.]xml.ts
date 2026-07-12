@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { SITE, absoluteSiteUrl, deriveShortTitle } from "@/lib/seo";
+import { escapeXml, type SyndicationEvent } from "@/lib/syndication";
 
 const convexUrl = process.env.VITE_CONVEX_URL!;
 
@@ -9,29 +10,12 @@ const convexUrl = process.env.VITE_CONVEX_URL!;
 const NEWS_WINDOW_MS = 48 * 60 * 60 * 1000;
 const NEWS_ITEM_LIMIT = 100;
 
-function escapeXml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
 function buildNewsSitemapHeaders() {
   return {
     "content-type": "application/xml; charset=utf-8",
     "cache-control": "public, max-age=600, s-maxage=600",
   };
 }
-
-type SyndicationEvent = {
-  slug: string;
-  title: string;
-  summary: string;
-  firstPublishedAt: number;
-  lastUpdatedAt: number;
-};
 
 function buildNewsSitemapXml(events: SyndicationEvent[]) {
   const cutoff = Date.now() - NEWS_WINDOW_MS;

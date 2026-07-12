@@ -5,7 +5,12 @@ import {
   useState,
   type ComponentProps,
 } from "react";
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  notFound,
+  useRouter,
+} from "@tanstack/react-router";
 import { z } from "zod";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
@@ -356,21 +361,32 @@ function FeedComponent() {
  */
 function FeedArchive() {
   const t = useT();
+  const router = useRouter();
   const loaderData = Route.useLoaderData();
   const { topicNamesById } = useTopicNamesById();
   const archive =
     loaderData && "archive" in loaderData ? loaderData.archive : null;
 
+  // The loader returns { archive: null } only when the Convex query threw, so
+  // this is an error state (not a first paint) — surface it with a retry that
+  // re-runs the route loader instead of a spinner that never resolves.
   if (!archive) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
-        <p
-          role="status"
-          aria-live="polite"
-          className="text-sm text-muted-foreground"
-        >
-          {t("feed.loading")}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-3">
+          <p className="text-sm text-muted-foreground">
+            {t("feed.archive.error")}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void router.invalidate();
+            }}
+          >
+            {t("feed.archive.retry")}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -857,7 +873,11 @@ function FeedContent() {
             ) : null}
 
             {isSearching && searchResults?.length === 0 && (
-              <section className="flex flex-col gap-6">
+              <section
+                role="status"
+                aria-live="polite"
+                className="flex flex-col gap-6"
+              >
                 <div className="py-4 text-sm text-muted-foreground">
                   <p>{t("feed.noMatch").replace("{query}", debouncedSearch)}</p>
                   <p className="mt-2">{t("feed.tryFewer")}</p>
