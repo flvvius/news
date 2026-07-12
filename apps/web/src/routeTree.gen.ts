@@ -22,6 +22,8 @@ import { Route as PublishersRouteImport } from './routes/publishers'
 import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
+import { Route as MetodologieRouteImport } from './routes/metodologie'
+import { Route as FinantareRouteImport } from './routes/finantare'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DespreRouteImport } from './routes/despre'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -103,6 +105,16 @@ const PoliticaConfidentialitateRoute =
 const ParteneriRoute = ParteneriRouteImport.update({
   id: '/parteneri',
   path: '/parteneri',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetodologieRoute = MetodologieRouteImport.update({
+  id: '/metodologie',
+  path: '/metodologie',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinantareRoute = FinantareRouteImport.update({
+  id: '/finantare',
+  path: '/finantare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -196,6 +208,8 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -227,6 +241,8 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -259,6 +275,8 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -292,6 +310,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -323,6 +343,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -354,6 +376,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -386,6 +410,8 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DespreRoute: typeof DespreRoute
   FeedRoute: typeof FeedRoute
+  FinantareRoute: typeof FinantareRoute
+  MetodologieRoute: typeof MetodologieRoute
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ProfilRoute: typeof ProfilRoute
@@ -499,6 +525,20 @@ declare module '@tanstack/react-router' {
       path: '/parteneri'
       fullPath: '/parteneri'
       preLoaderRoute: typeof ParteneriRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metodologie': {
+      id: '/metodologie'
+      path: '/metodologie'
+      fullPath: '/metodologie'
+      preLoaderRoute: typeof MetodologieRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finantare': {
+      id: '/finantare'
+      path: '/finantare'
+      fullPath: '/finantare'
+      preLoaderRoute: typeof FinantareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -626,6 +666,8 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DespreRoute: DespreRoute,
   FeedRoute: FeedRoute,
+  FinantareRoute: FinantareRoute,
+  MetodologieRoute: MetodologieRoute,
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ProfilRoute: ProfilRoute,
