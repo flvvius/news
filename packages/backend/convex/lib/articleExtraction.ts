@@ -394,12 +394,12 @@ function isLikelyBlockedHtml(html: string): boolean {
  * L6: one honest fetch profile. The pre-compliance code rotated browser
  * header disguises (Chrome UA, spoofed Google referers, a fake iPhone UA
  * for Reuters) to get past bot checks — the opposite of provable good-faith
- * crawling. If a publisher blocks BiviantBot, we take the RSS fallback.
+ * crawling. If a publisher blocks MiezBot, we take the RSS fallback.
  */
 function buildFetchAttempts(): FetchAttempt[] {
   return [
     {
-      name: "biviantbot",
+      name: "miezbot",
       headers: botFetchHeaders({
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

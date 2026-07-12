@@ -1,30 +1,48 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The biviant lockup (mark + wordmark). The wordmark is a dark slate baked
- * into the PNG, so it needs a lightened variant on dark surfaces; the mark's
- * light-blue tones read on both. We ship both and swap with the `dark` class
- * on <html> — no JS, no hydration flip. Decorative by default: the enclosing
- * link/title carries the accessible name.
+ * The Miez brand lockup: the sliced-disc core mark + the "miez" wordmark.
  *
- * Size it with a height utility (e.g. `h-7`); width stays auto to preserve
- * the ~4.24:1 aspect ratio.
+ * The mark is `public/logo-mark.png` — the teal/coral disc split around the
+ * yellow *miez* (the core), on a transparent background so it reads on both
+ * light and dark chrome. The same disc, baked onto its cream ground, is the
+ * favicon / apple-touch-icon.
+ *
+ * Sizing: `className` sizes and spaces the whole lockup (e.g. `h-7`); the mark
+ * fills that height and the wordmark scales alongside it. The wordmark can be
+ * hidden — pass `wordmarkClassName="hidden md:inline"` to show text only on
+ * desktop, or `showWordmark={false}` to render the mark alone. Decorative by
+ * default (the whole lockup is `aria-hidden`): the enclosing link/title carries
+ * the accessible name.
  */
-export function BrandLogo({ className }: { className?: string }) {
+export function BrandLogo({
+  className,
+  wordmarkClassName,
+  showWordmark = true,
+}: {
+  className?: string;
+  wordmarkClassName?: string;
+  showWordmark?: boolean;
+}) {
   return (
-    <>
-      <img
-        src="/logo-biviant.png"
-        alt=""
-        aria-hidden="true"
-        className={cn("w-auto dark:hidden", className)}
-      />
-      <img
-        src="/logo-biviant-dark.png"
-        alt=""
-        aria-hidden="true"
-        className={cn("hidden w-auto dark:block", className)}
-      />
-    </>
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex items-center gap-2 text-foreground",
+        className,
+      )}
+    >
+      <img src="/logo-mark.png" alt="" className="h-full w-auto" />
+      {showWordmark && (
+        <span
+          className={cn(
+            "text-xl font-semibold lowercase leading-none tracking-tight",
+            wordmarkClassName,
+          )}
+        >
+          miez
+        </span>
+      )}
+    </span>
   );
 }

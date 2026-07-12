@@ -22,7 +22,7 @@ describe("BIV-806 balance feeds parse live", () => {
       const response = await fetch(url, {
         headers: {
           "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) BiviantFeedSmoke/1.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) MiezFeedSmoke/1.0",
         },
         redirect: "follow",
         signal: AbortSignal.timeout(20_000),

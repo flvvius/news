@@ -625,13 +625,13 @@ export const seedDefaults = internalMutation({
       // Email settings
       {
         key: "email_from_address",
-        value: `${BRAND_NAME} <hello@biviant.com>`,
+        value: `${BRAND_NAME} <hello@miez.news>`,
         description:
           'Sender address for transactional emails (RFC 5322 "From" header).',
       },
       {
         key: "email_reply_to",
-        value: "hello@biviant.com",
+        value: "hello@miez.news",
         description: "Reply-To address for transactional emails.",
       },
       {
@@ -642,7 +642,7 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "unsubscribe_base_url",
-        value: "https://biviant.com/unsubscribe",
+        value: "https://www.miez.news/unsubscribe",
         description:
           "Base URL for one-click unsubscribe links in emails (email param is appended).",
       },

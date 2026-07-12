@@ -18,7 +18,6 @@ type ShareEventButtonProps = {
   interactionContext?: InteractionContextSnapshot;
   slug: string;
   title: string;
-  summary?: string;
   size?: "default" | "sm";
   className?: string;
 };
@@ -28,7 +27,6 @@ export default function ShareEventButton({
   interactionContext,
   slug,
   title,
-  summary,
   size = "default",
   className,
 }: ShareEventButtonProps) {
@@ -62,7 +60,7 @@ export default function ShareEventButton({
       try {
         await navigator.share({
           title,
-          text: summary ?? title,
+          text: t("share.eventText"),
           url: shareUrl,
         });
         logShare();

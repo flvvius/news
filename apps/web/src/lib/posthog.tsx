@@ -51,6 +51,20 @@ function ensureInitialized() {
  * `posthog` singleton elsewhere via `import posthog from "posthog-js"` to
  * capture custom events.
  */
+/**
+ * Capture a custom product event. Safe no-op when PostHog is not configured
+ * (local dev without a key) or before init, so callers never need to guard.
+ */
+export function captureEvent(
+	name: string,
+	properties?: Record<string, unknown>,
+) {
+	if (typeof window === "undefined" || !POSTHOG_KEY || !initialized) {
+		return;
+	}
+	posthog.capture(name, properties);
+}
+
 export function PostHogAnalytics() {
 	const location = useLocation();
 

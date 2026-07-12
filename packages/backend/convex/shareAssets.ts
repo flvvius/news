@@ -9,7 +9,7 @@ import { normalizedPerspectives } from "./lib/biasAxis";
 export const SHARE_IMAGE_WIDTH = 1080;
 export const SHARE_IMAGE_HEIGHT = 566;
 const SHARE_RENDER_VERSION = "v8-resvg-js-inter-ttf-jpeg-1080";
-const EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY =
+export const EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY =
   "event_share_asset_generation_enabled";
 
 export type EventShareRenderData = {

@@ -473,7 +473,7 @@ function FeedContent() {
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem("biviant-recent-event-searches");
+      const raw = window.localStorage.getItem("miez-recent-event-searches");
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -644,7 +644,7 @@ function FeedContent() {
     }
     setRecentSearches(() => next);
     window.localStorage.setItem(
-      "biviant-recent-event-searches",
+      "miez-recent-event-searches",
       JSON.stringify(next),
     );
   }, [debouncedSearch, recentSearches, searchResults]);

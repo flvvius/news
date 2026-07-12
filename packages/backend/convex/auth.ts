@@ -116,9 +116,9 @@ const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 const isProduction = isProductionDeployment();
 const emailFromAddress =
-  process.env.EMAIL_FROM_ADDRESS?.trim() || `${BRAND_NAME} <hello@biviant.com>`;
+  process.env.EMAIL_FROM_ADDRESS?.trim() || `${BRAND_NAME} <hello@miez.news>`;
 const emailReplyTo =
-  process.env.EMAIL_REPLY_TO?.trim() || "hello@biviant.com";
+  process.env.EMAIL_REPLY_TO?.trim() || "hello@miez.news";
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -341,7 +341,7 @@ function getResetPasswordEmailHTML(resetUrl: string) {
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0;">
-                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">miez.news</a>
                     </p>
                   </td>
                 </tr>
@@ -447,7 +447,7 @@ function getVerificationEmailHTML(verificationUrl: string) {
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0;">
-                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">miez.news</a>
                     </p>
                   </td>
                 </tr>

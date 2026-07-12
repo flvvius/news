@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { gotoHydrated } from "./helpers";
 
-const STORAGE_KEY = "biviant-theme-preference";
+const STORAGE_KEY = "miez-theme-preference";
 
 async function installDarkSystemPreference(page: import("@playwright/test").Page) {
   await page.addInitScript(({ storageKey }) => {

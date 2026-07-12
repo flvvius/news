@@ -1032,6 +1032,19 @@ export default defineSchema({
     .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_event", ["eventId"]),
 
+  // General contact-form messages from the /contact page. Surfaced in the
+  // admin dashboard and emailed to ADMIN_EMAILS on arrival.
+  contactMessages: defineTable({
+    name: v.string(),
+    email: v.string(),
+    subject: v.string(),
+    message: v.string(),
+    status: v.union(v.literal("new"), v.literal("handled")),
+    createdAt: v.number(),
+    handledAt: v.optional(v.number()),
+    handledByEmail: v.optional(v.string()),
+  }).index("by_status_createdAt", ["status", "createdAt"]),
+
   // =========================================================================
   // 8. WAITLIST (Early Access Email Collection)
   // =========================================================================

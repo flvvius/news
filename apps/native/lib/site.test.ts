@@ -10,12 +10,12 @@ describe("privacy policy reachability (Ticket 5d)", () => {
     expect(privacy).toBeDefined();
   });
 
-  test("the privacy page resolves to an absolute biviant.com URL", () => {
+  test("the privacy page resolves to an absolute miez.news URL", () => {
     const privacy = ABOUT_PAGES.find((page) => page.slug === "privacy");
     expect(privacy).toBeDefined();
     if (!privacy) return;
     expect(aboutPageUrl(privacy)).toBe(
-      "https://biviant.com/politica-confidentialitate",
+      "https://miez.news/politica-confidentialitate",
     );
   });
 });

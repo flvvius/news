@@ -7,6 +7,7 @@ const footerSections = [
     titleKey: "footer.aboutSection",
     links: [
       { to: "/despre", labelKey: "footer.about" },
+      { to: "/finantare", labelKey: "footer.funding" },
       { to: "/contact", labelKey: "footer.contact" },
       { to: "/parteneri", labelKey: "footer.partners" },
     ],
@@ -15,6 +16,7 @@ const footerSections = [
     titleKey: "footer.resourcesSection",
     links: [
       { to: "/cum-functioneaza", labelKey: "footer.howItWorks" },
+      { to: "/metodologie", labelKey: "footer.methodology" },
       { to: "/sursele-noastre", labelKey: "footer.sources" },
       { to: "/surse", labelKey: "footer.sourcesIndex" },
       { to: "/publishers", labelKey: "footer.publishers" },

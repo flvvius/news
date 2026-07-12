@@ -149,6 +149,18 @@ export default function SourceCoverageSummary({
             </Link>
           ))}
         </div>
+
+        {/* MIEZ-5/6/7: the axis explanation + link to the methodology, shown
+            once under the axes rather than on every source row (only when
+            there are axes to explain). */}
+        {sources.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {t("axis.tooltip")}{" "}
+            <Link to="/metodologie" className="underline hover:text-foreground">
+              {t("axis.methodologyCta")}
+            </Link>
+          </p>
+        )}
       </div>
     </section>
   );

@@ -17,6 +17,8 @@ import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
 import { filterEventImage } from "./lib/imagePolicy";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { foldDiacriticsToAscii } from "./lib/romanian";
+import { getConfig } from "./config";
+import { EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY } from "./shareAssets";
 
 const TRENDING_SCAN_LIMIT = 250;
 const TOPIC_SCAN_LIMIT = 500;
@@ -462,11 +464,22 @@ export const getEventBySlug = query({
       .query("articles")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
       .collect();
-    const shareAsset = await ctx.db
-      .query("eventShareAssets")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .order("desc")
-      .first();
+    // Custom social preview images are gated by a single kill switch. While it
+    // is off (dev and prod), never serve a generated share asset — even if the
+    // DB still holds "ready" rows from a previous run — so the OG/share image
+    // falls back to the original event photo below.
+    const shareAssetsEnabled = await getConfig(
+      ctx,
+      EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY,
+      false,
+    );
+    const shareAsset = shareAssetsEnabled
+      ? await ctx.db
+          .query("eventShareAssets")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .order("desc")
+          .first()
+      : null;
     const shareImageUrl =
       shareAsset?.status === "ready" && shareAsset.storageId
         ? await ctx.storage.getUrl(shareAsset.storageId)

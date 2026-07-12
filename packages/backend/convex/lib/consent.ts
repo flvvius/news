@@ -5,10 +5,12 @@
  * The web form must render WAITLIST_CONSENT_TEXT verbatim.
  */
 
-export const WAITLIST_CONSENT_TEXT_VERSION = "2026-07-10.v1";
+// Bumped 2026-07-12 for the Biviant→Miez rename of the product name in the
+// statement. Prior signups remain provably tied to 2026-07-10.v1's wording.
+export const WAITLIST_CONSENT_TEXT_VERSION = "2026-07-12.v1";
 
 export const WAITLIST_CONSENT_TEXT =
-  "Trimite-mi un e-mail când se deschide accesul la Biviant. Mă pot dezabona " +
+  "Trimite-mi un e-mail când se deschide accesul la Miez. Mă pot dezabona " +
   "oricând, cu un singur clic, din orice e-mail primit sau de pe pagina de " +
   "dezabonare — fără autentificare.";
 

@@ -1,5 +1,6 @@
 // BIV-804: the "Analiza afirmațiilor" (claims) tab must not ship while claim
 // analysis is paused; the remaining perspective tabs must render and switch.
+// MIEZ: the centre (neutral) tab is relabelled "Miezul".
 import { describe, expect, test } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach } from "vitest";
@@ -52,7 +53,7 @@ describe("EventDetailTabs (BIV-804)", () => {
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });
 
-  test("remaining perspective tabs render and switch correctly", () => {
+  test("perspective tabs render, with the centre tab labelled Miezul", () => {
     renderTabs({
       neutral: "Rezumat neutru",
       reformist: "Perspectiva reformistă",
@@ -61,6 +62,24 @@ describe("EventDetailTabs (BIV-804)", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(3);
+    // Centre tab is now "Miezul", flanked by the reformist/suveranist tabs.
+    expect(
+      screen.getByRole("tab", { name: getString("ro", "event.core") }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: getString("ro", "event.left") }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: getString("ro", "event.right") }),
+    ).toBeTruthy();
+  });
+
+  test("tabs switch correctly, centre active by default", () => {
+    renderTabs({
+      neutral: "Rezumat neutru",
+      reformist: "Perspectiva reformistă",
+      suveranist: "Perspectiva suveranistă",
+    });
 
     const panelFor = (text: string) => {
       const panel = screen.getByText(text).closest('[role="tabpanel"]');
@@ -69,10 +88,8 @@ describe("EventDetailTabs (BIV-804)", () => {
     };
     const stateOf = (text: string) => panelFor(text).getAttribute("data-state");
 
-    // All panels are force-mounted for SSR/crawlers, so every summary is in
-    // the DOM at once — the bug was that nothing hid the inactive ones, so
-    // switching tabs did nothing. Each panel must carry the hide class, and
-    // only the selected one may be in the active state.
+    // All panels are force-mounted for SSR/crawlers; only the selected one may
+    // be active, and each must carry the hide class.
     for (const text of [
       "Rezumat neutru",
       "Perspectiva reformistă",
@@ -83,7 +100,7 @@ describe("EventDetailTabs (BIV-804)", () => {
       );
     }
 
-    // Neutral (center) is the default active panel; the others are inactive.
+    // Miezul (centre) is the default active panel.
     expect(stateOf("Rezumat neutru")).toBe("active");
     expect(stateOf("Perspectiva reformistă")).toBe("inactive");
     expect(stateOf("Perspectiva suveranistă")).toBe("inactive");
@@ -134,5 +151,23 @@ describe("EventDetailTabs (BIV-804)", () => {
     expect(
       screen.queryByText(getString("ro", "event.noPoliticalAxis")),
     ).toBeNull();
+  });
+
+  test("global impact renders as its own section", () => {
+    render(
+      <LocaleProvider locale="ro">
+        <EventDetailTabs
+          eventId={eventId}
+          perspectiveSummaries={{ neutral: "Rezumat neutru" }}
+          globalImpact="Impactul global al acestei știri."
+          articles={[]}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByText(getString("ro", "event.meaning"))).toBeTruthy();
+    expect(
+      screen.getByText("Impactul global al acestei știri."),
+    ).toBeTruthy();
   });
 });

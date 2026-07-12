@@ -162,7 +162,7 @@ export function EventDetailTabs({
                 value="center"
                 className={`${underlineTrigger} data-[state=active]:border-bias-center dark:data-[state=active]:border-bias-center`}
               >
-                {t("event.centerTab")}
+                {t("event.core")}
               </TabsTrigger>
               {perspectiveSummaries?.suveranist && (
                 <TabsTrigger
@@ -237,7 +237,7 @@ export function EventDetailTabs({
         </section>
       ) : (
         <section className="space-y-4">
-          <SectionTitle>{t("event.summary")}</SectionTitle>
+          <SectionTitle>{t("event.core")}</SectionTitle>
           <p className={bodyText}>
             {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
           </p>

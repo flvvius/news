@@ -81,7 +81,7 @@ export function PublishersPage() {
           Alternativ, poți folosi semnalele automate (robots.txt, TDMRep,
           noai) descrise pe pagina{" "}
           <Link to="/bot" className="underline hover:text-foreground">
-            BiviantBot
+            MiezBot
           </Link>{" "}
           — le verificăm la fiecare 24 de ore.
         </p>

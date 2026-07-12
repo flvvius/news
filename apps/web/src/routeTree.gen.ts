@@ -22,6 +22,9 @@ import { Route as PublishersRouteImport } from './routes/publishers'
 import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
+import { Route as MetodologieRouteImport } from './routes/metodologie'
+import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
+import { Route as FinantareRouteImport } from './routes/finantare'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DespreRouteImport } from './routes/despre'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -37,6 +40,7 @@ import { Route as AdminReviewRouteImport } from './routes/admin.review'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
 import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
+import { Route as AdminContactRouteImport } from './routes/admin.contact'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -103,6 +107,21 @@ const PoliticaConfidentialitateRoute =
 const ParteneriRoute = ParteneriRouteImport.update({
   id: '/parteneri',
   path: '/parteneri',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetodologieRoute = MetodologieRouteImport.update({
+  id: '/metodologie',
+  path: '/metodologie',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinantareRoute = FinantareRouteImport.update({
+  id: '/finantare',
+  path: '/finantare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -180,6 +199,11 @@ const AdminPipelineRoute = AdminPipelineRouteImport.update({
   path: '/admin/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminContactRoute = AdminContactRouteImport.update({
+  id: '/admin/contact',
+  path: '/admin/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -196,6 +220,9 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -209,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -227,6 +255,9 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -240,6 +271,7 @@ export interface FileRoutesByTo {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -259,6 +291,9 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
+  '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -272,6 +307,7 @@ export interface FileRoutesById {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -292,6 +328,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/llms.txt'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -305,6 +344,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -323,6 +363,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/llms.txt'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -336,6 +379,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -354,6 +398,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/despre'
     | '/feed'
+    | '/finantare'
+    | '/llms.txt'
+    | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -367,6 +414,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -386,6 +434,9 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DespreRoute: typeof DespreRoute
   FeedRoute: typeof FeedRoute
+  FinantareRoute: typeof FinantareRoute
+  LlmsDottxtRoute: typeof LlmsDottxtRoute
+  MetodologieRoute: typeof MetodologieRoute
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ProfilRoute: typeof ProfilRoute
@@ -399,6 +450,7 @@ export interface RootRouteChildren {
   SurseleNoastreRoute: typeof SurseleNoastreRoute
   TermeniRoute: typeof TermeniRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  AdminContactRoute: typeof AdminContactRoute
   AdminPipelineRoute: typeof AdminPipelineRoute
   AdminPublishersRoute: typeof AdminPublishersRoute
   AdminReportsRoute: typeof AdminReportsRoute
@@ -499,6 +551,27 @@ declare module '@tanstack/react-router' {
       path: '/parteneri'
       fullPath: '/parteneri'
       preLoaderRoute: typeof ParteneriRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metodologie': {
+      id: '/metodologie'
+      path: '/metodologie'
+      fullPath: '/metodologie'
+      preLoaderRoute: typeof MetodologieRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finantare': {
+      id: '/finantare'
+      path: '/finantare'
+      fullPath: '/finantare'
+      preLoaderRoute: typeof FinantareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -606,6 +679,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/contact': {
+      id: '/admin/contact'
+      path: '/admin/contact'
+      fullPath: '/admin/contact'
+      preLoaderRoute: typeof AdminContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -626,6 +706,9 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DespreRoute: DespreRoute,
   FeedRoute: FeedRoute,
+  FinantareRoute: FinantareRoute,
+  LlmsDottxtRoute: LlmsDottxtRoute,
+  MetodologieRoute: MetodologieRoute,
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ProfilRoute: ProfilRoute,
@@ -639,6 +722,7 @@ const rootRouteChildren: RootRouteChildren = {
   SurseleNoastreRoute: SurseleNoastreRoute,
   TermeniRoute: TermeniRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  AdminContactRoute: AdminContactRoute,
   AdminPipelineRoute: AdminPipelineRoute,
   AdminPublishersRoute: AdminPublishersRoute,
   AdminReportsRoute: AdminReportsRoute,

@@ -1,5 +1,5 @@
 // L6: crawler identity + per-domain rate limiting. Outbound requests carry
-// the BiviantBot UA header; the limiter proves per-domain spacing and
+// the MiezBot UA header; the limiter proves per-domain spacing and
 // concurrency; backoff honors Retry-After on 429.
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -11,8 +11,8 @@ afterEach(() => {
 });
 
 describe("bot identity (L6)", () => {
-  test("UA is the BiviantBot product token with bot page link", () => {
-    expect(BOT_USER_AGENT).toMatch(/^BiviantBot\/1\.0 \(\+https:\/\/biviant\.com\/bot\)$/);
+  test("UA is the MiezBot product token with bot page link", () => {
+    expect(BOT_USER_AGENT).toMatch(/^MiezBot\/1\.0 \(\+https:\/\/www\.miez\.news\/bot\)$/);
   });
 
   test("every outbound request carries the crawler User-Agent", () => {

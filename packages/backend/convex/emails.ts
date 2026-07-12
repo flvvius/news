@@ -9,11 +9,11 @@ import { getAdminEmails } from "./lib/betaAccess";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Hardcoded fallbacks — overridden at runtime via the config table
-const DEFAULT_UNSUB_BASE = "https://biviant.com/unsubscribe";
+const DEFAULT_UNSUB_BASE = "https://www.miez.news/unsubscribe";
 const DEFAULT_PHYSICAL_ADDRESS = `${BRAND_NAME}, Bucharest, Romania`;
-const DEFAULT_FROM_ADDRESS = `${BRAND_NAME} <hello@biviant.com>`;
-const DEFAULT_REPLY_TO = "hello@biviant.com";
-const DEFAULT_SITE_URL = "https://biviant.com";
+const DEFAULT_FROM_ADDRESS = `${BRAND_NAME} <hello@miez.news>`;
+const DEFAULT_REPLY_TO = "hello@miez.news";
+const DEFAULT_SITE_URL = "https://www.miez.news";
 
 /** Shape returned by getEmailConfig — keeps template function signatures clean. */
 interface EmailConfig {
@@ -240,6 +240,64 @@ export const sendReportAlertEmail = internalAction({
       return { success: true as const };
     } catch (error) {
       console.error("Error sending report alert email:", error);
+      return { success: false as const };
+    }
+  },
+});
+
+/**
+ * Operator alert: notify the admins when a general contact-form message lands,
+ * so it reaches a human promptly rather than only when someone opens
+ * /admin/contact. Reply-to is the sender's address so admins can answer
+ * directly. Plain text, sent to ADMIN_EMAILS; internal ops notice, no
+ * unsubscribe footer.
+ */
+export const sendContactMessageEmail = internalAction({
+  args: {
+    messageId: v.id("contactMessages"),
+    name: v.string(),
+    email: v.string(),
+    subject: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admins = getAdminEmails();
+    if (admins.length === 0) {
+      console.warn(
+        "[emails] No ADMIN_EMAILS configured; contact message alert not sent",
+      );
+      return { success: false as const, reason: "no-admins" as const };
+    }
+    try {
+      const emailCfg = await getEmailConfig(ctx);
+      const siteUrl = resolveSiteUrl();
+      const adminUrl = `${siteUrl}/admin/contact`;
+      const { error } = await resend.emails.send({
+        from: emailCfg.fromAddress,
+        // Reply straight to the person who wrote in.
+        replyTo: args.email,
+        to: admins,
+        subject: `Mesaj de contact nou pe ${BRAND_NAME}: ${args.subject}`,
+        text: [
+          `A fost trimis un mesaj prin formularul de contact ${BRAND_NAME}.`,
+          "",
+          `De la: ${args.name} <${args.email}>`,
+          `Subiect: ${args.subject}`,
+          "",
+          "Mesaj:",
+          args.message,
+          "",
+          `Poți răspunde direct la acest e-mail (ajunge la expeditor).`,
+          `Toate mesajele: ${adminUrl}`,
+        ].join("\n"),
+      });
+      if (error) {
+        console.error("Resend error (contact message):", error);
+        return { success: false as const };
+      }
+      return { success: true as const };
+    } catch (error) {
+      console.error("Error sending contact message email:", error);
       return { success: false as const };
     }
   },
@@ -498,7 +556,7 @@ function getWelcomeEmailHTML(
               <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" style="background-color:#2563eb; border-radius:6px;">
-                    <a href="https://biviant.com?ref=${position}" target="_blank" style="display:inline-block; padding:14px 28px; font-size:16px; font-weight:600; color:#ffffff; text-decoration:none;">Share with Friends</a>
+                    <a href="https://www.miez.news?ref=${position}" target="_blank" style="display:inline-block; padding:14px 28px; font-size:16px; font-weight:600; color:#ffffff; text-decoration:none;">Share with Friends</a>
                   </td>
                 </tr>
               </table>
@@ -513,7 +571,7 @@ function getWelcomeEmailHTML(
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0 0 8px 0;">
-                      <a href="https://biviant.com" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="https://www.miez.news" style="color:#2563eb; text-decoration:underline;">miez.news</a>
                     </p>
                     <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">
@@ -553,7 +611,7 @@ What happens next:
 3. Early access - When we're ready to launch, you'll be among the first to get an invite.
 
 Move up the list:
-Share ${BRAND_NAME} with friends who are tired of their news bubble: https://biviant.com?ref=${position}
+Share ${BRAND_NAME} with friends who are tired of their news bubble: https://www.miez.news?ref=${position}
 
 ---
 See every side of the story.
@@ -681,7 +739,7 @@ function getInviteEmailHTML(
                   <td align="center" style="font-size:14px; line-height:1.6; color:#6b7280;">
                     <p style="margin:0 0 8px 0;">See every side of the story.</p>
                     <p style="margin:0 0 8px 0;">
-                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">biviant.com</a>
+                      <a href="${siteUrl}" style="color:#2563eb; text-decoration:underline;">miez.news</a>
                     </p>
                     <p style="margin:0 0 8px 0; font-size:12px;">${cfg.physicalAddress}</p>
                     <p style="margin:0; font-size:12px;">

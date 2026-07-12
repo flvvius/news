@@ -22,7 +22,7 @@
 export type DomainPermissionState = "full" | "rss_only" | "blocked";
 
 /** Our crawler's robots.txt product token (see L6). */
-export const BOT_UA_TOKEN = "BiviantBot";
+export const BOT_UA_TOKEN = "MiezBot";
 
 /**
  * AI-convention user-agent tokens: a publisher disallowing these expresses a

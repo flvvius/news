@@ -85,9 +85,11 @@ body {
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.01 60);
 
-  /* Desaturated brand blue — trustworthy but not loud */
-  --primary: oklch(0.45 0.1 250);
-  --primary-foreground: oklch(0.985 0 0);
+  /* Miez brand ink — warm graphite. Deliberately NOT blue: blue/red/yellow
+     read as Romanian party colors, and the brand accent must not lean toward
+     either camp. Neutral ink keeps the two camp tokens the only political hues. */
+  --primary: oklch(0.29 0.015 65);
+  --primary-foreground: oklch(0.98 0.004 80);
 
   --secondary: oklch(0.965 0.003 80);
   --secondary-foreground: oklch(0.20 0.01 60);
@@ -103,7 +105,7 @@ body {
 
   --border: oklch(0.91 0.004 80);
   --input: oklch(0.91 0.004 80);
-  --ring: oklch(0.55 0.08 250);
+  --ring: oklch(0.45 0.015 65);
 
   /* Scrim behind sheets/drawers and on-image chips — dark in both modes. */
   --overlay: oklch(0 0 0 / 50%);
@@ -115,13 +117,32 @@ body {
   --warning: oklch(0.75 0.15 75);
   --warning-foreground: oklch(0.20 0 0);
 
-  /* Bias spectrum — neutral, non-political */
-  --bias-left: oklch(0.58 0.1 280);          /* muted indigo  */
-  --bias-left-muted: oklch(0.58 0.06 280);   /* softer lean   */
-  --bias-center: oklch(0.55 0.01 80);        /* warm gray     */
-  --bias-right: oklch(0.68 0.12 70);         /* muted amber   */
-  --bias-right-muted: oklch(0.68 0.08 70);   /* softer lean   */
-  --bias-track: oklch(0.92 0.005 80);        /* track bg      */
+  /* ── Miez camp system ──────────────────────────────────────────────
+     Two politically-loaded camps + a neutral core (the "miez"). Chosen for
+     equal perceptual weight (near-equal L and C) so neither camp reads as
+     louder or default. Deliberately NOT the party pairs blue/red or
+     yellow/red: reformist = cool teal, suveranist = warm terracotta/clay,
+     core = warm sand/gold. `-surface` = subtle panel tint, `-fg` = readable
+     text/heading in that camp's context, base = accent/dot/border. */
+  --camp-a: oklch(0.56 0.10 195);            /* reformist — teal accent   */
+  --camp-a-fg: oklch(0.42 0.07 195);         /* reformist text on light   */
+  --camp-a-surface: oklch(0.972 0.018 195);  /* reformist panel tint      */
+  --camp-b: oklch(0.58 0.11 45);             /* suveranist — terracotta   */
+  --camp-b-fg: oklch(0.47 0.10 42);          /* suveranist text on light  */
+  --camp-b-surface: oklch(0.972 0.018 55);   /* suveranist panel tint     */
+  --core: oklch(0.80 0.06 85);               /* neutral core — sand/gold  */
+  --core-fg: oklch(0.44 0.035 75);           /* readable core text        */
+  --core-surface: oklch(0.972 0.016 85);     /* core panel tint (cream)   */
+
+  /* Bias spectrum = the reformist–suveranist axis, on the camp palette:
+     left = reformist (camp-a teal), right = suveranist (camp-b terracotta),
+     centre = neutral core. Kept near-equal L/C so neither side reads louder. */
+  --bias-left: oklch(0.56 0.10 195);         /* reformist (camp-a) */
+  --bias-left-muted: oklch(0.56 0.07 195);   /* softer lean        */
+  --bias-center: oklch(0.74 0.05 85);        /* neutral core       */
+  --bias-right: oklch(0.58 0.11 45);         /* suveranist (camp-b) */
+  --bias-right-muted: oklch(0.58 0.08 45);   /* softer lean        */
+  --bias-track: oklch(0.92 0.005 80);        /* track bg           */
 
   /* Charts */
   --chart-1: oklch(0.55 0.14 250);
@@ -133,12 +154,12 @@ body {
   /* Sidebar */
   --sidebar: oklch(0.98 0.002 80);
   --sidebar-foreground: oklch(0.15 0.01 60);
-  --sidebar-primary: oklch(0.45 0.1 250);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.29 0.015 65);
+  --sidebar-primary-foreground: oklch(0.98 0.004 80);
   --sidebar-accent: oklch(0.955 0.004 80);
   --sidebar-accent-foreground: oklch(0.20 0.01 60);
   --sidebar-border: oklch(0.91 0.004 80);
-  --sidebar-ring: oklch(0.55 0.08 250);
+  --sidebar-ring: oklch(0.45 0.015 65);
 }
 
 .dark {
@@ -151,8 +172,9 @@ body {
   --popover: oklch(0.19 0.008 270);
   --popover-foreground: oklch(0.93 0.005 80);
 
-  --primary: oklch(0.65 0.12 250);
-  --primary-foreground: oklch(0.14 0.008 270);
+  /* On dark, the brand ink inverts to a warm off-white; still camp-neutral. */
+  --primary: oklch(0.92 0.005 80);
+  --primary-foreground: oklch(0.16 0.008 270);
 
   --secondary: oklch(0.24 0.008 270);
   --secondary-foreground: oklch(0.93 0.005 80);
@@ -168,7 +190,7 @@ body {
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0.08 250);
+  --ring: oklch(0.60 0.02 65);
 
   --overlay: oklch(0 0 0 / 60%);
   --overlay-foreground: oklch(1 0 0);
@@ -178,12 +200,23 @@ body {
   --warning: oklch(0.78 0.14 75);
   --warning-foreground: oklch(0.14 0 0);
 
-  /* Bias — slightly lifted for dark bg */
-  --bias-left: oklch(0.65 0.1 280);
-  --bias-left-muted: oklch(0.65 0.06 280);
-  --bias-center: oklch(0.60 0.01 80);
-  --bias-right: oklch(0.75 0.12 70);
-  --bias-right-muted: oklch(0.75 0.08 70);
+  /* Camp system — lifted L for dark bg, darker -surface tints. */
+  --camp-a: oklch(0.70 0.10 195);
+  --camp-a-fg: oklch(0.80 0.08 195);
+  --camp-a-surface: oklch(0.24 0.028 195);
+  --camp-b: oklch(0.71 0.11 48);
+  --camp-b-fg: oklch(0.80 0.09 48);
+  --camp-b-surface: oklch(0.24 0.030 45);
+  --core: oklch(0.82 0.07 85);
+  --core-fg: oklch(0.80 0.05 85);
+  --core-surface: oklch(0.25 0.022 85);
+
+  /* Bias = reformist–suveranist axis on the camp palette, lifted for dark bg */
+  --bias-left: oklch(0.70 0.10 195);
+  --bias-left-muted: oklch(0.70 0.07 195);
+  --bias-center: oklch(0.72 0.05 85);
+  --bias-right: oklch(0.71 0.11 48);
+  --bias-right-muted: oklch(0.71 0.08 48);
   --bias-track: oklch(0.25 0.005 270);
 
   --chart-1: oklch(0.55 0.18 250);
@@ -194,12 +227,12 @@ body {
 
   --sidebar: oklch(0.19 0.008 270);
   --sidebar-foreground: oklch(0.93 0.005 80);
-  --sidebar-primary: oklch(0.65 0.12 250);
-  --sidebar-primary-foreground: oklch(0.93 0.005 80);
+  --sidebar-primary: oklch(0.92 0.005 80);
+  --sidebar-primary-foreground: oklch(0.16 0.008 270);
   --sidebar-accent: oklch(0.24 0.008 270);
   --sidebar-accent-foreground: oklch(0.93 0.005 80);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.55 0.08 250);
+  --sidebar-ring: oklch(0.60 0.02 65);
 }
 
 @theme inline {
@@ -234,6 +267,16 @@ body {
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+
+  --color-camp-a: var(--camp-a);
+  --color-camp-a-fg: var(--camp-a-fg);
+  --color-camp-a-surface: var(--camp-a-surface);
+  --color-camp-b: var(--camp-b);
+  --color-camp-b-fg: var(--camp-b-fg);
+  --color-camp-b-surface: var(--camp-b-surface);
+  --color-core: var(--core);
+  --color-core-fg: var(--core-fg);
+  --color-core-surface: var(--core-surface);
 
   --color-bias-left: var(--bias-left);
   --color-bias-left-muted: var(--bias-left-muted);

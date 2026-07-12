@@ -23,7 +23,11 @@ export const Route = createFileRoute("/reset-password")({
     const locale = getLocaleFromMatches(matches);
 
     return {
-      meta: [{ title: getString(locale, "reset.metaTitle") }],
+      meta: [
+        { title: getString(locale, "reset.metaTitle") },
+        // Tokenized, single-use recovery URL: never index or follow.
+        { name: "robots", content: "noindex, nofollow" },
+      ],
     };
   },
   component: ResetPasswordRoute,

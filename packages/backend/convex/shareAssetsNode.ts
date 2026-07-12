@@ -19,8 +19,11 @@ import {
   SHARE_IMAGE_WIDTH,
 } from "./shareAssets";
 
-const BIVIANT_BLUE = "#5AA6F7";
-const BIVIANT_BLUE_SOFT = "#87BBFF";
+// MIEZ-9: card accent is warm core-gold, not the old brand blue (blue reads as
+// a party colour). Kept as hex here because the SVG is generated outside the
+// Tailwind token system.
+const MIEZ_GOLD = "#E4C275";
+const MIEZ_GOLD_SOFT = "#F0DCA6";
 // L6: single crawler identity everywhere.
 const USER_AGENT = BOT_USER_AGENT;
 const FETCH_TIMEOUT_MS = 8000;
@@ -351,9 +354,9 @@ function buildShareSvg(
           <stop stop-color="rgba(255,255,255,0.18)" />
           <stop offset="1" stop-color="rgba(255,255,255,0.08)" />
         </linearGradient>
-        <linearGradient id="blueGlow" x1="774" y1="56" x2="1038" y2="196" gradientUnits="userSpaceOnUse">
-          <stop stop-color="${BIVIANT_BLUE}" stop-opacity="0.42" />
-          <stop offset="1" stop-color="${BIVIANT_BLUE_SOFT}" stop-opacity="0.08" />
+        <linearGradient id="accentGlow" x1="774" y1="56" x2="1038" y2="196" gradientUnits="userSpaceOnUse">
+          <stop stop-color="${MIEZ_GOLD}" stop-opacity="0.42" />
+          <stop offset="1" stop-color="${MIEZ_GOLD_SOFT}" stop-opacity="0.08" />
         </linearGradient>
         <filter id="blurGlow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="24" />
@@ -362,20 +365,22 @@ function buildShareSvg(
 
       ${backgroundLayer}
 
-      <circle cx="960" cy="96" r="132" fill="url(#blueGlow)" filter="url(#blurGlow)" />
-      <circle cx="160" cy="68" r="92" fill="rgba(90,166,247,0.18)" filter="url(#blurGlow)" />
+      <circle cx="960" cy="96" r="132" fill="url(#accentGlow)" filter="url(#blurGlow)" />
+      <circle cx="160" cy="68" r="92" fill="rgba(228,194,117,0.16)" filter="url(#blurGlow)" />
 
       <rect x="28" y="28" width="1024" height="510" rx="34" fill="rgba(3,6,12,0.22)" stroke="rgba(255,255,255,0.08)" />
       <rect x="48" y="48" width="740" height="470" rx="28" fill="url(#glass)" stroke="rgba(255,255,255,0.16)" />
 
       <g transform="translate(816 56)">
         <rect width="202" height="192" rx="34" fill="rgba(9,14,24,0.46)" stroke="rgba(255,255,255,0.10)" />
-        <rect x="24" y="22" width="58" height="58" rx="18" fill="${BIVIANT_BLUE}" />
-        <text x="53" y="59" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="30" font-weight="800" fill="#08111E">B</text>
-        <text x="24" y="114" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="26" letter-spacing="0.16em" font-weight="800" fill="white">BIVIANT</text>
+        {/* Miez core mark: dark chip + gold ring + centre dot. */}
+        <rect x="24" y="22" width="58" height="58" rx="18" fill="rgba(9,14,24,0.92)" stroke="${MIEZ_GOLD}" stroke-opacity="0.45" />
+        <circle cx="53" cy="51" r="15" fill="none" stroke="${MIEZ_GOLD}" stroke-width="5" />
+        <circle cx="53" cy="51" r="5.5" fill="${MIEZ_GOLD}" />
+        <text x="24" y="114" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="26" letter-spacing="0.16em" font-weight="800" fill="white">MIEZ</text>
         <text x="24" y="142" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="600" fill="rgba(255,255,255,0.72)">MULTI-SOURCE EVENT</text>
-        <rect x="24" y="158" width="122" height="24" rx="12" fill="rgba(90,166,247,0.18)" stroke="rgba(90,166,247,0.34)" />
-        <text x="85" y="175" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="11" font-weight="800" letter-spacing="0.10em" fill="#DDEEFF">UPDATED ${updated.toUpperCase()}</text>
+        <rect x="24" y="158" width="122" height="24" rx="12" fill="rgba(228,194,117,0.16)" stroke="rgba(228,194,117,0.34)" />
+        <text x="85" y="175" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="11" font-weight="800" letter-spacing="0.10em" fill="#F3E9CC">UPDATED ${updated.toUpperCase()}</text>
       </g>
 
       ${buildSourceStripSvg(sourceLogos)}
@@ -399,8 +404,8 @@ function buildShareSvg(
       <rect x="68" y="480" width="236" height="30" rx="15" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.12)" />
       <text x="186" y="501" text-anchor="middle" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="700" fill="white">${coverage}</text>
 
-      <text x="816" y="494" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="19" font-weight="700" fill="rgba(255,255,255,0.94)">See every side of the story</text>
-      <text x="816" y="518" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="500" fill="rgba(255,255,255,0.70)">Shared from biviant.com</text>
+      <text x="816" y="494" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="19" font-weight="700" fill="rgba(255,255,255,0.94)">Every story, from both camps</text>
+      <text x="816" y="518" font-family="${RESVG_FONT_FAMILY}, sans-serif" font-size="15" font-weight="500" fill="rgba(255,255,255,0.70)">Shared from miez.news</text>
     </svg>
   `;
 }

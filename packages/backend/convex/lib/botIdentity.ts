@@ -6,7 +6,7 @@
 
 import { BOT_UA_TOKEN } from "./tdmPolicy";
 
-export const BOT_INFO_URL = "https://biviant.com/bot";
+export const BOT_INFO_URL = "https://www.miez.news/bot";
 
 export const BOT_USER_AGENT = `${BOT_UA_TOKEN}/1.0 (+${BOT_INFO_URL})`;
 
