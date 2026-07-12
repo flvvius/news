@@ -18,6 +18,9 @@ export const SITE = {
   title: getString("en", "seo.siteTitle"),
   description: getString("en", "seo.siteDescription"),
   ogImage: "https://www.miez.news/og-image.jpg",
+  // Romanian alt for the default share card (SEO-2). Event pages override with
+  // their own imageAlt when a per-event photo is present.
+  ogImageAlt: "Miez - știri din ambele tabere",
   ogImageType: "image/jpeg",
   ogImageWidth: 1200,
   ogImageHeight: 630,
@@ -25,6 +28,39 @@ export const SITE = {
 
 export function absoluteSiteUrl(pathname: string): string {
   return new URL(pathname, SITE.url).toString();
+}
+
+/**
+ * Truncate text at a word boundary, never mid-word, appending an ellipsis when
+ * (and only when) the text was actually cut. Trailing whitespace/punctuation
+ * before the ellipsis is stripped so descriptions never read "…word ,…" or end
+ * with a dangling space before the closing quote (SEO-6). Whitespace is also
+ * collapsed so multi-line summaries render as a single clean meta line.
+ */
+export function truncateAtWordBoundary(text: string, maxLen: number): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLen) return normalized;
+  const slice = normalized.slice(0, maxLen);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? slice.slice(0, lastSpace) : slice;
+  // Drop any trailing space or dangling punctuation before the ellipsis.
+  const trimmed = cut.replace(/[\s.,;:!?…·•\-–—]+$/u, "");
+  return `${trimmed}…`;
+}
+
+/**
+ * Short, stable canonical headline for <title>/og:title/twitter:title, RSS
+ * items and the news sitemap (SEO-5). Event titles are concatenated source
+ * headlines (200+ chars); take the first segment before the " / " join and cap
+ * it at ~65 chars on a word boundary. The long compound title stays on the
+ * page as the <h1>. Falls back to the raw title when there is no separator.
+ */
+export function deriveShortTitle(title: string, maxLen = 65): string {
+  const firstSegment = title.split(/\s*\/\s*/)[0]?.trim();
+  return truncateAtWordBoundary(
+    firstSegment && firstSegment.length > 0 ? firstSegment : title,
+    maxLen,
+  );
 }
 
 /**
@@ -45,7 +81,9 @@ function organizationEntity(): JsonLd {
     "@type": "NewsMediaOrganization",
     name: SITE.name,
     url: SITE.url,
-    logo: absoluteSiteUrl("/favicon.svg"),
+    // Structured-data logo must be a raster image (Google rejects SVG for the
+    // publisher logo); logo-mark.png is 512×512 (SEO-7).
+    logo: absoluteSiteUrl("/logo-mark.png"),
     ...(SOCIAL_PROFILES.length > 0 ? { sameAs: SOCIAL_PROFILES } : {}),
   };
 }

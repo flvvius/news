@@ -15,6 +15,7 @@ import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
 import { Route as SurseRouteImport } from './routes/surse'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SalvateRouteImport } from './routes/salvate'
+import { Route as RssDotxmlRouteImport } from './routes/rss[.]xml'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as QuizRouteImport } from './routes/quiz'
@@ -22,6 +23,7 @@ import { Route as PublishersRouteImport } from './routes/publishers'
 import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
+import { Route as NewsSitemapDotxmlRouteImport } from './routes/news-sitemap[.]xml'
 import { Route as MetodologieRouteImport } from './routes/metodologie'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as FinantareRouteImport } from './routes/finantare'
@@ -73,6 +75,11 @@ const SalvateRoute = SalvateRouteImport.update({
   path: '/salvate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RssDotxmlRoute = RssDotxmlRouteImport.update({
+  id: '/rss.xml',
+  path: '/rss.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
@@ -107,6 +114,11 @@ const PoliticaConfidentialitateRoute =
 const ParteneriRoute = ParteneriRouteImport.update({
   id: '/parteneri',
   path: '/parteneri',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsSitemapDotxmlRoute = NewsSitemapDotxmlRouteImport.update({
+  id: '/news-sitemap.xml',
+  path: '/news-sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MetodologieRoute = MetodologieRouteImport.update({
@@ -223,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/finantare': typeof FinantareRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
+  '/news-sitemap.xml': typeof NewsSitemapDotxmlRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -230,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/rss.xml': typeof RssDotxmlRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/surse': typeof SurseRoute
@@ -258,6 +272,7 @@ export interface FileRoutesByTo {
   '/finantare': typeof FinantareRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
+  '/news-sitemap.xml': typeof NewsSitemapDotxmlRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -265,6 +280,7 @@ export interface FileRoutesByTo {
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/rss.xml': typeof RssDotxmlRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/surse': typeof SurseRoute
@@ -294,6 +310,7 @@ export interface FileRoutesById {
   '/finantare': typeof FinantareRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
+  '/news-sitemap.xml': typeof NewsSitemapDotxmlRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
   '/profil': typeof ProfilRoute
@@ -301,6 +318,7 @@ export interface FileRoutesById {
   '/quiz': typeof QuizRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/rss.xml': typeof RssDotxmlRoute
   '/salvate': typeof SalvateRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/surse': typeof SurseRoute
@@ -331,6 +349,7 @@ export interface FileRouteTypes {
     | '/finantare'
     | '/llms.txt'
     | '/metodologie'
+    | '/news-sitemap.xml'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -338,6 +357,7 @@ export interface FileRouteTypes {
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
+    | '/rss.xml'
     | '/salvate'
     | '/sitemap.xml'
     | '/surse'
@@ -366,6 +386,7 @@ export interface FileRouteTypes {
     | '/finantare'
     | '/llms.txt'
     | '/metodologie'
+    | '/news-sitemap.xml'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -373,6 +394,7 @@ export interface FileRouteTypes {
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
+    | '/rss.xml'
     | '/salvate'
     | '/sitemap.xml'
     | '/surse'
@@ -401,6 +423,7 @@ export interface FileRouteTypes {
     | '/finantare'
     | '/llms.txt'
     | '/metodologie'
+    | '/news-sitemap.xml'
     | '/parteneri'
     | '/politica-confidentialitate'
     | '/profil'
@@ -408,6 +431,7 @@ export interface FileRouteTypes {
     | '/quiz'
     | '/reset-password'
     | '/robots.txt'
+    | '/rss.xml'
     | '/salvate'
     | '/sitemap.xml'
     | '/surse'
@@ -437,6 +461,7 @@ export interface RootRouteChildren {
   FinantareRoute: typeof FinantareRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   MetodologieRoute: typeof MetodologieRoute
+  NewsSitemapDotxmlRoute: typeof NewsSitemapDotxmlRoute
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
   ProfilRoute: typeof ProfilRoute
@@ -444,6 +469,7 @@ export interface RootRouteChildren {
   QuizRoute: typeof QuizRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  RssDotxmlRoute: typeof RssDotxmlRoute
   SalvateRoute: typeof SalvateRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SurseRoute: typeof SurseRoute
@@ -504,6 +530,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SalvateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rss.xml': {
+      id: '/rss.xml'
+      path: '/rss.xml'
+      fullPath: '/rss.xml'
+      preLoaderRoute: typeof RssDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/robots.txt': {
       id: '/robots.txt'
       path: '/robots.txt'
@@ -551,6 +584,13 @@ declare module '@tanstack/react-router' {
       path: '/parteneri'
       fullPath: '/parteneri'
       preLoaderRoute: typeof ParteneriRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/news-sitemap.xml': {
+      id: '/news-sitemap.xml'
+      path: '/news-sitemap.xml'
+      fullPath: '/news-sitemap.xml'
+      preLoaderRoute: typeof NewsSitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/metodologie': {
@@ -709,6 +749,7 @@ const rootRouteChildren: RootRouteChildren = {
   FinantareRoute: FinantareRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   MetodologieRoute: MetodologieRoute,
+  NewsSitemapDotxmlRoute: NewsSitemapDotxmlRoute,
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,
   ProfilRoute: ProfilRoute,
@@ -716,6 +757,7 @@ const rootRouteChildren: RootRouteChildren = {
   QuizRoute: QuizRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  RssDotxmlRoute: RssDotxmlRoute,
   SalvateRoute: SalvateRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SurseRoute: SurseRoute,

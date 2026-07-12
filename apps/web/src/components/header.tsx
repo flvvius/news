@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sheet";
 
 const allLinks = [
-  { to: "/feed", key: "tabs.feed", icon: Newspaper },
+  { to: "/", key: "tabs.feed", icon: Newspaper },
   { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },
   { to: "/activitate", key: "tabs.activity", icon: LayoutDashboard },
@@ -55,7 +55,7 @@ export default function Header() {
         <div className="flex h-14 items-center justify-between px-4">
           {/* Logo */}
           <Link
-            to="/feed"
+            to="/"
             aria-label={BRAND_NAME}
             className="flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >

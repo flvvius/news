@@ -12,8 +12,9 @@ const SITEMAP_PAGE_SIZE = 1000;
 
 // Public indexable routes without per-row lastmod.
 const STATIC_PATHS = [
+  // The feed is served at the root (SEO-1); /feed only 308-redirects here, so
+  // it must not appear as its own indexable URL.
   "/",
-  "/feed",
   "/surse",
   "/cum-functioneaza",
   "/sursele-noastre",

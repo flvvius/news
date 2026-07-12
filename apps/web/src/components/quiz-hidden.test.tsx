@@ -52,7 +52,7 @@ describe("quiz feature flag (BIV-802)", () => {
       const redirectTo =
         (thrown as { options?: { to?: string }; to?: string }).options?.to ??
         (thrown as { to?: string }).to;
-      expect(redirectTo).toBe("/feed");
+      expect(redirectTo).toBe("/");
     }
   });
 });

@@ -63,7 +63,7 @@ describe("MiezOnboarding (MIEZ-8)", () => {
   test("the CTA dismisses and navigates into the feed", () => {
     renderOnboarding();
     fireEvent.click(screen.getByText(getString("ro", "onboarding.miez.cta")));
-    expect(navigate).toHaveBeenCalledWith({ to: "/feed" });
+    expect(navigate).toHaveBeenCalledWith({ to: "/" });
     expect(window.localStorage.getItem(KEY)).toBe("1");
   });
 

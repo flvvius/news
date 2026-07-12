@@ -315,7 +315,7 @@ function AuthorizedDashboard({
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/feed" className="gap-1">
+                  <Link to="/" className="gap-1">
                     {t("tabs.feed")}
                     <ChevronRight className="size-4" />
                   </Link>
@@ -413,7 +413,7 @@ function AuthorizedDashboard({
           {/* Quick Actions */}
           <div className="grid gap-3 sm:grid-cols-2">
             <Link
-              to="/feed"
+              to="/"
               className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-primary/5"
             >
               <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">

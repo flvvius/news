@@ -292,9 +292,9 @@ const ro = {
   // MIEZ-7: methodology + funding transparency pages.
   "footer.methodology": "Metodologie",
   "footer.funding": "Cine finanțează Miez",
-  "feed.meta.title": `Feed — ${BRAND_NAME}`,
+  "feed.meta.title": `${BRAND_NAME} - știri din ambele tabere`,
   "feed.meta.description":
-    "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
+    "Urmărește știrile zilei din ambele tabere, reformistă și suveranistă. Același eveniment, toate sursele, fără cont.",
   "feed.topic.search": "Caută topicuri...",
   "feed.topic.empty": "Nu am găsit topicuri.",
   "feed.topic.all": "Toate topicurile",

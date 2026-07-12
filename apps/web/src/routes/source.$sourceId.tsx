@@ -144,7 +144,7 @@ function SourceNotFound() {
         <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
         <p className="mb-4 text-muted-foreground">{t("source.notFoundBody")}</p>
         <Button asChild>
-          <Link to="/feed">{t("source.backToFeed")}</Link>
+          <Link to="/">{t("source.backToFeed")}</Link>
         </Button>
       </div>
     </div>
@@ -212,7 +212,7 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
         <div className="flex flex-col gap-5 sm:gap-8">
           <div className="flex items-center justify-between gap-4">
             <Link
-              to="/feed"
+              to="/"
               className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeftIcon className="size-4" />
@@ -431,7 +431,7 @@ function InvalidSourceId() {
         <h1 className="mb-2 text-2xl font-semibold">{t("source.notFound")}</h1>
         <p className="mb-4 text-muted-foreground">{t("source.invalidBody")}</p>
         <Button asChild>
-          <Link to="/feed">{t("source.backToFeed")}</Link>
+          <Link to="/">{t("source.backToFeed")}</Link>
         </Button>
       </div>
     </div>

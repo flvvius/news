@@ -20,6 +20,6 @@ export const FEATURE_FLAGS = {
  */
 export function guardQuizRoute() {
   if (!FEATURE_FLAGS.quiz) {
-    throw redirect({ to: "/feed", replace: true });
+    throw redirect({ to: "/", replace: true });
   }
 }

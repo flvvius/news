@@ -16,6 +16,7 @@ Disallow: /api/
 Disallow: /unsubscribe
 
 Sitemap: ${absoluteSiteUrl("/sitemap.xml")}
+Sitemap: ${absoluteSiteUrl("/news-sitemap.xml")}
 `;
 
 function buildRobotsHeaders() {

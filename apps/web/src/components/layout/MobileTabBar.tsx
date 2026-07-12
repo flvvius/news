@@ -22,13 +22,11 @@ type TabDefinition = TabItem & { key: TabKey };
 
 const allTabDefinitions: readonly TabDefinition[] = [
   {
-    to: "/feed",
+    to: "/",
     key: "tabs.feed",
     icon: Newspaper,
     isActive: (pathname: string) =>
-      pathname === "/feed" ||
-      pathname.startsWith("/feed/") ||
-      pathname.startsWith("/event/"),
+      pathname === "/" || pathname.startsWith("/event/"),
   },
   { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },

@@ -4,11 +4,10 @@ import {
   notFound,
   useNavigate,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { useConvexMutation } from "@convex-dev/react-query";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import ArticlesList from "@/components/feed/articles-list";
 import { EventDetailTabs } from "@/components/feed/event-detail-tabs";
@@ -29,11 +28,18 @@ import {
   type Locale,
   type StringKey,
 } from "@/lib/i18n/strings";
-import { SITE, absoluteSiteUrl, jsonLdScript } from "@/lib/seo";
+import {
+  SITE,
+  absoluteSiteUrl,
+  deriveShortTitle,
+  jsonLdScript,
+  truncateAtWordBoundary,
+} from "@/lib/seo";
 
-const searchSchema = z.object({
-  returnToFeed: z.string().optional(),
-});
+// SEO-8: "came from feed" is carried in sessionStorage (set on the feed link
+// click), not a ?returnToFeed URL param, so crawlers only ever see the clean
+// canonical /event/$slug URL with no parameter variants.
+const RETURN_TO_FEED_KEY = "miez-return-to-feed";
 
 function getPluralizedCountLabel(
   locale: Locale,
@@ -59,7 +65,6 @@ function getPluralizedCountLabel(
 }
 
 export const Route = createFileRoute("/event/$slug")({
-  validateSearch: searchSchema,
   loader: async ({ context, params }) => {
     const httpClient = context.convexQueryClient.serverHttpClient;
     let data;
@@ -93,13 +98,21 @@ export const Route = createFileRoute("/event/$slug")({
   notFoundComponent: EventNotFound,
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
-    const title = loaderData?.event?.title
-      ? `${loaderData.event.title} | ${SITE.name}`
+    // Short, single-headline canonical title for <title>/og/twitter cards
+    // (SEO-5); the full compound title stays as the on-page <h1>.
+    const shortTitle = loaderData?.event?.title
+      ? deriveShortTitle(loaderData.event.title)
+      : null;
+    const title = shortTitle
+      ? `${shortTitle} | ${SITE.name}`
       : getString(locale, "event.metaTitle");
-    const description =
-      loaderData?.event?.perspectiveSummaries?.neutral?.slice(0, 155) ??
-      loaderData?.event?.globalImpact?.slice(0, 155) ??
-      getString(locale, "event.metaDescription");
+    // Word-boundary truncation, never mid-word, single ellipsis (SEO-6).
+    const rawDescription =
+      loaderData?.event?.perspectiveSummaries?.neutral?.trim() ||
+      loaderData?.event?.globalImpact?.trim();
+    const description = rawDescription
+      ? truncateAtWordBoundary(rawDescription, 155)
+      : getString(locale, "event.metaDescription");
     const imageUrl =
       loaderData?.event?.shareImageUrl ?? loaderData?.event?.imageUrl;
 
@@ -219,7 +232,8 @@ export const Route = createFileRoute("/event/$slug")({
                 "@type": "NewsMediaOrganization",
                 name: SITE.name,
                 url: SITE.url,
-                logo: absoluteSiteUrl("/favicon.svg"),
+                // Raster logo (512×512) — Google rejects an SVG here (SEO-7).
+                logo: absoluteSiteUrl("/logo-mark.png"),
               },
               ...(loaderData.event.imageUrl
                 ? { image: [loaderData.event.imageUrl] }
@@ -244,7 +258,7 @@ function EventNotFound() {
         <h1 className="mb-2 text-2xl font-semibold">{t("event.notFound")}</h1>
         <p className="mb-4 text-muted-foreground">{t("event.notFoundBody")}</p>
         <Button asChild>
-          <Link to="/feed">{t("event.backToFeed")}</Link>
+          <Link to="/">{t("event.backToFeed")}</Link>
         </Button>
       </div>
     </div>
@@ -256,7 +270,6 @@ function EventDetailPage() {
   const t = useT();
   const { slug } = Route.useParams();
   const loaderData = Route.useLoaderData();
-  const search = Route.useSearch();
   const eventData = useQuery(api.events.getEventBySlug, { slug }) ?? loaderData;
   // L4 — per-sentence source attribution for the summary tabs.
   const grounding = useQuery(
@@ -266,15 +279,28 @@ function EventDetailPage() {
   const { isAuthenticated } = useConvexAuth();
   const logInteractionFn = useConvexMutation(api.interactions.logInteraction);
   const navigate = useNavigate();
-  const returnToFeed = search.returnToFeed === "1";
+  // Set by the feed card on click (SEO-8). Read once and clear, so a reload of
+  // a directly-shared event URL falls back to navigating to the feed instead of
+  // popping unrelated history.
+  const [cameFromFeed, setCameFromFeed] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(RETURN_TO_FEED_KEY) === "1") {
+        setCameFromFeed(true);
+        window.sessionStorage.removeItem(RETURN_TO_FEED_KEY);
+      }
+    } catch {
+      // Ignore unavailable/blocked sessionStorage.
+    }
+  }, [slug]);
 
   const handleBackToFeed = () => {
-    if (returnToFeed && window.history.length > 1) {
+    if (cameFromFeed && window.history.length > 1) {
       window.history.back();
       return;
     }
 
-    void navigate({ to: "/feed" });
+    void navigate({ to: "/" });
   };
 
   useEffect(() => {

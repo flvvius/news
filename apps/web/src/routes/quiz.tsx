@@ -161,7 +161,7 @@ function QuizRoute() {
                 </p>
               </div>
               <Button asChild>
-                <Link to="/feed">{t("quiz.empty.action")}</Link>
+                <Link to="/">{t("quiz.empty.action")}</Link>
               </Button>
             </CardContent>
           </Card>
@@ -510,7 +510,7 @@ function QuizExperience({
                     {t("quiz.share.action")}
                   </Button>
                   <Button asChild variant="outline">
-                    <Link to="/feed">{t("quiz.backToFeed")}</Link>
+                    <Link to="/">{t("quiz.backToFeed")}</Link>
                   </Button>
                 </div>
               </CardContent>
