@@ -3,9 +3,9 @@ import { BRAND_NAME } from "./brand";
 export type Locale = "ro" | "en";
 
 const ro = {
-  "seo.siteTitle": `${BRAND_NAME} — fiecare poveste de știri, analizată fapt cu fapt`,
+  "seo.siteTitle": `${BRAND_NAME} — fiecare știre, din ambele tabere`,
   "seo.siteDescription":
-    `${BRAND_NAME} nu îți arată doar perspective diferite, ci îți arată exact ce susține fiecare parte, unde sunt de acord și unde apar distorsiuni.`,
+    `${BRAND_NAME} adună fiecare știre din ambele tabere — reformistă și suveranistă — arată miezul comun și unde diferă. Gratuit, fără cont.`,
   "router.notFound": "Pagina nu a fost găsită",
   "router.backToFeed": "Înapoi la feed",
   "tabs.feed": "Feed",
@@ -289,6 +289,9 @@ const ro = {
   "footer.sourcesIndex": "Lista surselor",
   "footer.publishers": "Pentru publicații",
   "footer.bot": "BiviantBot (crawler)",
+  // MIEZ-7: methodology + funding transparency pages.
+  "footer.methodology": "Metodologie",
+  "footer.funding": "Cine finanțează Miez",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Explorează subiectele importante ale zilei din perspective multiple. Filtrează după topic și urmărește același eveniment în mai multe surse.",
@@ -344,7 +347,7 @@ const ro = {
   "feed.authTitle":
     "Conturile gratuite deblochează salvările și un feed personalizat",
   "feed.searching": "Căutăm evenimente...",
-  "feed.loading": "Se încarcă…",
+  "feed.loading": "Tăiem coaja…",
   "feed.leadStory": "Subiect principal",
   "feed.trendingStory": "Subiect în tendințe",
   "feed.topSearch": "Cel mai bun rezultat",
@@ -356,7 +359,7 @@ const ro = {
   "feed.tryFewer": "Încearcă mai puține cuvinte-cheie.",
   "feed.preferredTopics": "Din topicurile tale preferate",
   "feed.latestFive": "Ultimele 5",
-  "feed.none": "Nu am găsit evenimente.",
+  "feed.none": "Nicio știre nouă. Miezul se coace.",
   "feed.loadMore": "Încarcă mai mult",
   "feed.filter.clear": "Elimină filtrul",
   "feed.archive.title": "Arhiva știrilor",
@@ -407,6 +410,14 @@ const ro = {
   "event.crustSuveranist": "Coaja suveranistă",
   // MIEZ-4: global impact demoted into a closed-by-default accordion.
   "event.globalContext": "Context global",
+  // MIEZ-5 / MIEZ-6: reformist–suveranist axis microcopy.
+  "axis.reformist": "Reformist",
+  "axis.suveranist": "Suveranist",
+  "axis.tooltip": "Poziția sursei pe axă e calculată, nu decretată.",
+  "axis.methodologyCta": "Vezi metodologia",
+  // MIEZ-5 / MIEZ-8: onboarding value line + share sheet text.
+  "onboarding.valueLine": "Fiecare știre, din ambele tabere. Gratuit, fără cont.",
+  "share.eventText": "Vezi miezul acestei știri:",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.aiDisclosure.one":
@@ -786,9 +797,9 @@ type BaseStrings = typeof ro;
 const en: { [K in keyof BaseStrings]: string } = {
   "tabs.feed": "Feed",
   "tabs.quiz": "Quiz",
-  "seo.siteTitle": `${BRAND_NAME} — every news story broken down fact by fact`,
+  "seo.siteTitle": `${BRAND_NAME} — every story, from both camps`,
   "seo.siteDescription":
-    `${BRAND_NAME} doesn't just show you different perspectives. It shows you exactly what each side claims, where they agree, and where they spin.`,
+    `${BRAND_NAME} gathers every story from both camps — reformist and sovereigntist — shows the common core and where they diverge. Free, no account.`,
   "router.notFound": "Page not found",
   "router.backToFeed": "Back to feed",
   "tabs.saved": "Saved",
@@ -1063,6 +1074,8 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.sourcesIndex": "Sources directory",
   "footer.publishers": "For publishers",
   "footer.bot": "BiviantBot (crawler)",
+  "footer.methodology": "Methodology",
+  "footer.funding": "Who funds Miez",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,
   "feed.meta.description":
     "Browse the day’s important stories from multiple perspectives. Filter by topic and follow the same event across sources.",
@@ -1116,7 +1129,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.search.indexed": "Showing indexed results for “{query}”.",
   "feed.authTitle": "Free accounts unlock bookmarks and a personalized feed",
   "feed.searching": "Searching events...",
-  "feed.loading": "Loading...",
+  "feed.loading": "Slicing the crust…",
   "feed.leadStory": "Lead story",
   "feed.trendingStory": "Trending story",
   "feed.topSearch": "Top search match",
@@ -1128,7 +1141,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.tryFewer": "Try fewer keywords.",
   "feed.preferredTopics": "From your preferred topics",
   "feed.latestFive": "Latest 5",
-  "feed.none": "No events found.",
+  "feed.none": "No new stories yet. The core is still baking.",
   "feed.loadMore": "Load more",
   "feed.filter.clear": "Clear filter",
   "feed.archive.title": "News archive",
@@ -1177,6 +1190,12 @@ const en: { [K in keyof BaseStrings]: string } = {
   "event.crustReformist": "Reformist take",
   "event.crustSuveranist": "Sovereigntist take",
   "event.globalContext": "Global context",
+  "axis.reformist": "Reformist",
+  "axis.suveranist": "Sovereigntist",
+  "axis.tooltip": "A source's place on the axis is computed, not decreed.",
+  "axis.methodologyCta": "See the methodology",
+  "onboarding.valueLine": "Every story, from both camps. Free, no account.",
+  "share.eventText": "See the core of this story:",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
   "event.aiDisclosure.one":

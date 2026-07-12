@@ -402,9 +402,6 @@ function EventDetailPage() {
                     interactionContext={interactionContext}
                     slug={event.slug}
                     title={event.title}
-                    summary={
-                      event.perspectiveSummaries?.neutral ?? event.globalImpact
-                    }
                   />
                 </div>
               </div>
