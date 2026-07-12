@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/lib/i18n/LocaleContext";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -14,6 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * required.
  */
 export function ContactForm() {
+  const t = useT();
   const submit = useMutation(api.contact.submitContactMessage);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -25,15 +27,15 @@ export function ContactForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (name.trim().length < 2) {
-      toast.error("Scrie-ți numele.");
+      toast.error(t("contact.error.name"));
       return;
     }
     if (!EMAIL_RE.test(email.trim())) {
-      toast.error("Adresa de e-mail nu pare validă.");
+      toast.error(t("contact.error.email"));
       return;
     }
     if (message.trim().length < 10) {
-      toast.error("Mesajul este prea scurt.");
+      toast.error(t("contact.error.message"));
       return;
     }
 
@@ -50,10 +52,10 @@ export function ContactForm() {
       setEmail("");
       setSubject("");
       setMessage("");
-      toast.success("Mesajul a fost trimis. Mulțumim!");
+      toast.success(t("contact.success.toast"));
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Nu am putut trimite mesajul.",
+        error instanceof Error ? error.message : t("contact.error.generic"),
       );
     } finally {
       setBusy(false);
@@ -62,18 +64,20 @@ export function ContactForm() {
 
   if (sent) {
     return (
-      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-        <p className="font-medium text-foreground">Mesajul a fost trimis.</p>
-        <p className="mt-1 text-muted-foreground">
-          Îți răspundem de regulă în câteva zile lucrătoare, pe adresa lăsată.
-        </p>
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-lg border border-border bg-muted/30 p-4 text-sm"
+      >
+        <p className="font-medium text-foreground">{t("contact.sent.title")}</p>
+        <p className="mt-1 text-muted-foreground">{t("contact.sent.body")}</p>
         <Button
           variant="outline"
           size="sm"
           className="mt-3"
           onClick={() => setSent(false)}
         >
-          Trimite alt mesaj
+          {t("contact.sent.again")}
         </Button>
       </div>
     );
@@ -83,7 +87,7 @@ export function ContactForm() {
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="contact-name">Nume</Label>
+          <Label htmlFor="contact-name">{t("contact.field.name")}</Label>
           <Input
             id="contact-name"
             value={name}
@@ -93,7 +97,7 @@ export function ContactForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="contact-email">E-mail</Label>
+          <Label htmlFor="contact-email">{t("contact.field.email")}</Label>
           <Input
             id="contact-email"
             type="email"
@@ -105,7 +109,7 @@ export function ContactForm() {
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="contact-subject">Subiect</Label>
+        <Label htmlFor="contact-subject">{t("contact.field.subject")}</Label>
         <Input
           id="contact-subject"
           value={subject}
@@ -113,7 +117,7 @@ export function ContactForm() {
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="contact-message">Mesaj</Label>
+        <Label htmlFor="contact-message">{t("contact.field.message")}</Label>
         <textarea
           id="contact-message"
           rows={5}
@@ -124,7 +128,7 @@ export function ContactForm() {
         />
       </div>
       <Button type="submit" disabled={busy}>
-        {busy ? "Se trimite..." : "Trimite mesajul"}
+        {busy ? t("contact.submitting") : t("contact.submit")}
       </Button>
     </form>
   );

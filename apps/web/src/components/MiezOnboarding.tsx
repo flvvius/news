@@ -22,6 +22,7 @@ export function MiezOnboarding() {
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const ctaRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -59,6 +60,7 @@ export function MiezOnboarding() {
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       role="dialog"
       aria-modal="true"
@@ -67,7 +69,27 @@ export function MiezOnboarding() {
         if (event.target === event.currentTarget) dismiss("backdrop");
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") dismiss("escape");
+        if (event.key === "Escape") {
+          dismiss("escape");
+          return;
+        }
+        // Trap focus inside the modal so Tab / Shift+Tab cannot reach the page
+        // behind it (aria-modal alone doesn't enforce this in every browser).
+        if (event.key === "Tab") {
+          const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          );
+          if (!focusable || focusable.length === 0) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
       }}
     >
       <div className="relative w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-lg sm:p-8">

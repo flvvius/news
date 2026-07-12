@@ -111,7 +111,18 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         { name: "twitter:description", content: description },
         { name: "twitter:image", content: SITE.ogImage },
         { name: "twitter:image:alt", content: title },
-        { name: "theme-color", content: "#17181c" },
+        // Browser chrome follows the active theme: light/dark `--background`
+        // tokens (index.css) rather than a single hard-coded colour.
+        {
+          name: "theme-color",
+          media: "(prefers-color-scheme: light)",
+          content: "oklch(0.99 0.002 80)",
+        },
+        {
+          name: "theme-color",
+          media: "(prefers-color-scheme: dark)",
+          content: "oklch(0.14 0.008 270)",
+        },
       ],
       links: [
         { rel: "stylesheet", href: appCss },

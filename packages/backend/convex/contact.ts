@@ -114,8 +114,7 @@ export const markContactMessageHandled = mutation({
     await ctx.db.patch(messageId, {
       status: "handled",
       handledAt: Date.now(),
-      handledByEmail:
-        (admin as { email?: string } | null | undefined)?.email ?? undefined,
+      handledByEmail: admin.email,
     });
     return { updated: true as const };
   },

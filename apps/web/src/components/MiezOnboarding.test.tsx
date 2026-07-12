@@ -49,7 +49,8 @@ describe("MiezOnboarding (MIEZ-8)", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent?.toLowerCase()).not.toContain("cont ");
     expect(dialog.textContent?.toLowerCase()).not.toContain("log in");
-    expect(dialog.textContent?.toLowerCase()).not.toContain("sign");
+    // Word-bounded so it flags "sign in" / "sign up" but not "design" / "signal".
+    expect(dialog.textContent ?? "").not.toMatch(/\bsign\b/i);
   });
 
   test("skipping dismisses it and records the device as onboarded", () => {
