@@ -6,7 +6,7 @@ import type { MutationCtx } from "./_generated/server";
 
 const SITEMAP_KEY = "public";
 // Must match the canonical host (apex 307-redirects to www).
-const DEFAULT_SITE_URL = "https://www.biviant.com";
+const DEFAULT_SITE_URL = "https://www.miez.news";
 const DEFAULT_LIMIT = 5000;
 const SITEMAP_PAGE_SIZE = 1000;
 

@@ -1,17 +1,17 @@
-export const SITE_URL = "https://biviant.com";
+export const SITE_URL = "https://miez.news";
 
 import type { StringKey } from "@news-app/i18n";
 
 export type AboutPage = {
   slug: string;
   titleKey: StringKey;
-  /** Path on biviant.com — same content the web footer used to link to. */
+  /** Path on miez.news — same content the web footer used to link to. */
   path: string;
 };
 
 /**
  * Former web-footer pages. On native these live only in the
- * Profile → "About Biviant" section (never as a footer).
+ * Profile → "About Miez" section (never as a footer).
  */
 export const ABOUT_PAGES: AboutPage[] = [
   { slug: "about", titleKey: "footer.about", path: "/despre" },

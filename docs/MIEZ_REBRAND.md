@@ -30,5 +30,14 @@ slots still point at old/placeholder art and need the final logo:
   on upgrade. Keep the convention.
 - **Bundle IDs** `com.biviant.app` (iOS + Android) — store identity; out of
   scope (full native rename was declined).
-- **Domains** `biviant.com` / `www.biviant.com` — migrated to `miez.news` in
-  MIEZ-9 (web `seo.ts`, native `lib/site.ts` + tests).
+- **SEO/share domains** — migrated to `miez.news` in MIEZ-9: web `seo.ts`
+  (canonical/og:url/JSON-LD, now `NewsMediaOrganization`), backend
+  `sitemap.ts` default, the generated event share card (`shareAssetsNode.ts`),
+  and native `lib/site.ts` (+ test).
+- **Email / auth infra domains** (NOT changed here — needs DNS + email-provider
+  verification + auth-origin coordination, a companion infra cutover that must
+  land with the domain switch): `hello@biviant.com` / reply-to / unsubscribe
+  base in `convex/emails.ts`, `convex/auth.ts`, `convex/config.ts`; allowed
+  origins in `auth.test.ts`. Prod overrides most via env (`SITE_URL`,
+  `EMAIL_FROM_ADDRESS`, …), so set those at cutover.
+- **Story `<title>`** now uses the `«story» | Miez` pattern.

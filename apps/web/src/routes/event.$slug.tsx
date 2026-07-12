@@ -99,7 +99,7 @@ export const Route = createFileRoute("/event/$slug")({
   head: ({ loaderData, params, matches }) => {
     const locale = getLocaleFromMatches(matches);
     const title = loaderData?.event?.title
-      ? `${loaderData.event.title} — ${SITE.name}`
+      ? `${loaderData.event.title} | ${SITE.name}`
       : getString(locale, "event.metaTitle");
     const description =
       loaderData?.event?.perspectiveSummaries?.neutral?.slice(0, 155) ??

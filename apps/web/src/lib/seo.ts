@@ -14,10 +14,10 @@ export const SITE = {
   // www is the canonical host — the apex 307-redirects to it, so canonicals,
   // og:url and sitemap entries must all use www or every URL we advertise
   // goes through a redirect hop.
-  url: "https://www.biviant.com",
+  url: "https://www.miez.news",
   title: getString("en", "seo.siteTitle"),
   description: getString("en", "seo.siteDescription"),
-  ogImage: "https://www.biviant.com/og-image.jpg",
+  ogImage: "https://www.miez.news/og-image.jpg",
   ogImageType: "image/jpeg",
   ogImageWidth: 1200,
   ogImageHeight: 630,
@@ -42,7 +42,7 @@ export function jsonLdScript(data: JsonLd) {
 
 function organizationEntity(): JsonLd {
   return {
-    "@type": "Organization",
+    "@type": "NewsMediaOrganization",
     name: SITE.name,
     url: SITE.url,
     logo: absoluteSiteUrl("/favicon.svg"),
