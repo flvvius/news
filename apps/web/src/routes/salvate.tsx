@@ -117,7 +117,7 @@ function SalvateContent() {
                 </p>
               </div>
               <Button asChild variant="outline">
-                <Link to="/feed">{t("saved.browseFeed")}</Link>
+                <Link to="/">{t("saved.browseFeed")}</Link>
               </Button>
             </div>
           ) : (

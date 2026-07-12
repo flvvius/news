@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
-import { SITE } from "@/lib/seo";
+import { SITE, absoluteSiteUrl } from "@/lib/seo";
 import { Footer } from "@/components/layout/Footer";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { MiezOnboarding } from "@/components/MiezOnboarding";
@@ -127,6 +127,14 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       links: [
         { rel: "stylesheet", href: appCss },
         { rel: "manifest", href: "/manifest.webmanifest" },
+        // Site-wide RSS discovery (SEO-3): feed readers and crawlers pick this
+        // up from any page.
+        {
+          rel: "alternate",
+          type: "application/rss+xml",
+          title: SITE.name,
+          href: absoluteSiteUrl("/rss.xml"),
+        },
         // SVG mark first (modern browsers); PNG kept as the legacy fallback.
         { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
         { rel: "icon", type: "image/png", href: "/logo-mark.png" },

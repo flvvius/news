@@ -292,7 +292,20 @@ const EventCard = ({
       <Link
         to="/event/$slug"
         params={{ slug: event.slug }}
-        search={returnToFeed ? { returnToFeed: "1" } : undefined}
+        onClick={
+          returnToFeed
+            ? () => {
+                // SEO-8: record "came from feed" client-side instead of via a
+                // ?returnToFeed URL param, so the crawlable href stays the
+                // clean canonical /event/$slug.
+                try {
+                  window.sessionStorage.setItem("miez-return-to-feed", "1");
+                } catch {
+                  // Ignore unavailable/blocked sessionStorage.
+                }
+              }
+            : undefined
+        }
         className="group block min-w-0 flex-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         {rowContent}

@@ -30,7 +30,7 @@ export default function BookmarkButton({
   interactionContext,
   size = "default",
   className,
-  redirectTo = "/feed",
+  redirectTo = "/",
 }: BookmarkButtonProps) {
   const t = useT();
   const { isAuthenticated } = useConvexAuth();

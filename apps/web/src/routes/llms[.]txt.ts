@@ -12,7 +12,7 @@ const LLMS_TXT = `# ${BRAND_NAME}
 
 ## Key pages
 
-- [News feed](${absoluteSiteUrl("/feed")}): Live stream of clustered news events; each event aggregates and summarizes multiple sources.
+- [News feed](${absoluteSiteUrl("/")}): Live stream of clustered news events; each event aggregates and summarizes multiple sources.
 - [How it works](${absoluteSiteUrl("/cum-functioneaza")}): How ${BRAND_NAME} clusters articles into events and produces balanced, multi-perspective summaries.
 - [Methodology](${absoluteSiteUrl("/metodologie")}): Source-rating and bias-balancing methodology.
 - [Our sources](${absoluteSiteUrl("/surse")}): The Romanian publications ${BRAND_NAME} monitors.

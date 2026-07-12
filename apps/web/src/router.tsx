@@ -26,7 +26,7 @@ function NotFound() {
 	return (
 		<div className="container mx-auto max-w-4xl px-4 py-16 text-center">
 			<h1 className="mb-2 text-2xl font-semibold">{t("router.notFound")}</h1>
-			<Link to="/feed" className="text-primary underline">
+			<Link to="/" className="text-primary underline">
 				{t("router.backToFeed")}
 			</Link>
 		</div>

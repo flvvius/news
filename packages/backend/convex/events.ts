@@ -366,6 +366,47 @@ export const getSitemapPublishedEvents = query({
   },
 });
 
+/**
+ * Recent published events for syndication feeds (/rss.xml and
+ * /news-sitemap.xml). Newest first by publication time, thin-page gated: an
+ * event with no neutral AI summary is mostly third-party RSS text and must not
+ * be syndicated (mirrors the sitemap discipline). Returns the fields the feeds
+ * need — the web layer derives the short headline and truncates copy.
+ */
+export const getSyndicationEvents = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const safeLimit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 100);
+    // Over-fetch, then keep only summarized events until we have `safeLimit`.
+    const rows = await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_first_published_at")
+      .order("desc")
+      .take(safeLimit * 4);
+
+    const events: Array<{
+      slug: string;
+      title: string;
+      summary: string;
+      firstPublishedAt: number;
+      lastUpdatedAt: number;
+    }> = [];
+    for (const event of rows) {
+      const neutral = event.perspectiveSummaries?.neutral?.trim();
+      if (!neutral) continue;
+      events.push({
+        slug: event.slug,
+        title: event.title,
+        summary: neutral,
+        firstPublishedAt: event.firstPublishedAt,
+        lastUpdatedAt: event.lastUpdatedAt,
+      });
+      if (events.length >= safeLimit) break;
+    }
+    return events;
+  },
+});
+
 export const backfillPublicPreviewReadModels = internalMutation({
   args: {
     cursor: v.optional(v.string()),

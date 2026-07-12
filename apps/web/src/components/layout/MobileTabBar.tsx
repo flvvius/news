@@ -22,13 +22,11 @@ type TabDefinition = TabItem & { key: TabKey };
 
 const allTabDefinitions: readonly TabDefinition[] = [
   {
-    to: "/feed",
+    to: "/",
     key: "tabs.feed",
     icon: Newspaper,
     isActive: (pathname: string) =>
-      pathname === "/feed" ||
-      pathname.startsWith("/feed/") ||
-      pathname.startsWith("/event/"),
+      pathname === "/" || pathname.startsWith("/event/"),
   },
   { to: "/quiz", key: "tabs.quiz", icon: BrainCircuit },
   { to: "/salvate", key: "tabs.saved", icon: Bookmark },
@@ -60,8 +58,18 @@ function matchesPath(pathname: string, to: string, allowPrefix = false) {
  */
 export function MobileTabBar() {
   const t = useT();
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
+  // Track the archive variant of the feed (/?page=N) separately: its pathname
+  // is still "/", but it's not the live Feed, so the Feed tab must stay inactive
+  // there and tapping it must navigate back to a clean "/" rather than no-op.
+  const { pathname, isArchiveRoot } = useRouterState({
+    select: (state) => {
+      const search = state.location.search as { page?: unknown };
+      return {
+        pathname: state.location.pathname,
+        isArchiveRoot:
+          state.location.pathname === "/" && search.page !== undefined,
+      };
+    },
   });
 
   const handleTabClick =
@@ -86,10 +94,16 @@ export function MobileTabBar() {
       <div className={cn("grid", gridColsClass)}>
         {tabDefinitions.map(
           ({ to, key, icon: Icon, isActive: customIsActive }) => {
-            const isActive = customIsActive
-              ? customIsActive(pathname)
-              : matchesPath(pathname, to);
-            const isSameDestination = pathname === to;
+            const onArchiveRoot = to === "/" && isArchiveRoot;
+            const isActive = onArchiveRoot
+              ? false
+              : customIsActive
+                ? customIsActive(pathname)
+                : matchesPath(pathname, to);
+            // On the archive (/?page=N) the Feed link still points at "/", so
+            // treat it as a real navigation (clean "/") instead of a same-page
+            // scroll-to-top no-op.
+            const isSameDestination = pathname === to && !onArchiveRoot;
             const label = t(key);
 
             return (

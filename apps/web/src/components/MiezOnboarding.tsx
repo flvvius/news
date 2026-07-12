@@ -123,7 +123,7 @@ export function MiezOnboarding() {
             className="w-full"
             onClick={() => {
               dismiss("cta");
-              void navigate({ to: "/feed" });
+              void navigate({ to: "/" });
             }}
           >
             {t("onboarding.miez.cta")}
