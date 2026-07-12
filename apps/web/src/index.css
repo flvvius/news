@@ -134,13 +134,15 @@ body {
   --core-fg: oklch(0.44 0.035 75);           /* readable core text        */
   --core-surface: oklch(0.972 0.016 85);     /* core panel tint (cream)   */
 
-  /* Bias spectrum — neutral, non-political */
-  --bias-left: oklch(0.58 0.1 280);          /* muted indigo  */
-  --bias-left-muted: oklch(0.58 0.06 280);   /* softer lean   */
-  --bias-center: oklch(0.55 0.01 80);        /* warm gray     */
-  --bias-right: oklch(0.68 0.12 70);         /* muted amber   */
-  --bias-right-muted: oklch(0.68 0.08 70);   /* softer lean   */
-  --bias-track: oklch(0.92 0.005 80);        /* track bg      */
+  /* Bias spectrum = the reformist–suveranist axis, on the camp palette:
+     left = reformist (camp-a teal), right = suveranist (camp-b terracotta),
+     centre = neutral core. Kept near-equal L/C so neither side reads louder. */
+  --bias-left: oklch(0.56 0.10 195);         /* reformist (camp-a) */
+  --bias-left-muted: oklch(0.56 0.07 195);   /* softer lean        */
+  --bias-center: oklch(0.74 0.05 85);        /* neutral core       */
+  --bias-right: oklch(0.58 0.11 45);         /* suveranist (camp-b)*/
+  --bias-right-muted: oklch(0.58 0.08 45);   /* softer lean        */
+  --bias-track: oklch(0.92 0.005 80);        /* track bg           */
 
   /* Charts */
   --chart-1: oklch(0.55 0.14 250);
@@ -209,12 +211,12 @@ body {
   --core-fg: oklch(0.80 0.05 85);
   --core-surface: oklch(0.25 0.022 85);
 
-  /* Bias — slightly lifted for dark bg */
-  --bias-left: oklch(0.65 0.1 280);
-  --bias-left-muted: oklch(0.65 0.06 280);
-  --bias-center: oklch(0.60 0.01 80);
-  --bias-right: oklch(0.75 0.12 70);
-  --bias-right-muted: oklch(0.75 0.08 70);
+  /* Bias = reformist–suveranist axis on the camp palette, lifted for dark bg */
+  --bias-left: oklch(0.70 0.10 195);
+  --bias-left-muted: oklch(0.70 0.07 195);
+  --bias-center: oklch(0.72 0.05 85);
+  --bias-right: oklch(0.71 0.11 48);
+  --bias-right-muted: oklch(0.71 0.08 48);
   --bias-track: oklch(0.25 0.005 270);
 
   --chart-1: oklch(0.55 0.18 250);

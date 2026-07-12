@@ -102,7 +102,7 @@ describe("design-system enforcement (BIV-807)", () => {
     }
   });
 
-  test("bias spectrum stays on the non-political indigo/amber tokens", () => {
+  test("bias spectrum tokens exist (now the reformist–suveranist camp axis)", () => {
     const css = readFileSync(join(SRC_DIR, "index.css"), "utf8");
     for (const token of [
       "--bias-left",
