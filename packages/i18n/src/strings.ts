@@ -288,7 +288,7 @@ const ro = {
   "footer.sources": "Sursele noastre",
   "footer.sourcesIndex": "Lista surselor",
   "footer.publishers": "Pentru publicații",
-  "footer.bot": "BiviantBot (crawler)",
+  "footer.bot": "MiezBot (crawler)",
   // MIEZ-7: methodology + funding transparency pages.
   "footer.methodology": "Metodologie",
   "footer.funding": "Cine finanțează Miez",
@@ -1080,7 +1080,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "footer.sources": "Our sources",
   "footer.sourcesIndex": "Sources directory",
   "footer.publishers": "For publishers",
-  "footer.bot": "BiviantBot (crawler)",
+  "footer.bot": "MiezBot (crawler)",
   "footer.methodology": "Methodology",
   "footer.funding": "Who funds Miez",
   "feed.meta.title": `Feed — ${BRAND_NAME}`,

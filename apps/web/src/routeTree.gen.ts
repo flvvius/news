@@ -23,6 +23,7 @@ import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
 import { Route as ParteneriRouteImport } from './routes/parteneri'
 import { Route as MetodologieRouteImport } from './routes/metodologie'
+import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as FinantareRouteImport } from './routes/finantare'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DespreRouteImport } from './routes/despre'
@@ -111,6 +112,11 @@ const ParteneriRoute = ParteneriRouteImport.update({
 const MetodologieRoute = MetodologieRouteImport.update({
   id: '/metodologie',
   path: '/metodologie',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FinantareRoute = FinantareRouteImport.update({
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
   '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByTo {
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
   '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
@@ -284,6 +292,7 @@ export interface FileRoutesById {
   '/despre': typeof DespreRoute
   '/feed': typeof FeedRoute
   '/finantare': typeof FinantareRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/metodologie': typeof MetodologieRoute
   '/parteneri': typeof ParteneriRoute
   '/politica-confidentialitate': typeof PoliticaConfidentialitateRoute
@@ -320,6 +329,7 @@ export interface FileRouteTypes {
     | '/despre'
     | '/feed'
     | '/finantare'
+    | '/llms.txt'
     | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
@@ -354,6 +364,7 @@ export interface FileRouteTypes {
     | '/despre'
     | '/feed'
     | '/finantare'
+    | '/llms.txt'
     | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
@@ -388,6 +399,7 @@ export interface FileRouteTypes {
     | '/despre'
     | '/feed'
     | '/finantare'
+    | '/llms.txt'
     | '/metodologie'
     | '/parteneri'
     | '/politica-confidentialitate'
@@ -423,6 +435,7 @@ export interface RootRouteChildren {
   DespreRoute: typeof DespreRoute
   FeedRoute: typeof FeedRoute
   FinantareRoute: typeof FinantareRoute
+  LlmsDottxtRoute: typeof LlmsDottxtRoute
   MetodologieRoute: typeof MetodologieRoute
   ParteneriRoute: typeof ParteneriRoute
   PoliticaConfidentialitateRoute: typeof PoliticaConfidentialitateRoute
@@ -545,6 +558,13 @@ declare module '@tanstack/react-router' {
       path: '/metodologie'
       fullPath: '/metodologie'
       preLoaderRoute: typeof MetodologieRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/finantare': {
@@ -687,6 +707,7 @@ const rootRouteChildren: RootRouteChildren = {
   DespreRoute: DespreRoute,
   FeedRoute: FeedRoute,
   FinantareRoute: FinantareRoute,
+  LlmsDottxtRoute: LlmsDottxtRoute,
   MetodologieRoute: MetodologieRoute,
   ParteneriRoute: ParteneriRoute,
   PoliticaConfidentialitateRoute: PoliticaConfidentialitateRoute,

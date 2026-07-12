@@ -6,4 +6,4 @@
  * here. Keep this value in sync with `packages/i18n/src/brand.ts`. Change it
  * to rename the product in transactional emails and model prompts.
  */
-export const BRAND_NAME = "Biviant";
+export const BRAND_NAME = "Miez";

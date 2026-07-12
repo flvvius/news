@@ -1,4 +1,4 @@
-// L6 — the crawler identity page linked from BiviantBot's User-Agent string.
+// L6 — the crawler identity page linked from MiezBot's User-Agent string.
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
@@ -6,11 +6,11 @@ import { BRAND_NAME } from "@/lib/i18n/strings";
 export const Route = createFileRoute("/bot")({
   head: () => ({
     meta: [
-      { title: `BiviantBot — ${BRAND_NAME}` },
+      { title: `MiezBot — ${BRAND_NAME}` },
       {
         name: "description",
         content:
-          "Ce face crawler-ul BiviantBot, cum se identifică și cum poate o publicație să refuze accesul (robots.txt, TDMRep, formular).",
+          "Ce face crawler-ul MiezBot, cum se identifică și cum poate o publicație să refuze accesul (robots.txt, TDMRep, formular).",
       },
     ],
   }),
@@ -20,12 +20,12 @@ export const Route = createFileRoute("/bot")({
 export function BotPage() {
   return (
     <StaticPage
-      title="BiviantBot"
+      title="MiezBot"
       intro={`Crawler-ul ${BRAND_NAME} — ce face, cum se identifică și cum îl poți opri.`}
     >
       <StaticSection heading="Ce face">
         <p>
-          BiviantBot citește fluxurile RSS publice ale publicațiilor românești
+          MiezBot citește fluxurile RSS publice ale publicațiilor românești
           monitorizate și, acolo unde publicația nu a exprimat o rezervare de
           drepturi, accesează articolele pentru procesare temporară (textul
           integral nu este stocat niciodată). Pe baza acestui material,{" "}
@@ -35,7 +35,7 @@ export function BotPage() {
         <p>
           Identitatea completă a crawler-ului:{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-[13px]">
-            BiviantBot/1.0 (+https://biviant.com/bot)
+            MiezBot/1.0 (+https://www.miez.news/bot)
           </code>
           . Toate cererile includ acest User-Agent și un antet{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-[13px]">From</code>{" "}
@@ -54,7 +54,7 @@ export function BotPage() {
           <li>
             <strong>robots.txt</strong> — folosește token-ul{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-[13px]">
-              User-agent: BiviantBot
+              User-agent: MiezBot
             </code>{" "}
             cu{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-[13px]">

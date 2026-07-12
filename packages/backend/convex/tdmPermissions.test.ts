@@ -69,14 +69,14 @@ describe("TDM signal parsing (L5)", () => {
       "User-agent: GPTBot",
       "Disallow: /",
       "",
-      "User-agent: BiviantBot",
+      "User-agent: MiezBot",
       "Crawl-delay: 5",
       "Disallow:",
     ].join("\n");
 
     // Our dedicated group allows crawling with a crawl delay.
-    expect(robotsDisallowsAll(robots, "BiviantBot")).toBe(false);
-    expect(robotsCrawlDelay(robots, "BiviantBot")).toBe(5);
+    expect(robotsDisallowsAll(robots, "MiezBot")).toBe(false);
+    expect(robotsCrawlDelay(robots, "MiezBot")).toBe(5);
     // GPTBot fully disallowed → AI opt-out signal.
     expect(robotsDisallowsAll(robots, "GPTBot")).toBe(true);
 
@@ -89,7 +89,7 @@ describe("TDM signal parsing (L5)", () => {
     const robots = "User-agent: *\nDisallow: /";
     const evaluation = evaluateTdmSignals({ robotsTxt: robots });
     expect(evaluation.state).toBe("rss_only");
-    expect(evaluation.signals).toContain("robots:BiviantBot");
+    expect(evaluation.signals).toContain("robots:MiezBot");
   });
 
   test("unreachable robots.txt fails closed until resolved", () => {
@@ -170,7 +170,7 @@ describe("permission store + purge (L5)", () => {
       await t.mutation(internal.domainPermissions.upsertDomainPermission, {
         domain,
         state: "rss_only",
-        signals: ["robots:BiviantBot"],
+        signals: ["robots:MiezBot"],
       });
       await t.finishAllScheduledFunctions(vi.runAllTimers);
 

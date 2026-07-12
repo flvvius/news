@@ -29,12 +29,7 @@ import {
   type Locale,
   type StringKey,
 } from "@/lib/i18n/strings";
-import {
-  SITE,
-  absoluteSiteUrl,
-  eventArticleJsonLd,
-  jsonLdScript,
-} from "@/lib/seo";
+import { SITE, absoluteSiteUrl, jsonLdScript } from "@/lib/seo";
 
 const searchSchema = z.object({
   returnToFeed: z.string().optional(),
@@ -180,20 +175,60 @@ export const Route = createFileRoute("/event/$slug")({
       links: [
         { rel: "canonical", href: absoluteSiteUrl(`/event/${params.slug}`) },
       ],
+      // Single authoritative structured-data block for the page, rendered
+      // into <head> so it is present in the initial SSR HTML for crawlers.
+      // Uses NewsArticle + the IPTC AI-generation marking (L1, AI Act art.
+      // 50(4)) — the one place we emit NewsArticle, justified by the in-band
+      // AI disclosure and isBasedOn source list.
       scripts: loaderData?.event
         ? [
-            jsonLdScript(
-              eventArticleJsonLd({
-                slug: params.slug,
-                title: loaderData.event.title,
-                description,
-                imageUrl,
-                datePublished: loaderData.event.firstPublishedAt,
-                dateModified:
-                  loaderData.event.lastUpdatedAt ??
+            jsonLdScript({
+              "@context": [
+                "https://schema.org",
+                {
+                  digitalSourceType:
+                    "https://cv.iptc.org/newscodes/digitalsourcetype/",
+                },
+              ],
+              "@type": "NewsArticle",
+              headline: loaderData.event.title,
+              ...(description ? { description } : {}),
+              // Event summaries are authored in Romanian regardless of the UI
+              // locale, so this marks the article-content language, not chrome.
+              inLanguage: "ro",
+              url: absoluteSiteUrl(`/event/${params.slug}`),
+              mainEntityOfPage: absoluteSiteUrl(`/event/${params.slug}`),
+              datePublished: new Date(
+                loaderData.event.firstPublishedAt,
+              ).toISOString(),
+              dateModified: new Date(
+                loaderData.event.lastUpdatedAt ??
                   loaderData.event.firstPublishedAt,
-              }),
-            ),
+              ).toISOString(),
+              isAccessibleForFree: true,
+              creativeWorkStatus:
+                "AI-generated summary; not independently human-reviewed",
+              digitalSourceType:
+                "https://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+              author: {
+                "@type": "Organization",
+                name: SITE.name,
+                url: SITE.url,
+              },
+              publisher: {
+                "@type": "NewsMediaOrganization",
+                name: SITE.name,
+                url: SITE.url,
+                logo: absoluteSiteUrl("/favicon.svg"),
+              },
+              ...(loaderData.event.imageUrl
+                ? { image: [loaderData.event.imageUrl] }
+                : {}),
+              isBasedOn: (loaderData.articles ?? [])
+                .slice(0, 25)
+                .map((article) => article.canonicalUrl)
+                .filter(Boolean),
+            }),
           ]
         : [],
     };
@@ -313,43 +348,11 @@ function EventDetailPage() {
     articles.map((article: Article) => article.source),
   );
 
-  // L1 (AI Act art. 50(4)) — machine-readable marking, server-rendered into
-  // the initial HTML. digitalSourceType is the IPTC term for fully
-  // AI-generated content; creativeWorkStatus discloses the missing human
-  // review in-band.
-  const jsonLd = {
-    "@context": [
-      "https://schema.org",
-      { digitalSourceType: "https://cv.iptc.org/newscodes/digitalsourcetype/" },
-    ],
-    "@type": "NewsArticle",
-    headline: event.title,
-    inLanguage: locale,
-    url: absoluteSiteUrl(`/event/${event.slug}`),
-    datePublished: new Date(event.firstPublishedAt).toISOString(),
-    dateModified: new Date(lastUpdatedAt).toISOString(),
-    isAccessibleForFree: true,
-    creativeWorkStatus:
-      "AI-generated summary; not independently human-reviewed",
-    digitalSourceType:
-      "https://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
-    author: {
-      "@type": "Organization",
-      name: SITE.name,
-      url: SITE.url,
-    },
-    ...(event.imageUrl ? { image: [event.imageUrl] } : {}),
-    isBasedOn: articles
-      .slice(0, 25)
-      .map((article: Article) => article.canonicalUrl),
-  };
+  // Article/NewsArticle JSON-LD (incl. the L1 AI-Act generation marking) is
+  // emitted once from the route head() into <head>; see the scripts block above.
 
   return (
     <div className="bg-background">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
       <ReportDialogProvider eventId={event._id}>
         <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-10">
           <div className="flex flex-col gap-6 sm:gap-8">

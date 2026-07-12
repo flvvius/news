@@ -52,10 +52,10 @@ describe("compliance invariants (L15)", () => {
     expect(MAX_VERBATIM_NGRAM).toBe(8);
   });
 
-  test("L6: the crawler identifies as BiviantBot with the bot page link", () => {
-    expect(BOT_UA_TOKEN).toBe("BiviantBot");
-    expect(BOT_USER_AGENT).toContain("BiviantBot/1.0");
-    expect(BOT_USER_AGENT).toContain("https://biviant.com/bot");
+  test("L6: the crawler identifies as MiezBot with the bot page link", () => {
+    expect(BOT_UA_TOKEN).toBe("MiezBot");
+    expect(BOT_USER_AGENT).toContain("MiezBot/1.0");
+    expect(BOT_USER_AGENT).toContain("https://www.miez.news/bot");
   });
 
   test("L11: retention policy values are the documented ones", () => {
