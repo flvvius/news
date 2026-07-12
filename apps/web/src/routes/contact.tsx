@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
+import { ContactForm } from "@/components/contact-form";
 import { BRAND_NAME } from "@/lib/i18n/strings";
 import { staticPageHead } from "@/lib/seo";
 
@@ -19,12 +20,22 @@ export function ContactPage() {
       title="Contact"
       intro={`Ne poți scrie pentru orice ține de ${BRAND_NAME} — de la întrebări simple până la corecții, cereri legate de datele tale sau propuneri de colaborare.`}
     >
-      <StaticSection heading="Cum ne contactezi">
+      <StaticSection heading="Scrie-ne un mesaj">
         <p>
-          Canalul nostru pentru corecții și semnalări este butonul{" "}
-          <strong>„Raportează o eroare”</strong> din pagina fiecărui eveniment:
-          alegi tipul problemei, ne scrii pe scurt și, dacă lași un contact,
-          ești notificat cu decizia motivată.
+          Completează formularul de mai jos și îți răspundem pe adresa lăsată.
+          Nu ai nevoie de cont.
+        </p>
+        <div className="mt-4 text-foreground">
+          <ContactForm />
+        </div>
+      </StaticSection>
+
+      <StaticSection heading="Alte căi">
+        <p>
+          Pentru corecții și semnalări pe un anume eveniment, cel mai direct
+          canal este butonul <strong>„Raportează o eroare”</strong> din pagina
+          evenimentului: alegi tipul problemei, ne scrii pe scurt și, dacă lași
+          un contact, ești notificat cu decizia motivată.
         </p>
         <p>
           Răspundem de regulă în câteva zile lucrătoare. Suntem o echipă mică,

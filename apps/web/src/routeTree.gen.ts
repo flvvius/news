@@ -39,6 +39,7 @@ import { Route as AdminReviewRouteImport } from './routes/admin.review'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
 import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
+import { Route as AdminContactRouteImport } from './routes/admin.contact'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -192,6 +193,11 @@ const AdminPipelineRoute = AdminPipelineRouteImport.update({
   path: '/admin/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminContactRoute = AdminContactRouteImport.update({
+  id: '/admin/contact',
+  path: '/admin/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -223,6 +229,7 @@ export interface FileRoutesByFullPath {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -290,6 +298,7 @@ export interface FileRoutesById {
   '/sursele-noastre': typeof SurseleNoastreRoute
   '/termeni': typeof TermeniRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/admin/contact': typeof AdminContactRoute
   '/admin/pipeline': typeof AdminPipelineRoute
   '/admin/publishers': typeof AdminPublishersRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -325,6 +334,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -358,6 +368,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -391,6 +402,7 @@ export interface FileRouteTypes {
     | '/sursele-noastre'
     | '/termeni'
     | '/unsubscribe'
+    | '/admin/contact'
     | '/admin/pipeline'
     | '/admin/publishers'
     | '/admin/reports'
@@ -425,6 +437,7 @@ export interface RootRouteChildren {
   SurseleNoastreRoute: typeof SurseleNoastreRoute
   TermeniRoute: typeof TermeniRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  AdminContactRoute: typeof AdminContactRoute
   AdminPipelineRoute: typeof AdminPipelineRoute
   AdminPublishersRoute: typeof AdminPublishersRoute
   AdminReportsRoute: typeof AdminReportsRoute
@@ -646,6 +659,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/contact': {
+      id: '/admin/contact'
+      path: '/admin/contact'
+      fullPath: '/admin/contact'
+      preLoaderRoute: typeof AdminContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -681,6 +701,7 @@ const rootRouteChildren: RootRouteChildren = {
   SurseleNoastreRoute: SurseleNoastreRoute,
   TermeniRoute: TermeniRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  AdminContactRoute: AdminContactRoute,
   AdminPipelineRoute: AdminPipelineRoute,
   AdminPublishersRoute: AdminPublishersRoute,
   AdminReportsRoute: AdminReportsRoute,

@@ -19,6 +19,11 @@ import { TermeniPage } from "./termeni";
 // The page components only use <Link>, which needs a router context in
 // strict mode — mock it with a plain anchor for content assertions.
 import { vi } from "vitest";
+// /contact embeds the ContactForm, which calls useMutation — stub it so the
+// page renders without a Convex provider (we assert content, not submission).
+vi.mock("convex/react", () => ({
+  useMutation: () => vi.fn(),
+}));
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();

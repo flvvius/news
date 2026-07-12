@@ -246,6 +246,64 @@ export const sendReportAlertEmail = internalAction({
 });
 
 /**
+ * Operator alert: notify the admins when a general contact-form message lands,
+ * so it reaches a human promptly rather than only when someone opens
+ * /admin/contact. Reply-to is the sender's address so admins can answer
+ * directly. Plain text, sent to ADMIN_EMAILS; internal ops notice, no
+ * unsubscribe footer.
+ */
+export const sendContactMessageEmail = internalAction({
+  args: {
+    messageId: v.id("contactMessages"),
+    name: v.string(),
+    email: v.string(),
+    subject: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admins = getAdminEmails();
+    if (admins.length === 0) {
+      console.warn(
+        "[emails] No ADMIN_EMAILS configured; contact message alert not sent",
+      );
+      return { success: false as const, reason: "no-admins" as const };
+    }
+    try {
+      const emailCfg = await getEmailConfig(ctx);
+      const siteUrl = resolveSiteUrl();
+      const adminUrl = `${siteUrl}/admin/contact`;
+      const { error } = await resend.emails.send({
+        from: emailCfg.fromAddress,
+        // Reply straight to the person who wrote in.
+        replyTo: args.email,
+        to: admins,
+        subject: `Mesaj de contact nou pe ${BRAND_NAME}: ${args.subject}`,
+        text: [
+          `A fost trimis un mesaj prin formularul de contact ${BRAND_NAME}.`,
+          "",
+          `De la: ${args.name} <${args.email}>`,
+          `Subiect: ${args.subject}`,
+          "",
+          "Mesaj:",
+          args.message,
+          "",
+          `Poți răspunde direct la acest e-mail (ajunge la expeditor).`,
+          `Toate mesajele: ${adminUrl}`,
+        ].join("\n"),
+      });
+      if (error) {
+        console.error("Resend error (contact message):", error);
+        return { success: false as const };
+      }
+      return { success: true as const };
+    } catch (error) {
+      console.error("Error sending contact message email:", error);
+      return { success: false as const };
+    }
+  },
+});
+
+/**
  * L6 — operator alert: notify the admins as soon as a publisher opt-out /
  * takedown request lands, so a rights-holder complaint reaches a human
  * quickly instead of waiting to be spotted in the admin queue. Plain text,
