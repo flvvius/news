@@ -59,7 +59,7 @@ export default function Header() {
             aria-label={BRAND_NAME}
             className="flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <BrandLogo className="h-7" />
+            <BrandLogo className="h-7" wordmarkClassName="hidden md:inline" />
           </Link>
 
           {/* Desktop nav */}

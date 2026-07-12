@@ -1,9 +1,11 @@
 {
+  "id": "/",
   "name": "Miez — știri din ambele tabere",
   "short_name": "Miez",
   "description": "Fiecare știre, din ambele tabere. Gratuit, fără cont.",
   "lang": "ro",
   "dir": "ltr",
+  "categories": ["news"],
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -16,6 +18,12 @@
       "type": "image/svg+xml",
       "sizes": "any",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-mark.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
     }
   ]
 }

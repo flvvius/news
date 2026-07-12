@@ -4,19 +4,34 @@ Tracks the epic MIEZ-1..11. Scope agreed: **web full + native branding**
 (display name/assets only, no Xcode/bundle-ID rename), delivered on one branch
 `rebrand/miez-ui`, one commit per ticket.
 
-## Raster assets still to produce (I ship SVG/CSS placeholders; these need real files)
+## Brand raster assets
 
-The wordmark is a live inline-SVG placeholder (`BrandLogo.tsx`) and the favicon
-is `public/favicon.svg`, so browser tabs already show the new mark. These raster
-slots still point at old/placeholder art and need the final logo:
+Provided (new Miez mark — teal/coral disc around the core):
+- `apps/web/public/logo-mark.png` (512×512), `apple-touch-icon.png` (180×180),
+  `favicon.svg`. Wired into `<head>` and `manifest.webmanifest`.
 
-- `apps/web/public/` — `apple-touch-icon.png` (180×180), PWA `icon-192.png` /
-  `icon-512.png` (maskable) referenced from `manifest.webmanifest`, and the
-  share card `og-image.jpg` (1200×630, dark bg, new mark) — MIEZ-9/10.
-  `logo-mark.png` is still the OLD mark (used as favicon PNG fallback +
-  apple-touch); regenerate.
+Still to produce / verify:
+- `apps/web/public/og-image.jpg` (1200×630) — the default share card. Verify it
+  shows the new mark; regenerate if it's still old-brand. (Per-event share
+  cards are generated live and already rebranded — `shareAssetsNode.ts`.)
+- PWA `screenshots` for the richer install UI (phone + wide). Not referenced
+  yet — add real captures then a `screenshots` array to the manifest.
 - `apps/native/assets/images/` — `icon.png`, `android-icon-*` (adaptive),
-  splash — MIEZ-10.
+  `splash-icon.png` still old-brand — MIEZ-10.
+
+## MIEZ-10 — store listing (managed outside the repo)
+
+No fastlane/EAS store-metadata files exist in-repo, so the App Store / Play
+listings are edited in App Store Connect / Play Console. Values to set:
+- Title: **Miez – știri din ambele tabere**
+- Short description: **Fiecare știre, din ambele tabere. Gratuit, fără cont.**
+- 4 screenshots: story view with the two crusts, the reformist–suveranist axis,
+  the "fără cont" onboarding, the digest. Prod ships no dev chrome (devtools are
+  DEV-only), so capture straight from the live app at listing viewport — no
+  dedicated `/screenshot-mode` route needed.
+- Adaptive icon from the new mark.
+The PWA install prompt already uses `manifest.webmanifest` (name/short_name/
+description/theme/icons) — the web-equivalent of the listing.
 
 ## Intentionally-retained "biviant" identifiers (NOT cosmetic — do not rename here)
 

@@ -1,53 +1,48 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The Miez wordmark (placeholder lockup until the final logo lands).
+ * The Miez brand lockup: the sliced-disc core mark + the "miez" wordmark.
  *
- * Rendered as inline SVG in `currentColor`, so it adapts to light/dark from
- * the surrounding text colour with no image swap and no hydration flip — size
- * it with a height utility (e.g. `h-7`); width stays auto to preserve the
- * aspect ratio. Decorative by default: the enclosing link/title carries the
- * accessible name.
+ * The mark is `public/logo-mark.png` — the teal/coral disc split around the
+ * yellow *miez* (the core), on a transparent background so it reads on both
+ * light and dark chrome. The same disc, baked onto its cream ground, is the
+ * favicon / apple-touch-icon.
  *
- * The "e" is drawn as the sliced-disc core motif — a ring with a filled centre
- * dot (the *miez*, the core). The same mark, standalone, is the favicon
- * (public/favicon.svg) and the onboarding disc (MIEZ-8).
+ * Sizing: `className` sizes and spaces the whole lockup (e.g. `h-7`); the mark
+ * fills that height and the wordmark scales alongside it. The wordmark can be
+ * hidden — pass `wordmarkClassName="hidden md:inline"` to show text only on
+ * desktop, or `showWordmark={false}` to render the mark alone. Decorative by
+ * default (the whole lockup is `aria-hidden`): the enclosing link/title carries
+ * the accessible name.
  */
-export function BrandLogo({ className }: { className?: string }) {
+export function BrandLogo({
+  className,
+  wordmarkClassName,
+  showWordmark = true,
+}: {
+  className?: string;
+  wordmarkClassName?: string;
+  showWordmark?: boolean;
+}) {
   return (
-    <svg
-      viewBox="0 0 96 32"
-      role="img"
+    <span
       aria-hidden="true"
-      className={cn("w-auto", className)}
-      fill="currentColor"
+      className={cn(
+        "inline-flex items-center gap-2 text-foreground",
+        className,
+      )}
     >
-      {/* wordmark: "mi" · core-e · "z" — Inter, tight, lowercase */}
-      <text
-        x="0"
-        y="24"
-        fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
-        fontSize="27"
-        fontWeight="680"
-        letterSpacing="-0.5"
-      >
-        mi
-      </text>
-      {/* the "e" as the core motif: ring + filled centre dot */}
-      <g transform="translate(52 16)">
-        <circle r="9.5" fill="none" stroke="currentColor" strokeWidth="3.4" />
-        <circle r="3.4" fill="currentColor" />
-      </g>
-      <text
-        x="66"
-        y="24"
-        fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
-        fontSize="27"
-        fontWeight="680"
-        letterSpacing="-0.5"
-      >
-        z
-      </text>
-    </svg>
+      <img src="/logo-mark.png" alt="" className="h-full w-auto" />
+      {showWordmark && (
+        <span
+          className={cn(
+            "text-xl font-semibold lowercase leading-none tracking-tight",
+            wordmarkClassName,
+          )}
+        >
+          miez
+        </span>
+      )}
+    </span>
   );
 }

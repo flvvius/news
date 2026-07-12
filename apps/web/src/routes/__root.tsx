@@ -119,9 +119,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         // SVG mark first (modern browsers); PNG kept as the legacy fallback.
         { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
         { rel: "icon", type: "image/png", href: "/logo-mark.png" },
-        // TODO(assets): regenerate apple-touch-icon.png (180×180) with the new
-        // Miez mark; still points at the old raster mark.
-        { rel: "apple-touch-icon", href: "/logo-mark.png" },
+        { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
         {
           rel: "preload",
           href: "/fonts/inter-latin-wght-normal.woff2",
