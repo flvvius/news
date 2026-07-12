@@ -246,7 +246,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 function RootDocument() {
   const context = useRouteContext({ strict: false }) as RouterAppContext &
     RootContextState;
-  const locale = context.locale ?? "en";
+  const locale = context.locale ?? "ro";
   return (
     <ConvexBetterAuthProvider
       client={context.convexClient}
