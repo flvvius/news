@@ -13,7 +13,10 @@ import {
   type FeedSort,
   type PublicPreviewRow,
 } from "./lib/feedSerialization";
-import { rebuildPublicFeedSnapshots } from "./lib/publicEventPreviews";
+import {
+  rebuildPublicFeedSnapshots,
+  syncPublicEventPreview,
+} from "./lib/publicEventPreviews";
 import { filterEventImage } from "./lib/imagePolicy";
 import { normalizedPerspectives } from "./lib/biasAxis";
 import { foldDiacriticsToAscii } from "./lib/romanian";
@@ -477,6 +480,44 @@ export const rebuildPublicFeedSnapshotsJob = internalMutation({
   handler: async (ctx) => {
     await rebuildPublicFeedSnapshots(ctx);
     return { rebuilt: true as const };
+  },
+});
+
+// One-shot migration for the trending-score reweight (recency 6pts/hr + coverage
+// cap). `trendingScore` is written once per preview and never recomputed by a
+// cron, so existing rows keep their old-formula scores — whose magnitude differs
+// enough from the new formula to scramble ordering — until re-synced. This
+// re-runs the normal, idempotent preview write path (which recomputes the score)
+// for every existing preview, then rebuilds the anonymous snapshot on the final
+// page. Paginate by feeding `continueCursor` back until `isDone`.
+export const rescorePublicPreviews = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const pageSize = Math.min(
+      Math.max(Math.floor(args.pageSize ?? 100), 1),
+      500,
+    );
+    const page = await ctx.db.query("publicEventPreviews").paginate({
+      cursor: args.cursor ?? null,
+      numItems: pageSize,
+    });
+
+    for (const preview of page.page) {
+      await syncPublicEventPreview(ctx, preview.eventId);
+    }
+
+    if (page.isDone) {
+      await rebuildPublicFeedSnapshots(ctx);
+    }
+
+    return {
+      processed: page.page.length,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
   },
 });
 

@@ -14,6 +14,8 @@ const modules = (
 ).glob("./**/!(*.*.*)*.*s");
 
 const HOUR_MS = 3_600_000;
+// Recency weight from computeTrendingScore: 1 point every 10 min = 6 pts/hour.
+const RECENCY_PER_HOUR = 6;
 
 describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
   test("prefers claim-verified counts when present", () => {
@@ -25,7 +27,7 @@ describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
       lastUpdatedAt: HOUR_MS,
       firstPublishedAt: 0,
     });
-    expect(score).toBe(4 * 10 + 10 * 3 + 1);
+    expect(score).toBe(4 * 10 + 10 * 3 + RECENCY_PER_HOUR);
   });
 
   test("regression: falls back to raw coverage when claim analysis never ran (undefined)", () => {
@@ -35,7 +37,7 @@ describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
       lastUpdatedAt: HOUR_MS,
       firstPublishedAt: 0,
     });
-    expect(score).toBe(5 * 10 + 12 * 3 + 1);
+    expect(score).toBe(5 * 10 + 12 * 3 + RECENCY_PER_HOUR);
   });
 
   test("regression: treats zeroed factual counts (paused pipeline) like absent ones", () => {
@@ -47,14 +49,34 @@ describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
       lastUpdatedAt: HOUR_MS,
       firstPublishedAt: 0,
     });
-    expect(score).toBe(5 * 10 + 12 * 3 + 1);
+    expect(score).toBe(5 * 10 + 12 * 3 + RECENCY_PER_HOUR);
   });
 
   test("without any coverage signal, only recency remains (never NaN)", () => {
     const score = computeTrendingScore({
       firstPublishedAt: 2 * HOUR_MS,
     });
-    expect(score).toBe(2);
+    expect(score).toBe(2 * RECENCY_PER_HOUR);
+  });
+
+  test("caps the coverage bonus so a stale but heavily-covered event cannot outrank fresh ones", () => {
+    // A huge story (30 sources * 10 + 80 articles * 3 = 540) is capped to 288
+    // points of coverage — worth ~48h of recency. Once its lastUpdatedAt is
+    // more than that far in the past, a zero-coverage but fresh event wins.
+    const now = 1_000 * HOUR_MS;
+    const staleHuge = computeTrendingScore({
+      sourceCount: 30,
+      articleCount: 80,
+      lastUpdatedAt: now - 72 * HOUR_MS, // 3 days stale
+      firstPublishedAt: now - 72 * HOUR_MS,
+    });
+    const freshThin = computeTrendingScore({
+      sourceCount: 0,
+      articleCount: 0,
+      lastUpdatedAt: now,
+      firstPublishedAt: now,
+    });
+    expect(staleHuge).toBeLessThan(freshThin);
   });
 });
 

@@ -26,6 +26,23 @@ function classifySourceBias(source: Pick<Doc<"sources">, "baseBias" | "mbfcCateg
   return "center" as const;
 }
 
+// The stored trending score is a static, monotonic sort key (it is written
+// once when a preview is upserted, indexed by `by_trending_score`, and never
+// recomputed by a cron). It must therefore be built from an absolute
+// timestamp, not a "now-relative" age — otherwise the stored ordering would
+// silently rot as time passes. We weight recency by adding a per-hour term and
+// bound how far a well-covered-but-stale event can float above fresher ones.
+//
+// Recency weight: 1 point every 10 minutes (= 6 points/hour, 144/day). This is
+// 6x the old 1 point/hour, so recency now clearly dominates coverage.
+const RECENCY_MS_PER_POINT = 600_000;
+// Coverage cap: 288 points ≈ 48h of recency. Once an event stops updating, its
+// coverage can lift it at most ~2 days above a fresher event, so nothing older
+// than ~3-4 days survives in the top trending slots regardless of how heavily
+// it was corroborated. Actively-updated stories keep a fresh lastUpdatedAt and
+// are unaffected.
+const MAX_COVERAGE_BONUS = 288;
+
 export function computeTrendingScore(args: {
   factualArticleCount?: number;
   factualSourceCount?: number;
@@ -43,11 +60,13 @@ export function computeTrendingScore(args: {
   // zeros, making 0 vs undefined meaningless as a distinction.
   const sourceSignal = args.factualSourceCount || args.sourceCount || 0;
   const articleSignal = args.factualArticleCount || args.articleCount || 0;
-  const sourceScore = sourceSignal * 10;
-  const articleScore = articleSignal * 3;
+  const coverageBonus = Math.min(
+    sourceSignal * 10 + articleSignal * 3,
+    MAX_COVERAGE_BONUS,
+  );
   const recencyScore =
-    (args.lastUpdatedAt ?? args.firstPublishedAt) / 3_600_000;
-  return sourceScore + articleScore + recencyScore;
+    (args.lastUpdatedAt ?? args.firstPublishedAt) / RECENCY_MS_PER_POINT;
+  return coverageBonus + recencyScore;
 }
 
 export async function getPublicPreviewByEventId(
