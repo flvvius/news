@@ -124,24 +124,28 @@ body {
      yellow/red: reformist = cool teal, suveranist = warm terracotta/clay,
      core = warm sand/gold. `-surface` = subtle panel tint, `-fg` = readable
      text/heading in that camp's context, base = accent/dot/border. */
-  --camp-a: oklch(0.56 0.10 195);            /* reformist — teal accent   */
-  --camp-a-fg: oklch(0.42 0.07 195);         /* reformist text on light   */
-  --camp-a-surface: oklch(0.972 0.018 195);  /* reformist panel tint      */
-  --camp-b: oklch(0.58 0.11 45);             /* suveranist — terracotta   */
-  --camp-b-fg: oklch(0.47 0.10 42);          /* suveranist text on light  */
-  --camp-b-surface: oklch(0.972 0.018 55);   /* suveranist panel tint     */
+  --camp-a: oklch(0.54 0.10 196);            /* reformist — teal accent   */
+  --camp-a-fg: oklch(0.42 0.075 196);        /* reformist text on light   */
+  --camp-a-surface: oklch(0.972 0.02 196);   /* reformist panel tint      */
+  --camp-b: oklch(0.56 0.125 40);            /* suveranist — clay/terracotta */
+  --camp-b-fg: oklch(0.46 0.115 40);         /* suveranist text on light  */
+  --camp-b-surface: oklch(0.972 0.022 45);   /* suveranist panel tint     */
   --core: oklch(0.80 0.06 85);               /* neutral core — sand/gold  */
   --core-fg: oklch(0.44 0.035 75);           /* readable core text        */
   --core-surface: oklch(0.972 0.016 85);     /* core panel tint (cream)   */
 
   /* Bias spectrum = the reformist–suveranist axis, on the camp palette:
-     left = reformist (camp-a teal), right = suveranist (camp-b terracotta),
-     centre = neutral core. Kept near-equal L/C so neither side reads louder. */
-  --bias-left: oklch(0.56 0.10 195);         /* reformist (camp-a) */
-  --bias-left-muted: oklch(0.56 0.07 195);   /* softer lean        */
-  --bias-center: oklch(0.74 0.05 85);        /* neutral core       */
-  --bias-right: oklch(0.58 0.11 45);         /* suveranist (camp-b) */
-  --bias-right-muted: oklch(0.58 0.08 45);   /* softer lean        */
+     left = reformist (camp-a teal), right = suveranist (camp-b clay),
+     centre = a neutral GREY (not the gold core): a diverging axis needs its
+     midpoint to read as "no lean / nothing", so the centre is deliberately
+     desaturated rather than warm — otherwise it blurred into the suveranist
+     side (both warm) and read as a paler lean. Poles kept near-equal L/C so
+     neither side reads louder. */
+  --bias-left: oklch(0.54 0.10 196);         /* reformist (camp-a) */
+  --bias-left-muted: oklch(0.54 0.075 196);  /* softer lean        */
+  --bias-center: oklch(0.76 0.014 80);       /* neutral grey midpoint */
+  --bias-right: oklch(0.56 0.125 40);        /* suveranist (camp-b) */
+  --bias-right-muted: oklch(0.56 0.095 40);  /* softer lean        */
   --bias-track: oklch(0.92 0.005 80);        /* track bg           */
 
   /* Charts */
@@ -201,22 +205,24 @@ body {
   --warning-foreground: oklch(0.14 0 0);
 
   /* Camp system — lifted L for dark bg, darker -surface tints. */
-  --camp-a: oklch(0.70 0.10 195);
-  --camp-a-fg: oklch(0.80 0.08 195);
-  --camp-a-surface: oklch(0.24 0.028 195);
-  --camp-b: oklch(0.71 0.11 48);
-  --camp-b-fg: oklch(0.80 0.09 48);
-  --camp-b-surface: oklch(0.24 0.030 45);
+  --camp-a: oklch(0.72 0.12 196);
+  --camp-a-fg: oklch(0.82 0.09 196);
+  --camp-a-surface: oklch(0.24 0.032 196);
+  --camp-b: oklch(0.70 0.145 40);
+  --camp-b-fg: oklch(0.81 0.11 40);
+  --camp-b-surface: oklch(0.24 0.036 42);
   --core: oklch(0.82 0.07 85);
   --core-fg: oklch(0.80 0.05 85);
   --core-surface: oklch(0.25 0.022 85);
 
-  /* Bias = reformist–suveranist axis on the camp palette, lifted for dark bg */
-  --bias-left: oklch(0.70 0.10 195);
-  --bias-left-muted: oklch(0.70 0.07 195);
-  --bias-center: oklch(0.72 0.05 85);
-  --bias-right: oklch(0.71 0.11 48);
-  --bias-right-muted: oklch(0.71 0.08 48);
+  /* Bias = reformist–suveranist axis on the camp palette, lifted for dark bg.
+     Centre is a neutral grey (not the gold core) so it reads as "no lean" and
+     no longer blurs into the warm suveranist side on the dark surface. */
+  --bias-left: oklch(0.72 0.12 196);
+  --bias-left-muted: oklch(0.72 0.09 196);
+  --bias-center: oklch(0.70 0.016 80);
+  --bias-right: oklch(0.70 0.145 40);
+  --bias-right-muted: oklch(0.70 0.11 40);
   --bias-track: oklch(0.25 0.005 270);
 
   --chart-1: oklch(0.55 0.18 250);

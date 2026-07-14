@@ -43,12 +43,12 @@ const BiasIndicator = ({
   // Normalize bias to a 0-100 scale for positioning.
   const position = ((bias + 5) / 10) * 100;
 
-  // Dot colour: reformist camp / neutral core / suveranist camp.
+  // Dot colour: reformist camp / neutral grey midpoint / suveranist camp.
   const dotColor =
     bias < thresholds[1]
       ? "bg-camp-a"
       : bias <= thresholds[2]
-        ? "bg-core"
+        ? "bg-bias-center"
         : "bg-camp-b";
 
   const trackSize = {
@@ -81,9 +81,9 @@ const BiasIndicator = ({
         aria-label={`${reformist} – ${suveranist}`}
         title={t("axis.tooltip")}
       >
-        {/* Camp gradient with the neutral core at the centre. */}
+        {/* Camp gradient with the neutral grey midpoint at the centre. */}
         <div className="absolute inset-0 overflow-hidden rounded-full opacity-60">
-          <div className="absolute inset-0 bg-linear-to-r from-camp-a via-core to-camp-b" />
+          <div className="absolute inset-0 bg-linear-to-r from-camp-a via-bias-center to-camp-b" />
         </div>
 
         {/* Source dot. */}
