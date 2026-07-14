@@ -23,6 +23,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 type AuthenticatedProfileUser = {
@@ -70,7 +80,7 @@ export function AuthenticatedProfile({
   const convex = useConvex();
   const deleteMyAccount = useMutation(api.dataRights.deleteMyAccount);
   const [isExporting, setIsExporting] = useState(false);
-  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDownloadData = async () => {
@@ -95,11 +105,6 @@ export function AuthenticatedProfile({
   };
 
   const handleDeleteAccount = async () => {
-    if (!deleteArmed) {
-      setDeleteArmed(true);
-      toast.warning(t("profile.deleteConfirm"));
-      return;
-    }
     setIsDeleting(true);
     try {
       await deleteMyAccount({});
@@ -113,7 +118,7 @@ export function AuthenticatedProfile({
       console.error("Account deletion failed:", error);
       toast.error(t("profile.deleteFailed"));
       setIsDeleting(false);
-      setDeleteArmed(false);
+      setDeleteDialogOpen(false);
     }
   };
 
@@ -307,20 +312,52 @@ export function AuthenticatedProfile({
                     <LogOut className="size-4" />
                   </Button>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full justify-between border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    disabled={isDeleting}
-                    onClick={() => void handleDeleteAccount()}
+                  <Dialog
+                    open={deleteDialogOpen}
+                    onOpenChange={setDeleteDialogOpen}
                   >
-                    <span>
-                      {deleteArmed
-                        ? t("profile.deleteConfirm")
-                        : t("profile.deleteAccount")}
-                    </span>
-                    <Trash2 className="size-4" />
-                  </Button>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-between border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={isDeleting}
+                      >
+                        <span>{t("profile.deleteAccount")}</span>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>
+                          {t("profile.deleteDialogTitle")}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {t("profile.deleteConfirm")}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={isDeleting}
+                          >
+                            {t("profile.deleteCancel")}
+                          </Button>
+                        </DialogClose>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={isDeleting}
+                          onClick={() => void handleDeleteAccount()}
+                        >
+                          <Trash2 className="size-4" />
+                          <span>{t("profile.deleteAccount")}</span>
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
 
                 {resetStatusMessage ? (

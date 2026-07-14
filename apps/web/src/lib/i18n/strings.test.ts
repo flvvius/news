@@ -18,6 +18,7 @@ const BANNED_RO_TERMS = [
   /rolling/i,
   /\bfeed-ul/i, // DOOM-style attached article: "feedul"
   /\bstreak-ur/i,
+  /\btopicur/i, // anglicism "topic": use "categorie/categorii" (topicuri, topicurile, topicurilor)
 ];
 
 describe("Romanian i18n catalog (BIV-805)", () => {
@@ -49,6 +50,14 @@ describe("Romanian i18n catalog (BIV-805)", () => {
       "Exclusiv suveranist",
     );
     expect(getString("ro", "claim.centerExclusive")).toBe("Exclusiv neutru");
+  });
+
+  test("the topic filter uses the Romanian 'categorie' vocabulary", () => {
+    expect(getString("ro", "feed.topic.single")).toBe("Categorie");
+    expect(getString("ro", "feed.topic.all")).toBe("Toate categoriile");
+    expect(getString("ro", "feed.topic.filter")).toBe(
+      "Filtrează după categorie",
+    );
   });
 
   test("every RO key has a value and every EN key mirrors the RO key set", () => {
