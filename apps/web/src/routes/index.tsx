@@ -356,8 +356,9 @@ function FeedComponent() {
 
 /**
  * Static, crawlable slice of the feed (/?page=N): server-rendered event
- * list in stable recent order with real previous/next anchors. Infinite
- * scroll on / stays the interactive experience layered on top.
+ * list in stable recent order with real previous/next anchors. The
+ * explicit load-more feed on / stays the interactive experience layered
+ * on top.
  */
 function FeedArchive() {
   const t = useT();
@@ -486,8 +487,6 @@ function FeedContent() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
-  const isLoadingMoreRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -566,7 +565,6 @@ function FeedContent() {
   );
   const canLoadMore = !isSearching && status === "CanLoadMore";
   const isLoadingMore = !isSearching && status === "LoadingMore";
-  const loadMoreRef = useRef(loadMore);
 
   const preferredTopicIds = useMemo(() => {
     if (!topics || !currentUser?.privateContext?.interests?.length) {
@@ -598,46 +596,6 @@ function FeedContent() {
       ? { topicIds: preferredTopicIds, limit: 5 }
       : "skip",
   );
-
-  useEffect(() => {
-    loadMoreRef.current = loadMore;
-  }, [loadMore]);
-
-  useEffect(() => {
-    if (status !== "LoadingMore") {
-      isLoadingMoreRef.current = false;
-    }
-  }, [status]);
-
-  useEffect(() => {
-    if (!canLoadMore) {
-      return;
-    }
-
-    const target = loadMoreTriggerRef.current;
-    if (!target) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting || isLoadingMoreRef.current) {
-          return;
-        }
-
-        isLoadingMoreRef.current = true;
-        loadMoreRef.current(pageSize);
-      },
-      {
-        rootMargin: "1200px 0px",
-      },
-    );
-
-    observer.observe(target);
-
-    return () => observer.disconnect();
-  }, [canLoadMore, pageSize]);
 
   useEffect(() => {
     if (
@@ -916,16 +874,21 @@ function FeedContent() {
 
           {!isSearching && (canLoadMore || isLoadingMore) && (
             <div className="flex flex-col items-center gap-3 py-2">
-              <div
-                ref={loadMoreTriggerRef}
-                aria-hidden="true"
-                className="h-px w-full"
-              />
+              <Button
+                variant="outline"
+                size="lg"
+                className="rounded-full"
+                onClick={() => loadMore(pageSize)}
+                disabled={isLoadingMore}
+                aria-label={t("feed.loadMore")}
+              >
+                {isLoadingMore ? t("feed.loading") : t("feed.loadMore")}
+              </Button>
               {isLoadingMore && (
                 <div
                   role="status"
                   aria-live="polite"
-                  className="text-sm text-muted-foreground"
+                  className="sr-only"
                 >
                   {t("feed.loading")}
                 </div>
@@ -934,8 +897,8 @@ function FeedContent() {
           )}
 
           {/* Crawlable entry into the paginated archive: a real anchor a
-              no-JS crawler can follow, since it cannot trigger the
-              infinite-scroll observer above. */}
+              no-JS crawler can follow, since it cannot click the
+              show-more button above. */}
           {!isSearching && (
             <nav
               aria-label={t("feed.archive.title")}
