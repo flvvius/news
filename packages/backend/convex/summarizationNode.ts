@@ -509,7 +509,10 @@ async function loadSummarySettings(
       cfg.event_summary_max_input_articles,
       DEFAULT_MAX_INPUT_ARTICLES,
       3,
-      20,
+      // Hard-capped at 15 so the per-article floor (MIN_BODY_CHARS_PER_ARTICLE)
+      // can never push total transient body text past TOTAL_BODY_CHARS_BUDGET
+      // (15 * 1200 = 18000).
+      15,
     ),
     bodyFetchEnabled: safeBoolean(
       cfg.event_summary_body_fetch_enabled,

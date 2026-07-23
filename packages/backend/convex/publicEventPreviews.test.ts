@@ -1,9 +1,13 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 
-import { computeTrendingScore } from "./lib/publicEventPreviews";
+import {
+  computeTrendingScore,
+  rebuildPublicFeedSnapshots,
+} from "./lib/publicEventPreviews";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 // See interactions.test.ts for the glob rationale (drops convex.config.ts,
 // *.test.ts and *.d.ts so the Better Auth component never instantiates).
@@ -188,5 +192,96 @@ describe("events.getPublishedEvents sort arg (BIV-801)", () => {
     expect(
       defaulted.page.map((event: { title: string }) => event.title)[0],
     ).toBe("older corroborated");
+  });
+});
+
+describe("events.getPublishedEvents topic snapshot serving", () => {
+  // Seeds two topics with disjoint events, plus the junction rows the topic
+  // snapshot builder reads, then builds the anonymous first-page snapshots.
+  async function seedTopicPreviews() {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    await t.run(async (ctx) => {
+      const mkTopic = async (slug: string) =>
+        await ctx.db.insert("topics", {
+          slug,
+          displayName: slug,
+          keywords: [],
+          keyPhrases: [],
+          aliases: [],
+        } as never);
+
+      const topicA = await mkTopic("politics");
+      const topicB = await mkTopic("sports");
+
+      const mkPreview = async (
+        title: string,
+        topicId: Id<"topics">,
+        trendingScore: number,
+      ) => {
+        const eventId = await ctx.db.insert("events", {
+          title,
+          slug: title.toLowerCase().replace(/\s+/g, "-"),
+          status: "published",
+          firstPublishedAt: now - 10 * HOUR_MS,
+        } as never);
+        const previewId = await ctx.db.insert("publicEventPreviews", {
+          eventId,
+          slug: title.toLowerCase().replace(/\s+/g, "-"),
+          title,
+          firstPublishedAt: now - 10 * HOUR_MS,
+          lastUpdatedAt: now,
+          articleCount: 3,
+          sourceCount: 3,
+          topicIds: [topicId],
+          trendingScore,
+          sourceBiasCounts: { left: 0, center: 0, right: 0 },
+          sources: [],
+          updatedAt: now,
+        } as never);
+        await ctx.db.insert("publicEventPreviewTopics", {
+          topicId,
+          eventId,
+          previewId,
+          lastUpdatedAt: now,
+          firstPublishedAt: now - 10 * HOUR_MS,
+          trendingScore,
+          updatedAt: now,
+        });
+      };
+
+      await mkPreview("politics high", topicA, 500);
+      await mkPreview("politics low", topicA, 100);
+      await mkPreview("sports only", topicB, 400);
+
+      await rebuildPublicFeedSnapshots(ctx);
+    });
+
+    return t;
+  }
+
+  test("topic-scoped first page serves only that topic's snapshot items", async () => {
+    const t = await seedTopicPreviews();
+
+    const topicId = await t.run(async (ctx) => {
+      const topic = await ctx.db
+        .query("topics")
+        .filter((q) => q.eq(q.field("slug"), "politics"))
+        .unique();
+      return topic!._id;
+    });
+
+    const result = await t.query(api.events.getPublishedEvents, {
+      paginationOpts: { numItems: 10, cursor: null },
+      sort: "trending",
+      topicId,
+    });
+
+    const titles = result.page.map((event: { title: string }) => event.title);
+    // Only the topic's events, in trending order — the sports event is absent.
+    expect(titles).toEqual(["politics high", "politics low"]);
+    // Pagination hands off to the live ranked query via a ranked cursor.
+    expect(result.continueCursor.startsWith("ranked:")).toBe(true);
   });
 });

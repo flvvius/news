@@ -1216,6 +1216,10 @@ export const seedDefaults = internalMutation({
       article_fact_extraction_model: ['"gpt-5-nano"'],
       article_bias_detection_model: ['"gpt-5-nano"'],
       claim_analysis_model: ['"gpt-5-nano"'],
+      // Migrate the prior summary input cap (12) down to the new egress-reduced
+      // default (8). This key is intentionally not force-managed, so operator
+      // overrides (any other value) are preserved.
+      event_summary_max_input_articles: ["12"],
     };
 
     let created = 0;
