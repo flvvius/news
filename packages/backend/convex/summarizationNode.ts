@@ -44,12 +44,17 @@ const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MIN_ARTICLES = 3;
 const DEFAULT_MIN_SOURCES = 2;
-const DEFAULT_MAX_INPUT_ARTICLES = 12;
+// Trimmed 12 -> 8 to shrink data egress: every extra article means another
+// full body fetched (downloaded) and another chunk sent out in the LLM prompt
+// (and re-embedded/re-checked by the L4 grounding gate). 8 sources still gives
+// broad multi-perspective coverage. Overridable via config.
+const DEFAULT_MAX_INPUT_ARTICLES = 8;
 const DEFAULT_BODY_FETCH_ENABLED = true;
 const DEFAULT_BODY_CHARS = 2600;
 // Total prompt budget for transient bodies across all articles; the
-// per-article cap scales down as more articles are selected.
-const TOTAL_BODY_CHARS_BUDGET = 24000;
+// per-article cap scales down as more articles are selected. Trimmed
+// 24000 -> 18000 to reduce prompt egress (and token cost) per summary call.
+const TOTAL_BODY_CHARS_BUDGET = 18000;
 const MIN_BODY_CHARS_PER_ARTICLE = 1200;
 const DEFAULT_BODY_FETCH_CONCURRENCY = 8;
 // Hard deadline for the whole body-fetch fan-out. Each fetch attempt is

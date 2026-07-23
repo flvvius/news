@@ -52,7 +52,10 @@ const MERGE_LOCK_TTL_MS = 20 * 60 * 1000;
 const CLUSTER_BATCH_SIZE = 32;
 const RECENT_EVENT_WINDOW_MS = 48 * 60 * 60 * 1000;
 const MAX_CANDIDATE_EVENTS = 220;
-const VECTOR_SEARCH_LIMIT = 20;
+// Each vector-search neighbor is hydrated (candidacy + ~10KB embedding doc),
+// so top-K drives both database I/O and vector bandwidth. Trimmed 20 -> 12 to
+// cut per-run hydration bytes. Overridable via clustering_vector_search_limit.
+const VECTOR_SEARCH_LIMIT = 12;
 const EVENT_PRESENTATION_ARTICLE_LIMIT = 10;
 const CANDIDACY_TOKEN_CAP = 200;
 const EVENT_EMBEDDING_DIMENSIONS = 512;
@@ -73,9 +76,9 @@ const DEFAULT_CLUSTER_PUBLISH_MIN_SOURCES = 2;
 const DEFAULT_MERGE_MIN_SIMILARITY = 0.94;
 const DEFAULT_MERGE_MIN_TITLE_JACCARD = 0.45;
 const DEFAULT_MERGE_MAX_TIME_DELTA_HOURS = 48;
-const MERGE_VECTOR_SEARCH_LIMIT = 10;
+const MERGE_VECTOR_SEARCH_LIMIT = 8;
 const MERGE_CHANGED_SEED_LIMIT = 8;
-const RECLUSTER_VECTOR_SEARCH_LIMIT = 10;
+const RECLUSTER_VECTOR_SEARCH_LIMIT = 8;
 const RECLUSTER_CHANGED_SEED_LIMIT = 8;
 const MERGE_RECENT_BUCKET = "recent_2d";
 const MERGE_STALE_BUCKET = "stale";

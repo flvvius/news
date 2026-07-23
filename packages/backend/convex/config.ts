@@ -725,9 +725,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_max_input_articles",
-        value: 12,
+        value: 8,
         description:
-          "Maximum number of recent articles included in one event summarization prompt.",
+          "Maximum number of recent articles included in one event summarization prompt. Lower values reduce data egress (fewer bodies fetched and sent to the model) and token cost.",
       },
       {
         key: "event_summary_body_fetch_enabled",
@@ -1085,21 +1085,21 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_vector_search_limit",
-        value: 20,
+        value: 12,
         description:
-          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
+          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "merge_vector_search_limit",
-        value: 10,
+        value: 8,
         description:
-          "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
+          "Top-K limit used for event-to-event vector search during duplicate-merge passes. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "recluster_vector_search_limit",
-        value: 10,
+        value: 8,
         description:
-          "Top-K limit used for event-to-event vector search during singleton recluster passes.",
+          "Top-K limit used for event-to-event vector search during singleton recluster passes. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "merge_changed_seed_limit",
