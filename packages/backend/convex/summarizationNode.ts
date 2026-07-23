@@ -44,19 +44,29 @@ const DEFAULT_BATCH_SIZE = 4;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MIN_ARTICLES = 3;
 const DEFAULT_MIN_SOURCES = 2;
-const DEFAULT_MAX_INPUT_ARTICLES = 12;
+// Trimmed 12 -> 8 to shrink data egress: every extra article means another
+// full body fetched (downloaded) and another chunk sent out in the LLM prompt
+// (and re-embedded/re-checked by the L4 grounding gate). 8 sources still gives
+// broad multi-perspective coverage. Overridable via config.
+const DEFAULT_MAX_INPUT_ARTICLES = 8;
 const DEFAULT_BODY_FETCH_ENABLED = true;
 const DEFAULT_BODY_CHARS = 2600;
 // Total prompt budget for transient bodies across all articles; the
-// per-article cap scales down as more articles are selected.
-const TOTAL_BODY_CHARS_BUDGET = 24000;
+// per-article cap scales down as more articles are selected. Trimmed
+// 24000 -> 18000 to reduce prompt egress (and token cost) per summary call.
+const TOTAL_BODY_CHARS_BUDGET = 18000;
 const MIN_BODY_CHARS_PER_ARTICLE = 1200;
-const BODY_FETCH_CONCURRENCY = 4;
+const DEFAULT_BODY_FETCH_CONCURRENCY = 8;
 // Hard deadline for the whole body-fetch fan-out. Each fetch attempt is
 // individually 8s-capped, but a slow publisher can still chain resolve +
 // several header-profile attempts per article; past this budget the job
-// proceeds with whatever bodies have already landed.
-const BODY_FETCH_TOTAL_TIMEOUT_MS = 60_000;
+// proceeds with whatever bodies have already landed. Kept tight (and paired
+// with higher concurrency) because this fan-out runs inside a Node action and
+// its entire wall-clock is billed as action compute — including every second
+// spent blocked on slow publisher servers. A 60s hold per job was the single
+// largest action-compute drain; 12s + more parallelism lands most bodies for a
+// fraction of the held time. Both are overridable via config.
+const DEFAULT_BODY_FETCH_TIMEOUT_MS = 12_000;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const JOB_STAGGER_MS = 8000;
@@ -78,6 +88,8 @@ type SummarySettings = {
   maxInputArticles: number;
   bodyFetchEnabled: boolean;
   bodyChars: number;
+  bodyFetchConcurrency: number;
+  bodyFetchTimeoutMs: number;
   // L3 — verbatim-overlap gate threshold (shared contiguous words).
   maxVerbatimNgram: number;
   // L4 — grounding + NER risk gate.
@@ -422,6 +434,8 @@ async function loadSummarySettings(
       "event_summary_max_input_articles",
       "event_summary_body_fetch_enabled",
       "event_summary_body_chars",
+      "event_summary_body_fetch_concurrency",
+      "event_summary_body_fetch_timeout_ms",
       "event_summary_max_verbatim_ngram",
       "event_grounding_enabled",
       "event_grounding_model",
@@ -495,7 +509,10 @@ async function loadSummarySettings(
       cfg.event_summary_max_input_articles,
       DEFAULT_MAX_INPUT_ARTICLES,
       3,
-      20,
+      // Hard-capped at 15 so the per-article floor (MIN_BODY_CHARS_PER_ARTICLE)
+      // can never push total transient body text past TOTAL_BODY_CHARS_BUDGET
+      // (15 * 1200 = 18000).
+      15,
     ),
     bodyFetchEnabled: safeBoolean(
       cfg.event_summary_body_fetch_enabled,
@@ -506,6 +523,18 @@ async function loadSummarySettings(
       DEFAULT_BODY_CHARS,
       500,
       6000,
+    ),
+    bodyFetchConcurrency: safeInteger(
+      cfg.event_summary_body_fetch_concurrency,
+      DEFAULT_BODY_FETCH_CONCURRENCY,
+      1,
+      16,
+    ),
+    bodyFetchTimeoutMs: safeInteger(
+      cfg.event_summary_body_fetch_timeout_ms,
+      DEFAULT_BODY_FETCH_TIMEOUT_MS,
+      2_000,
+      60_000,
     ),
     maxVerbatimNgram: safeInteger(
       cfg.event_summary_max_verbatim_ngram,
@@ -601,10 +630,10 @@ async function fetchTransientArticleBodies(
     ),
   );
 
-  const deadlineAt = Date.now() + BODY_FETCH_TOTAL_TIMEOUT_MS;
+  const deadlineAt = Date.now() + settings.bodyFetchTimeoutMs;
   let nextIndex = 0;
   const workers = Array.from(
-    { length: Math.min(BODY_FETCH_CONCURRENCY, articles.length) },
+    { length: Math.min(settings.bodyFetchConcurrency, articles.length) },
     async () => {
       while (nextIndex < articles.length && Date.now() < deadlineAt) {
         const article = articles[nextIndex++]!;
@@ -629,7 +658,7 @@ async function fetchTransientArticleBodies(
     new Promise<boolean>((resolve) => {
       deadlineTimer = setTimeout(
         () => resolve(true),
-        BODY_FETCH_TOTAL_TIMEOUT_MS,
+        settings.bodyFetchTimeoutMs,
       );
     }),
   ]);

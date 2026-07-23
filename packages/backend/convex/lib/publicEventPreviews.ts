@@ -139,31 +139,23 @@ async function syncPreviewTopicRows(
   }
 }
 
-function snapshotKey(sort: "recent" | "trending") {
-  return `anonymous:first-page:${sort}`;
+function snapshotKey(sort: "recent" | "trending", topicId?: Id<"topics">) {
+  return topicId
+    ? `anonymous:first-page:${sort}:topic:${topicId}`
+    : `anonymous:first-page:${sort}`;
 }
 
-// Rebuilds the anonymous trending first-page snapshot. Only the trending feed
-// is snapshotted: it needs an expensive ranked scan on every cold load, whereas
-// the recent feed is a cheap indexed pagination. The payload stores the
-// serialized first page plus the live `ranked:` cursors so the feed query can
-// hand pagination back to the live ranked query instead of dead-ending at the
-// snapshot size. Called from a cron (not on every preview write) to avoid write
-// amplification and contention on this single document.
-export async function rebuildPublicFeedSnapshots(ctx: MutationCtx) {
-  const trending = await ctx.db
-    .query("publicEventPreviews")
-    .withIndex("by_trending_score")
-    .order("desc")
-    .take(FEED_SNAPSHOT_PAGE_SIZE);
-
+async function upsertFeedSnapshot(
+  ctx: MutationCtx,
+  key: string,
+  rows: Doc<"publicEventPreviews">[],
+) {
   const payloadJson = JSON.stringify({
-    items: trending.map(toFeedEvent),
-    cursors: trending.map((row) => encodeRankedCursor(row, "trending")),
+    items: rows.map(toFeedEvent),
+    cursors: rows.map((row) => encodeRankedCursor(row, "trending")),
   });
 
   const now = Date.now();
-  const key = snapshotKey("trending");
   const existing = await ctx.db
     .query("publicFeedSnapshots")
     .withIndex("by_key", (q) => q.eq("key", key))
@@ -171,7 +163,7 @@ export async function rebuildPublicFeedSnapshots(ctx: MutationCtx) {
   const row = {
     sort: "trending" as const,
     payloadJson,
-    itemCount: trending.length,
+    itemCount: rows.length,
     generatedAt: now,
     updatedAt: now,
   };
@@ -179,6 +171,44 @@ export async function rebuildPublicFeedSnapshots(ctx: MutationCtx) {
     await ctx.db.patch(existing._id, row);
   } else {
     await ctx.db.insert("publicFeedSnapshots", { key, ...row });
+  }
+}
+
+// Rebuilds the anonymous trending first-page snapshots. Only trending is
+// snapshotted: it needs an expensive ranked scan on every cold load, whereas
+// the recent feed is a cheap indexed pagination. Each payload stores the
+// serialized first page plus the live `ranked:` cursors so the feed query can
+// hand pagination back to the live ranked query instead of dead-ending at the
+// snapshot size. Called from a cron (not on every preview write) to avoid write
+// amplification and contention on these documents.
+//
+// The global trending feed plus every topic feed is cached. Topic feeds run
+// the single largest ranked scan (up to TOPIC_SCAN_LIMIT full ~4KB preview
+// hydrations per uncached load) and were previously never cached, so caching
+// their first page is the biggest database-I/O win on the public read path.
+// The topic catalog is small and curated, so the per-topic rebuild cost is
+// bounded.
+export async function rebuildPublicFeedSnapshots(ctx: MutationCtx) {
+  const trending = await ctx.db
+    .query("publicEventPreviews")
+    .withIndex("by_trending_score")
+    .order("desc")
+    .take(FEED_SNAPSHOT_PAGE_SIZE);
+  await upsertFeedSnapshot(ctx, snapshotKey("trending"), trending);
+
+  const topics = await ctx.db.query("topics").collect();
+  for (const topic of topics) {
+    const topicRows = await ctx.db
+      .query("publicEventPreviewTopics")
+      .withIndex("by_topic_trending", (q) => q.eq("topicId", topic._id))
+      .order("desc")
+      .take(FEED_SNAPSHOT_PAGE_SIZE);
+    const previews = (
+      await Promise.all(topicRows.map((row) => ctx.db.get(row.previewId)))
+    ).filter(
+      (preview): preview is Doc<"publicEventPreviews"> => preview !== null,
+    );
+    await upsertFeedSnapshot(ctx, snapshotKey("trending", topic._id), previews);
   }
 }
 

@@ -725,9 +725,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_max_input_articles",
-        value: 12,
+        value: 8,
         description:
-          "Maximum number of recent articles included in one event summarization prompt.",
+          "Maximum number of recent articles included in one event summarization prompt. Lower values reduce data egress (fewer bodies fetched and sent to the model) and token cost.",
       },
       {
         key: "event_summary_body_fetch_enabled",
@@ -740,6 +740,18 @@ export const seedDefaults = internalMutation({
         value: 2600,
         description:
           "Per-article character cap for transiently fetched body text in the event summary prompt. The effective cap also scales down with article count to bound total prompt size.",
+      },
+      {
+        key: "event_summary_body_fetch_concurrency",
+        value: 8,
+        description:
+          "Parallel workers for the transient article-body fetch fan-out in summarization. Higher concurrency lands more bodies within the timeout, so the compute-billed Node action is held open for less wall-clock.",
+      },
+      {
+        key: "event_summary_body_fetch_timeout_ms",
+        value: 12000,
+        description:
+          "Hard deadline (ms) for the whole transient body-fetch fan-out in summarization. The action proceeds with whatever bodies landed by this point. Kept tight because the action's full wall-clock — including time blocked on slow publishers — is billed as action compute; this was the dominant compute drain at the previous 60s.",
       },
       {
         key: "event_share_asset_generation_enabled",
@@ -1073,21 +1085,21 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "clustering_vector_search_limit",
-        value: 20,
+        value: 12,
         description:
-          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles.",
+          "Top-K limit used for article-to-event vector search during clusterEnrichedArticles. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "merge_vector_search_limit",
-        value: 10,
+        value: 8,
         description:
-          "Top-K limit used for event-to-event vector search during duplicate-merge passes.",
+          "Top-K limit used for event-to-event vector search during duplicate-merge passes. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "recluster_vector_search_limit",
-        value: 10,
+        value: 8,
         description:
-          "Top-K limit used for event-to-event vector search during singleton recluster passes.",
+          "Top-K limit used for event-to-event vector search during singleton recluster passes. Each neighbor is hydrated (candidacy + ~10KB embedding), so this drives database I/O and vector bandwidth.",
       },
       {
         key: "merge_changed_seed_limit",
@@ -1204,6 +1216,10 @@ export const seedDefaults = internalMutation({
       article_fact_extraction_model: ['"gpt-5-nano"'],
       article_bias_detection_model: ['"gpt-5-nano"'],
       claim_analysis_model: ['"gpt-5-nano"'],
+      // Migrate the prior summary input cap (12) down to the new egress-reduced
+      // default (8). This key is intentionally not force-managed, so operator
+      // overrides (any other value) are preserved.
+      event_summary_max_input_articles: ["12"],
     };
 
     let created = 0;

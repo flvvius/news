@@ -23,8 +23,14 @@ import { foldDiacriticsToAscii } from "./lib/romanian";
 import { getConfig } from "./config";
 import { EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY } from "./shareAssets";
 
-const TRENDING_SCAN_LIMIT = 250;
-const TOPIC_SCAN_LIMIT = 500;
+// Ranked-feed candidate scan caps. getPublishedEvents is the single largest
+// database-I/O consumer: the live ranked path reads this many full ~4KB
+// preview docs per uncached load just to rank and return one page. Trimmed
+// (250 -> 150 trending, 500 -> 200 topic) to cut read bytes on every trending
+// page-2+ load and every topic feed, at a small cost to how deep the ranking
+// pool reaches.
+const TRENDING_SCAN_LIMIT = 150;
+const TOPIC_SCAN_LIMIT = 200;
 
 const FEED_SORT_VALIDATOR = v.union(v.literal("recent"), v.literal("trending"));
 
@@ -70,8 +76,10 @@ function paginateRankedEvents(
   };
 }
 
-function snapshotKey(sort: FeedSort) {
-  return `anonymous:first-page:${sort}`;
+function snapshotKey(sort: FeedSort, topicId?: Id<"topics">) {
+  return topicId
+    ? `anonymous:first-page:${sort}:topic:${topicId}`
+    : `anonymous:first-page:${sort}`;
 }
 
 async function getTopicFeedCandidates(
@@ -141,19 +149,18 @@ export const getPublishedEvents = query({
 
     let events;
 
-    // Anonymous trending first-page acceleration. The trending feed otherwise
-    // requires an expensive ranked scan on every cold load. Serve the cached
-    // snapshot for the first page, then hand pagination back to the live ranked
-    // query via the stored `ranked:` cursor so the feed never dead-ends at the
-    // snapshot size. (Recent is a cheap indexed pagination and is not cached.)
-    if (
-      sort === "trending" &&
-      !args.topicId &&
-      args.paginationOpts.cursor === null
-    ) {
+    // Anonymous trending first-page acceleration. The trending feed (global and
+    // per-topic) otherwise requires an expensive ranked scan on every cold load.
+    // Serve the cached snapshot for the first page, then hand pagination back to
+    // the live ranked query via the stored `ranked:` cursor so the feed never
+    // dead-ends at the snapshot size. (Recent is a cheap indexed pagination and
+    // is not cached.)
+    if (sort === "trending" && args.paginationOpts.cursor === null) {
       const snapshot = await ctx.db
         .query("publicFeedSnapshots")
-        .withIndex("by_key", (q) => q.eq("key", snapshotKey("trending")))
+        .withIndex("by_key", (q) =>
+          q.eq("key", snapshotKey("trending", args.topicId)),
+        )
         .unique();
       if (snapshot) {
         try {
