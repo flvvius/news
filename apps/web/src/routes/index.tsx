@@ -356,8 +356,9 @@ function FeedComponent() {
 
 /**
  * Static, crawlable slice of the feed (/?page=N): server-rendered event
- * list in stable recent order with real previous/next anchors. Infinite
- * scroll on / stays the interactive experience layered on top.
+ * list in stable recent order with real previous/next anchors. The
+ * explicit load-more feed on / stays the interactive experience layered
+ * on top.
  */
 function FeedArchive() {
   const t = useT();
