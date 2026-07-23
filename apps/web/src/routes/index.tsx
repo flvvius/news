@@ -895,24 +895,6 @@ function FeedContent() {
               )}
             </div>
           )}
-
-          {/* Crawlable entry into the paginated archive: a real anchor a
-              no-JS crawler can follow, since it cannot click the
-              show-more button above. */}
-          {!isSearching && (
-            <nav
-              aria-label={t("feed.archive.title")}
-              className="border-t border-border pt-4"
-            >
-              <Link
-                to="/"
-                search={{ page: 1 }}
-                className="text-sm text-muted-foreground underline hover:text-foreground"
-              >
-                {t("feed.archive.browse")} →
-              </Link>
-            </nav>
-          )}
         </div>
       </div>
     </div>
