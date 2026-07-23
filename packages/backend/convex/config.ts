@@ -742,6 +742,18 @@ export const seedDefaults = internalMutation({
           "Per-article character cap for transiently fetched body text in the event summary prompt. The effective cap also scales down with article count to bound total prompt size.",
       },
       {
+        key: "event_summary_body_fetch_concurrency",
+        value: 8,
+        description:
+          "Parallel workers for the transient article-body fetch fan-out in summarization. Higher concurrency lands more bodies within the timeout, so the compute-billed Node action is held open for less wall-clock.",
+      },
+      {
+        key: "event_summary_body_fetch_timeout_ms",
+        value: 12000,
+        description:
+          "Hard deadline (ms) for the whole transient body-fetch fan-out in summarization. The action proceeds with whatever bodies landed by this point. Kept tight because the action's full wall-clock — including time blocked on slow publishers — is billed as action compute; this was the dominant compute drain at the previous 60s.",
+      },
+      {
         key: "event_share_asset_generation_enabled",
         value: false,
         description:

@@ -88,14 +88,17 @@ crons.interval(
 );
 
 // ---------------------------------------------------------------------------
-// Event Summarization — Every 45 minutes
+// Event Summarization — Every 3 hours
 // ---------------------------------------------------------------------------
 // Generates GPT-backed perspective summaries for published events that have
 // enough source diversity. Runs independently so clustering is never blocked on
-// model latency or budget state.
+// model latency or budget state. Cadence widened from 45min → 3h to cut the
+// number of concurrent Node-action runs: processSummaryJob is the dominant
+// action-compute consumer, so fewer, fuller passes keep the deployment under
+// the action-compute budget. Queue depth is watched by summary-queue-health.
 crons.interval(
   "summarize-published-events",
-  { minutes: 45 },
+  { hours: 3 },
   internal.summarizationNode.summarizeQueuedEvents,
   {},
 );
