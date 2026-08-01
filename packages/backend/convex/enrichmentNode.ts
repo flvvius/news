@@ -73,6 +73,13 @@ const EMBEDDING_VERSION = 4;
 /** How many article pages to fetch/extract in parallel inside one batch. */
 const EXTRACTION_CONCURRENCY = 5;
 
+// Self-chaining bounds for enrichUnprocessedArticles. 60 x BATCH_SIZE(40) =
+// 2,400 articles per triggered drain, which covers a full day of intake
+// (~1,300/day) in a single window with headroom, while still guaranteeing the
+// chain terminates if the claim query ever misbehaves.
+const MAX_ENRICHMENT_CHAIN_DEPTH = 60;
+const ENRICHMENT_CHAIN_DELAY_MS = 5_000;
+
 const ARTICLE_FACTS_JSON_SCHEMA = {
   name: "ArticleAtomicFacts",
   strict: true,
@@ -1114,9 +1121,18 @@ async function runEnrichmentBatch(
  * Called by the cron job every 30 minutes.
  */
 export const enrichUnprocessedArticles = internalAction({
-  args: {},
+  // `chainDepth` and `enrichedSoFar` are set only by this action rescheduling
+  // itself; the cron and all manual invocations start at 0. `enrichedSoFar`
+  // accumulates across the chain so the LAST link knows whether the drain as a
+  // whole produced anything — a terminal batch can legitimately enrich zero
+  // while earlier links enriched hundreds. See the self-chaining note below.
+  args: {
+    chainDepth: v.optional(v.number()),
+    enrichedSoFar: v.optional(v.number()),
+  },
   handler: async (
     ctx,
+    { chainDepth = 0, enrichedSoFar = 0 },
   ): Promise<{
     enriched: number;
     failed: number;
@@ -1180,6 +1196,19 @@ export const enrichUnprocessedArticles = internalAction({
 
     if (articles.length === 0) {
       console.log("[enrichment] No unprocessed articles to enrich");
+      // This is a chain terminator, not just an idle run: the previous link may
+      // have claimed a full batch (and so chained) only for the backlog to be
+      // empty by the time this link ran. Without handing off here, a drain whose
+      // article count is an exact multiple of BATCH_SIZE would enrich everything
+      // and then never schedule clustering.
+      const shouldScheduleClustering = enrichedSoFar > 0;
+      if (shouldScheduleClustering) {
+        await ctx.scheduler.runAfter(
+          90_000,
+          internal.clustering.clusterEnrichedArticles,
+          {},
+        );
+      }
       await ctx.runMutation(internal.pipeline.insertRunLog, {
         jobName: "enrichUnprocessedArticles",
         runId,
@@ -1188,7 +1217,11 @@ export const enrichUnprocessedArticles = internalAction({
         durationMs: Date.now() - startedAt,
         status: "ok",
         counters: { claimedArticles: 0, enrichedArticles: 0, failedArticles: 0 },
-        gauges: { scheduledClustering: false },
+        gauges: {
+          scheduledClustering: shouldScheduleClustering,
+          enrichedSoFar,
+          chainDepth,
+        },
         metadata: {},
       });
       return { enriched: 0, failed: 0, skipped: false };
@@ -1196,7 +1229,37 @@ export const enrichUnprocessedArticles = internalAction({
 
     try {
       const result = await runEnrichmentBatch(ctx, articles, runId);
-      if (result.enriched > 0) {
+
+      // Self-chain until the backlog is drained.
+      //
+      // This action processes at most BATCH_SIZE articles and then stops. That
+      // was fine when the cron fired every 30 minutes (48 runs/day x 40 = ~1,920
+      // articles/day, comfortably above the ~1,300/day intake), but the pipeline
+      // now runs in 4 batched windows per day for cost reasons — 4 x 40 = 160
+      // articles/day, which would leave the backlog growing forever and starve
+      // clustering of input.
+      //
+      // Chaining instead of polling is also strictly cheaper: an idle deployment
+      // schedules nothing at all, while throughput still scales with real intake.
+      // A full batch means there are probably more articles waiting.
+      const likelyMoreWaiting = articles.length === BATCH_SIZE;
+      const shouldChain =
+        likelyMoreWaiting && chainDepth + 1 < MAX_ENRICHMENT_CHAIN_DEPTH;
+      const enrichedTotal = enrichedSoFar + result.enriched;
+
+      if (shouldChain) {
+        await ctx.scheduler.runAfter(
+          ENRICHMENT_CHAIN_DELAY_MS,
+          internal.enrichmentNode.enrichUnprocessedArticles,
+          { chainDepth: chainDepth + 1, enrichedSoFar: enrichedTotal },
+        );
+      }
+
+      // Only kick clustering once the chain has finished draining, so a long
+      // drain schedules one clustering pass instead of one per batch. The test
+      // is on the CHAIN total, not this batch: a terminal batch that enriched
+      // nothing must still hand off if earlier links in the chain did work.
+      if (enrichedTotal > 0 && !shouldChain) {
         await ctx.scheduler.runAfter(
           90_000,
           internal.clustering.clusterEnrichedArticles,
@@ -1224,7 +1287,9 @@ export const enrichUnprocessedArticles = internalAction({
           tokensUsed: result.tokensUsed ?? 0,
         },
         gauges: {
-          scheduledClustering: result.enriched > 0,
+          scheduledClustering: enrichedTotal > 0 && !shouldChain,
+          chainDepth,
+          chainedToNext: shouldChain,
           failureRatio:
             articles.length > 0 ? result.failed / articles.length : 0,
         },

@@ -50,6 +50,13 @@ const MERGE_LOCK_KEY = "mergeNearDuplicateEvents";
 const RECLUSTER_SINGLETONS_LOCK_KEY = "reclusterRecentSingletonEvents";
 const MERGE_LOCK_TTL_MS = 20 * 60 * 1000;
 const CLUSTER_BATCH_SIZE = 32;
+// Self-chaining bounds for clusterEnrichedArticles. 60 x CLUSTER_BATCH_SIZE(32)
+// = 1,920 articles per triggered drain, which covers a full day of intake
+// (~1,300/day) with headroom while guaranteeing the chain always terminates.
+// The delay is long enough that the pipeline lock from the previous batch has
+// been released before the next one tries to acquire it.
+const MAX_CLUSTER_CHAIN_DEPTH = 60;
+const CLUSTER_CHAIN_DELAY_MS = 10_000;
 const RECENT_EVENT_WINDOW_MS = 48 * 60 * 60 * 1000;
 const MAX_CANDIDATE_EVENTS = 220;
 // Each vector-search neighbor is hydrated (candidacy + ~10KB embedding doc),
@@ -6230,10 +6237,62 @@ export const reclusterRecentSingletonEvents = internalAction({
   },
 });
 
+/**
+ * Follow-on passes scheduled once a clustering DRAIN completes.
+ *
+ * These are deliberately deferred to the end of the self-chain rather than run
+ * per batch: previously each clustering batch kicked summarization directly,
+ * which is what actually drove summary volume (~1,680 processSummaryJob
+ * invocations/day) and made it the largest line item on the Convex bill.
+ *
+ * The totals passed in are CUMULATIVE across the whole chain. Using per-batch
+ * counters here would strand a drain whose final batch happened to cluster
+ * nothing — the events created by earlier links would never be summarized, and
+ * since summaries gate publishing, they would never go public.
+ */
+async function scheduleClusteringFollowUps(
+  ctx: ActionCtx,
+  totals: { clusteredIntoExisting: number; createdEvents: number },
+): Promise<void> {
+  const touchedEvents = totals.clusteredIntoExisting + totals.createdEvents;
+  if (touchedEvents > 0) {
+    await ctx.scheduler.runAfter(
+      MERGE_NEAR_DUPLICATES_DELAY_MS,
+      internal.clustering.mergeNearDuplicateEvents,
+      {},
+    );
+  }
+  if (totals.createdEvents > 0) {
+    await ctx.scheduler.runAfter(
+      RECLUSTER_RECENT_SINGLETONS_DELAY_MS,
+      internal.clustering.reclusterRecentSingletonEvents,
+      {},
+    );
+  }
+  // Events publish only after a summary, so kick summarization once the drain
+  // finishes rather than waiting up to 6h for the next cron window.
+  if (touchedEvents > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.summarizationNode.summarizeQueuedEvents,
+      {},
+    );
+  }
+}
+
 export const clusterEnrichedArticles = internalAction({
-  args: {},
+  // These are set only by this action rescheduling itself; the cron,
+  // enrichment's hand-off, and manual invocations all start at 0. The
+  // `*SoFar` counters accumulate across the chain so the terminal link can
+  // decide the follow-on passes from the drain's total work, not its own batch.
+  args: {
+    chainDepth: v.optional(v.number()),
+    clusteredSoFar: v.optional(v.number()),
+    createdSoFar: v.optional(v.number()),
+  },
   handler: async (
     ctx,
+    { chainDepth = 0, clusteredSoFar = 0, createdSoFar = 0 },
   ): Promise<{
     clusteredIntoExisting: number;
     createdEvents: number;
@@ -6260,6 +6319,13 @@ export const clusterEnrichedArticles = internalAction({
       console.log(
         `[clustering] clusterEnrichedArticles already running (owner=${lock.owner}, expiresAt=${new Date(lock.expiresAt).toISOString()})`,
       );
+      // A chained link that loses the lock still has to hand off whatever the
+      // earlier links accomplished, or that work is stranded unsummarized (and
+      // therefore unpublished) until a later cron window happens to pick it up.
+      await scheduleClusteringFollowUps(ctx, {
+        clusteredIntoExisting: clusteredSoFar,
+        createdEvents: createdSoFar,
+      });
       return {
         clusteredIntoExisting: 0,
         createdEvents: 0,
@@ -6286,6 +6352,12 @@ export const clusterEnrichedArticles = internalAction({
       );
       if (!hasEnriched) {
         console.log("[clustering] No enriched articles to cluster");
+        // Chain terminator: the previous link may have taken a full batch (and
+        // so chained) only for the backlog to be empty by the time this ran.
+        await scheduleClusteringFollowUps(ctx, {
+          clusteredIntoExisting: clusteredSoFar,
+          createdEvents: createdSoFar,
+        });
         return {
           clusteredIntoExisting: 0,
           createdEvents: 0,
@@ -6302,6 +6374,11 @@ export const clusterEnrichedArticles = internalAction({
 
       if (articles.length === 0) {
         console.log("[clustering] No enriched articles to cluster");
+        // Chain terminator — see the note on the !hasEnriched branch above.
+        await scheduleClusteringFollowUps(ctx, {
+          clusteredIntoExisting: clusteredSoFar,
+          createdEvents: createdSoFar,
+        });
         return {
           clusteredIntoExisting: 0,
           createdEvents: 0,
@@ -6862,30 +6939,35 @@ export const clusterEnrichedArticles = internalAction({
         clusterRunReservationSettled = true;
       }
       await flushJobMetrics(ctx, metrics, startedAt);
-      if (clusteredIntoExisting + createdEvents > 0) {
+
+      // Self-chain until the enriched-article backlog is drained.
+      //
+      // This action clusters at most CLUSTER_BATCH_SIZE articles per run. That
+      // kept up when the cron fired every 40 minutes, but the pipeline now runs
+      // in 4 batched windows per day for cost reasons, and 4 x 32 = 128
+      // articles/day is far below the ~1,300/day intake. Without chaining the
+      // backlog would grow forever and the feed would stall.
+      const likelyMoreWaiting = articles.length === CLUSTER_BATCH_SIZE;
+      const shouldChain =
+        likelyMoreWaiting && chainDepth + 1 < MAX_CLUSTER_CHAIN_DEPTH;
+      const clusteredTotal = clusteredSoFar + clusteredIntoExisting;
+      const createdTotal = createdSoFar + createdEvents;
+
+      if (shouldChain) {
         await ctx.scheduler.runAfter(
-          MERGE_NEAR_DUPLICATES_DELAY_MS,
-          internal.clustering.mergeNearDuplicateEvents,
-          {},
+          CLUSTER_CHAIN_DELAY_MS,
+          internal.clustering.clusterEnrichedArticles,
+          {
+            chainDepth: chainDepth + 1,
+            clusteredSoFar: clusteredTotal,
+            createdSoFar: createdTotal,
+          },
         );
-      }
-      if (createdEvents > 0) {
-        await ctx.scheduler.runAfter(
-          RECLUSTER_RECENT_SINGLETONS_DELAY_MS,
-          internal.clustering.reclusterRecentSingletonEvents,
-          {},
-        );
-      }
-      // Events publish only after a summary, so kick summarization immediately
-      // after a clustering batch instead of waiting up to 45 min for the cron —
-      // any event that just crossed the summary/publish bar gets its perspective
-      // summaries + globalImpact (and goes public) as soon as possible.
-      if (clusteredIntoExisting + createdEvents > 0) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.summarizationNode.summarizeQueuedEvents,
-          {},
-        );
+      } else {
+        await scheduleClusteringFollowUps(ctx, {
+          clusteredIntoExisting: clusteredTotal,
+          createdEvents: createdTotal,
+        });
       }
 
       return {

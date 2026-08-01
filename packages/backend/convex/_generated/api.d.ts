@@ -55,6 +55,7 @@ import type * as lib_politeFetch from "../lib/politeFetch.js";
 import type * as lib_publicEventPreviews from "../lib/publicEventPreviews.js";
 import type * as lib_quizHelpers from "../lib/quizHelpers.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
+import type * as lib_rateLimitError from "../lib/rateLimitError.js";
 import type * as lib_retentionPolicy from "../lib/retentionPolicy.js";
 import type * as lib_romanian from "../lib/romanian.js";
 import type * as lib_sourceBias from "../lib/sourceBias.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "lib/publicEventPreviews": typeof lib_publicEventPreviews;
   "lib/quizHelpers": typeof lib_quizHelpers;
   "lib/rateLimit": typeof lib_rateLimit;
+  "lib/rateLimitError": typeof lib_rateLimitError;
   "lib/retentionPolicy": typeof lib_retentionPolicy;
   "lib/romanian": typeof lib_romanian;
   "lib/sourceBias": typeof lib_sourceBias;

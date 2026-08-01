@@ -6,6 +6,12 @@ import type { ActionCtx } from "../_generated/server";
 import { calculateCost, calculateCostWithCachedInput } from "../aiBudget";
 import { getLLMClient, isPostHogInstrumented } from "./openai";
 import { buildChatTuningParams, providerForModel } from "./modelRouting";
+// Rate-limit detection lives in a dependency-free module so non-"use node"
+// modules (e.g. migrations.ts) can share it without dragging the Node-only
+// SDK imports above into the V8 bundle.
+import { errorStatus, isRateLimitError } from "./rateLimitError";
+
+export { isRateLimitError };
 
 export type AICallType =
   | "fact_extraction"
@@ -85,12 +91,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function errorStatus(error: unknown): number | undefined {
-  const candidate = error as { status?: unknown; code?: unknown };
-  if (typeof candidate.status === "number") return candidate.status;
-  if (typeof candidate.code === "number") return candidate.code;
-  return undefined;
-}
 
 function isRetryableError(error: unknown): boolean {
   const status = errorStatus(error);
@@ -102,6 +102,19 @@ function isRetryableError(error: unknown): boolean {
     status === 504
   );
 }
+
+/**
+ * Provider rate/quota rejection (HTTP 429 / RESOURCE_EXHAUSTED). Matches both
+ * a live SDK error object (which carries `status`) and the flattened message
+ * string `callLLM` returns to its callers (e.g. "429 status code (no body)"),
+ * because by the time an action's catch block sees it the status field is gone.
+ *
+ * Callers should treat this as *backpressure* — defer the work — rather than a
+ * failure that burns a retry attempt: the request never reached the model, so
+ * nothing about the input is wrong.
+ *
+ * Additive helper: `isRetryableError` and `callLLM` behaviour are unchanged.
+ */
 
 function isFatalError(error: unknown): boolean {
   const status = errorStatus(error);

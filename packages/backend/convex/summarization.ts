@@ -656,6 +656,10 @@ export const startSummaryJob = internalMutation({
         _id: job._id,
         eventId: job.eventId,
         attempts: job.attempts + 1,
+        // Needed by the rate-limit deferral ceiling: because deferring refunds
+        // the attempt, `attempts` cannot measure how long a job has been stuck,
+        // so the caller measures elapsed time since it was first queued.
+        requestedAt: job.requestedAt,
       },
     };
   },
@@ -1395,20 +1399,46 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
   },
 });
 
+/**
+ * Push a job back onto the queue without failing it — used for backpressure
+ * (AI budget exhausted, provider 429). The work never ran, so nothing about
+ * the job is wrong and it should not count against `maxAttempts`.
+ *
+ * `runId` + `refundAttempt` are optional and opt-in: when the caller already
+ * leased the job via `startSummaryJob` (which increments `attempts`), passing
+ * both rolls that increment back so a rate-limited job is not permanently
+ * given up after three provider 429s. Callers that defer *before* leasing
+ * (budget check) omit them and keep the previous behaviour exactly.
+ */
 export const deferSummaryJob = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
     reason: v.string(),
     retryAfterMs: v.number(),
+    runId: v.optional(v.string()),
+    refundAttempt: v.optional(v.boolean()),
   },
-  handler: async (ctx, { jobId, reason, retryAfterMs }) => {
+  handler: async (
+    ctx,
+    { jobId, reason, retryAfterMs, runId, refundAttempt },
+  ) => {
     const job = await ctx.db.get(jobId);
     if (!job || job.status === "succeeded" || job.status === "skipped") {
       return { updated: false as const };
     }
 
+    // Only refund the attempt we actually own — if another worker has since
+    // re-leased the job, leave its attempt counter alone.
+    const ownsLease =
+      job.status === "processing" &&
+      runId !== undefined &&
+      job.processingRunId === runId;
+    const attempts =
+      refundAttempt && ownsLease ? Math.max(0, job.attempts - 1) : job.attempts;
+
     await ctx.db.patch(jobId, {
       status: job.status === "failed" ? "failed" : "queued",
+      attempts,
       processingRunId: undefined,
       leaseExpiresAt: undefined,
       nextAttemptAt: Date.now() + Math.max(60_000, retryAfterMs),
@@ -1416,7 +1446,7 @@ export const deferSummaryJob = internalMutation({
       updatedAt: Date.now(),
     });
 
-    return { updated: true as const };
+    return { updated: true as const, attempts };
   },
 });
 

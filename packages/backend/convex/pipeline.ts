@@ -14,14 +14,68 @@ import type { Doc } from "./_generated/dataModel";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-const FRESHNESS_SLO_MS = 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Pipeline cadence (cost mode) — the basis for every time-based alert below
+// ---------------------------------------------------------------------------
+// The pipeline no longer runs continuously. It runs in four batched windows per
+// day (ingest 00/06/12/18 UTC, then enrich :15, cluster :30, summarize :45),
+// with maintenance jobs demoted to once or twice daily and the alert check
+// itself down to 2x daily (01:50 / 13:50 UTC).
+//
+// Thresholds tuned for the old continuous cadence are all *unsatisfiable* under
+// this one — a 1-hour freshness SLO against a 6-hour publish cadence, a 30-min
+// enrichment window against a job that runs every 6 hours, a 4-hour
+// archive-run window against a job that now runs daily. Left alone they would
+// fire on every check, turning /admin/pipeline into permanent red and burning
+// writes to `pipelineAlerts`.
+//
+// So: every threshold below is derived from these periods plus a tolerance.
+// Retuning the crons means retuning these constants and nothing else.
+const PIPELINE_WINDOW_MS = 6 * HOUR_MS; // ingest → … → summarize batch cadence
+const DAILY_JOB_PERIOD_MS = DAY_MS; // archive / recluster / prune cadence
+const WINDOWS_PER_DAY = Math.round(DAY_MS / PIPELINE_WINDOW_MS); // 4
+// Offset from a window's start to the end of its summarize step (crons.ts runs
+// ingest at :00 and summarize at :45). Spend for a window has not landed until
+// this much of it has elapsed.
+const WINDOW_COMPLETION_OFFSET_MS = 45 * 60 * 1000;
+// How much slack a healthy pipeline gets: one fully missed batch window.
+const ALERT_TOLERANCE = 2;
+// Fallback when `pipeline_alert_check_interval_minutes` cannot be read. Must
+// track the check-pipeline-alerts cron.
+const DEFAULT_ALERT_CHECK_PERIOD_MS = 12 * HOUR_MS;
+// How far a burn rate may run ahead of the day's expected progress before it is
+// treated as a projected exhaustion.
+const VECTOR_BURN_RATE_MARGIN = 0.25;
+
+// Feed freshness. Content can only become visible once per batch window, so the
+// previous 1-hour SLO was unsatisfiable by construction (worst case is ~6h *by
+// design*). Allow one fully missed window before calling the feed stale.
+const FRESHNESS_SLO_MS = PIPELINE_WINDOW_MS * ALERT_TOLERANCE;
+
+// A job running every `periodMs` is only "absent" once a full period *plus* one
+// alert-check period has elapsed without an ok run. Without the second term, a
+// check that lands just before the job's next run alerts on a perfectly healthy
+// pipeline — e.g. archive runs daily at 02:20 and the check runs at 01:50, so
+// the legitimately observed gap is ~23.5h.
+function absentRunWindowMs(periodMs: number, alertCheckPeriodMs: number) {
+  return periodMs + alertCheckPeriodMs;
+}
+
 const ARTICLE_QUEUE_STATUSES = [
   "unprocessed",
   "enriched",
   "processing",
   "archived",
 ] as const;
-const DIAGNOSTIC_COUNT_LIMIT = 5000;
+// COST: every one of these "counts" is really a scan that materialises full
+// documents (Convex has no count aggregate), and the tables being counted are
+// the two fattest in the schema (articles, events). These run inside reactive
+// admin `query`s, so an open /admin/pipeline tab re-executes them on every
+// article write. 2000 still comfortably exceeds a normal day's volume
+// (~1300 articles/day), so day-scoped counters stay exact; only whole-table
+// queue depths saturate, and those are read as "deep" either way.
+const DIAGNOSTIC_COUNT_LIMIT = 2000;
 
 const pipelineMetricValue = v.union(
   v.string(),
@@ -405,13 +459,16 @@ export const getStuckProcessingEvents = query({
   handler: async (ctx) => {
     await requireAdminUser(ctx);
     const now = Date.now();
+    // Bounded: the response is five age buckets plus the 20 oldest rows, so a
+    // 5000-row scan of full event docs bought nothing but I/O. Ascending order
+    // means the oldest (the ones that matter) are always the rows we keep.
     const events = await ctx.db
       .query("events")
       .withIndex("by_status_last_article_at", (q) =>
         q.eq("status", "processing"),
       )
       .order("asc")
-      .take(5000);
+      .take(1000);
     const buckets: Record<string, number> = {
       "<1h": 0,
       "1-6h": 0,
@@ -620,13 +677,15 @@ export const getPipelineDoctor = query({
             .lt("enrichmentLeaseExpiresAt", staleLeaseCutoff),
         ),
     );
+    // Only the first 20 survivors of the filter below are ever returned, so a
+    // 500-row scan of full event docs was ~2.5x more I/O than the answer needs.
     const recentProcessingEvents = await ctx.db
       .query("events")
       .withIndex("by_status_last_article_at", (q) =>
         q.eq("status", "processing"),
       )
       .order("desc")
-      .take(500);
+      .take(200);
     const oneShortOfPublish = recentProcessingEvents
       .filter((event) => {
         const articleCount = event.articleCount ?? 1;
@@ -831,30 +890,48 @@ export const checkPipelineAlerts = internalAction({
     const now = Date.now();
     const startedAt = now;
     const runId = `checkPipelineAlerts-${startedAt}`;
-    const hourAgo = now - HOUR_MS;
-    const dayAgo = now - DAY_MS;
     let evaluatedRules = 0;
     let stuckProcessingOver72h = 0;
     let status: "ok" | "error" = "ok";
     let errorMessage: string | undefined;
 
     try {
-      const logs = await ctx.runQuery(internal.pipeline.getRecentPipelineLogs, {
-        since: dayAgo,
-        limit: 1000,
-      });
-      const vectorRuns = await ctx.runQuery(
-        internal.pipeline.getRecentVectorRunsForAlerts,
-        { since: dayAgo },
+      const { alertCheckPeriodMs } = await ctx.runQuery(
+        internal.pipeline.getAlertCadence,
+        {},
+      );
+      // Every rule below reasons over "what happened since the previous check",
+      // so this is the natural evaluation window for anything that runs at
+      // least once per batch window.
+      const sinceLastCheck = now - alertCheckPeriodMs;
+      // Daily jobs need a wider log history than the check period: the archive
+      // job legitimately last ran ~23.5h before the 01:50 check, so a 24h log
+      // window would miss it by minutes and alert on a healthy pipeline.
+      const logLookbackMs = absentRunWindowMs(
+        DAILY_JOB_PERIOD_MS,
+        alertCheckPeriodMs,
       );
 
+      const logs = await ctx.runQuery(internal.pipeline.getRecentPipelineLogs, {
+        since: now - logLookbackMs,
+        limit: 1000,
+      });
+      // COST: only fetch the vector runs the fallback rule actually looks at
+      // (since the previous check) instead of a full day's worth.
+      const vectorRuns = await ctx.runQuery(
+        internal.pipeline.getRecentVectorRunsForAlerts,
+        { since: sinceLastCheck },
+      );
+
+      // Clustering runs once per batch window, so an hour-wide window would
+      // almost never contain a clustering run at all and this rule could never
+      // fire. Evaluate every run since the previous check instead; 3 fallbacks
+      // in that span still means "persistently degraded", not "one bad batch".
       const recentFallbackRuns = (
         vectorRuns as Array<Doc<"vectorSearchRuns">>
       ).filter(
         (run: Doc<"vectorSearchRuns">) =>
-          run.jobName === "clusterEnrichedArticles" &&
-          run.usedFallbackMode &&
-          run.createdAt >= hourAgo,
+          run.jobName === "clusterEnrichedArticles" && run.usedFallbackMode,
       );
       evaluatedRules++;
       if (recentFallbackRuns.length >= 3) {
@@ -862,8 +939,11 @@ export const checkPipelineAlerts = internalAction({
           severity: "warning",
           code: "fallback_persistent",
           message:
-            "clusterEnrichedArticles has used fallback mode at least 3 times in the last hour.",
-          details: { count: recentFallbackRuns.length },
+            "clusterEnrichedArticles has used fallback mode at least 3 times since the previous alert check.",
+          details: {
+            count: recentFallbackRuns.length,
+            windowMs: alertCheckPeriodMs,
+          },
         });
       }
 
@@ -872,12 +952,17 @@ export const checkPipelineAlerts = internalAction({
         { since: now - FRESHNESS_SLO_MS },
       );
       evaluatedRules++;
+      // FRESHNESS_SLO_MS is now one batch window x tolerance, so this window
+      // always spans at least one completed summarize step. Zero visible
+      // previews across two whole windows means the pipeline really has stopped
+      // producing, not that we looked between batches.
       if (visible === 0) {
         await upsertAlert(ctx, {
           severity: "warning",
           code: "feed_visibility_drought",
-          message:
-            "No public feed previews became visible or refreshed within the 60-minute freshness SLO.",
+          message: `No public feed previews became visible or refreshed within the ${Math.round(
+            FRESHNESS_SLO_MS / HOUR_MS,
+          )}-hour freshness SLO (${ALERT_TOLERANCE} batch windows).`,
           details: { since: now - FRESHNESS_SLO_MS },
         });
       }
@@ -886,41 +971,75 @@ export const checkPipelineAlerts = internalAction({
         internal.pipeline.getVectorBudgetForAlerts,
         {},
       );
+      // Vector spend no longer accrues smoothly across the day — it arrives in
+      // WINDOWS_PER_DAY roughly equal steps. Expected progress must therefore be
+      // measured in completed batch windows, not elapsed hours; the old
+      // hour-based model treated a perfectly on-plan post-window reading as an
+      // overrun (at 13:50 it expected 58% used while 3 of 4 windows had run).
+      //
+      // A window counts as completed only once its summarize step has run, not
+      // the moment it starts — otherwise the whole of 00:00-00:45 is credited
+      // with spend that has not happened yet, and a manual alert check in that
+      // gap reads as an overrun.
+      const nowDate = new Date(now);
+      const startOfUtcDay = Date.UTC(
+        nowDate.getUTCFullYear(),
+        nowDate.getUTCMonth(),
+        nowDate.getUTCDate(),
+      );
+      const windowsCompleted = Math.max(
+        0,
+        Math.min(
+          WINDOWS_PER_DAY,
+          Math.floor(
+            (now - startOfUtcDay - WINDOW_COMPLETION_OFFSET_MS) /
+              PIPELINE_WINDOW_MS,
+          ) + 1,
+        ),
+      );
+      const expectedDailyProgress = windowsCompleted / WINDOWS_PER_DAY;
       evaluatedRules++;
-      if (budget.ratio >= 0.75 && new Date(now).getUTCHours() < 18) {
+      // "Most of the budget gone with most of the day still to run." Only
+      // meaningful while at least half the day's windows are still ahead: at
+      // 3-of-4 windows completed, 75% used is exactly on plan, not an alarm.
+      if (budget.ratio >= 0.75 && windowsCompleted <= WINDOWS_PER_DAY / 2) {
         await upsertAlert(ctx, {
           severity: "warning",
           code: "vector_budget_burn_rate",
-          message: "Vector search qGB usage exceeded 75% before 18:00 UTC.",
+          message: `Vector search qGB usage exceeded 75% with only ${windowsCompleted} of ${WINDOWS_PER_DAY} daily pipeline windows completed.`,
           details: {
             usedQgb: budget.usedQgb,
             limitQgb: budget.limitQgb,
             ratio: budget.ratio,
+            windowsCompleted,
           },
         });
       }
-      const utcHour = new Date(now).getUTCHours();
-      const expectedDailyProgress = (utcHour + 1) / 24;
       evaluatedRules++;
-      if (budget.ratio >= Math.min(0.9, expectedDailyProgress + 0.25)) {
+      if (
+        budget.ratio >=
+        Math.min(0.9, expectedDailyProgress + VECTOR_BURN_RATE_MARGIN)
+      ) {
         await upsertAlert(ctx, {
           severity: "warning",
           code: "p0_budget_projected_exhaustion",
           message:
-            "Vector budget burn rate is ahead of UTC-day progress; throttle non-core pipeline work before feed creation is affected.",
+            "Vector budget burn rate is ahead of the day's completed pipeline windows; throttle non-core pipeline work before feed creation is affected.",
           details: {
             usedQgb: budget.usedQgb,
             limitQgb: budget.limitQgb,
             ratio: budget.ratio,
             expectedDailyProgress,
+            windowsCompleted,
           },
         });
       }
 
-      stuckProcessingOver72h = await ctx.runQuery(
+      const stuckProcessing = await ctx.runQuery(
         internal.pipeline.countProcessingEventsOlderThan,
         { ageMs: 72 * HOUR_MS },
       );
+      stuckProcessingOver72h = stuckProcessing.count;
       const recentAlertGauge = (logs as Array<Doc<"pipelineRunLogs">>)
         .filter(
           (log) =>
@@ -933,7 +1052,21 @@ export const checkPipelineAlerts = internalAction({
           ? undefined
           : recentAlertGauge.gauges.stuckProcessingOver72h;
       evaluatedRules++;
-      if (
+      // The count saturates at STUCK_PROCESSING_CAP so it stays cheap to
+      // compute. Once saturated, growth is no longer observable — but a backlog
+      // that large is itself the condition worth alerting on, so saturation
+      // raises the alert directly instead of silently going quiet.
+      if (stuckProcessing.saturated) {
+        await upsertAlert(ctx, {
+          severity: "warning",
+          code: "stuck_processing_growth",
+          message: `Processing events older than 72 hours reached the ${STUCK_PROCESSING_CAP}+ alerting cap.`,
+          details: {
+            current: stuckProcessingOver72h,
+            saturated: true,
+          },
+        });
+      } else if (
         typeof previousStuckProcessingOver72h === "number" &&
         stuckProcessingOver72h > previousStuckProcessingOver72h
       ) {
@@ -965,20 +1098,29 @@ export const checkPipelineAlerts = internalAction({
         byJob.set(log.jobName, row);
       }
       evaluatedRules++;
+      const logLookbackHours = Math.round(logLookbackMs / HOUR_MS);
       for (const [jobName, row] of byJob.entries()) {
+        // The 3-run minimum is what keeps this rule honest under the batched
+        // cadence: per-window jobs accumulate ~6 runs across the log lookback,
+        // so a single bad batch cannot trip it, while once-daily jobs never
+        // reach the minimum and are covered by the absent-ok-run checks below
+        // instead of by a 1-of-1 "0% success" false alarm.
         if (row.total >= 3 && row.ok / row.total < 0.8) {
           await upsertAlert(ctx, {
             severity: "error",
             code: `job_error_rate:${jobName}`,
-            message: `${jobName} success ratio is below 80% over the last 24 hours.`,
+            message: `${jobName} success ratio is below 80% over the last ${logLookbackHours} hours.`,
             details: { total: row.total, ok: row.ok },
           });
         }
       }
+      // Enrichment runs once per batch window (:15 past), so a 30-minute window
+      // never contained a run and this rule was dead. Evaluate every enrichment
+      // run since the previous check instead.
       const enrichmentWindow = (logs as Array<Doc<"pipelineRunLogs">>).filter(
         (log) =>
           log.jobName === "enrichUnprocessedArticles" &&
-          log.startedAt >= now - 30 * 60 * 1000,
+          log.startedAt >= sinceLastCheck,
       );
       const enrichmentAttempts = enrichmentWindow.reduce(
         (sum, log) => sum + (log.counters.claimedArticles ?? 0),
@@ -997,29 +1139,40 @@ export const checkPipelineAlerts = internalAction({
           severity: "warning",
           code: "enrichment_failure_rate",
           message:
-            "More than 20% of claimed enrichment articles failed in the last 30 minutes.",
+            "More than 20% of claimed enrichment articles failed since the previous alert check.",
           details: {
             attempts: enrichmentAttempts,
             failures: enrichmentFailures,
             ratio: enrichmentFailures / enrichmentAttempts,
+            windowMs: alertCheckPeriodMs,
           },
         });
       }
 
+      // archiveStaleSingletonEvents now runs once daily (02:20 UTC) rather than
+      // continuously, so the old 4-hour window guaranteed a false alarm on every
+      // check. One full job period plus one alert period absorbs the legitimate
+      // ~23.5h gap seen by the 01:50 check while still catching a job that has
+      // genuinely stopped.
+      const archiveAbsentWindowMs = absentRunWindowMs(
+        DAILY_JOB_PERIOD_MS,
+        alertCheckPeriodMs,
+      );
       const archiveOk = (logs as Array<Doc<"pipelineRunLogs">>).some(
         (log: Doc<"pipelineRunLogs">) =>
           log.jobName === "archiveStaleSingletonEvents" &&
           log.status === "ok" &&
-          log.startedAt >= now - 4 * HOUR_MS,
+          log.startedAt >= now - archiveAbsentWindowMs,
       );
       evaluatedRules++;
       if (!archiveOk) {
         await upsertAlert(ctx, {
           severity: "warning",
           code: "archive_run_absent",
-          message:
-            "archiveStaleSingletonEvents has not produced an ok log in the last 4 hours.",
-          details: {},
+          message: `archiveStaleSingletonEvents has not produced an ok log in the last ${Math.round(
+            archiveAbsentWindowMs / HOUR_MS,
+          )} hours.`,
+          details: { windowMs: archiveAbsentWindowMs },
         });
       }
     } catch (error) {
@@ -1116,28 +1269,82 @@ export const countVisiblePreviewsSince = internalQuery({
   },
 });
 
+/**
+ * Saturating count of "stuck processing" events, used only by the 20-minute
+ * alert cron.
+ *
+ * COST: this was the third-largest database-I/O consumer in the whole app
+ * (~1.7 GB / 19 days). It ran 72x a day and read up to 5000 *full* event
+ * documents per scan — twice, because the second scan re-reads essentially the
+ * same rows just to catch legacy rows that predate `lastArticleAt`.
+ *
+ * The alert rule only asks "is the backlog growing?", never "exactly how big is
+ * it?", so an exact count was never needed. We now stop at STUCK_PROCESSING_CAP
+ * and report saturation explicitly: below the cap the growth comparison works
+ * exactly as before, and at the cap `saturated` is itself the alarm (a backlog
+ * of 300+ stuck events is already a page-worthy state, and growth beyond it
+ * tells the operator nothing new).
+ */
+const STUCK_PROCESSING_CAP = 300;
+// Legacy rows missing `lastArticleAt` are a fixed, shrinking set that the
+// primary index cannot see. Sample a small window rather than walking every
+// old processing event to count what is almost always zero.
+const STUCK_PROCESSING_LEGACY_CAP = 100;
+
 export const countProcessingEventsOlderThan = internalQuery({
   args: { ageMs: v.number() },
   handler: async (ctx, args) => {
     const cutoff = Date.now() - Math.max(0, args.ageMs);
-    const withLastArticleAt = await limitedCount(() =>
-      ctx.db
-        .query("events")
-        .withIndex("by_status_last_article_at", (q) =>
-          q.eq("status", "processing").lt("lastArticleAt", cutoff),
-        ),
-    );
-    const withoutLastArticleAt = await limitedReduce(
+    const withLastArticleAt = await limitedCount(
       () =>
         ctx.db
           .query("events")
-          .withIndex("by_status_recency", (q) =>
-            q.eq("status", "processing").lt("firstPublishedAt", cutoff),
+          .withIndex("by_status_last_article_at", (q) =>
+            q.eq("status", "processing").lt("lastArticleAt", cutoff),
           ),
-      0,
-      (acc, row) => (row.lastArticleAt === undefined ? acc + 1 : acc),
+      STUCK_PROCESSING_CAP,
     );
-    return withLastArticleAt + withoutLastArticleAt;
+    // Short-circuit: already saturated, so the legacy scan cannot change the
+    // reported signal.
+    const withoutLastArticleAt =
+      withLastArticleAt >= STUCK_PROCESSING_CAP
+        ? 0
+        : await limitedReduce(
+            () =>
+              ctx.db
+                .query("events")
+                .withIndex("by_status_recency", (q) =>
+                  q.eq("status", "processing").lt("firstPublishedAt", cutoff),
+                ),
+            0,
+            (acc, row) => (row.lastArticleAt === undefined ? acc + 1 : acc),
+            STUCK_PROCESSING_LEGACY_CAP,
+          );
+    const count = Math.min(
+      withLastArticleAt + withoutLastArticleAt,
+      STUCK_PROCESSING_CAP,
+    );
+    return { count, saturated: count >= STUCK_PROCESSING_CAP };
+  },
+});
+
+/**
+ * The alert-check cadence, read from config so the thresholds track the
+ * check-pipeline-alerts cron without a code deploy. `checkPipelineAlerts` is an
+ * action and has no `ctx.db`, hence the wrapper.
+ */
+export const getAlertCadence = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const minutes = await readConfigNumber(
+      ctx,
+      "pipeline_alert_check_interval_minutes",
+      DEFAULT_ALERT_CHECK_PERIOD_MS / 60_000,
+    );
+    // Clamp so a mistyped config value can neither disable alerting (absurdly
+    // wide windows) nor make it hair-trigger (windows narrower than a run).
+    const clamped = Math.min(Math.max(minutes, 5), 24 * 60);
+    return { alertCheckPeriodMs: clamped * 60_000 };
   },
 });
 

@@ -697,13 +697,13 @@ export const seedDefaults = internalMutation({
         key: "event_summary_enqueue_limit",
         value: 40,
         description:
-          "Maximum number of recent published events inspected for summary eligibility per summarization run.",
+          "Maximum number of recent published events inspected for summary eligibility per summarization run. This scan (summarization.enqueueEligibleEventSummaries) was the 2nd largest database-I/O consumer in the app at 2.15 GB, but the fix was cadence, not depth: dropping from 32 runs/day to 4 already cuts that I/O ~8x. Lowering this further would starve the queue of eligible events instead, since summaries gate publishing.",
       },
       {
         key: "event_summary_batch_size",
-        value: 8,
+        value: 12,
         description:
-          "Maximum number of queued event summary jobs processed per summarization run. Summaries gate publishing, so this is sized to keep pace with clustering rather than trickle.",
+          "Maximum number of queued event summary jobs processed per summarization run. Summaries gate publishing, so this must keep pace with the eligible-event rate or the feed stalls: at 4 runs/day this allows ~48 summaries/day. Jobs are staggered JOB_STAGGER_MS apart (~7.5 requests/min), which stays inside Gemini's free-tier RPM; the 429 backpressure path defers rather than failing, so overshoot self-corrects instead of burning attempts.",
       },
       {
         key: "event_summary_max_attempts",
@@ -725,15 +725,15 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_max_input_articles",
-        value: 8,
+        value: 6,
         description:
-          "Maximum number of recent articles included in one event summarization prompt. Lower values reduce data egress (fewer bodies fetched and sent to the model) and token cost.",
+          "Maximum number of recent articles included in one event summarization prompt. Reduced in cost mode (12 -> 8 in #60, now 6): prompt size drives both data egress (billed per GB leaving Convex) and model latency, which is itself billed as action compute. 6 articles are still enough for a multi-perspective summary.",
       },
       {
         key: "event_summary_body_fetch_enabled",
-        value: true,
+        value: false,
         description:
-          "When true, the summarizer fetches each selected article's body transiently at summarization time (used in memory for the prompt, never stored) instead of relying only on the short extracted summary + RSS snippet.",
+          "When true, the summarizer fetches each selected article's body transiently at summarization time (used in memory for the prompt, never stored) instead of relying only on the short extracted summary + RSS snippet. DEFAULT OFF (cost mode): Convex bills action compute by wall-clock time including network waits, so fetching one body per selected article (up to event_summary_max_input_articles per job) made this the single most expensive operation in the app. Turning it on again is the biggest cost regression available — measure before doing so.",
       },
       {
         key: "event_summary_body_chars",
@@ -1169,9 +1169,21 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "pipeline_alert_check_interval_minutes",
-        value: 20,
+        value: 720,
         description:
-          "Nominal interval for pipeline alert checks.",
+          "Nominal interval for pipeline alert checks. Must track the check-pipeline-alerts cron in crons.ts (cost mode: 2x daily), otherwise absent-run and staleness alerts fire spuriously.",
+      },
+      {
+        key: "archived_article_retention_days",
+        value: 90,
+        description:
+          "Age after which an ARCHIVED, event-detached article row (and its embeddings) is deleted. Only applies to articles archived by singletonCleanup as stale singletons/processing events, which belong to no event — never to articles reachable from the feed. Hand-labeled clusterPairLabels rows are excluded by the purge job.",
+      },
+      {
+        key: "article_embedding_retention_days",
+        value: 45,
+        description:
+          "Age after which an article's 512-dimension embedding row is deleted. Clustering only ever compares recent articles, so older embeddings are dead weight — and unbounded articleEmbeddings growth (~1,300 articles/day) was the main driver of database storage cost. Article rows themselves are retained; only the vectors are purged.",
       },
     ];
 
@@ -1216,10 +1228,12 @@ export const seedDefaults = internalMutation({
       article_fact_extraction_model: ['"gpt-5-nano"'],
       article_bias_detection_model: ['"gpt-5-nano"'],
       claim_analysis_model: ['"gpt-5-nano"'],
-      // Migrate the prior summary input cap (12) down to the new egress-reduced
-      // default (8). This key is intentionally not force-managed, so operator
-      // overrides (any other value) are preserved.
-      event_summary_max_input_articles: ["12"],
+      // Migrate the prior summary input caps down to the current default.
+      // "12" was the original; "8" was the intermediate egress-reduced value
+      // from #60, which never reached prod before the deployment was disabled —
+      // both are listed so either state converges. This key is intentionally
+      // not force-managed, so operator overrides (any other value) are kept.
+      event_summary_max_input_articles: ["12", "8"],
     };
 
     let created = 0;
