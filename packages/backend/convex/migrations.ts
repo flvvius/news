@@ -24,6 +24,7 @@ import {
 } from "./lib/userProfile";
 import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
 import { truncateThirdPartySnippet } from "./lib/compliance";
+import { isRateLimitError } from "./lib/aiCall";
 import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;
@@ -1173,6 +1174,258 @@ export const backfillPreviewSearchText = mutation({
       updated,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/**
+ * COST MODE — force the stored config rows that override the code defaults.
+ *
+ * `config.getBatch` resolves a key from the `config` table and only falls back
+ * to the seeded default when the row is ABSENT. Prod already has rows for most
+ * of the expensive knobs, so editing the defaults in config.ts is not enough on
+ * its own — those rows have to be rewritten. This migration does that.
+ *
+ * (`event_summary_body_fetch_enabled` is the exception: it has no row in prod,
+ * so the new `false` default takes effect on deploy without this migration.
+ * It is written here anyway so the state is explicit and identical everywhere.)
+ *
+ * Idempotent. Run dry first:
+ *   npx convex run --prod migrations:applyCostReductionConfig '{"dryRun":true}'
+ *   npx convex run --prod migrations:applyCostReductionConfig '{"dryRun":false}'
+ *
+ * Afterwards refresh the pipeline snapshot so running jobs pick the values up:
+ *   npx convex run --prod config:refreshPipelineRuntimeConfig '{}'
+ */
+export const applyCostReductionConfig = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+
+    // Value encoding must match config.setInternal / config.getBatch: the
+    // `value` column holds a JSON-encoded string, not the raw scalar.
+    const targets: Array<{ key: string; value: unknown; why: string }> = [
+      {
+        key: "event_summary_body_fetch_enabled",
+        value: false,
+        why: "up to 12 billed network fetches per summary job — the single most expensive operation in the app",
+      },
+      {
+        key: "event_summary_batch_size",
+        value: 12,
+        why: "summaries gate publishing, so throughput must keep pace with eligible events (~48/day at 4 runs/day) while staying inside Gemini free-tier RPM",
+      },
+      {
+        key: "event_summary_enqueue_limit",
+        value: 40,
+        why: "unchanged from the previous default — the 2.15 GB I/O was fixed by cadence (32 runs/day to 4), and lowering depth would starve the publish queue",
+      },
+      {
+        key: "event_summary_max_input_articles",
+        value: 6,
+        why: "prompt size drives data egress and model latency, both billed",
+      },
+      {
+        key: "pipeline_alert_check_interval_minutes",
+        value: 720,
+        why: "must track the check-pipeline-alerts cron (now 2x daily) or absent-run alerts fire spuriously",
+      },
+      {
+        key: "article_embedding_retention_days",
+        value: 45,
+        why: "caps unbounded articleEmbeddings storage growth; clustering's widest lookback is 48h",
+      },
+      {
+        key: "archived_article_retention_days",
+        value: 90,
+        why: "deletes articles archived as stale singletons, which belong to no event",
+      },
+    ];
+
+    const changed: Array<{ key: string; from: string | null; to: string }> = [];
+    const unchanged: string[] = [];
+
+    for (const target of targets) {
+      const encoded = JSON.stringify(target.value);
+      const row = await ctx.db
+        .query("config")
+        .withIndex("by_key", (q) => q.eq("key", target.key))
+        .unique();
+
+      if (row && row.value === encoded) {
+        unchanged.push(target.key);
+        continue;
+      }
+
+      changed.push({
+        key: target.key,
+        from: row ? row.value : null,
+        to: encoded,
+      });
+
+      if (dryRun) continue;
+
+      if (row) {
+        await ctx.db.patch(row._id, {
+          value: encoded,
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.insert("config", {
+          key: target.key,
+          value: encoded,
+          description: target.why,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    return { dryRun, changedCount: changed.length, changed, unchanged };
+  },
+});
+
+/**
+ * COST MODE — revive summary jobs that were killed by Gemini rate limits.
+ *
+ * Before the backpressure fix, a 429 called `markSummaryJobFailed`, consuming
+ * one of only 3 attempts. In prod this left ~395 jobs parked at attempts=3 with
+ * a far-future `nextAttemptAt`, permanently dead — the direct cause of the
+ * "only ~31% of events ever get summarized" problem. Rate limiting is
+ * backpressure, not a failure of the job, so those jobs deserve another run.
+ *
+ * Only revives jobs whose recorded error looks like a rate limit. Jobs that
+ * failed for real reasons (blocked_ungrounded, blocked_verbatim, empty
+ * response) are LEFT ALONE — re-running those would just burn budget again.
+ *
+ * Idempotent, and bounded so a single call cannot blow the transaction limit.
+ * Run repeatedly until `remaining` is 0:
+ *   npx convex run --prod migrations:requeueRateLimitedSummaryJobs '{"dryRun":true}'
+ *   npx convex run --prod migrations:requeueRateLimitedSummaryJobs '{"dryRun":false}'
+ */
+export const requeueRateLimitedSummaryJobs = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 500);
+
+    const failed = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_updatedAt", (q) => q.eq("status", "failed"))
+      .order("desc")
+      .take(1000);
+
+    // Share the runtime's rate-limit detection so this migration classifies
+    // jobs exactly the way the summarization defer path does — a divergence
+    // here would revive the wrong jobs, or silently miss the right ones.
+    const candidates = failed.filter((job) => isRateLimitError(job.lastError));
+
+    const now = Date.now();
+    let requeued = 0;
+
+    for (const job of candidates.slice(0, limit)) {
+      if (!dryRun) {
+        await ctx.db.patch(job._id, {
+          status: "queued",
+          attempts: 0,
+          nextAttemptAt: now,
+          lastError: undefined,
+          processingRunId: undefined,
+          leaseExpiresAt: undefined,
+          updatedAt: now,
+        });
+      }
+      requeued++;
+    }
+
+    return {
+      dryRun,
+      scannedFailed: failed.length,
+      rateLimited: candidates.length,
+      requeued,
+      remaining: Math.max(candidates.length - requeued, 0),
+      skippedRealFailures: failed.length - candidates.length,
+    };
+  },
+});
+
+/**
+ * COST MODE — reclaim orphaned Convex file storage.
+ *
+ * Prod file storage sits at ~992 MB against a 1 GB free allowance, but
+ * `eventShareAssets.storageId` is the ONLY `v.id("_storage")` reference in the
+ * entire schema (see schema.ts), and that table is empty in prod. Every stored
+ * file is therefore unreachable: they are share-asset images generated before
+ * the 2026-07-07 prod database wipe, which cleared the rows but left the blobs
+ * behind. Share-asset generation is intentionally disabled, so nothing will
+ * ever reference them again.
+ *
+ * DESTRUCTIVE AND IRREVERSIBLE. Deleted blobs cannot be recovered. The guard
+ * below re-derives the live reference set at run time rather than trusting the
+ * analysis above, so it stays correct if share assets are ever re-enabled.
+ *
+ * Paginated. Run dry first and confirm `wouldDelete` matches expectations, then
+ * run for real, feeding `continueCursor` back in as `cursor` until `isDone`:
+ *   npx convex run --prod migrations:purgeOrphanedStorageFiles '{"dryRun":true}'
+ *   npx convex run --prod migrations:purgeOrphanedStorageFiles '{"dryRun":false}'
+ *   npx convex run --prod migrations:purgeOrphanedStorageFiles '{"dryRun":false,"cursor":"<continueCursor>"}'
+ */
+export const purgeOrphanedStorageFiles = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 500);
+
+    // Re-derive the live reference set instead of assuming it is empty.
+    const referenced = new Set<string>();
+    for (const asset of await ctx.db.query("eventShareAssets").collect()) {
+      if (asset.storageId) referenced.add(asset.storageId);
+    }
+
+    // Paginate rather than repeatedly `take`-ing from the head of the table.
+    // Retained (referenced) files stay at the head forever, so a head scan
+    // would re-examine them on every call and could never reach the rows behind
+    // them. In a dry run nothing is deleted at all, so a head scan would simply
+    // return the same page every time.
+    const page = await ctx.db.system
+      .query("_storage")
+      .paginate({ numItems: limit, cursor: args.cursor ?? null });
+
+    let removed = 0;
+    let deletedBytes = 0;
+    let kept = 0;
+
+    for (const file of page.page) {
+      if (referenced.has(file._id)) {
+        kept++;
+        continue;
+      }
+      removed++;
+      deletedBytes += file.size ?? 0;
+      if (!dryRun) {
+        await ctx.storage.delete(file._id);
+      }
+    }
+
+    return {
+      dryRun,
+      referencedCount: referenced.size,
+      scanned: page.page.length,
+      kept,
+      [dryRun ? "wouldDelete" : "deleted"]: removed,
+      approxMbReclaimed: Number((deletedBytes / 1048576).toFixed(2)),
+      // Feed this back in as `cursor` to continue; `isDone` means the whole
+      // table has been walked, not merely that this page was clean.
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
     };
   },
 });

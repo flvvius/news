@@ -103,6 +103,32 @@ function isRetryableError(error: unknown): boolean {
   );
 }
 
+/**
+ * Provider rate/quota rejection (HTTP 429 / RESOURCE_EXHAUSTED). Matches both
+ * a live SDK error object (which carries `status`) and the flattened message
+ * string `callLLM` returns to its callers (e.g. "429 status code (no body)"),
+ * because by the time an action's catch block sees it the status field is gone.
+ *
+ * Callers should treat this as *backpressure* — defer the work — rather than a
+ * failure that burns a retry attempt: the request never reached the model, so
+ * nothing about the input is wrong.
+ *
+ * Additive helper: `isRetryableError` and `callLLM` behaviour are unchanged.
+ */
+export function isRateLimitError(error: unknown): boolean {
+  if (errorStatus(error) === 429) return true;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return (
+    message.length > 0 &&
+    /\b429\b|RESOURCE_EXHAUSTED|rate[ _-]?limit|quota/i.test(message)
+  );
+}
+
 function isFatalError(error: unknown): boolean {
   const status = errorStatus(error);
   return status === 401 || status === 403 || status === 404;

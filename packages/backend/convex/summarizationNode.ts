@@ -7,7 +7,7 @@ import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/openai";
-import { callLLM } from "./lib/aiCall";
+import { callLLM, isRateLimitError } from "./lib/aiCall";
 import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
@@ -68,6 +68,17 @@ const DEFAULT_BODY_FETCH_CONCURRENCY = 8;
 // fraction of the held time. Both are overridable via config.
 const DEFAULT_BODY_FETCH_TIMEOUT_MS = 12_000;
 const JOB_LEASE_TTL_MS = 10 * 60 * 1000;
+// How long a rate-limited (429) job waits before it is eligible again. Free-tier
+// quota windows are per-minute *and* per-day, so retrying in seconds just burns
+// billed action time on another 429; wait out the window instead.
+const RATE_LIMIT_DEFER_MS = 45 * 60 * 1000;
+// Ceiling on how long a job may keep deferring on rate limits before it is
+// allowed to fail normally. Deferral refunds the attempt, so without this a
+// permanently rate-limited job retries forever and never shows up in any
+// failure metric. ~24h is well past any daily quota reset: still rate limited
+// after a full day means the quota is genuinely too small, which is exactly the
+// thing an operator needs told.
+const RATE_LIMIT_DEFER_CEILING_MS = 24 * 60 * 60 * 1000;
 const BASE_RETRY_DELAY_MS = 5 * 60 * 1000;
 const JOB_STAGGER_MS = 8000;
 const SUMMARY_WORD_LIMITS = {
@@ -324,8 +335,7 @@ function retryDelayMs(attempts: number): number {
  * the errors worth retrying on the fallback model rather than failing.
  */
 function isQuotaError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(message);
+  return isRateLimitError(error);
 }
 
 /**
@@ -384,6 +394,13 @@ async function generateSummaryWithModel(
         eventId,
       },
       runtime: ctx,
+      // COST: callLLM's default retry loop sleeps in-process between attempts,
+      // and Convex bills that sleep as action compute. A 429 here is not a
+      // transient blip we can wait out inside the job — the free-tier quota is
+      // gone for minutes to hours. Let it bubble out on the first attempt so
+      // processSummaryJob can defer the job (backpressure) instead of paying
+      // to sit in a sleep. Other callLLM callers keep the default maxRetries.
+      maxRetries: 1,
     });
 
     inputTokens += response.usage.inputTokens;
@@ -772,6 +789,9 @@ async function verifySummaryGrounding(
       ],
       context: { callType: "event_summary", eventId },
       runtime: ctx,
+      // Advisory pass — on failure we fall through to full-candidate
+      // entailment, so an in-process retry sleep buys nothing but billed time.
+      maxRetries: 1,
     });
     const vectors = embeddingResponse.result;
     if (vectors && vectors.length === sentences.length + articles.length) {
@@ -825,6 +845,9 @@ async function verifySummaryGrounding(
     ],
     context: { callType: "event_summary", eventId },
     runtime: ctx,
+    // Same reasoning as the summary call: a 429 should defer the job, not be
+    // slept through on Convex's billed clock.
+    maxRetries: 1,
   });
   if (!entailment.result) {
     throw new Error(
@@ -1196,7 +1219,17 @@ export const processSummaryJob = internalAction({
     skipped: boolean;
     budgetExhausted: boolean;
   }> => {
-    const paused = await ctx.runQuery(internal.config.isPipelinePaused, {});
+    // COST: every runQuery is a billed round trip that extends this action's
+    // wall clock. These three are side-effect-free reads whose results are all
+    // needed before any work starts, so they run concurrently — one round trip
+    // of latency instead of three. Short-circuit precedence below is unchanged
+    // (paused > budget > lease).
+    const [paused, settings, budget] = await Promise.all([
+      ctx.runQuery(internal.config.isPipelinePaused, {}),
+      loadSummarySettings(ctx, {}),
+      ctx.runQuery(internal.aiBudget.checkBudget, {}),
+    ]);
+
     if (paused) {
       console.log("[summarization] Pipeline paused — skipping job");
       return {
@@ -1208,11 +1241,9 @@ export const processSummaryJob = internalAction({
       };
     }
 
-    const settings = await loadSummarySettings(ctx, {});
     const runId = randomUUID();
     let budgetExhausted = false;
 
-    const budget = await ctx.runQuery(internal.aiBudget.checkBudget, {});
     if (!budget.allowed) {
       budgetExhausted = true;
       await ctx.runMutation(internal.summarization.deferSummaryJob, {
@@ -1591,6 +1622,42 @@ export const processSummaryJob = internalAction({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown summarization error";
+
+      // Backpressure, not failure: a provider 429 means the request never
+      // reached the model, so nothing about this event is wrong. Failing it
+      // burned one of only `maxAttempts` tries and was the main reason most
+      // events never got summarized at all. Defer well past the quota window
+      // and refund the attempt this run consumed.
+      //
+      // Bounded, though: because the deferral refunds the attempt, a job that is
+      // rate limited forever would retry forever and never appear in any failure
+      // metric — an invisible stall rather than a visible problem. Past the
+      // ceiling, stop refunding and let it fail through the normal path so queue
+      // health and error-rate alerting can see it.
+      const rateLimitedForMs = Date.now() - job.requestedAt;
+      if (
+        isRateLimitError(error) &&
+        rateLimitedForMs < RATE_LIMIT_DEFER_CEILING_MS
+      ) {
+        console.warn(
+          `[summarization] Rate limited on event ${job.eventId} — deferring (attempt refunded): ${message}`,
+        );
+        await ctx.runMutation(internal.summarization.deferSummaryJob, {
+          jobId: job._id,
+          runId,
+          refundAttempt: true,
+          reason: `rate_limited: ${message}`,
+          retryAfterMs: RATE_LIMIT_DEFER_MS,
+        });
+        return {
+          processed: true,
+          succeeded: false,
+          failed: false,
+          skipped: true,
+          budgetExhausted,
+        };
+      }
+
       console.error(
         `[summarization] Failed to summarize event ${job.eventId}: ${message}`,
       );

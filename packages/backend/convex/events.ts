@@ -23,14 +23,39 @@ import { foldDiacriticsToAscii } from "./lib/romanian";
 import { getConfig } from "./config";
 import { EVENT_SHARE_ASSET_GENERATION_ENABLED_KEY } from "./shareAssets";
 
-// Ranked-feed candidate scan caps. getPublishedEvents is the single largest
-// database-I/O consumer: the live ranked path reads this many full ~4KB
-// preview docs per uncached load just to rank and return one page. Trimmed
-// (250 -> 150 trending, 500 -> 200 topic) to cut read bytes on every trending
-// page-2+ load and every topic feed, at a small cost to how deep the ranking
-// pool reaches.
-const TRENDING_SCAN_LIMIT = 150;
-const TOPIC_SCAN_LIMIT = 200;
+// COST: ranked feed pagination is the app's single largest source of database
+// I/O, so it is deliberately cursor-anchored rather than "scan the top N and
+// slice in JS".
+//
+// The old shape re-scanned the top TRENDING_SCAN_LIMIT (250) preview rows for
+// *every* page — including page 5 — and then threw ~95% of them away. Two
+// separate costs came out of that:
+//   1. bytes read per execution (250 fat preview docs ≈ 0.6 MB for a 6-item
+//      page), and
+//   2. reactive re-execution: a query that reads the top of `by_trending_score`
+//      is invalidated by every newly-published event (recency dominates the
+//      score, so new events always land at the top of that range). Every open
+//      page-2+ subscription therefore re-ran, and re-read its 250 rows, on
+//      roughly every publish.
+//
+// Anchoring each page to an index range that is bounded *above* by the previous
+// page's score fixes both: a page reads ~pageSize rows, and new high-scoring
+// events fall outside the read range so they no longer invalidate deep pages.
+const RANKED_PAGE_BUFFER = 12;
+// A run of rows tying on the index key (identical trendingScore, or identical
+// lastUpdatedAt) can be longer than RANKED_PAGE_BUFFER. When that happens every
+// row in the window sorts at or before the cursor and the page comes back
+// empty, which would look identical to "the feed ended". Widen the window
+// geometrically instead. 4 attempts covers a tie run of ~1,000 rows; the retry
+// only runs in that rare case, so the normal path still reads exactly once.
+const RANKED_TIE_RUN_MAX_ATTEMPTS = 4;
+const RANKED_TIE_RUN_GROWTH = 4;
+const RANKED_MAX_PAGE_SIZE = 50;
+// Ranked pagination depth cap. Preserves the old "the ranked feed ends" UX
+// (previously an implicit side effect of the 250/500-row scan window) so
+// infinite scroll cannot walk the whole table one cheap page at a time.
+const RANKED_MAX_DEPTH = 240;
+const RANKED_DEPTH_MARKER = "|d";
 
 const FEED_SORT_VALIDATOR = v.union(v.literal("recent"), v.literal("trending"));
 
@@ -40,102 +65,193 @@ function sortEventsForFeed(events: PublicPreviewRow[], sort: FeedSort) {
   });
 }
 
-function paginateRankedEvents(
-  events: PublicPreviewRow[],
-  cursor: string | null,
-  targetSize: number,
+// `encodeRankedCursor` percent-encodes its JSON payload, so "|" can never occur
+// inside a base cursor and is safe as a depth separator. Depth travels on the
+// cursor so the server stays stateless; a cursor without a marker (e.g. one
+// minted by the snapshot builder) simply starts at depth 0.
+function splitRankedCursor(cursor: string | null) {
+  if (!cursor) return { base: null as string | null, depth: 0 };
+  const markerIndex = cursor.lastIndexOf(RANKED_DEPTH_MARKER);
+  if (markerIndex < 0) return { base: cursor, depth: 0 };
+  const parsed = Number(cursor.slice(markerIndex + RANKED_DEPTH_MARKER.length));
+  return {
+    base: cursor.slice(0, markerIndex),
+    depth: Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0,
+  };
+}
+
+function withDepth(cursor: string, depth: number) {
+  return cursor === "" ? "" : `${cursor}${RANKED_DEPTH_MARKER}${depth}`;
+}
+
+function snapshotKey(sort: FeedSort, topicId?: Id<"topics">) {
+  // Topic-scoped snapshots come from #60; the cursor-anchored reader below
+  // consumes them the same way it consumes the global one.
+  return topicId
+    ? `anonymous:first-page:${sort}:topic:${topicId}`
+    : `anonymous:first-page:${sort}`;
+}
+
+type RankedWindow = {
+  rows: PublicPreviewRow[];
+  /** The index range was exhausted, so there is nothing after this window. */
+  reachedEnd: boolean;
+};
+
+/**
+ * Reads at most `limit` preview rows starting at `fromScore` (inclusive) and
+ * walking down the ranking. `fromScore === undefined` starts at the top.
+ */
+async function readRankedWindow(
+  ctx: QueryCtx,
+  topicId: Id<"topics"> | undefined,
   sort: FeedSort,
-) {
-  const resumePayload = decodeRankedCursor(cursor);
-  const resumeIndex = resumePayload
-    ? events.findIndex((event) => event.eventId === resumePayload.eventId)
-    : -1;
-  const startIndex =
-    resumeIndex >= 0
-      ? resumeIndex + 1
-      : resumePayload
-        ? events.findIndex(
-            (event) =>
-              compareRankedPayload(rankedPayload(event, sort), resumePayload) >
-              0,
+  fromScore: number | undefined,
+  limit: number,
+): Promise<RankedWindow> {
+  if (topicId) {
+    const table = ctx.db.query("publicEventPreviewTopics");
+    const rows =
+      sort === "trending"
+        ? await (fromScore === undefined
+            ? table.withIndex("by_topic_trending", (q) =>
+                q.eq("topicId", topicId),
+              )
+            : table.withIndex("by_topic_trending", (q) =>
+                q.eq("topicId", topicId).lte("trendingScore", fromScore),
+              )
           )
-        : 0;
-  const normalizedStartIndex = startIndex >= 0 ? startIndex : events.length;
-  const page = events.slice(
-    normalizedStartIndex,
-    normalizedStartIndex + targetSize,
+            .order("desc")
+            .take(limit)
+        : await (fromScore === undefined
+            ? table.withIndex("by_topic_updated", (q) =>
+                q.eq("topicId", topicId),
+              )
+            : table.withIndex("by_topic_updated", (q) =>
+                q.eq("topicId", topicId).lte("lastUpdatedAt", fromScore),
+              )
+          )
+            .order("desc")
+            .take(limit);
+    const previews = await Promise.all(
+      rows.map((row) => ctx.db.get(row.previewId)),
+    );
+    return {
+      rows: previews.filter(
+        (preview): preview is Doc<"publicEventPreviews"> => preview !== null,
+      ),
+      reachedEnd: rows.length < limit,
+    };
+  }
+
+  const table = ctx.db.query("publicEventPreviews");
+  const rows =
+    sort === "trending"
+      ? await (fromScore === undefined
+          ? table.withIndex("by_trending_score")
+          : table.withIndex("by_trending_score", (q) =>
+              q.lte("trendingScore", fromScore),
+            )
+        )
+          .order("desc")
+          .take(limit)
+      : await (fromScore === undefined
+          ? table.withIndex("by_last_updated_at")
+          : table.withIndex("by_last_updated_at", (q) =>
+              q.lte("lastUpdatedAt", fromScore),
+            )
+        )
+          .order("desc")
+          .take(limit);
+  return { rows, reachedEnd: rows.length < limit };
+}
+
+async function paginateRanked(
+  ctx: QueryCtx,
+  topicId: Id<"topics"> | undefined,
+  sort: FeedSort,
+  cursor: string | null,
+  requestedSize: number,
+) {
+  const targetSize = Math.min(Math.max(requestedSize, 1), RANKED_MAX_PAGE_SIZE);
+  const { base, depth } = splitRankedCursor(cursor);
+  const resumePayload = decodeRankedCursor(base);
+
+  const remainingDepth = Math.max(0, RANKED_MAX_DEPTH - depth);
+  if (remainingDepth === 0) {
+    return { page: [] as PublicPreviewRow[], isDone: true, continueCursor: "" };
+  }
+  const pageSize = Math.min(targetSize, remainingDepth);
+
+  // Read only one page plus a small buffer. The buffer absorbs rows that tie on
+  // the index key with the cursor (they sort before it under the full
+  // comparator and get dropped below).
+  const rowsAfterCursor = (windowRows: PublicPreviewRow[]) => {
+    const sorted = sortEventsForFeed(windowRows, sort);
+    return resumePayload
+      ? sorted.filter(
+          (event) =>
+            compareRankedPayload(rankedPayload(event, sort), resumePayload) > 0,
+        )
+      : sorted;
+  };
+
+  let limit = pageSize + RANKED_PAGE_BUFFER;
+  let window = await readRankedWindow(
+    ctx,
+    topicId,
+    sort,
+    resumePayload?.score,
+    limit,
   );
-  const isDone = normalizedStartIndex + page.length >= events.length;
+  let after = rowsAfterCursor(window.rows);
+
+  // An empty result with more rows still available means the window fell
+  // entirely inside a tie run, not that the feed ended. Widen and retry.
+  for (
+    let attempt = 1;
+    after.length === 0 &&
+    !window.reachedEnd &&
+    attempt < RANKED_TIE_RUN_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    limit *= RANKED_TIE_RUN_GROWTH;
+    window = await readRankedWindow(
+      ctx,
+      topicId,
+      sort,
+      resumePayload?.score,
+      limit,
+    );
+    after = rowsAfterCursor(window.rows);
+  }
+
+  const reachedEnd = window.reachedEnd;
+  const page = after.slice(0, pageSize);
   const lastReturned = page[page.length - 1];
+  const nextDepth = depth + page.length;
+  const isDone =
+    (reachedEnd && after.length <= pageSize) ||
+    nextDepth >= RANKED_MAX_DEPTH ||
+    !lastReturned;
 
   return {
     page,
     isDone,
-    continueCursor:
-      isDone || !lastReturned ? "" : encodeRankedCursor(lastReturned, sort),
+    continueCursor: isDone
+      ? ""
+      : withDepth(encodeRankedCursor(lastReturned, sort), nextDepth),
   };
-}
-
-function snapshotKey(sort: FeedSort, topicId?: Id<"topics">) {
-  return topicId
-    ? `anonymous:first-page:${sort}:topic:${topicId}`
-    : `anonymous:first-page:${sort}`;
 }
 
 async function getTopicFeedCandidates(
   ctx: QueryCtx,
   topicId: Id<"topics">,
   sort: FeedSort,
-  limit: number = TOPIC_SCAN_LIMIT,
+  limit: number,
 ) {
-  const rows =
-    sort === "trending"
-      ? await ctx.db
-          .query("publicEventPreviewTopics")
-          .withIndex("by_topic_trending", (q) => q.eq("topicId", topicId))
-          .order("desc")
-          .take(limit)
-      : await ctx.db
-          .query("publicEventPreviewTopics")
-          .withIndex("by_topic_updated", (q) => q.eq("topicId", topicId))
-          .order("desc")
-          .take(limit);
-  const previews = await Promise.all(rows.map((row) => ctx.db.get(row.previewId)));
-  return previews.filter(
-    (preview): preview is Doc<"publicEventPreviews"> => preview !== null,
-  );
-}
-
-async function getFeedCandidates(
-  ctx: QueryCtx,
-  sort: FeedSort,
-  scanLimit: number,
-) {
-  if (sort === "trending") {
-    return await ctx.db
-      .query("publicEventPreviews")
-      .withIndex("by_trending_score")
-      .order("desc")
-      .take(scanLimit);
-  }
-
-  return await ctx.db
-    .query("publicEventPreviews")
-    .withIndex("by_last_updated_at")
-    .order("desc")
-    .take(scanLimit);
-}
-
-async function getRankedFeedCandidates(
-  ctx: QueryCtx,
-  topicId: Id<"topics"> | undefined,
-  sort: FeedSort,
-) {
-  const scanLimit = topicId ? TOPIC_SCAN_LIMIT : TRENDING_SCAN_LIMIT;
-  if (topicId) {
-    return await getTopicFeedCandidates(ctx, topicId, sort);
-  }
-  return await getFeedCandidates(ctx, sort, scanLimit);
+  const { rows } = await readRankedWindow(ctx, topicId, sort, undefined, limit);
+  return rows;
 }
 
 export const getPublishedEvents = query({
@@ -146,16 +262,27 @@ export const getPublishedEvents = query({
   },
   handler: async (ctx, args) => {
     const sort = args.sort ?? "trending";
+    const numItems = Math.min(
+      Math.max(args.paginationOpts.numItems, 1),
+      RANKED_MAX_PAGE_SIZE,
+    );
 
-    let events;
-
-    // Anonymous trending first-page acceleration. The trending feed (global and
-    // per-topic) otherwise requires an expensive ranked scan on every cold load.
-    // Serve the cached snapshot for the first page, then hand pagination back to
-    // the live ranked query via the stored `ranked:` cursor so the feed never
-    // dead-ends at the snapshot size. (Recent is a cheap indexed pagination and
-    // is not cached.)
-    if (sort === "trending" && args.paginationOpts.cursor === null) {
+    // Anonymous trending acceleration. The snapshot document holds the whole
+    // precomputed first slice of the trending ranking plus the `ranked:` cursor
+    // that follows each item, so it can serve *any* page whose cursor it still
+    // recognises — not just page 1. With the default 6-item page size that is
+    // the first four pages of the feed served from a single document read
+    // instead of four ranked index scans, and — critically — that document only
+    // changes when the rebuild cron runs, so the subscription re-runs on that
+    // cadence instead of on every publish.
+    //
+    // Topic-scoped snapshots (#60) are keyed separately and read through this
+    // same path; when one is absent the live cursor-anchored query below is
+    // authoritative, so a missing snapshot only costs an index range read.
+    if (sort === "trending") {
+      const { base: snapshotCursor, depth: cursorDepth } = splitRankedCursor(
+        args.paginationOpts.cursor,
+      );
       const snapshot = await ctx.db
         .query("publicFeedSnapshots")
         .withIndex("by_key", (q) =>
@@ -169,19 +296,29 @@ export const getPublishedEvents = query({
             cursors: string[];
           };
           const items = parsed.items ?? [];
-          if (items.length === 0) {
-            return { page: [], isDone: true, continueCursor: "" };
+          const cursors = parsed.cursors ?? [];
+          // Resolve where this request resumes inside the snapshot. A cursor the
+          // snapshot does not recognise (stale generation) or one past the
+          // snapshot tail yields startIndex < 0 / >= items.length and falls
+          // through to the live ranked path below, which is authoritative.
+          const resumeIndex =
+            snapshotCursor === null ? -1 : cursors.indexOf(snapshotCursor);
+          const startIndex =
+            snapshotCursor === null ? 0 : resumeIndex < 0 ? -1 : resumeIndex + 1;
+          if (startIndex >= 0 && startIndex < items.length) {
+            const page = items.slice(startIndex, startIndex + numItems);
+            const boundaryIndex = startIndex + page.length - 1;
+            // An absent boundary cursor means the snapshot cannot hand off to
+            // the live ranked path, so the feed ends here.
+            const rawCursor = cursors[boundaryIndex] ?? "";
+            const nextDepth = cursorDepth + page.length;
+            const isDone = rawCursor === "" || nextDepth >= RANKED_MAX_DEPTH;
+            return {
+              page,
+              isDone,
+              continueCursor: isDone ? "" : withDepth(rawCursor, nextDepth),
+            };
           }
-          const page = items.slice(0, args.paginationOpts.numItems);
-          const boundaryIndex =
-            Math.min(page.length, parsed.cursors.length) - 1;
-          const continueCursor =
-            boundaryIndex >= 0 ? (parsed.cursors[boundaryIndex] ?? "") : "";
-          return {
-            page,
-            isDone: continueCursor === "",
-            continueCursor,
-          };
         } catch (error) {
           console.error(
             "[events] Failed to parse public feed snapshot:",
@@ -193,35 +330,29 @@ export const getPublishedEvents = query({
     }
 
     if (args.topicId || sort === "trending") {
-      const targetSize = args.paginationOpts.numItems;
-      const publishedMatches = await getRankedFeedCandidates(
+      const events = await paginateRanked(
         ctx,
         args.topicId,
         sort,
-      );
-      const sortedMatches = sortEventsForFeed(publishedMatches, sort);
-
-      events = paginateRankedEvents(
-        sortedMatches,
         args.paginationOpts.cursor,
-        targetSize,
-        sort,
+        numItems,
       );
-    } else {
-      // Defensive reset in case a ranked cursor is reused after ranked mode is
-      // cleared.
-      const paginationOpts = args.paginationOpts.cursor?.startsWith(
-        RANKED_CURSOR_PREFIX,
-      )
-        ? { ...args.paginationOpts, cursor: null }
-        : args.paginationOpts;
-
-      events = await ctx.db
-        .query("publicEventPreviews")
-        .withIndex("by_last_updated_at")
-        .order("desc")
-        .paginate(paginationOpts);
+      return { ...events, page: events.page.map(toFeedEvent) };
     }
+
+    // Defensive reset in case a ranked cursor is reused after ranked mode is
+    // cleared.
+    const paginationOpts = args.paginationOpts.cursor?.startsWith(
+      RANKED_CURSOR_PREFIX,
+    )
+      ? { ...args.paginationOpts, cursor: null, numItems }
+      : { ...args.paginationOpts, numItems };
+
+    const events = await ctx.db
+      .query("publicEventPreviews")
+      .withIndex("by_last_updated_at")
+      .order("desc")
+      .paginate(paginationOpts);
 
     return {
       ...events,
@@ -359,9 +490,12 @@ export const getSitemapPublishedEvents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // COST: this is a public query with no caller left (the sitemap is served
+    // from `publicSitemapSnapshots`), so an unbounded default was a free way for
+    // anyone holding the deployment URL to read tens of MB of preview rows.
     const safeLimit = Math.min(
-      Math.max(Math.floor(args.limit ?? 5000), 1),
-      10000,
+      Math.max(Math.floor(args.limit ?? 2000), 1),
+      2000,
     );
     const events = await ctx.db
       .query("publicEventPreviews")
@@ -528,6 +662,8 @@ export const rescorePublicPreviews = internalMutation({
   },
 });
 
+const EVENT_PAGE_ARTICLE_LIMIT = 60;
+
 export const getEventBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
@@ -549,10 +685,16 @@ export const getEventBySlug = query({
       .collect();
     const topicIds = eventTopicRows.map((r) => r.topicId);
 
+    // COST: article docs are the fattest rows in the schema (summary, atomic
+    // facts, entities, bias components), and this runs on every event page view
+    // and every crawler hit. A merged mega-event can accumulate well over a
+    // hundred articles; the page only ever renders a coverage list, so cap the
+    // read. Events at the cap show their most-recently-ingested coverage.
     const articles = await ctx.db
       .query("articles")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .collect();
+      .order("desc")
+      .take(EVENT_PAGE_ARTICLE_LIMIT);
     // Custom social preview images are gated by a single kill switch. While it
     // is off (dev and prod), never serve a generated share asset — even if the
     // DB still holds "ready" rows from a previous run — so the OG/share image
