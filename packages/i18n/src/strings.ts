@@ -421,13 +421,6 @@ const ro = {
   "axis.methodologyCta": "Vezi metodologia",
   // MIEZ-5 / MIEZ-8: onboarding value line + share sheet text.
   "onboarding.valueLine": "Fiecare știre, din ambele tabere. Gratuit, fără cont.",
-  // MIEZ-8: Miez first-run screen (three-beat pitch).
-  "onboarding.miez.beat1": "Presa s-a rupt în două tabere",
-  "onboarding.miez.beat2": "Miez îți arată ambele",
-  "onboarding.miez.beat3": "Gratuit, fără cont",
-  "onboarding.miez.cta": "Vezi miezul zilei",
-  "onboarding.miez.skip": "Omite",
-  "onboarding.miez.close": "Închide ecranul de întâmpinare",
   // General contact form (/contact).
   "contact.field.name": "Nume",
   "contact.field.email": "E-mail",
@@ -1226,12 +1219,6 @@ const en: { [K in keyof BaseStrings]: string } = {
   "axis.tooltip": "A source's place on the axis is computed, not decreed.",
   "axis.methodologyCta": "See the methodology",
   "onboarding.valueLine": "Every story, from both camps. Free, no account.",
-  "onboarding.miez.beat1": "The press has split into two camps",
-  "onboarding.miez.beat2": "Miez shows you both",
-  "onboarding.miez.beat3": "Free, no account",
-  "onboarding.miez.cta": "See today's core",
-  "onboarding.miez.skip": "Skip",
-  "onboarding.miez.close": "Close the welcome screen",
   "contact.field.name": "Name",
   "contact.field.email": "Email",
   "contact.field.subject": "Subject",

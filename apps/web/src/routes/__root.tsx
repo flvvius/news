@@ -3,7 +3,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { SITE, absoluteSiteUrl } from "@/lib/seo";
 import { Footer } from "@/components/layout/Footer";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
-import { MiezOnboarding } from "@/components/MiezOnboarding";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { getServerLocale } from "@/lib/i18n/getServerLocale";
@@ -283,7 +282,6 @@ function RootDocument() {
                 richColors
                 mobileOffset={{ bottom: "calc(4rem + var(--safe-area-bottom))" }}
               />
-              <MiezOnboarding />
               <PostHogAnalytics />
               {TanStackRouterDevtools && (
                 <Suspense fallback={null}>
