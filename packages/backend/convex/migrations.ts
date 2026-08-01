@@ -24,7 +24,9 @@ import {
 } from "./lib/userProfile";
 import { deleteByEventIndex, EVENT_CHILD_TABLES } from "./singletonCleanup";
 import { truncateThirdPartySnippet } from "./lib/compliance";
-import { isRateLimitError } from "./lib/aiCall";
+// Deliberately NOT from "./lib/aiCall": that module is "use node", and this one
+// is not, so importing across the boundary breaks the V8 bundle at codegen time.
+import { isRateLimitError } from "./lib/rateLimitError";
 import { syncPublicEventPreview } from "./lib/publicEventPreviews";
 
 const MAX_FACT_EXTRACTION_ATTEMPTS = 3;

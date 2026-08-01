@@ -6,6 +6,12 @@ import type { ActionCtx } from "../_generated/server";
 import { calculateCost, calculateCostWithCachedInput } from "../aiBudget";
 import { getLLMClient, isPostHogInstrumented } from "./openai";
 import { buildChatTuningParams, providerForModel } from "./modelRouting";
+// Rate-limit detection lives in a dependency-free module so non-"use node"
+// modules (e.g. migrations.ts) can share it without dragging the Node-only
+// SDK imports above into the V8 bundle.
+import { errorStatus, isRateLimitError } from "./rateLimitError";
+
+export { isRateLimitError };
 
 export type AICallType =
   | "fact_extraction"
@@ -85,12 +91,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function errorStatus(error: unknown): number | undefined {
-  const candidate = error as { status?: unknown; code?: unknown };
-  if (typeof candidate.status === "number") return candidate.status;
-  if (typeof candidate.code === "number") return candidate.code;
-  return undefined;
-}
 
 function isRetryableError(error: unknown): boolean {
   const status = errorStatus(error);
@@ -115,19 +115,6 @@ function isRetryableError(error: unknown): boolean {
  *
  * Additive helper: `isRetryableError` and `callLLM` behaviour are unchanged.
  */
-export function isRateLimitError(error: unknown): boolean {
-  if (errorStatus(error) === 429) return true;
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  return (
-    message.length > 0 &&
-    /\b429\b|RESOURCE_EXHAUSTED|rate[ _-]?limit|quota/i.test(message)
-  );
-}
 
 function isFatalError(error: unknown): boolean {
   const status = errorStatus(error);
