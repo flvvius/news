@@ -579,14 +579,41 @@ export const listDueSummaryJobs = internalQuery({
     const now = Date.now();
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
     const jobs: Doc<"eventSummaryJobs">[] = [];
+    const seen = new Set<string>();
+    const pushUnseen = (rows: Doc<"eventSummaryJobs">[]) => {
+      for (const row of rows) {
+        if (jobs.length >= safeLimit || seen.has(row._id)) continue;
+        seen.add(row._id);
+        jobs.push(row);
+      }
+    };
 
-    const queued = await ctx.db
+    // Newest-first for most of the batch, oldest-first for the rest.
+    //
+    // Pure oldest-first starves fresh events whenever a backlog exists: a run
+    // drains batch_size jobs, so with ~800 queued (as after the Aug 2 publish
+    // outage) an event queued today waits days behind events queued weeks ago,
+    // and the feed shows stale news even while publishing "works". Pure
+    // newest-first has the opposite failure — the backlog never drains. The
+    // split keeps fresh events at roughly one run of latency while still
+    // retiring older jobs every run.
+    const freshCount = Math.max(1, Math.ceil(safeLimit * 0.7));
+    const fresh = await ctx.db
       .query("eventSummaryJobs")
       .withIndex("by_status_next_attempt", (q) =>
         q.eq("status", "queued").lte("nextAttemptAt", now),
       )
-      .take(safeLimit);
-    jobs.push(...queued);
+      .order("desc")
+      .take(freshCount);
+    pushUnseen(fresh);
+
+    const backlog = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_next_attempt", (q) =>
+        q.eq("status", "queued").lte("nextAttemptAt", now),
+      )
+      .take(safeLimit - jobs.length);
+    pushUnseen(backlog);
 
     if (jobs.length < safeLimit) {
       const failed = await ctx.db
@@ -595,7 +622,7 @@ export const listDueSummaryJobs = internalQuery({
           q.eq("status", "failed").lte("nextAttemptAt", now),
         )
         .take(safeLimit - jobs.length);
-      jobs.push(...failed);
+      pushUnseen(failed);
     }
 
     return jobs.map((job) => ({

@@ -346,3 +346,67 @@ describe("grounding invariants at the publish gate (L4)", () => {
     expect(attribution?.results[0]!.supportingSources).toContain("Example");
   });
 });
+
+describe("summary job selection does not starve fresh events", () => {
+  async function seedQueuedJob(t: ConvexT, requestedAt: number) {
+    return await t.run(async (ctx) => {
+      const eventId = await ctx.db.insert("events", {
+        title: `Eveniment ${requestedAt}`,
+        slug: `eveniment-${requestedAt}`,
+        status: "processing",
+        firstPublishedAt: requestedAt,
+        lastUpdatedAt: requestedAt,
+        lastArticleAt: requestedAt,
+        articleCount: 3,
+        sourceCount: 2,
+        sourceIds: [],
+      });
+      return await ctx.db.insert("eventSummaryJobs", {
+        eventId,
+        status: "queued",
+        attempts: 0,
+        requestedAt,
+        nextAttemptAt: requestedAt,
+        updatedAt: requestedAt,
+      });
+    });
+  }
+
+  test("a job queued today is picked up despite a large older backlog", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    // 40 jobs queued over the past 20 days, then one queued just now.
+    for (let i = 40; i >= 1; i--) {
+      await seedQueuedJob(t, now - i * (dayMs / 2));
+    }
+    const freshJobId = await seedQueuedJob(t, now - 1000);
+
+    const due = await t.query(internal.summarization.listDueSummaryJobs, {
+      limit: 12,
+    });
+
+    // Under pure oldest-first ordering the fresh job sits behind 40 older ones
+    // and would not appear for several runs.
+    expect(due.map((job) => job._id)).toContain(freshJobId);
+    expect(due).toHaveLength(12);
+    expect(new Set(due.map((job) => job._id)).size).toBe(12);
+  });
+
+  test("the oldest backlog still drains every run", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const oldestJobId = await seedQueuedJob(t, now - 30 * dayMs);
+    for (let i = 1; i <= 40; i++) {
+      await seedQueuedJob(t, now - i * 60_000);
+    }
+
+    const due = await t.query(internal.summarization.listDueSummaryJobs, {
+      limit: 12,
+    });
+    expect(due.map((job) => job._id)).toContain(oldestJobId);
+  });
+});
