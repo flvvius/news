@@ -695,9 +695,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "event_summary_enqueue_limit",
-        value: 40,
+        value: 12,
         description:
-          "Maximum number of recent published events inspected for summary eligibility per summarization run. This scan (summarization.enqueueEligibleEventSummaries) was the 2nd largest database-I/O consumer in the app at 2.15 GB, but the fix was cadence, not depth: dropping from 32 runs/day to 4 already cuts that I/O ~8x. Lowering this further would starve the queue of eligible events instead, since summaries gate publishing.",
+          "Maximum number of event summary jobs queued per summarization run. Keep this at or below event_summary_batch_size: a run drains batch_size jobs, so anything higher grows the queue every run (observed: 820 of 1000 recent jobs still queued), wasting database writes and pushing freshly-qualified events behind days of backlog - and because summaries gate publishing, the feed stalls. Candidates are scanned most-recent-first, so a smaller limit costs recall of stale events, not fresh ones. This scan (summarization.enqueueEligibleEventSummaries) was also the 2nd largest database-I/O consumer at 2.15 GB; that was addressed by cadence (32 runs/day to 4), not by raising depth here.",
       },
       {
         key: "event_summary_batch_size",

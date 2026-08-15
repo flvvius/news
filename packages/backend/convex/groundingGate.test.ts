@@ -186,6 +186,64 @@ describe("summaryReviewQueue retained for pre-removal holds (L4)", () => {
   });
 });
 
+describe("terminal blocks do not regenerate identical inputs", () => {
+  test("an exhausted failure stamps the signature so the next run short-circuits", async () => {
+    const t = convexTest(schema, modules);
+    const { eventId, jobId, runId } = await seedProcessingJob(t);
+
+    await t.mutation(internal.summarization.markSummaryJobFailed, {
+      jobId,
+      runId,
+      error: "blocked_ungrounded",
+      retryAfterMs: Number.MAX_SAFE_INTEGER,
+      maxAttempts: 0,
+      eventId,
+      summarySignature: "sig-abc",
+    });
+
+    // processSummaryJob compares this against the signature it rebuilds from
+    // the same articles, so the next attempt skips before any model call.
+    const event = await t.run(async (ctx) => ctx.db.get(eventId));
+    expect(event?.lastSummarySignature).toBe("sig-abc");
+    expect(event?.status).toBe("processing");
+  });
+
+  test("a retryable failure does not stamp the signature", async () => {
+    const t = convexTest(schema, modules);
+    const { eventId, jobId, runId } = await seedProcessingJob(t);
+
+    // attempts (1) < maxAttempts (3): this job retries, so the inputs must
+    // stay eligible for regeneration.
+    await t.mutation(internal.summarization.markSummaryJobFailed, {
+      jobId,
+      runId,
+      error: "transient upstream error",
+      retryAfterMs: 60_000,
+      maxAttempts: 3,
+      eventId,
+      summarySignature: "sig-abc",
+    });
+
+    const event = await t.run(async (ctx) => ctx.db.get(eventId));
+    expect(event?.lastSummarySignature).toBeUndefined();
+  });
+
+  test("blocked_verbatim stamps the signature too", async () => {
+    const t = convexTest(schema, modules);
+    const { eventId, jobId, runId } = await seedProcessingJob(t);
+
+    await t.mutation(internal.summarization.markSummaryJobBlockedVerbatim, {
+      jobId,
+      runId,
+      overlapCheckJson: "{}",
+      summarySignature: "sig-verbatim",
+    });
+
+    const event = await t.run(async (ctx) => ctx.db.get(eventId));
+    expect(event?.lastSummarySignature).toBe("sig-verbatim");
+  });
+});
+
 describe("grounding invariants at the publish gate (L4)", () => {
   test("a failing grounding record can never be applied", async () => {
     const t = convexTest(schema, modules);

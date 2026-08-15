@@ -105,7 +105,6 @@ type SummarySettings = {
   groundingEnabled: boolean;
   groundingModel: string;
   groundingEmbeddingThreshold: number;
-  maxUnsupportedRatio: number;
 };
 
 type SummaryQueueHealthResult = {
@@ -454,7 +453,6 @@ async function loadSummarySettings(
       "event_grounding_enabled",
       "event_grounding_model",
       "event_grounding_embedding_threshold",
-      "event_grounding_max_unsupported_ratio",
     ],
   })) as Record<string, unknown>;
 
@@ -541,12 +539,6 @@ async function loadSummarySettings(
     groundingEmbeddingThreshold: safeNumber(
       cfg.event_grounding_embedding_threshold,
       0.5,
-      0,
-      1,
-    ),
-    maxUnsupportedRatio: safeNumber(
-      cfg.event_grounding_max_unsupported_ratio,
-      0.34,
       0,
       1,
     ),
@@ -891,10 +883,11 @@ async function verifySummaryGrounding(
     })),
   };
 
-  if (unsupported.length / results.length > settings.maxUnsupportedRatio) {
-    return { action: "blocked", grounding: { ...grounding, passed: false } };
-  }
-
+  // No ratio-based block. Stripping is both safer and cheaper than blocking:
+  // an unsupported sentence never reaches publication either way, but blocking
+  // discarded the supported sentences too and left the event in `processing`,
+  // where it was re-summarized from scratch every hour forever. The only
+  // remaining block is the floor below — nothing grounded left to publish.
   if (unsupported.length === 0) {
     return { action: "publish", fields, grounding };
   }
@@ -1430,6 +1423,7 @@ export const processSummaryJob = internalAction({
             jobId: job._id,
             runId,
             overlapCheckJson: JSON.stringify(overlapCheck),
+            summarySignature,
           },
         );
         return {
@@ -1470,6 +1464,8 @@ export const processSummaryJob = internalAction({
             error: "blocked_ungrounded",
             retryAfterMs: Number.MAX_SAFE_INTEGER,
             maxAttempts: 0,
+            eventId: input.event._id,
+            summarySignature,
           });
           return {
             processed: true,

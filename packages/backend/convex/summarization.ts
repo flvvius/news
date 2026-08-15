@@ -1317,6 +1317,30 @@ export const decideSummaryReviewForAdmin = mutation({
   },
 });
 
+/**
+ * A terminally-blocked summary (verbatim or ungrounded) leaves the event in
+ * `processing` with no stored summary, so shouldResummarize keeps returning
+ * true and every later cron run regenerated the identical summary — a full
+ * model call plus a grounding call, hourly, forever. Production showed 423
+ * blocked runs across 230 events, up to 8 regenerations of the same event.
+ *
+ * Stamping the signature of the inputs that produced the block makes the
+ * existing `no_change_since_last_run` short-circuit fire on the next attempt,
+ * which costs one cheap query and no model call. The signature is derived from
+ * the event's articles, so when a new article lands it changes and the event is
+ * retried on its own — the block self-heals without a separate retry path.
+ */
+async function stampTerminalSummarySignature(
+  ctx: MutationCtx,
+  eventId: Id<"events"> | undefined,
+  summarySignature: string | undefined,
+): Promise<void> {
+  if (!eventId || !summarySignature) return;
+  const event = await ctx.db.get(eventId);
+  if (!event || event.lastSummarySignature === summarySignature) return;
+  await ctx.db.patch(eventId, { lastSummarySignature: summarySignature });
+}
+
 export const markSummaryJobFailed = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
@@ -1324,8 +1348,15 @@ export const markSummaryJobFailed = internalMutation({
     error: v.string(),
     retryAfterMs: v.number(),
     maxAttempts: v.number(),
+    // Stamped on a terminal block so the same inputs are not regenerated. See
+    // stampTerminalSummarySignature.
+    eventId: v.optional(v.id("events")),
+    summarySignature: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, runId, error, retryAfterMs, maxAttempts }) => {
+  handler: async (
+    ctx,
+    { jobId, runId, error, retryAfterMs, maxAttempts, eventId, summarySignature },
+  ) => {
     const job = await ctx.db.get(jobId);
     if (!job || job.status !== "processing" || job.processingRunId !== runId) {
       return { updated: false as const };
@@ -1343,6 +1374,10 @@ export const markSummaryJobFailed = internalMutation({
       updatedAt: Date.now(),
     });
 
+    if (attemptsExhausted) {
+      await stampTerminalSummarySignature(ctx, eventId, summarySignature);
+    }
+
     return { updated: true as const, attemptsExhausted };
   },
 });
@@ -1359,8 +1394,9 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
     jobId: v.id("eventSummaryJobs"),
     runId: v.string(),
     overlapCheckJson: v.string(),
+    summarySignature: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, runId, overlapCheckJson }) => {
+  handler: async (ctx, { jobId, runId, overlapCheckJson, summarySignature }) => {
     const job = await ctx.db.get(jobId);
     if (!job || job.status !== "processing" || job.processingRunId !== runId) {
       return { updated: false as const };
@@ -1370,13 +1406,17 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
       status: "failed",
       processingRunId: undefined,
       leaseExpiresAt: undefined,
-      // Terminal: no automatic retry — a regenerated summary from identical
-      // inputs would keep failing; new articles re-enqueue a fresh job.
+      // Terminal for this job. The failed row alone does not stop re-enqueue
+      // (summaryJobBlocksEnqueue ignores MAX_SAFE_INTEGER rows), so the
+      // signature stamp below is what actually prevents regenerating identical
+      // inputs; new articles change the signature and retry the event.
       nextAttemptAt: Number.MAX_SAFE_INTEGER,
       lastError: "blocked_verbatim",
       overlapCheckJson,
       updatedAt: Date.now(),
     });
+
+    await stampTerminalSummarySignature(ctx, job.eventId, summarySignature);
 
     // L7: audit the block in the same transaction.
     await appendGenerationAudit(ctx, {
