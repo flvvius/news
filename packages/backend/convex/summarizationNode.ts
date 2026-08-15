@@ -26,8 +26,6 @@ import {
 import {
   collectSummarySentences,
   cosineSimilarity,
-  DEFAULT_ACCUSATION_LEXICON,
-  findRiskySentences,
   type SentenceGroundingResult,
   type SummaryFieldName,
 } from "./lib/grounding";
@@ -103,12 +101,11 @@ type SummarySettings = {
   bodyFetchTimeoutMs: number;
   // L3 — verbatim-overlap gate threshold (shared contiguous words).
   maxVerbatimNgram: number;
-  // L4 — grounding + NER risk gate.
+  // L4 — grounding gate.
   groundingEnabled: boolean;
   groundingModel: string;
   groundingEmbeddingThreshold: number;
   maxUnsupportedRatio: number;
-  accusationLexicon: string[];
 };
 
 type SummaryQueueHealthResult = {
@@ -458,31 +455,8 @@ async function loadSummarySettings(
       "event_grounding_model",
       "event_grounding_embedding_threshold",
       "event_grounding_max_unsupported_ratio",
-      "accusation_lexicon",
     ],
   })) as Record<string, unknown>;
-
-  let accusationLexicon = DEFAULT_ACCUSATION_LEXICON;
-  if (typeof cfg.accusation_lexicon === "string") {
-    try {
-      const parsed = JSON.parse(cfg.accusation_lexicon) as unknown;
-      if (
-        Array.isArray(parsed) &&
-        parsed.every((term) => typeof term === "string")
-      ) {
-        accusationLexicon = parsed;
-      }
-    } catch {
-      // Keep the built-in lexicon on malformed config.
-    }
-  } else if (
-    Array.isArray(cfg.accusation_lexicon) &&
-    (cfg.accusation_lexicon as unknown[]).every(
-      (term) => typeof term === "string",
-    )
-  ) {
-    accusationLexicon = cfg.accusation_lexicon as string[];
-  }
 
   const fallbackModel = safeString(
     cfg.event_summary_model_fallback,
@@ -576,7 +550,6 @@ async function loadSummarySettings(
       0,
       1,
     ),
-    accusationLexicon,
   };
 }
 
@@ -1515,45 +1488,13 @@ export const processSummaryJob = internalAction({
         }
       }
 
-      // L4 — NER risk gate: named person/org + accusation term → hold for
-      // human review, never auto-publish.
-      const riskFlags = findRiskySentences(
-        finalFields,
-        settings.accusationLexicon,
-      );
-      if (riskFlags.length > 0) {
-        console.warn(
-          `[summarization] Summary held for review (event ${job.eventId}): ${riskFlags
-            .map((flag) => `${flag.entity}+"${flag.term}"`)
-            .join("; ")}`,
-        );
-        await ctx.runMutation(internal.summarization.holdSummaryForReview, {
-          jobId: job._id,
-          eventId: input.event._id,
-          runId,
-          proposed: {
-            neutral: finalFields.neutral,
-            reformist: finalFields.reformist,
-            suveranist: finalFields.suveranist,
-            globalImpact: finalFields.globalImpact,
-            perspectiveApplicable: summary.perspectiveApplicable,
-            modelUsed,
-            summarySignature,
-          },
-          flaggedSentences: riskFlags,
-          overlapCheckJson: JSON.stringify(overlapCheck),
-          groundingJson: groundingRecord
-            ? JSON.stringify(groundingRecord)
-            : undefined,
-        });
-        return {
-          processed: true,
-          succeeded: false,
-          failed: false,
-          skipped: true,
-          budgetExhausted,
-        };
-      }
+      // The NER risk gate (named person/org + accusation term -> hold for human
+      // review) was removed: its lexicon matched on prefixes, so ordinary
+      // Romanian coverage tripped it ("viol" inside "incendii violente", "furt"
+      // inside "furtuna"), and a single flagged sentence parked the whole event
+      // in a review queue nothing drained. L3 verbatim + L4 grounding remain the
+      // pre-publication checks. summaryReviewQueue and holdSummaryForReview are
+      // kept so the rows held before this change stay readable in /admin/review.
 
       // L7: source provenance for the audit record — content hash of the
       // exact material each article contributed, fetch timestamp, and the

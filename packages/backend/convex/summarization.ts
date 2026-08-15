@@ -311,17 +311,10 @@ async function enqueueEligibleEvents(
       continue;
     }
 
-    // L4: an event whose summary is parked in the review queue must not be
-    // re-enqueued — regeneration would flag again and spam the queue.
-    const pendingReview = await ctx.db
-      .query("summaryReviewQueue")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .filter((q) => q.eq(q.field("status"), "pending"))
-      .first();
-    if (pendingReview) {
-      skipped++;
-      continue;
-    }
+    // A pending summaryReviewQueue row no longer blocks re-enqueue. It existed
+    // to stop the NER risk gate re-flagging the same event every run; with that
+    // gate removed the rows are inert history, and skipping on them would strand
+    // every event held before the removal in `processing` forever.
 
     const latestJob = await getLatestSummaryJob(ctx, event._id);
     if (await hasBlockingSummaryJob(ctx, event._id, now)) {

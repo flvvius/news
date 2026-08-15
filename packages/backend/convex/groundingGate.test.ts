@@ -1,6 +1,7 @@
-// L4: grounding + NER risk gate. A synthetic summary accusing a named person
-// is held in the review queue and never auto-published; failing grounding can
-// never be applied; held events are not re-enqueued.
+// L4: grounding gate. A summary that fails grounding can never be applied.
+// The NER risk gate was removed (prefix-matching lexicon held ordinary
+// coverage), so its tests are gone; holdSummaryForReview is retained only so
+// rows held before the removal stay readable in /admin/review.
 import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, test } from "vitest";
 
@@ -9,8 +10,6 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   collectSummarySentences,
-  findNamedEntities,
-  findRiskySentences,
   splitIntoSentences,
 } from "./lib/grounding";
 import { SIDE_COVERAGE_FALLBACK } from "./prompts";
@@ -41,50 +40,6 @@ describe("sentence splitting + collection (L4)", () => {
     });
     expect(sentences).toHaveLength(1);
     expect(sentences[0]!.field).toBe("neutral");
-  });
-});
-
-describe("NER risk gate (L4)", () => {
-  test("a named person + accusation term is flagged", () => {
-    const flags = findRiskySentences({
-      neutral:
-        "Consiliul a aprobat bugetul local. Ion Popescu este acuzat de corupție într-un dosar penal, potrivit surselor.",
-    });
-    expect(flags.length).toBeGreaterThan(0);
-    expect(flags[0]!.entity).toContain("Ion Popescu");
-    expect(["corupție", "dosar penal"]).toContain(flags[0]!.term);
-  });
-
-  test("an organization + fraud term is flagged", () => {
-    const flags = findRiskySentences({
-      globalImpact:
-        "Ancheta vizează compania Alfa Beta SRL pentru fraudă cu fonduri europene.",
-    });
-    expect(flags.length).toBeGreaterThan(0);
-  });
-
-  test("neutral coverage without accusations passes", () => {
-    const flags = findRiskySentences({
-      neutral:
-        "Guvernul a majorat bugetul pentru sănătate cu două miliarde de lei, potrivit mai multor surse.",
-      globalImpact: "Spitalele vor primi fonduri suplimentare din septembrie.",
-    });
-    expect(flags).toHaveLength(0);
-  });
-
-  test("accusation term without a named entity passes", () => {
-    const flags = findRiskySentences({
-      neutral: "Numărul dosarelor de corupție a scăzut anul trecut.",
-    });
-    // "corupție" appears but no person/org is named in the sentence.
-    expect(flags).toHaveLength(0);
-  });
-
-  test("findNamedEntities skips generic capitalized sentence starters", () => {
-    expect(findNamedEntities("Potrivit surselor, ancheta continuă.")).toHaveLength(0);
-    expect(findNamedEntities("Ancheta îl vizează pe Vasile Ionescu.")).toEqual([
-      "Vasile Ionescu",
-    ]);
   });
 });
 
@@ -133,7 +88,7 @@ const RISKY_PROPOSAL = {
   summarySignature: undefined as string | undefined,
 };
 
-describe("review queue holds risky summaries (L4)", () => {
+describe("summaryReviewQueue retained for pre-removal holds (L4)", () => {
   test("holdSummaryForReview queues the proposal and never publishes", async () => {
     const t = convexTest(schema, modules);
     const { eventId, jobId, runId } = await seedProcessingJob(t);
@@ -171,7 +126,10 @@ describe("review queue holds risky summaries (L4)", () => {
     expect(queue[0]!.flaggedSentences[0]!.entity).toBe("Ion Popescu");
   });
 
-  test("an event with a pending review is not re-enqueued", async () => {
+  test("an event held before the NER gate was removed is re-enqueued", async () => {
+    // Previously a pending review row skipped the event forever. With the gate
+    // gone those rows are inert history, so the event must flow again —
+    // otherwise every event held before the removal stays unpublished.
     const t = convexTest(schema, modules);
     const { eventId, jobId, runId } = await seedProcessingJob(t);
     await t.mutation(internal.summarization.holdSummaryForReview, {
@@ -186,7 +144,7 @@ describe("review queue holds risky summaries (L4)", () => {
       internal.summarization.enqueueEligibleEventSummaries,
       { limit: 10, minArticles: 3, minSources: 2 },
     );
-    expect(result.queued).toBe(0);
+    expect(result.queued).toBe(1);
   });
 
   test("a second hold for the same event replaces the pending row", async () => {

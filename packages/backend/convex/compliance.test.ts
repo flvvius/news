@@ -76,7 +76,6 @@ describe("compliance invariants (L15)", () => {
     expect(summarization).toContain("ensureDomainPermissions");
     expect(summarization).toContain("checkSummaryOverlap");
     expect(summarization).toContain("verifySummaryGrounding");
-    expect(summarization).toContain("findRiskySentences");
     const enrichment = readFileSync(join(__dirname, "enrichmentNode.ts"), "utf8");
     expect(enrichment).toContain("ensureDomainPermissions");
     expect(enrichment).toContain("extractionAllowed");

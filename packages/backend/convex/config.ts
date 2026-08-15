@@ -786,9 +786,9 @@ export const seedDefaults = internalMutation({
       },
       {
         key: "article_fact_extraction_enabled",
-        value: false,
+        value: true,
         description:
-          "When true, enrichment extracts structured atomic facts from article text using the configured chat model. Paused for the Romanian launch (BIV-602).",
+          "When true, enrichment extracts structured atomic facts from article text using the configured chat model. Required: atomic facts are the durable grounding evidence for summarization. Enrichment sees the full article body, so facts are extracted once and stored, whereas event_summary_body_fetch_enabled re-fetches bodies on every (re)summarization. With both disabled the grounding corpus collapses to summary+rssSnippet (~200 chars/article) and every summary is blocked_ungrounded — publishing stopped entirely on 2026-08-02 for exactly this reason.",
       },
       {
         key: "article_fact_extraction_model",
