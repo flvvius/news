@@ -33,15 +33,19 @@ function classifySourceBias(source: Pick<Doc<"sources">, "baseBias" | "mbfcCateg
 // silently rot as time passes. We weight recency by adding a per-hour term and
 // bound how far a well-covered-but-stale event can float above fresher ones.
 //
-// Recency weight: 1 point every 10 minutes (= 6 points/hour, 144/day). This is
-// 6x the old 1 point/hour, so recency now clearly dominates coverage.
-const RECENCY_MS_PER_POINT = 600_000;
-// Coverage cap: 288 points ≈ 48h of recency. Once an event stops updating, its
-// coverage can lift it at most ~2 days above a fresher event, so nothing older
-// than ~3-4 days survives in the top trending slots regardless of how heavily
-// it was corroborated. Actively-updated stories keep a fresh lastUpdatedAt and
-// are unaffected.
-const MAX_COVERAGE_BONUS = 288;
+// Recency weight: 1 point every 5 minutes (= 12 points/hour, 288/day). This is
+// 12x the original 1 point/hour, so recency strongly dominates coverage.
+const RECENCY_MS_PER_POINT = 300_000;
+// Coverage cap: 144 points = 12h of recency at the rate above. Once an event
+// stops updating, its coverage can lift it at most half a day over a fresher
+// event, so yesterday's well-corroborated story cannot hold the top slots
+// against today's news no matter how heavily it was covered. Actively-updated
+// stories keep a fresh lastUpdatedAt and are unaffected.
+//
+// Keep this expressed as (hours of float x points-per-hour): the ratio between
+// the cap and the recency rate IS the tuning knob. Raising the cap or slowing
+// the rate both buy stale-but-covered events more time at the top.
+const MAX_COVERAGE_BONUS = 144;
 
 export function computeTrendingScore(args: {
   factualArticleCount?: number;
