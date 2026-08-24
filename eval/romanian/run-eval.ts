@@ -26,9 +26,9 @@ import OpenAI from "openai";
 
 import {
   buildEventSummaryPrompt,
-  LIMITED_COVERAGE_FALLBACK,
   type EventSummaryOutput,
 } from "../../packages/backend/convex/prompts";
+import { isPlaceholderPerspective } from "../../packages/backend/convex/lib/perspectiveText";
 import {
   DEFAULT_CHAT_MODEL,
   GEMINI_OPENAI_BASE_URL,
@@ -195,11 +195,16 @@ type SampleEvent = {
   }>;
 };
 
-function isFallback(field: string): boolean {
-  return (
-    field === LIMITED_COVERAGE_FALLBACK.reformist ||
-    field === LIMITED_COVERAGE_FALLBACK.suveranist
-  );
+// v8: the limited-coverage placeholder is retired — the model must never
+// write it, at any article count. Empty is the correct output for a side with
+// nothing of its own to report, so the two are scored differently: an empty
+// side is fine, a placeholder is a violation.
+function isRetiredPlaceholder(field: string): boolean {
+  return isPlaceholderPerspective(field);
+}
+
+function isEmptySide(field: string): boolean {
+  return field.trim().length === 0;
 }
 
 // v7: the "reflected the shared factual core" boilerplate is banned from
@@ -291,22 +296,22 @@ function biasSanityIssues(event: SampleEvent, output: EventSummaryOutput): strin
     (a) => a.sourceBiasScore > 0,
   ).length;
 
-  if (!isFallback(output.reformist) && reformistSources === 0) {
+  if (!isEmptySide(output.reformist) && reformistSources === 0) {
     issues.push("reformist summary produced with zero reformist-pole sources");
   }
-  if (!isFallback(output.suveranist) && suveranistSources === 0) {
+  if (!isEmptySide(output.suveranist) && suveranistSources === 0) {
     issues.push(
       "suveranist summary produced with zero suveranist-pole sources",
     );
   }
-  if (isFallback(output.reformist) && reformistSources >= 2) {
+  if (isRetiredPlaceholder(output.reformist)) {
     issues.push(
-      `reformist fallback used despite ${reformistSources} reformist-pole articles`,
+      `reformist side used the retired limited-coverage placeholder (${reformistSources} reformist-pole articles)`,
     );
   }
-  if (isFallback(output.suveranist) && suveranistSources >= 2) {
+  if (isRetiredPlaceholder(output.suveranist)) {
     issues.push(
-      `suveranist fallback used despite ${suveranistSources} suveranist-pole articles`,
+      `suveranist side used the retired limited-coverage placeholder (${suveranistSources} suveranist-pole articles)`,
     );
   }
   return issues;

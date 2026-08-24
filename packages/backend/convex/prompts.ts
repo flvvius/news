@@ -122,30 +122,29 @@ function trimField(value: string | undefined, maxLength: number): string {
  * tab). The phrase "nucleul factual comun" and any "reflected the common core"
  * meta-statement are banned. NOTE: pairs with the summarization.ts
  * `sidesComplete` relaxation — empty sides are now a valid terminal state.
+ * v8 = the "Acoperire limitată…" placeholder is retired (BIV-812). It was
+ * written whenever a side had 0-1 articles, which produced a visible
+ * reformist/suveranist tab whose only content was a statement about how much
+ * coverage exists. Now: 0 articles on a side → empty field (no tab at all);
+ * exactly 1 article → CASE B, write that single outlet's own angle with
+ * attribution, or leave it empty if it has none. Any text about the *volume*
+ * of coverage instead of its content is banned outright, and stored copies are
+ * stripped at read time (lib/perspectiveText.ts).
  */
-export const SUMMARY_PROMPT_VERSION = 7;
+export const SUMMARY_PROMPT_VERSION = 8;
 
 export const GLOBAL_IMPACT_FALLBACK =
   "Impactul concret nu este precizat în articolele furnizate.";
 
-export const LIMITED_COVERAGE_FALLBACK: Record<
-  "reformist" | "suveranist",
-  string
-> = {
-  // BIV-805: user-visible fallback (stored as the perspective summary) — uses
-  // "orientare", not the "cadrare" calque; the LLM-internal prompt vocabulary
-  // is unchanged on purpose (model-facing, covered by the eval harness).
-  reformist: "Acoperire limitată din partea surselor cu orientare reformistă.",
-  suveranist: "Acoperire limitată din partea surselor cu orientare suveranistă.",
-};
-
 /**
- * User-visible fallback stored when the model omits a perspective field
- * (BIV-805: "perspectivă", not the "cadrare" calque). Lives here rather than
- * in summarizationNode.ts so the non-Node test suite can lint its wording.
+ * Retired placeholder side texts, re-exported from their canonical home so
+ * existing importers (grounding, eval harness, tests) keep working. Prompt v8
+ * never asks for them; lib/perspectiveText.ts strips stored copies.
  */
-export const SIDE_COVERAGE_FALLBACK =
-  "Acoperirea disponibilă nu oferă încă o perspectivă distinctă din această parte.";
+export {
+  LIMITED_COVERAGE_FALLBACK,
+  SIDE_COVERAGE_FALLBACK,
+} from "./lib/perspectiveText";
 
 /**
  * Map a source's stored bias label (left/left-center/center/right-center/
@@ -166,9 +165,11 @@ function perspectiveCaseFor(
   side: "reformist" | "suveranist",
 ): string {
   const sideLabel = side === "reformist" ? "reformistă" : "suveranistă";
-  const fallback = LIMITED_COVERAGE_FALLBACK[side];
-  if (count <= 1) {
-    return `CAZUL A — ${count} articole cu cadrare ${sideLabel} în input; scrie exact "${fallback}". (Ignoră acest caz dacă ai stabilit CAZUL D: atunci câmpul rămâne șir gol.)`;
+  if (count === 0) {
+    return `CAZUL A — 0 articole cu cadrare ${sideLabel} în input. Câmpul rămâne șir gol (""). Nu scrie nimic despre această parte: absența ei nu se comentează, se lasă goală.`;
+  }
+  if (count === 1) {
+    return `CAZUL B — un singur articol cu cadrare ${sideLabel} în input. Dacă acel articol are un unghi propriu față de nucleul neutral (ce accentuează, ce omite, ce fapt exclusiv raportează, cum a formulat titlul), scrie 40-100 de cuvinte care ÎNCEP cu acea diferență și numesc sursa. Dacă nu are un unghi propriu, lasă câmpul șir gol (""). NU scrie niciodată despre cât de multă sau puțină este acoperirea acestei părți — nici „acoperire limitată", nici o formulare echivalentă. (Lasă gol și în CAZUL D.)`;
   }
   return `CAZUL C sau GOL — ${count} articole cu cadrare ${sideLabel} în input. Decide dacă acoperirea acestei părți diferă concret de nucleul neutral: cadrare, accent, omisiuni sau fapte exclusive proprii. Dacă DA, alege CAZUL C și scrie diferența. Dacă NU (acoperirea acestei părți repetă în esență faptele din neutral, fără un unghi propriu), lasă câmpul șir gol (""). NU scrie niciodată că sursele „au reflectat nucleul factual comun" sau o formulare echivalentă — dacă nu există o diferență de raportat, câmpul rămâne gol. (Lasă gol și în CAZUL D.)`;
 }
@@ -253,7 +254,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- Citatele directe sunt permise NUMAI între ghilimele („...”), cu numele sursei atașat, și au maxim 10 cuvinte. Orice text preluat literal fără ghilimele este interzis.",
       "- Numele proprii, instituțiile, cifrele și datele se preiau exact — acestea nu sunt parafrazabile.",
       "",
-      "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/C):",
+      "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
       '- Dacă subiectul este apolitic (meteo, sport, loterie, rezultate sportive, sondaje de divertisment, accidente, avarii utilitare, sănătate publică de rutină, fapt divers, decizii tehnice fără dispută politică), setează perspectiveApplicable la false și lasă câmpurile reformist și suveranist ca șiruri goale ("").',
       "- Aplică CAZUL D chiar dacă ambele părți au articole în input: faptul că surse cu orientări diferite au relatat aceeași știre apolitică NU creează o axă politică. Întrebarea decisivă este: conțin articolele poziționări politice divergente? Dacă nu, este CAZUL D.",
@@ -268,13 +269,14 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       `CAZUL SUVERANIST: ${suveranistCase}`,
       "",
       "DEFINIȚIILE CAZURILOR:",
-      "- CAZUL A: folosește exact textul de rezervă furnizat mai sus. Nu adăuga explicații.",
+      '- CAZUL A: nicio sursă pe partea respectivă → câmpul rămâne șir gol (""). Nu descrie lipsa acoperirii; câmpul gol este răspunsul complet.',
+      "- CAZUL B: o singură sursă pe partea respectivă → scrie 40-100 de cuvinte despre unghiul propriu al acelei surse, numind-o, exact cu aceleași cerințe de concretețe ca la CAZUL C. Fără unghi propriu, câmpul rămâne gol.",
       "- CAZUL C: scrie 50-100 de cuvinte care ÎNCEP cu diferența concretă a acestei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează, sau ce au pus în titlu/prim-plan. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
       '- CÂMP GOL: dacă acoperirea acestei părți nu diferă concret de neutral (repetă aceleași fapte, fără un unghi propriu), lasă câmpul șir gol (""). Este un rezultat valid și preferabil unei umpluturi.',
       '- INTERZIS ca text de perspectivă: sintagma „nucleul factual comun" și orice afirmație că sursele „au reflectat / au preluat / au oglindit" faptele comune. Dacă asta ai vrea să scrii, câmpul rămâne gol în loc.',
       '- Nu scrie o diferență de ton pe care articolele nu o susțin. Fără o diferență reală, câmpul este gol — nu inventa una.',
-      '- Nu folosi niciodată un text de rezervă "Acoperire limitată..." pentru o parte cu 2 sau mai multe articole.',
-      '- Etichetele "CAZUL A/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
+      '- INTERZIS în ORICE caz, indiferent de numărul de articole: texte despre volumul acoperirii în loc de conținutul ei — „Acoperire limitată din partea surselor...", „Nu există acoperire...", „Sursele ... au relatat puțin" sau orice formulare echivalentă. Câmpul de perspectivă spune ce a raportat acea parte, nu cât a raportat. Dacă nu ai conținut, câmpul rămâne gol.',
+      '- Etichetele "CAZUL A/B/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
       "",
       "REGULI PENTRU globalImpact:",
       "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",
@@ -303,8 +305,8 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "Scrie:",
       "- Pasul 0, înainte de orice: stabilește perspectiveApplicable aplicând VERIFICAREA AXEI POLITICE. Pentru știri despre loterie, sport, meteo, sondaje de divertisment sau fapt divers fără poziționări politice divergente, răspunsul corect este false — chiar dacă ambele părți au articole în input.",
       "- neutral (70-120 cuvinte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
-      '- reformist (50-100 de cuvinte în CAZUL C; șir gol "" dacă nu diferă concret de neutral sau în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
-      '- suveranist (50-100 de cuvinte în CAZUL C; șir gol "" dacă nu diferă concret de neutral sau în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
+      '- reformist (40-100 de cuvinte în CAZUL B sau C; șir gol "" dacă partea nu are un unghi propriu față de neutral, dacă nu are surse, sau în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
+      '- suveranist (40-100 de cuvinte în CAZUL B sau C; șir gol "" dacă partea nu are un unghi propriu față de neutral, dacă nu are surse, sau în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
       "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Începe cu consecința, nu repeta neutral. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
       "- perspectiveApplicable (boolean): false doar dacă ai aplicat CAZUL D.",
       "",

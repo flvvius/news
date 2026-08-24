@@ -10,11 +10,11 @@
  * sentence held the entire event out of publication indefinitely.
  */
 
+import { GLOBAL_IMPACT_FALLBACK } from "../prompts";
 import {
-  GLOBAL_IMPACT_FALLBACK,
   LIMITED_COVERAGE_FALLBACK,
   SIDE_COVERAGE_FALLBACK,
-} from "../prompts";
+} from "./perspectiveText";
 
 export type SummaryFieldName =
   | "neutral"

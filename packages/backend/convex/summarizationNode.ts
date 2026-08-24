@@ -29,6 +29,7 @@ import {
   type SentenceGroundingResult,
   type SummaryFieldName,
 } from "./lib/grounding";
+import { stripPlaceholderPerspective } from "./lib/perspectiveText";
 import { extractionAllowed, normalizeDomain } from "./lib/tdmPolicy";
 import { ensureDomainPermissions } from "./domainPermissionsNode";
 
@@ -220,13 +221,17 @@ function cleanSummaryField(value: unknown, fallback: string): string {
 // substitute filler — so the UI hides the tab instead of showing repetitive
 // "no distinct perspective" boilerplate. Same cleaning as cleanSummaryField
 // but empty in → empty out.
+// v8: a side that talks about how *much* coverage exists ("Acoperire
+// limitată…") is filler too — it renders as a tab with nothing to say — so it
+// collapses to empty here even if the model writes it anyway (BIV-812).
 function cleanOptionalField(value: unknown): string {
   if (typeof value !== "string") return "";
-  return value
+  const cleaned = value
     .replace(/\s+/g, " ")
     .replace(/^\s*CAZUL\s+[A-D]\s*[:—-]\s*/i, "")
     .trim()
     .slice(0, 1200);
+  return stripPlaceholderPerspective(cleaned);
 }
 
 function parseSummaryOutput(

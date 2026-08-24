@@ -63,6 +63,38 @@ describe("normalizedPerspectives (BIV-303)", () => {
     expect(normalizedPerspectives(undefined)).toBeUndefined();
     expect(normalizedPerspectives({})).toBeUndefined();
   });
+
+  // BIV-812: a stored side field is what makes the UI render its tab, so the
+  // retired "Acoperire limitată…" placeholder must not survive the read path —
+  // otherwise events summarized before prompt v8 keep showing a tab with
+  // nothing in it until they are resummarized.
+  test("drops retired placeholder side summaries", () => {
+    expect(
+      normalizedPerspectives({
+        neutral: "n",
+        reformist:
+          "Acoperire limitată din partea surselor cu orientare reformistă.",
+        suveranist: "Antena 3 titrează pe rata de promovare.",
+      }),
+    ).toEqual({
+      neutral: "n",
+      suveranist: "Antena 3 titrează pe rata de promovare.",
+    });
+    // Legacy left/right keys go through the same filter.
+    expect(
+      normalizedPerspectives({
+        center: "n",
+        left: "Acoperire limitată din partea surselor cu orientare reformistă.",
+      }),
+    ).toEqual({ neutral: "n" });
+    // A placeholder-only object has nothing left to show.
+    expect(
+      normalizedPerspectives({
+        reformist:
+          "Acoperire limitată din partea surselor cu orientare reformistă.",
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("backfillPerspectiveAxisKeys migration (BIV-303)", () => {

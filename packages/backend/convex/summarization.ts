@@ -15,6 +15,7 @@ import {
 } from "./generationAudit";
 import { sourceBiasLabel } from "./lib/sourceBias";
 import { normalizedPerspectives } from "./lib/biasAxis";
+import { stripPlaceholderPerspective } from "./lib/perspectiveText";
 import { selectSummaryArticles } from "./lib/summaryArticleSelection";
 import { SUMMARY_PROMPT_VERSION } from "./prompts";
 import {
@@ -988,14 +989,20 @@ export const applyEventSummaryResult = internalMutation({
     }
 
     const applicable = perspectiveApplicable ?? true;
+    // A stored side field is what makes the UI render its tab, so a retired
+    // "Acoperire limitată…" placeholder must never be written back: it would
+    // publish a tab whose only content is a remark about coverage volume
+    // (BIV-812). The node already strips it; this is the write funnel.
+    const reformistText = stripPlaceholderPerspective(reformist.trim());
+    const suveranistText = stripPlaceholderPerspective(suveranist.trim());
     await ctx.db.patch(eventId, {
       // CASE D stores only the neutral summary; the empty side fields stay
       // unset so the UI's note replaces the perspective split.
       perspectiveSummaries: applicable
         ? {
             neutral: neutral.trim(),
-            reformist: reformist.trim(),
-            suveranist: suveranist.trim(),
+            reformist: reformistText,
+            suveranist: suveranistText,
           }
         : { neutral: neutral.trim() },
       perspectiveApplicable: applicable,
@@ -1046,8 +1053,8 @@ export const applyEventSummaryResult = internalMutation({
       promptVersion: String(SUMMARY_PROMPT_VERSION),
       summary: {
         neutral: neutral.trim(),
-        reformist: applicable ? reformist.trim() : "",
-        suveranist: applicable ? suveranist.trim() : "",
+        reformist: applicable ? reformistText : "",
+        suveranist: applicable ? suveranistText : "",
         globalImpact: globalImpact.trim(),
         perspectiveApplicable: applicable,
       },
@@ -1267,12 +1274,12 @@ export const decideSummaryReviewForAdmin = mutation({
     }
 
     const neutral = (editedFields?.neutral ?? review.proposed.neutral).trim();
-    const reformist = (
-      editedFields?.reformist ?? review.proposed.reformist
-    ).trim();
-    const suveranist = (
-      editedFields?.suveranist ?? review.proposed.suveranist
-    ).trim();
+    const reformist = stripPlaceholderPerspective(
+      (editedFields?.reformist ?? review.proposed.reformist).trim(),
+    );
+    const suveranist = stripPlaceholderPerspective(
+      (editedFields?.suveranist ?? review.proposed.suveranist).trim(),
+    );
     const globalImpact = (
       editedFields?.globalImpact ?? review.proposed.globalImpact
     ).trim();

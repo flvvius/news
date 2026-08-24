@@ -62,6 +62,56 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
     expect(LIMITED_COVERAGE_FALLBACK.suveranist).toMatch(/suveranist/);
   });
 
+  // v8 (BIV-812): the limited-coverage text is retired. It is still exported
+  // so stored copies can be recognized and stripped, but the prompt must never
+  // ask for it again — writing it produced a perspective tab whose only
+  // content was a remark about how much coverage exists.
+  test("v8: the prompt never asks for the limited-coverage placeholder", () => {
+    for (const counts of [
+      [1, 1],
+      [0, 3],
+      [1, 4],
+    ] as const) {
+      const built = buildEventSummaryPrompt({
+        eventTitle: "Bugetul pe 2027",
+        articles: [
+          ...Array.from({ length: counts[0] }, (_, i) =>
+            article({ sourceName: `Reformist ${i}`, sourceBiasLabel: "left" }),
+          ),
+          ...Array.from({ length: counts[1] }, (_, i) =>
+            article({ sourceName: `Suveranist ${i}`, sourceBiasLabel: "right" }),
+          ),
+        ],
+      });
+      expect(built.system).not.toContain(LIMITED_COVERAGE_FALLBACK.reformist);
+      expect(built.system).not.toContain(LIMITED_COVERAGE_FALLBACK.suveranist);
+      expect(built.system).not.toMatch(/scrie exact "Acoperire limitată/);
+    }
+  });
+
+  test("v8: zero articles on a side means an empty field, one means CASE B", () => {
+    const built = buildEventSummaryPrompt({
+      eventTitle: "Bugetul pe 2027",
+      articles: [
+        article(),
+        article({ sourceName: "G4Media", sourceBiasLabel: "left-center" }),
+      ],
+    });
+    // 0 suveranist articles → CASE A, empty field, no commentary on absence.
+    expect(built.system).toContain(
+      "CAZUL A — 0 articole cu cadrare suveranistă",
+    );
+    // 1 reformist article → CASE B, that outlet's own angle or nothing.
+    expect(built.system).toContain(
+      "CAZUL B — un singur articol cu cadrare reformistă",
+    );
+    expect(built.system).toContain("unghi propriu");
+    // Coverage-volume prose is banned outright, at any article count.
+    expect(built.system).toContain(
+      "INTERZIS în ORICE caz, indiferent de numărul de articole",
+    );
+  });
+
   // BIV-805: these fallbacks are stored as perspective summaries and rendered
   // to users, so they must not use the "cadrare" framing calque. The
   // LLM-internal prompt vocabulary (cadrareaSursei etc.) is exempt — it is
@@ -113,7 +163,7 @@ describe("event summary prompt v3 (full bodies + CASE D)", () => {
   test("defines CASE D with the perspectiveApplicable flag and a political guardrail", () => {
     expect(prompt.system).toContain("CAZUL D");
     expect(prompt.system).toContain("perspectiveApplicable");
-    expect(prompt.system).toContain("are prioritate față de A/C");
+    expect(prompt.system).toContain("are prioritate față de A/B/C");
     // The guardrail: political/justice/EU/budget/election stories never CASE D.
     expect(prompt.system).toMatch(/NU folosi CAZUL D.*politic/);
     expect(prompt.user).toContain("perspectiveApplicable (boolean)");

@@ -14,6 +14,8 @@
 
 import { v } from "convex/values";
 
+import { isPlaceholderPerspective } from "./perspectiveText";
+
 export const BIAS_AXIS = "reformist_suveranist" as const;
 
 export const BIAS_SCORE_MIN = -5;
@@ -82,6 +84,14 @@ export const perspectiveSummariesValidator = v.object({
  * Collapse a stored perspective object to the canonical axis keys,
  * falling back to the legacy keys for pre-migration rows.
  * Returns undefined when nothing is set.
+ *
+ * Side fields that hold a retired "Acoperire limitată…" placeholder are
+ * dropped here rather than passed through: a non-empty side is what makes the
+ * UI render its tab, so keeping the placeholder means a tab with nothing to
+ * say (BIV-812). Prompt v8 stopped producing them, but events summarized
+ * under v7 and earlier still carry them until they are resummarized, and this
+ * is the single read path every surface (feed, detail, previews, share cards,
+ * native) already goes through.
  */
 export function normalizedPerspectives(
   summaries: PerspectiveSummaries | undefined | null,
@@ -90,8 +100,14 @@ export function normalizedPerspectives(
   | undefined {
   if (!summaries) return undefined;
   const neutral = summaries.neutral ?? summaries.center;
-  const reformist = summaries.reformist ?? summaries.left;
-  const suveranist = summaries.suveranist ?? summaries.right;
+  const storedReformist = summaries.reformist ?? summaries.left;
+  const storedSuveranist = summaries.suveranist ?? summaries.right;
+  const reformist = isPlaceholderPerspective(storedReformist)
+    ? undefined
+    : storedReformist;
+  const suveranist = isPlaceholderPerspective(storedSuveranist)
+    ? undefined
+    : storedSuveranist;
   if (
     neutral === undefined &&
     reformist === undefined &&
