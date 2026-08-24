@@ -171,3 +171,121 @@ describe("EventDetailTabs (BIV-804)", () => {
     ).toBeTruthy();
   });
 });
+
+// BIV-820 — readability. A production sample of 40 events averaged 23 words
+// per sentence in one unbroken block, and 35% of the rendered "Ce înseamnă
+// asta" sections were the "no impact stated" fallback under a heading that
+// promised the opposite.
+describe("EventDetailTabs readability (BIV-820)", () => {
+  const longNeutral =
+    "Guvernul a amânat consultările pe legea salarizării. Partidele au cerut mai mult timp. Legea trebuie adoptată până la 31 august. Valoarea de referință scade cu 100 de lei.";
+
+  function renderWithImpact(globalImpact: string | null) {
+    return render(
+      <LocaleProvider locale="ro">
+        <EventDetailTabs
+          eventId={eventId}
+          perspectiveSummaries={{ neutral: longNeutral }}
+          perspectiveApplicable={false}
+          globalImpact={globalImpact}
+          articles={[]}
+        />
+      </LocaleProvider>,
+    );
+  }
+
+  test("the core summary renders as a lead line plus one bullet per fact", () => {
+    renderWithImpact(null);
+
+    // Lead sentence stays a paragraph; the remaining facts become list items.
+    expect(
+      screen.getByText("Guvernul a amânat consultările pe legea salarizării."),
+    ).toBeTruthy();
+    const points = screen.getAllByRole("listitem");
+    expect(points).toHaveLength(3);
+    expect(points[0]!.textContent).toBe("Partidele au cerut mai mult timp.");
+    // Nothing the model wrote is dropped on the way to the list.
+    expect(
+      points.map((item) => item.textContent).join(" "),
+    ).toBe(
+      "Partidele au cerut mai mult timp. Legea trebuie adoptată până la 31 august. Valoarea de referință scade cu 100 de lei.",
+    );
+  });
+
+  test("a two-sentence summary stays a paragraph, with no list chrome", () => {
+    render(
+      <LocaleProvider locale="ro">
+        <EventDetailTabs
+          eventId={eventId}
+          perspectiveSummaries={{
+            neutral: "Guvernul a amânat votul. Partidele au cerut timp.",
+          }}
+          perspectiveApplicable={false}
+          globalImpact={null}
+          articles={[]}
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  test("a real impact renders under its heading, every line a bullet", () => {
+    renderWithImpact(
+      "Angajaţii din sistemul public riscă salarii îngheţate din septembrie. România pierde 770 de milioane de euro din PNRR. Bugetul pe 2027 rămâne fără finanţarea tranşei.",
+    );
+
+    expect(screen.getByText(getString("ro", "event.meaning"))).toBeTruthy();
+    // leadCount 0 — the impact section is a pure list of consequences.
+    expect(
+      screen
+        .getAllByRole("listitem")
+        .some((item) =>
+          item.textContent?.startsWith("Angajaţii din sistemul public"),
+        ),
+    ).toBe(true);
+  });
+
+  test("the 'no impact stated' fallback drops the whole section", () => {
+    renderWithImpact("Impactul concret nu este precizat în articolele furnizate.");
+
+    expect(screen.queryByText(getString("ro", "event.meaning"))).toBeNull();
+    expect(
+      screen.queryByText(/Impactul concret nu este precizat/),
+    ).toBeNull();
+  });
+
+  test("a qualified variant of the fallback is dropped too", () => {
+    renderWithImpact(
+      "Impactul concret nu este precizat în articolele furnizate în ceea ce privește eventuale restricții de circulație.",
+    );
+
+    expect(screen.queryByText(getString("ro", "event.meaning"))).toBeNull();
+  });
+
+  test("per-sentence source attribution survives the bulleting", () => {
+    render(
+      <LocaleProvider locale="ro">
+        <EventDetailTabs
+          eventId={eventId}
+          perspectiveSummaries={{ neutral: longNeutral }}
+          perspectiveApplicable={false}
+          globalImpact={null}
+          articles={[]}
+          grounding={{
+            results: [
+              {
+                field: "neutral",
+                sentence: "Partidele au cerut mai mult timp.",
+                supportingSources: ["Digi24", "Adevărul"],
+              },
+            ],
+          }}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(
+      screen.getByTitle("Susținut de: Digi24, Adevărul").textContent,
+    ).toBe("Partidele au cerut mai mult timp.");
+  });
+});

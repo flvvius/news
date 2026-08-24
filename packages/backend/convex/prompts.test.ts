@@ -132,6 +132,44 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
     expect(SIDE_COVERAGE_FALLBACK).toContain("perspectivă distinctă");
   });
 
+  // v9 (BIV-820): the summaries were accurate and unreadable — a production
+  // sample of 40 events averaged 23 words per sentence with 39% of sentences
+  // over 25 words, all in one unbroken block. The prompt now has to ask for
+  // short one-fact sentences; the UI turns those sentences into bullets.
+  test("v9: asks for short, one-fact sentences in plain Romanian", () => {
+    expect(prompt.system).toContain("LIMBAJ CLAR");
+    expect(prompt.system).toContain("O propoziție = un singur fapt");
+    expect(prompt.system).toContain("Maximum 22 de cuvinte pe propoziție");
+    expect(prompt.system).toContain("diateza activă");
+    expect(prompt.user).toContain("4-6 propoziții scurte");
+  });
+
+  // The stored value still has to be plain prose: it is what the SEO
+  // description, the share image and the grounding record all consume.
+  test("v9: the model must not emit lists or markdown into the fields", () => {
+    expect(prompt.system).toContain("Nu folosi liste");
+    expect(prompt.user).toContain("fără liste sau markdown");
+  });
+
+  // The v6 paraphrase mandate had started producing "o sută de unități
+  // monetare" in place of "100 de lei" — dodging a figure to avoid overlapping
+  // with the source is a comprehension bug, not a safe paraphrase.
+  test("v9: figures and units are carved out of the paraphrase rule", () => {
+    expect(prompt.system).toContain(
+      "nu intră în regula celor 8 cuvinte",
+    );
+    expect(prompt.system).toContain("INTERZIS să ocolești o cifră");
+    expect(prompt.system).toContain("unități monetare");
+  });
+
+  test("v9: globalImpact is consequence-first and capped at 2-3 lines", () => {
+    expect(prompt.system).toContain("pe cine schimbă asta și cum");
+    expect(prompt.system).toContain(
+      "FIECARE propoziție începe cu cine sau ce este afectat",
+    );
+    expect(prompt.user).toContain("35-70 de cuvinte");
+  });
+
   test("precomputed perspective counts count by framing group", () => {
     expect(prompt.system).toContain("articole cu cadrare reformistă: 1");
     expect(prompt.system).toContain("articole cu cadrare suveranistă: 1");

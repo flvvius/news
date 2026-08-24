@@ -62,6 +62,7 @@ import type * as lib_romanian from "../lib/romanian.js";
 import type * as lib_sourceBias from "../lib/sourceBias.js";
 import type * as lib_streaks from "../lib/streaks.js";
 import type * as lib_summaryArticleSelection from "../lib/summaryArticleSelection.js";
+import type * as lib_summaryText from "../lib/summaryText.js";
 import type * as lib_tdmPolicy from "../lib/tdmPolicy.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
 import type * as lib_verbatimOverlap from "../lib/verbatimOverlap.js";
@@ -153,6 +154,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sourceBias": typeof lib_sourceBias;
   "lib/streaks": typeof lib_streaks;
   "lib/summaryArticleSelection": typeof lib_summaryArticleSelection;
+  "lib/summaryText": typeof lib_summaryText;
   "lib/tdmPolicy": typeof lib_tdmPolicy;
   "lib/userProfile": typeof lib_userProfile;
   "lib/verbatimOverlap": typeof lib_verbatimOverlap;

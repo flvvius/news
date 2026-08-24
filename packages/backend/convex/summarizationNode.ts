@@ -148,7 +148,7 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
       neutral: {
         type: "string",
         description:
-          "Nucleul factual de 60-120 de cuvinte, în limba română, ancorat în articolele furnizate.",
+          "Nucleul factual de 60-110 de cuvinte, în limba română, în 4-6 propoziții scurte (maximum 22 de cuvinte fiecare), ancorat în articolele furnizate. Proză simplă, fără liste sau markdown.",
       },
       reformist: {
         type: "string",
@@ -163,7 +163,7 @@ const EVENT_SUMMARY_JSON_SCHEMA = {
       globalImpact: {
         type: "string",
         description:
-          "Impactul concret de 25-100 de cuvinte, în limba română, sau textul de rezervă exact când nu este susținut.",
+          "Impactul concret de 35-70 de cuvinte, în limba română, în 2-3 propoziții scurte care încep cu cine sau ce este afectat, sau textul de rezervă exact când nu este susținut.",
       },
       perspectiveApplicable: {
         type: "boolean",
@@ -205,9 +205,26 @@ function safeBoolean(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+/**
+ * Prompt v9 asks for plain sentences because the clients do the bulleting
+ * themselves (lib/summaryText.ts) and the stored string also feeds SEO
+ * descriptions, share images and the grounding record — a literal "- " in
+ * there leaks into all three. Models still occasionally emit a list, so line
+ * markers are normalized away here and each item is closed with a period so
+ * the sentence splitter can still see the boundaries.
+ */
+function stripListMarkup(value: string): string {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^(?:[-–—*•·]|\d+[.)])\s+/, ""))
+    .filter(Boolean)
+    .map((line) => (/[.!?…]["”'\u0029\u005d]?$/.test(line) ? line : `${line}.`))
+    .join(" ");
+}
+
 function cleanSummaryField(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
-  const cleaned = value
+  const cleaned = stripListMarkup(value)
     .replace(/\s+/g, " ")
     // The prompt's internal case rubric must not leak into user-visible
     // text (observed: "CAZUL B: Sursele reformiste…").
@@ -226,7 +243,7 @@ function cleanSummaryField(value: unknown, fallback: string): string {
 // collapses to empty here even if the model writes it anyway (BIV-812).
 function cleanOptionalField(value: unknown): string {
   if (typeof value !== "string") return "";
-  const cleaned = value
+  const cleaned = stripListMarkup(value)
     .replace(/\s+/g, " ")
     .replace(/^\s*CAZUL\s+[A-D]\s*[:—-]\s*/i, "")
     .trim()

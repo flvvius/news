@@ -1,4 +1,5 @@
 import { BRAND_NAME } from "./brand";
+import { GLOBAL_IMPACT_FALLBACK } from "./lib/summaryText";
 
 export type EventSummaryArticleInput = {
   title: string;
@@ -130,11 +131,27 @@ function trimField(value: string | undefined, maxLength: number): string {
  * attribution, or leave it empty if it has none. Any text about the *volume*
  * of coverage instead of its content is banned outright, and stored copies are
  * stripped at read time (lib/perspectiveText.ts).
+ * v9 = readability pass (BIV-820). A production sample of 40 events showed
+ * 23-word average sentences, 39% of sentences over 25 words, and every field
+ * rendered as one unbroken block — the summaries were accurate and unreadable.
+ * v9 asks for short one-fact sentences (max ~22 words), an opening line that
+ * states what happened, plain everyday Romanian instead of the administrative
+ * register, and a globalImpact written as 2-3 consequence-first lines. The UI
+ * turns those sentences into bullets (lib/summaryText.ts `toSummaryPoints`),
+ * so the stored value stays plain prose for SEO, share images and grounding.
+ * Also carves numbers, sums, dates and units OUT of the v6 paraphrase
+ * mandate: the model had started writing "o sută de unități monetare" to
+ * avoid copying "100 de lei", which is a comprehension bug, not a safe
+ * paraphrase.
  */
-export const SUMMARY_PROMPT_VERSION = 8;
+export const SUMMARY_PROMPT_VERSION = 9;
 
-export const GLOBAL_IMPACT_FALLBACK =
-  "Impactul concret nu este precizat în articolele furnizate.";
+/**
+ * Re-exported from its canonical home (lib/summaryText.ts) so the clients can
+ * import the constant without pulling the model-facing prompt text into a
+ * browser bundle, while existing importers here keep working.
+ */
+export { GLOBAL_IMPACT_FALLBACK };
 
 /**
  * Retired placeholder side texts, re-exported from their canonical home so
@@ -246,13 +263,24 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       '- Grupează articolele după câmpul cadrareaSursei: "reformistă" informează câmpul reformist; "suveranistă" informează câmpul suveranist; toate sursele fiabile pot informa câmpul neutral.',
       "- Preferă sursele cu fiabilitateaSursei >= 7 pentru nucleul factual. Atribuie explicit afirmațiile surselor cu fiabilitateaSursei < 5.",
       "- Când articolele intră în conflict, folosește cel mai recent publicatLa drept stare curentă doar dacă abordează direct conflictul.",
-      "- Scrie proză neutră, ancorată în surse. Fără liste cu puncte. Fără limbaj de marketing. Fără editorializare.",
+      "- Scrie proză neutră, ancorată în surse. Fără limbaj de marketing. Fără editorializare.",
+      "",
+      "LIMBAJ CLAR (regulă de lizibilitate — se aplică fiecărui câmp):",
+      "- O propoziție = un singur fapt. Maximum 22 de cuvinte pe propoziție. Dacă o propoziție are două idei, taie-o în două.",
+      "- Nu înlănțui subordonate. Evită construcțiile de tipul „ceea ce duce la...”, „fapt ce...”, „în contextul în care...”; pune ideea a doua într-o propoziție nouă.",
+      "- Scrie la diateza activă, cu subiectul în față: cine a făcut ce. „Guvernul a amânat consultările”, nu „consultările au fost decalate”.",
+      "- Folosește cuvinte de zi cu zi în locul limbajului administrativ: „lege” nu „act normativ”, „partide” nu „formațiuni politice”, „a amânat” nu „a decalat”, „mai mult timp” nu „un răgaz suplimentar”, „a cerut” nu „a solicitat”, „despre” nu „în ceea ce privește”, „pentru” nu „în vederea”, „etapă-cheie” nu „jalon”.",
+      "- Evită substantivarea verbelor. Scrie „partidele au cerut”, nu „solicitarea partidelor a determinat”.",
+      "- Prima propoziție a fiecărui câmp trebuie să fie de sine stătătoare: cine, ce s-a întâmplat, când. Cititorul care citește doar acel rând trebuie să înțeleagă știrea.",
+      "- Fiecare propoziție următoare aduce un fapt nou și concret. Nu relua în alți termeni ce ai spus deja.",
+      "- Nu folosi liste, cratime de enumerare, numerotări sau markdown în text: scrie propoziții separate prin punct. Interfața le afișează ea ca puncte separate.",
       "",
       "PARAFRAZARE (regulă absolută — încălcarea blochează publicarea):",
       "- Reformulează integral în propriile tale cuvinte. NU copia niciodată o secvență de 8 sau mai multe cuvinte consecutive din vreun articol furnizat.",
       "- NU copia structura frazelor sursă: schimbă ordinea ideilor, topica și construcția propozițiilor, nu doar câteva cuvinte.",
       "- Citatele directe sunt permise NUMAI între ghilimele („...”), cu numele sursei atașat, și au maxim 10 cuvinte. Orice text preluat literal fără ghilimele este interzis.",
-      "- Numele proprii, instituțiile, cifrele și datele se preiau exact — acestea nu sunt parafrazabile.",
+      "- Numele proprii, instituțiile, cifrele, sumele, procentele, unitățile de măsură și datele calendaristice se preiau EXACT, în forma din articol — acestea nu sunt parafrazabile și nu intră în regula celor 8 cuvinte.",
+      "- INTERZIS să ocolești o cifră ca să eviți suprapunerea de text. Scrie „100 de lei”, „770 de milioane de euro”, „31 august”, „38 de grade Celsius” — niciodată „o sută de unități monetare”, „o sumă importantă” sau „o valoare de referință redusă”. O cifră ascunsă este o eroare mai gravă decât o suprapunere de cuvinte.",
       "",
       "VERIFICAREA AXEI POLITICE (CAZUL D — are prioritate față de A/B/C):",
       "- Înainte de a scrie câmpurile reformist și suveranist, decide dacă subiectul are o dimensiune reformist↔suveranistă reală în acoperirea furnizată: poziții politice divergente, dispute instituționale, teme legate de UE/NATO/suveranitate, justiție sau valori.",
@@ -271,7 +299,7 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "DEFINIȚIILE CAZURILOR:",
       '- CAZUL A: nicio sursă pe partea respectivă → câmpul rămâne șir gol (""). Nu descrie lipsa acoperirii; câmpul gol este răspunsul complet.',
       "- CAZUL B: o singură sursă pe partea respectivă → scrie 40-100 de cuvinte despre unghiul propriu al acelei surse, numind-o, exact cu aceleași cerințe de concretețe ca la CAZUL C. Fără unghi propriu, câmpul rămâne gol.",
-      "- CAZUL C: scrie 50-100 de cuvinte care ÎNCEP cu diferența concretă a acestei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează, sau ce au pus în titlu/prim-plan. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
+      "- CAZUL C: scrie 40-90 de cuvinte, în propoziții scurte, care ÎNCEP cu diferența concretă a acestei părți: ce accentuează (și celelalte surse nu), ce omite, ce fapte exclusive raportează, sau ce au pus în titlu/prim-plan. Numește sursele. Poți cita expresii scurte (maxim 10 cuvinte) din articole, între ghilimele, cu numele sursei — citatul rămâne în limba originală.",
       '- CÂMP GOL: dacă acoperirea acestei părți nu diferă concret de neutral (repetă aceleași fapte, fără un unghi propriu), lasă câmpul șir gol (""). Este un rezultat valid și preferabil unei umpluturi.',
       '- INTERZIS ca text de perspectivă: sintagma „nucleul factual comun" și orice afirmație că sursele „au reflectat / au preluat / au oglindit" faptele comune. Dacă asta ai vrea să scrii, câmpul rămâne gol în loc.',
       '- Nu scrie o diferență de ton pe care articolele nu o susțin. Fără o diferență reală, câmpul este gol — nu inventa una.',
@@ -279,8 +307,10 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       '- Etichetele "CAZUL A/B/C/D" sunt doar instrucțiuni interne: nu scrie niciodată "CAZUL" sau litera cazului în textul câmpurilor.',
       "",
       "REGULI PENTRU globalImpact:",
-      "- globalImpact trebuie să exprime o semnificație concretă a evenimentului, susținută de surse.",
-      "- globalImpact NU repetă rezumatul neutral. Nu re-povesti evenimentul: începe direct cu cine sau ce este afectat și cu ce consecință. Dacă o informație apare deja în neutral, în globalImpact apare doar consecința ei, nu faptul în sine.",
+      "- globalImpact răspunde la o singură întrebare: pe cine schimbă asta și cum? Scrie 2-3 propoziții scurte, fiecare de maximum 22 de cuvinte.",
+      "- FIECARE propoziție începe cu cine sau ce este afectat — oameni, prețuri, o instituție, o regiune, un buget — și continuă cu consecința. Nu începe cu o reluare a evenimentului.",
+      "- Fiecare propoziție este o consecință distinctă. Dacă ai o singură consecință reală, scrie o singură propoziție: mai bine una clară decât trei umpluturi.",
+      "- globalImpact NU repetă rezumatul neutral. Nu re-povesti evenimentul: dacă o informație apare deja în neutral, aici apare doar consecința ei, nu faptul în sine.",
       "- Forme valide de impact, în ordinea priorității: o consecință specifică ulterioară; un efect deja declarat (reacții de piață, victime, diplomație, sancțiuni, prețuri); sau mize directe numite de un articol.",
       "- O miză există când orice articol menționează un risc specific pentru o persoană, un grup, o piață, o regiune, un tratat, alegeri, aprovizionare, prețuri sau o instituție.",
       "- Dacă nu ești sigur că o mențiune este o miză concretă, consider-o validă și scrie impactul.",
@@ -304,13 +334,13 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "Scrie:",
       "- Pasul 0, înainte de orice: stabilește perspectiveApplicable aplicând VERIFICAREA AXEI POLITICE. Pentru știri despre loterie, sport, meteo, sondaje de divertisment sau fapt divers fără poziționări politice divergente, răspunsul corect este false — chiar dacă ambele părți au articole în input.",
-      "- neutral (70-120 cuvinte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Notează dezacordurile cu atribuire.",
+      "- neutral (60-110 cuvinte, în 4-6 propoziții scurte): nucleul factual comun, cu detaliile specifice (cifre, nume, locuri, termene), preferând faptele confirmate de mai multe surse. Prima propoziție spune ce s-a întâmplat, pe scurt și de sine stătător; fiecare propoziție următoare adaugă un singur fapt nou. Notează dezacordurile cu atribuire.",
       '- reformist (40-100 de cuvinte în CAZUL B sau C; șir gol "" dacă partea nu are un unghi propriu față de neutral, dacă nu are surse, sau în CAZUL D): execută CAZUL REFORMIST indicat mai sus.',
       '- suveranist (40-100 de cuvinte în CAZUL B sau C; șir gol "" dacă partea nu are un unghi propriu față de neutral, dacă nu are surse, sau în CAZUL D): execută CAZUL SUVERANIST indicat mai sus.',
-      "- globalImpact (50-100 de cuvinte): aplică REGULILE PENTRU globalImpact. Începe cu consecința, nu repeta neutral. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
+      "- globalImpact (35-70 de cuvinte, în 2-3 propoziții scurte): aplică REGULILE PENTRU globalImpact. Fiecare propoziție începe cu cine sau ce este afectat, apoi consecința. Nu repeta neutral. Preferă efectele sau mizele concrete declarate în locul textului de rezervă.",
       "- perspectiveApplicable (boolean): false doar dacă ai aplicat CAZUL D.",
       "",
-      "Respectă limita de cuvinte a fiecărui câmp. Evită listele cu puncte. Evită certitudinile nesusținute. Scrie exclusiv în limba română.",
+      "Respectă limita de cuvinte a fiecărui câmp și regulile de LIMBAJ CLAR: propoziții scurte, un fapt fiecare, diateză activă, cuvinte de zi cu zi. Scrie propoziții obișnuite, fără liste sau markdown. Evită certitudinile nesusținute. Scrie exclusiv în limba română.",
       "",
       "Articole:",
       articleBlocks,
