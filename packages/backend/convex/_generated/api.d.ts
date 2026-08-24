@@ -51,6 +51,7 @@ import type * as lib_imageSniff from "../lib/imageSniff.js";
 import type * as lib_imageVerification from "../lib/imageVerification.js";
 import type * as lib_modelRouting from "../lib/modelRouting.js";
 import type * as lib_openai from "../lib/openai.js";
+import type * as lib_perspectiveText from "../lib/perspectiveText.js";
 import type * as lib_politeFetch from "../lib/politeFetch.js";
 import type * as lib_publicEventPreviews from "../lib/publicEventPreviews.js";
 import type * as lib_quizHelpers from "../lib/quizHelpers.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   "lib/imageVerification": typeof lib_imageVerification;
   "lib/modelRouting": typeof lib_modelRouting;
   "lib/openai": typeof lib_openai;
+  "lib/perspectiveText": typeof lib_perspectiveText;
   "lib/politeFetch": typeof lib_politeFetch;
   "lib/publicEventPreviews": typeof lib_publicEventPreviews;
   "lib/quizHelpers": typeof lib_quizHelpers;
