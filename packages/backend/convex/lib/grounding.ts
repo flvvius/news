@@ -10,11 +10,20 @@
  * sentence held the entire event out of publication indefinitely.
  */
 
-import { GLOBAL_IMPACT_FALLBACK } from "../prompts";
 import {
   LIMITED_COVERAGE_FALLBACK,
   SIDE_COVERAGE_FALLBACK,
 } from "./perspectiveText";
+import {
+  GLOBAL_IMPACT_FALLBACK,
+  isFallbackGlobalImpact,
+  splitIntoSentences,
+} from "./summaryText";
+
+// Re-exported so existing importers (tests, callers) keep their entry point
+// while the implementation lives in lib/summaryText.ts, which the clients
+// share for rendering.
+export { splitIntoSentences };
 
 export type SummaryFieldName =
   | "neutral"
@@ -44,38 +53,6 @@ const OWN_TEXT_FALLBACKS = new Set<string>([
   LIMITED_COVERAGE_FALLBACK.suveranist,
 ]);
 
-const ABBREVIATIONS =
-  /\b(dl|dna|dr|prof|ing|nr|art|lit|alin|pct|etc|ex|approx|cca|str|jud|mun)\.$/i;
-
-/** Split Romanian prose into sentences, robust to common abbreviations. */
-export function splitIntoSentences(text: string): string[] {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return [];
-
-  const sentences: string[] = [];
-  let current = "";
-  for (let i = 0; i < cleaned.length; i++) {
-    current += cleaned[i];
-    const char = cleaned[i];
-    if (char === "." || char === "!" || char === "?") {
-      const next = cleaned[i + 1];
-      const isEnd =
-        (next === undefined || next === " ") &&
-        !ABBREVIATIONS.test(current.trim()) &&
-        // Decimal numbers ("2.5 miliarde") and enumerations ("1. ...").
-        !/\d\.$/.test(current.trim());
-      if (isEnd) {
-        const trimmed = current.trim();
-        if (trimmed) sentences.push(trimmed);
-        current = "";
-      }
-    }
-  }
-  const rest = current.trim();
-  if (rest) sentences.push(rest);
-  return sentences;
-}
-
 /** Enumerate the checkable sentences of a generated summary. */
 export function collectSummarySentences(
   fields: Partial<Record<SummaryFieldName, string>>,
@@ -89,6 +66,11 @@ export function collectSummarySentences(
   ] as const) {
     const text = fields[field];
     if (!text?.trim() || OWN_TEXT_FALLBACKS.has(text.trim())) continue;
+    // The model sometimes qualifies the impact fallback ("…furnizate în ceea
+    // ce privește eventuale restricții"). That is still our own boilerplate,
+    // not a claim, so it must not be sent to the entailment pass — where it
+    // would come back unsupported and block or strip the field.
+    if (field === "globalImpact" && isFallbackGlobalImpact(text)) continue;
     for (const sentence of splitIntoSentences(text)) {
       if (OWN_TEXT_FALLBACKS.has(sentence)) continue;
       result.push({ field, index: result.length, sentence });

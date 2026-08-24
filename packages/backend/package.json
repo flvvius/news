@@ -7,6 +7,7 @@
     "./convex/_generated/api.d.ts": "./convex/_generated/api.d.ts",
     "./convex/_generated/dataModel": "./convex/_generated/dataModel.d.ts",
     "./convex/lib/streaks": "./convex/lib/streaks.ts",
+    "./convex/lib/summaryText": "./convex/lib/summaryText.ts",
     "./convex/lib/compliance": "./convex/lib/compliance.ts",
     "./convex/lib/consent": "./convex/lib/consent.ts",
     "./convex/lib/retentionPolicy": "./convex/lib/retentionPolicy.ts"

@@ -20,7 +20,9 @@ import { BookmarkButton } from "@/components/bookmark-button";
 import { EventClaimComparison } from "@/components/event/event-claim-comparison";
 import { EventSources } from "@/components/event/event-sources";
 import { PerspectiveSummaries } from "@/components/event/perspective-summaries";
+import { SummaryPoints } from "@/components/event/summary-points";
 import { BiasDistributionBar } from "@/components/bias-distribution-bar";
+import { stripFallbackGlobalImpact } from "@news-app/backend/convex/lib/summaryText";
 import { Screen } from "@/components/screen";
 import { ShareEventButton } from "@/components/share-event-button";
 import { Icon } from "@/components/ui/icon";
@@ -311,6 +313,11 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
 
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
   const summary = event.perspectiveSummaries?.neutral;
+  // A stored globalImpact is never blank (an empty one would make the backend
+  // re-enqueue the event forever), so the "no impact stated" fallback is
+  // filtered here — a "Ce înseamnă asta" heading over a non-answer is worse
+  // than no section at all.
+  const impactText = stripFallbackGlobalImpact(event.globalImpact);
 
   return (
     <View className="flex-1">
@@ -442,9 +449,7 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         {/* Zone 3 — neutral summary, reading layer one */}
         {summary ? (
           <View className="gap-2 pt-6">
-            <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
-              {summary}
-            </Text>
+            <SummaryPoints text={summary} />
             <Text className="text-sm text-muted-foreground">
               {t("native.event.autoSummaryNote").replace(
                 "{count}",
@@ -455,12 +460,14 @@ function EventDetailBody({ eventData }: { eventData: EventDetail }) {
         ) : null}
 
         {/* Global impact — context while the summary is fresh */}
-        {event.globalImpact ? (
+        {impactText ? (
           <View className="mt-8 gap-3 border-t border-border pt-6">
             <SectionKicker text={t("event.meaning")} />
-            <Text className="max-w-[455px] text-base leading-relaxed text-foreground">
-              {event.globalImpact}
-            </Text>
+            {/* Own surface: this is the one section that answers why the
+                reader should care, not a fourth identical paragraph. */}
+            <View className="rounded-lg border border-border bg-muted/40 p-4">
+              <SummaryPoints text={impactText} leadCount={0} />
+            </View>
           </View>
         ) : null}
 

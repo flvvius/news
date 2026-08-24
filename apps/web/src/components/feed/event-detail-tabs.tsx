@@ -5,6 +5,10 @@ import EventClaimComparison from "@/components/feed/event-claim-comparison";
 import SourceCoverageSummary from "@/components/feed/source-coverage-summary";
 import { SectionTitle } from "@/components/ui/section-title";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import {
+  isFallbackGlobalImpact,
+  toSummaryPoints,
+} from "@news-app/backend/convex/lib/summaryText";
 import { useT } from "@/lib/i18n/LocaleContext";
 
 type EventDetailArticle = {
@@ -38,48 +42,114 @@ export type GroundingData = {
 } | null;
 
 /**
- * L4 — per-sentence source attribution. When the stored grounding record
- * matches the displayed text, each sentence carries its supporting outlets
- * as a hover tooltip; otherwise the plain text renders unchanged.
+ * L4 — per-sentence source attribution, applied to one rendered line.
+ *
+ * A line is decorated only when that exact sentence appears in the stored
+ * grounding record, so a stale record degrades per line instead of dropping
+ * attribution for the whole field.
  */
-function GroundedText({
+function GroundedSentence({
+  sentence,
+  supportingSources,
+}: {
+  sentence: string;
+  supportingSources: string[] | undefined;
+}) {
+  if (!supportingSources || supportingSources.length === 0) {
+    return <>{sentence}</>;
+  }
+  return (
+    <span
+      title={`Susținut de: ${supportingSources.join(", ")}`}
+      className="decoration-muted-foreground/40 underline-offset-4 hover:underline"
+    >
+      {sentence}
+    </span>
+  );
+}
+
+/**
+ * A summary rendered for scanning rather than for reading straight through
+ * (BIV-820).
+ *
+ * Production summaries averaged 23 words per sentence in a single unbroken
+ * block, which is accurate and close to unreadable on a phone. Prompt v9 asks
+ * the model for short one-fact sentences; this splits them back out — an
+ * opening line that says what happened, then one bullet per remaining fact.
+ * Short texts (under three sentences) stay a plain paragraph: a two-item list
+ * is more chrome than help.
+ *
+ * The stored value is untouched prose, so SEO descriptions, share images and
+ * the grounding record keep seeing exactly what the model wrote.
+ */
+function SummaryBody({
   text,
   field,
   grounding,
   className,
+  leadCount = 1,
+  asPoints = true,
 }: {
   text: string;
   field: string;
   grounding: GroundingData | undefined;
   className: string;
+  /** 0 = every sentence becomes a bullet (used by the impact section). */
+  leadCount?: number;
+  /**
+   * false keeps the field as one paragraph. The perspective sides read that
+   * way on purpose: they are a single contrastive argument ("X emphasised
+   * this, Y left it out"), which a list would chop into disconnected claims.
+   */
+  asPoints?: boolean;
 }) {
-  const sentences =
-    grounding?.results.filter((entry) => entry.field === field) ?? [];
-  const reconstructed = sentences.map((entry) => entry.sentence).join(" ");
-  if (sentences.length === 0 || reconstructed !== text) {
-    return <p className={className}>{text}</p>;
+  const { lead, points } = asPoints
+    ? toSummaryPoints(text, { leadCount })
+    : { lead: text.trim(), points: [] as string[] };
+  const sourcesBySentence = new Map<string, string[]>(
+    (grounding?.results ?? [])
+      .filter((entry) => entry.field === field)
+      .map((entry) => [entry.sentence, entry.supportingSources]),
+  );
+
+  if (points.length === 0) {
+    return (
+      <p className={className}>
+        <GroundedSentence
+          sentence={lead}
+          supportingSources={sourcesBySentence.get(lead)}
+        />
+      </p>
+    );
   }
+
   return (
-    <p className={className}>
-      {sentences.map((entry, index) => (
-        <span
-          key={index}
-          title={
-            entry.supportingSources.length > 0
-              ? `Susținut de: ${entry.supportingSources.join(", ")}`
-              : undefined
-          }
-          className={
-            entry.supportingSources.length > 0
-              ? "decoration-muted-foreground/40 underline-offset-4 hover:underline"
-              : undefined
-          }
-        >
-          {entry.sentence}
-          {index < sentences.length - 1 ? " " : ""}
-        </span>
-      ))}
-    </p>
+    <div className="space-y-3">
+      {lead && (
+        <p className={className}>
+          <GroundedSentence
+            sentence={lead}
+            supportingSources={sourcesBySentence.get(lead)}
+          />
+        </p>
+      )}
+      <ul className={`${className} space-y-2`}>
+        {points.map((point, index) => (
+          <li key={index} className="flex gap-2.5">
+            <span
+              aria-hidden="true"
+              className="mt-2.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+            />
+            <span className="min-w-0 flex-1">
+              <GroundedSentence
+                sentence={point}
+                supportingSources={sourcesBySentence.get(point)}
+              />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -125,6 +195,12 @@ export function EventDetailTabs({
       perspectiveSummaries?.suveranist ||
       globalImpact,
   );
+  // A stored globalImpact is never blank — `shouldResummarize` treats an empty
+  // one as an incomplete run and would re-enqueue the event forever — so the
+  // "no impact stated" fallback is filtered here, at render time.
+  const impactText = isFallbackGlobalImpact(globalImpact)
+    ? ""
+    : (globalImpact ?? "").trim();
   const hasPerspectives =
     perspectiveApplicable !== false &&
     Boolean(
@@ -187,11 +263,12 @@ export function EventDetailTabs({
                 forceMount
                 className="data-[state=inactive]:hidden"
               >
-                <GroundedText
+                <SummaryBody
                   text={perspectiveSummaries.reformist}
                   field="reformist"
                   grounding={grounding}
                   className={bodyText}
+                  asPoints={false}
                 />
               </TabsContent>
             )}
@@ -202,7 +279,7 @@ export function EventDetailTabs({
               className="data-[state=inactive]:hidden"
             >
               {perspectiveSummaries?.neutral ? (
-                <GroundedText
+                <SummaryBody
                   text={perspectiveSummaries.neutral}
                   field="neutral"
                   grounding={grounding}
@@ -219,11 +296,12 @@ export function EventDetailTabs({
                 forceMount
                 className="data-[state=inactive]:hidden"
               >
-                <GroundedText
+                <SummaryBody
                   text={perspectiveSummaries.suveranist}
                   field="suveranist"
                   grounding={grounding}
                   className={bodyText}
+                  asPoints={false}
                 />
               </TabsContent>
             )}
@@ -238,9 +316,18 @@ export function EventDetailTabs({
       ) : (
         <section className="space-y-4">
           <SectionTitle>{t("event.core")}</SectionTitle>
-          <p className={bodyText}>
-            {perspectiveSummaries?.neutral ?? t("event.compareOriginal")}
-          </p>
+          {/* CASE D (no political axis) is a large share of the feed, so this
+              branch gets the same scannable treatment as the tabbed one. */}
+          {perspectiveSummaries?.neutral ? (
+            <SummaryBody
+              text={perspectiveSummaries.neutral}
+              field="neutral"
+              grounding={grounding}
+              className={bodyText}
+            />
+          ) : (
+            <p className={bodyText}>{t("event.compareOriginal")}</p>
+          )}
           {perspectiveApplicable === false && (
             <p className="text-sm text-muted-foreground">
               {t("event.noPoliticalAxis")}
@@ -252,10 +339,24 @@ export function EventDetailTabs({
         </section>
       )}
 
-      {globalImpact && (
-        <section className={`${sectionBreak} space-y-4`}>
+      {/* "Ce înseamnă asta" is the one section that answers *why the reader
+          should care*, so it gets its own surface instead of being a fourth
+          identical paragraph. It is dropped entirely when the model had no
+          stated consequence to report: 35% of the impact sections live in
+          production were the "no impact stated" fallback under a heading
+          promising the opposite (BIV-820). */}
+      {impactText && (
+        <section className={`${sectionBreak} space-y-3`}>
           <SectionTitle>{t("event.meaning")}</SectionTitle>
-          <p className={bodyText}>{globalImpact}</p>
+          <div className="rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
+            <SummaryBody
+              text={impactText}
+              field="globalImpact"
+              grounding={grounding}
+              className={bodyText}
+              leadCount={0}
+            />
+          </div>
         </section>
       )}
 

@@ -4,6 +4,10 @@ import BookmarkButton from "@/components/bookmark-button";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { buildInteractionContextFromSources } from "@/lib/interaction-tracking";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
+import {
+  leadSentence,
+  stripFallbackGlobalImpact,
+} from "@news-app/backend/convex/lib/summaryText";
 import type { ReactNode } from "react";
 
 type EventCardProps = {
@@ -132,9 +136,12 @@ const EventCard = ({
     .map((id) => topicNamesById[id])
     .filter(Boolean);
   const primaryTopic = topics[0] ?? t("event.general");
+  // The preview is clamped to two lines, so a mid-sentence cut used to be the
+  // norm. Prompt v9 makes the first sentence a self-contained "what happened"
+  // line — show exactly that instead of the head of a 70-word block.
   const summaryPreview =
-    event.perspectiveSummaries?.neutral ??
-    event.globalImpact ??
+    leadSentence(event.perspectiveSummaries?.neutral) ||
+    leadSentence(stripFallbackGlobalImpact(event.globalImpact)) ||
     t("event.coveragePreview");
   const isFeature = variant === "feature";
   const lastUpdatedAt = event.lastUpdatedAt ?? event.firstPublishedAt;
