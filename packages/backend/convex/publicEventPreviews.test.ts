@@ -18,8 +18,8 @@ const modules = (
 ).glob("./**/!(*.*.*)*.*s");
 
 const HOUR_MS = 3_600_000;
-// Recency weight from computeTrendingScore: 1 point every 10 min = 6 pts/hour.
-const RECENCY_PER_HOUR = 6;
+// Recency weight from computeTrendingScore: 1 point every 5 min = 12 pts/hour.
+const RECENCY_PER_HOUR = 12;
 
 describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
   test("prefers claim-verified counts when present", () => {
@@ -64,8 +64,8 @@ describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
   });
 
   test("caps the coverage bonus so a stale but heavily-covered event cannot outrank fresh ones", () => {
-    // A huge story (30 sources * 10 + 80 articles * 3 = 540) is capped to 288
-    // points of coverage — worth ~48h of recency. Once its lastUpdatedAt is
+    // A huge story (30 sources * 10 + 80 articles * 3 = 540) is capped to 144
+    // points of coverage — worth 12h of recency. Once its lastUpdatedAt is
     // more than that far in the past, a zero-coverage but fresh event wins.
     const now = 1_000 * HOUR_MS;
     const staleHuge = computeTrendingScore({
@@ -81,6 +81,29 @@ describe("computeTrendingScore (BIV-801: graceful degradation)", () => {
       firstPublishedAt: now,
     });
     expect(staleHuge).toBeLessThan(freshThin);
+  });
+
+  test("coverage buys at most 12h of float over fresher news", () => {
+    // Pins the tuning knob: MAX_COVERAGE_BONUS / RECENCY_PER_HOUR = 12h.
+    // A maximally-covered event outranks a fresh zero-coverage one while it is
+    // less than 12h stale, and loses once it is more.
+    const now = 1_000 * HOUR_MS;
+    const maxCovered = (staleHours: number) =>
+      computeTrendingScore({
+        sourceCount: 30,
+        articleCount: 80,
+        lastUpdatedAt: now - staleHours * HOUR_MS,
+        firstPublishedAt: now - staleHours * HOUR_MS,
+      });
+    const freshThin = computeTrendingScore({
+      sourceCount: 0,
+      articleCount: 0,
+      lastUpdatedAt: now,
+      firstPublishedAt: now,
+    });
+
+    expect(maxCovered(11)).toBeGreaterThan(freshThin);
+    expect(maxCovered(13)).toBeLessThan(freshThin);
   });
 });
 
