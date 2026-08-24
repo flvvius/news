@@ -1431,3 +1431,76 @@ export const purgeOrphanedStorageFiles = internalMutation({
     };
   },
 });
+
+/**
+ * RECOVERY — drop the summary-job backlog so the pipeline resumes on new events.
+ *
+ * The 2026-08 grounding outage (see article_fact_extraction_enabled) left the
+ * queue holding ~700 unique events across 1000+ `queued` rows, plus ~1000
+ * `failed` rows whose attempts are exhausted. That backlog is stale news with no
+ * reader value, and it actively throttles recovery: a run drains only
+ * event_summary_batch_size jobs, so fresh stories sit behind weeks of dead work.
+ *
+ * Deletes `queued` and `failed` rows only. `processing` rows are left alone so
+ * in-flight leases finish cleanly, and `succeeded` rows are kept because they
+ * carry the summary history/signature other code reads.
+ *
+ * Events themselves are untouched — they simply become un-enqueued, and
+ * enqueueEligibleEventSummaries re-queues the most recent eligible ones (capped
+ * at event_summary_enqueue_limit, scanned most-recent-first) on the next run.
+ * That is the point: throughput goes to today's news instead of the backlog.
+ *
+ * DESTRUCTIVE AND IRREVERSIBLE. Bounded per call so one pass cannot blow the
+ * transaction limit. Run dry first, then repeat with dryRun:false until
+ * `isDone`:
+ *   npx convex run migrations:purgeSummaryJobBacklog '{"dryRun":true}'
+ *   npx convex run migrations:purgeSummaryJobBacklog '{"dryRun":false}'
+ */
+export const purgeSummaryJobBacklog = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const limit = Math.min(Math.max(args.limit ?? 500, 1), 1000);
+    const statuses = ["queued", "failed"] as const;
+
+    const deleted: { queued: number; failed: number } = { queued: 0, failed: 0 };
+    let budget = limit;
+
+    for (const status of statuses) {
+      if (budget <= 0) break;
+      const rows = await ctx.db
+        .query("eventSummaryJobs")
+        .withIndex("by_status_updatedAt", (q) => q.eq("status", status))
+        .take(budget);
+
+      for (const row of rows) {
+        if (!dryRun) await ctx.db.delete(row._id);
+        deleted[status] += 1;
+        budget -= 1;
+      }
+    }
+
+    // Probe whether rows of these statuses still exist after this pass.
+    let remaining = 0;
+    for (const status of statuses) {
+      const probe = await ctx.db
+        .query("eventSummaryJobs")
+        .withIndex("by_status_updatedAt", (q) => q.eq("status", status))
+        .take(1);
+      remaining += probe.length;
+    }
+
+    return {
+      dryRun,
+      deleted,
+      totalDeleted: deleted.queued + deleted.failed,
+      // A dry run deletes nothing, so `remaining` there only means "rows of
+      // these statuses exist", never "more passes needed".
+      remaining,
+      isDone: dryRun ? false : remaining === 0,
+    };
+  },
+});
