@@ -311,17 +311,10 @@ async function enqueueEligibleEvents(
       continue;
     }
 
-    // L4: an event whose summary is parked in the review queue must not be
-    // re-enqueued — regeneration would flag again and spam the queue.
-    const pendingReview = await ctx.db
-      .query("summaryReviewQueue")
-      .withIndex("by_event", (q) => q.eq("eventId", event._id))
-      .filter((q) => q.eq(q.field("status"), "pending"))
-      .first();
-    if (pendingReview) {
-      skipped++;
-      continue;
-    }
+    // A pending summaryReviewQueue row no longer blocks re-enqueue. It existed
+    // to stop the NER risk gate re-flagging the same event every run; with that
+    // gate removed the rows are inert history, and skipping on them would strand
+    // every event held before the removal in `processing` forever.
 
     const latestJob = await getLatestSummaryJob(ctx, event._id);
     if (await hasBlockingSummaryJob(ctx, event._id, now)) {
@@ -586,14 +579,41 @@ export const listDueSummaryJobs = internalQuery({
     const now = Date.now();
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
     const jobs: Doc<"eventSummaryJobs">[] = [];
+    const seen = new Set<string>();
+    const pushUnseen = (rows: Doc<"eventSummaryJobs">[]) => {
+      for (const row of rows) {
+        if (jobs.length >= safeLimit || seen.has(row._id)) continue;
+        seen.add(row._id);
+        jobs.push(row);
+      }
+    };
 
-    const queued = await ctx.db
+    // Newest-first for most of the batch, oldest-first for the rest.
+    //
+    // Pure oldest-first starves fresh events whenever a backlog exists: a run
+    // drains batch_size jobs, so with ~800 queued (as after the Aug 2 publish
+    // outage) an event queued today waits days behind events queued weeks ago,
+    // and the feed shows stale news even while publishing "works". Pure
+    // newest-first has the opposite failure — the backlog never drains. The
+    // split keeps fresh events at roughly one run of latency while still
+    // retiring older jobs every run.
+    const freshCount = Math.max(1, Math.ceil(safeLimit * 0.7));
+    const fresh = await ctx.db
       .query("eventSummaryJobs")
       .withIndex("by_status_next_attempt", (q) =>
         q.eq("status", "queued").lte("nextAttemptAt", now),
       )
-      .take(safeLimit);
-    jobs.push(...queued);
+      .order("desc")
+      .take(freshCount);
+    pushUnseen(fresh);
+
+    const backlog = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_next_attempt", (q) =>
+        q.eq("status", "queued").lte("nextAttemptAt", now),
+      )
+      .take(safeLimit - jobs.length);
+    pushUnseen(backlog);
 
     if (jobs.length < safeLimit) {
       const failed = await ctx.db
@@ -602,7 +622,7 @@ export const listDueSummaryJobs = internalQuery({
           q.eq("status", "failed").lte("nextAttemptAt", now),
         )
         .take(safeLimit - jobs.length);
-      jobs.push(...failed);
+      pushUnseen(failed);
     }
 
     return jobs.map((job) => ({
@@ -1324,6 +1344,30 @@ export const decideSummaryReviewForAdmin = mutation({
   },
 });
 
+/**
+ * A terminally-blocked summary (verbatim or ungrounded) leaves the event in
+ * `processing` with no stored summary, so shouldResummarize keeps returning
+ * true and every later cron run regenerated the identical summary — a full
+ * model call plus a grounding call, hourly, forever. Production showed 423
+ * blocked runs across 230 events, up to 8 regenerations of the same event.
+ *
+ * Stamping the signature of the inputs that produced the block makes the
+ * existing `no_change_since_last_run` short-circuit fire on the next attempt,
+ * which costs one cheap query and no model call. The signature is derived from
+ * the event's articles, so when a new article lands it changes and the event is
+ * retried on its own — the block self-heals without a separate retry path.
+ */
+async function stampTerminalSummarySignature(
+  ctx: MutationCtx,
+  eventId: Id<"events"> | undefined,
+  summarySignature: string | undefined,
+): Promise<void> {
+  if (!eventId || !summarySignature) return;
+  const event = await ctx.db.get(eventId);
+  if (!event || event.lastSummarySignature === summarySignature) return;
+  await ctx.db.patch(eventId, { lastSummarySignature: summarySignature });
+}
+
 export const markSummaryJobFailed = internalMutation({
   args: {
     jobId: v.id("eventSummaryJobs"),
@@ -1331,8 +1375,15 @@ export const markSummaryJobFailed = internalMutation({
     error: v.string(),
     retryAfterMs: v.number(),
     maxAttempts: v.number(),
+    // Stamped on a terminal block so the same inputs are not regenerated. See
+    // stampTerminalSummarySignature.
+    eventId: v.optional(v.id("events")),
+    summarySignature: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, runId, error, retryAfterMs, maxAttempts }) => {
+  handler: async (
+    ctx,
+    { jobId, runId, error, retryAfterMs, maxAttempts, eventId, summarySignature },
+  ) => {
     const job = await ctx.db.get(jobId);
     if (!job || job.status !== "processing" || job.processingRunId !== runId) {
       return { updated: false as const };
@@ -1350,6 +1401,10 @@ export const markSummaryJobFailed = internalMutation({
       updatedAt: Date.now(),
     });
 
+    if (attemptsExhausted) {
+      await stampTerminalSummarySignature(ctx, eventId, summarySignature);
+    }
+
     return { updated: true as const, attemptsExhausted };
   },
 });
@@ -1366,8 +1421,9 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
     jobId: v.id("eventSummaryJobs"),
     runId: v.string(),
     overlapCheckJson: v.string(),
+    summarySignature: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, runId, overlapCheckJson }) => {
+  handler: async (ctx, { jobId, runId, overlapCheckJson, summarySignature }) => {
     const job = await ctx.db.get(jobId);
     if (!job || job.status !== "processing" || job.processingRunId !== runId) {
       return { updated: false as const };
@@ -1377,13 +1433,17 @@ export const markSummaryJobBlockedVerbatim = internalMutation({
       status: "failed",
       processingRunId: undefined,
       leaseExpiresAt: undefined,
-      // Terminal: no automatic retry — a regenerated summary from identical
-      // inputs would keep failing; new articles re-enqueue a fresh job.
+      // Terminal for this job. The failed row alone does not stop re-enqueue
+      // (summaryJobBlocksEnqueue ignores MAX_SAFE_INTEGER rows), so the
+      // signature stamp below is what actually prevents regenerating identical
+      // inputs; new articles change the signature and retry the event.
       nextAttemptAt: Number.MAX_SAFE_INTEGER,
       lastError: "blocked_verbatim",
       overlapCheckJson,
       updatedAt: Date.now(),
     });
+
+    await stampTerminalSummarySignature(ctx, job.eventId, summarySignature);
 
     // L7: audit the block in the same transaction.
     await appendGenerationAudit(ctx, {

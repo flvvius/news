@@ -50,9 +50,11 @@ const ARTICLE_LEASE_TTL_MS = 15 * 60 * 1000;
 /** OpenAI embedding model — cheap & effective for clustering */
 const EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL;
 const DEFAULT_FACT_EXTRACTION_MODEL = DEFAULT_CHAT_MODEL;
-// Atomic-fact extraction is paused with claim analysis (BIV-602); flip the
-// article_fact_extraction_enabled config key to re-enable.
-const DEFAULT_FACT_EXTRACTION_ENABLED = false;
+// Atomic facts are the durable grounding evidence for summarization: they are
+// extracted here, where the full article body is still in memory, and stored on
+// the article. The summarizer then grounds against them without re-fetching
+// bodies. Disabling this starves the L4 grounding gate and blocks publishing.
+const DEFAULT_FACT_EXTRACTION_ENABLED = true;
 const DEFAULT_FACT_EXTRACTION_MAX_ARTICLES = 20;
 const DEFAULT_FACT_EXTRACTION_MAX_FACTS = 8;
 const DEFAULT_FACT_EXTRACTION_MAX_INPUT_CHARS = 2600;
