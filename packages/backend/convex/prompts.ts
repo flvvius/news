@@ -143,6 +143,26 @@ function trimField(value: string | undefined, maxLength: number): string {
  * mandate: the model had started writing "o sută de unități monetare" to
  * avoid copying "100 de lei", which is a comprehension bug, not a safe
  * paraphrase.
+ *
+ * v9.1 = readability follow-up, measured against 40 published events (161
+ * sentences) rather than estimated. v9 moved the average sentence from 23 to
+ * 19.8 words, but two gaps survived:
+ *  - 31% of sentences still exceeded v9's own 22-word cap (max 38), so the cap
+ *    is now restated as a hard limit with an explicit pre-response count.
+ *  - Lead sentences averaged 152 characters (max 228) while the feed card
+ *    renders ONLY the lead, clamped to two lines (event-card.tsx). Between 40%
+ *    and 75% of cards were cutting the lead mid-thought, which defeats the
+ *    self-contained-first-sentence rule directly above it. The lead now has an
+ *    explicit 16-word / 120-character budget tied to that clamp.
+ *
+ * Deliberately NOT a SUMMARY_PROMPT_VERSION bump. `shouldResummarize` re-queues
+ * every event whose stored version differs, so bumping would re-summarize all
+ * ~1160 existing events: ~24-32 days of the summarization budget spent on
+ * backfill, competing with same-day news for the same 48 summaries/day, plus
+ * the Gemini spend. The feed self-heals without it — trending now weights
+ * recency heavily (12h coverage float), so old summaries fall out of view on
+ * their own while new events pick the improved prompt up immediately. Bump the
+ * constant only if a deliberate full backfill is wanted.
  */
 export const SUMMARY_PROMPT_VERSION = 9;
 
@@ -267,11 +287,13 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "",
       "LIMBAJ CLAR (regulă de lizibilitate — se aplică fiecărui câmp):",
       "- O propoziție = un singur fapt. Maximum 22 de cuvinte pe propoziție. Dacă o propoziție are două idei, taie-o în două.",
+      "- Verifică fiecare propoziție înainte de a răspunde: numără cuvintele și rescrie orice propoziție care trece de 22. Aceasta nu este o recomandare, ci o limită.",
       "- Nu înlănțui subordonate. Evită construcțiile de tipul „ceea ce duce la...”, „fapt ce...”, „în contextul în care...”; pune ideea a doua într-o propoziție nouă.",
       "- Scrie la diateza activă, cu subiectul în față: cine a făcut ce. „Guvernul a amânat consultările”, nu „consultările au fost decalate”.",
       "- Folosește cuvinte de zi cu zi în locul limbajului administrativ: „lege” nu „act normativ”, „partide” nu „formațiuni politice”, „a amânat” nu „a decalat”, „mai mult timp” nu „un răgaz suplimentar”, „a cerut” nu „a solicitat”, „despre” nu „în ceea ce privește”, „pentru” nu „în vederea”, „etapă-cheie” nu „jalon”.",
       "- Evită substantivarea verbelor. Scrie „partidele au cerut”, nu „solicitarea partidelor a determinat”.",
       "- Prima propoziție a fiecărui câmp trebuie să fie de sine stătătoare: cine, ce s-a întâmplat, când. Cititorul care citește doar acel rând trebuie să înțeleagă știrea.",
+      "- Prima propoziție are maximum 16 cuvinte și maximum 120 de caractere. În feed se afișează DOAR ea, pe două rânduri, iar ce depășește se taie cu „…” — o primă propoziție lungă ajunge la cititor ciuntită la jumătate. Scrie-o scurtă și completă, apoi pune detaliile (cifre, context, cauze) în propozițiile următoare.",
       "- Fiecare propoziție următoare aduce un fapt nou și concret. Nu relua în alți termeni ce ai spus deja.",
       "- Nu folosi liste, cratime de enumerare, numerotări sau markdown în text: scrie propoziții separate prin punct. Interfața le afișează ea ca puncte separate.",
       "",

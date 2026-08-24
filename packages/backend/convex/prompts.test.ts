@@ -140,6 +140,12 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
     expect(prompt.system).toContain("LIMBAJ CLAR");
     expect(prompt.system).toContain("O propoziție = un singur fapt");
     expect(prompt.system).toContain("Maximum 22 de cuvinte pe propoziție");
+    // v9.1: the cap is restated as enforceable, not aspirational — 31% of a
+    // 40-event production sample exceeded it under v9 alone.
+    expect(prompt.system).toContain("numără cuvintele și rescrie orice propoziție");
+    // v9.1: the feed renders only the lead sentence, clamped to two lines, so
+    // the lead carries an explicit length budget tied to that clamp.
+    expect(prompt.system).toContain("maximum 16 cuvinte și maximum 120 de caractere");
     expect(prompt.system).toContain("diateza activă");
     expect(prompt.user).toContain("4-6 propoziții scurte");
   });
