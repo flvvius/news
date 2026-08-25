@@ -437,7 +437,6 @@ const ro = {
   "contact.sent.body":
     "Îți răspundem de regulă în câteva zile lucrătoare, pe adresa lăsată.",
   "contact.sent.again": "Trimite alt mesaj",
-  "share.eventText": "Vezi miezul acestei știri:",
   "event.noPoliticalAxis":
     "Acest subiect nu are o dimensiune politică semnificativă în acoperirea presei.",
   "event.aiDisclosure.one":
@@ -1234,7 +1233,6 @@ const en: { [K in keyof BaseStrings]: string } = {
   "contact.sent.body":
     "We usually reply within a few business days, to the address you left.",
   "contact.sent.again": "Send another message",
-  "share.eventText": "See the core of this story:",
   "event.noPoliticalAxis":
     "This story has no significant political dimension in press coverage.",
   "event.aiDisclosure.one":

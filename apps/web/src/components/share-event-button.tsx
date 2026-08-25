@@ -60,7 +60,6 @@ export default function ShareEventButton({
       try {
         await navigator.share({
           title,
-          text: t("share.eventText"),
           url: shareUrl,
         });
         logShare();
