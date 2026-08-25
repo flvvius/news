@@ -104,13 +104,6 @@ export const Route = createFileRoute("/source/$sourceId")({
   component: SourceProfilePage,
 });
 
-function formatBiasLabel(label: string) {
-  return label
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("-");
-}
-
 function parseSourceId(value: string): Id<"sources"> | null {
   const trimmed = value.trim();
   if (!/^[a-z0-9]{16,64}$/i.test(trimmed)) return null;
@@ -235,22 +228,17 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
                   {source.name}
                 </h1>
               </div>
-              {/* Metadata pills collapsed to one meta line (native
-                  DESIGN_LOG — source metadata pills → one meta line). */}
+              {/* Just the axis indicator. The left/right label was an
+                  untranslated English word next to a Romanian axis the
+                  indicator already shows, and the reliability score now reads
+                  properly under Credibilitate ("Ridicată — 7 din 10") instead
+                  of as a bare fraction here. */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
                 <BiasIndicator
                   bias={source.baseBias}
                   size="sm"
                   thresholds={thresholds}
                 />
-                <span>{formatBiasLabel(source.biasLabel)}</span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {t("source.reliability").replace(
-                    "{score}",
-                    String(source.reliabilityScore),
-                  )}
-                </span>
               </div>
             </div>
           </div>
