@@ -768,9 +768,9 @@ export const seedDefaults = internalMutation({
       // L1-L15 compliance knobs
       {
         key: "event_summary_max_verbatim_ngram",
-        value: 8,
+        value: 12,
         description:
-          "L3: maximum shared contiguous word run between a generated summary and any source text before the verbatim gate blocks/regenerates.",
+          "L3: maximum shared contiguous word run between a generated summary and any source text before the verbatim gate triggers a paraphrase retry. Raised from 8 to 12: at 8 the gate fired constantly on formulaic Romanian (\"in valoare de 20 de miliarde de dolari\"), burning three model calls per event and, before the gate was made non-blocking, killing the event outright. The gate no longer blocks publication — it retries and records the surviving spans.",
       },
       {
         key: "event_grounding_enabled",

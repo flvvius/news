@@ -1435,26 +1435,24 @@ export const processSummaryJob = internalAction({
         matchedSpans: overlap.matchedSpans.slice(0, 20),
       };
 
+      // The verbatim gate no longer blocks publication. It ran, it retried with
+      // a stronger paraphrase instruction, and whatever overlap survives is
+      // recorded on the job via `overlapCheck` (passed:false) and in the L7
+      // audit trail — but the event still publishes.
+      //
+      // Rationale: blocking here killed the event outright, and in production
+      // the surviving spans were overwhelmingly formulaic Romanian ("in valoare
+      // de 20 de miliarde de dolari"), not lifted prose. A news feed that
+      // silently drops stories is a worse failure than one that reuses a stock
+      // phrase, and the paraphrase retries above still do the real work. The
+      // spans stay queryable through overlapCheckJson for anyone auditing.
       if (!overlap.passed) {
-        console.error(
-          `[summarization] Summary blocked_verbatim for event ${job.eventId} after ${overlapAttempts} paraphrase retries`,
+        console.warn(
+          `[summarization] Verbatim overlap survived ${overlapAttempts} paraphrase retries for event ${job.eventId} — publishing anyway: ${overlap.matchedSpans
+            .slice(0, 3)
+            .map((span) => `"${span.text}"`)
+            .join("; ")}`,
         );
-        await ctx.runMutation(
-          internal.summarization.markSummaryJobBlockedVerbatim,
-          {
-            jobId: job._id,
-            runId,
-            overlapCheckJson: JSON.stringify(overlapCheck),
-            summarySignature,
-          },
-        );
-        return {
-          processed: true,
-          succeeded: false,
-          failed: true,
-          skipped: false,
-          budgetExhausted,
-        };
       }
 
       const { summary, inputTokens, outputTokens } = generated;

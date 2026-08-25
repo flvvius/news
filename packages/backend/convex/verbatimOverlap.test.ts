@@ -35,6 +35,29 @@ describe("findVerbatimOverlaps (L3)", () => {
     expect(spans[0]!.text.toLowerCase()).toContain("suplimenta bugetul");
   });
 
+  test("formulaic numeric phrasing is exempt (production false positives)", () => {
+    // These exact spans blocked real events in production. Every ordinary word
+    // in them is stock scaffolding, so there is no expression to protect and
+    // demanding a paraphrase only produces worse Romanian.
+    const src =
+      "Ministerul a semnat un contract în valoare de 20 de miliarde de dolari " +
+      "iar seismul s-a produs la o adâncime de 145 de kilometri.";
+    const summary =
+      "Acordul are în valoare de 20 de miliarde de dolari potrivit anunțului, " +
+      "iar cutremurul a fost resimțit la o adâncime de 145 de kilometri.";
+    expect(findVerbatimOverlaps(summary, [src], 8)).toHaveLength(0);
+  });
+
+  test("guard: loosening the exemption must not let real copied prose through", () => {
+    // Same length as the formulaic case above, but the shared run carries
+    // actual authorial phrasing rather than connective scaffolding.
+    const summary =
+      "Potrivit presei, guvernul va suplimenta bugetul pentru sănătate cu două " +
+      "miliarde de lei începând din luna septembrie.";
+    const spans = findVerbatimOverlaps(summary, [SOURCE_TEXT], 8);
+    expect(spans.length).toBeGreaterThan(0);
+  });
+
   test("a genuinely paraphrased summary passes", () => {
     const summary =
       "Executivul alocă fonduri suplimentare de aproximativ două miliarde de lei " +
