@@ -22,6 +22,7 @@ export const seedRomanianSources = internalMutation({
         baseBias: entry.biasScore,
         reliabilityScore: entry.reliabilityScore,
         provenance: entry.provenance,
+        readerNote: entry.readerNote,
       };
 
       const existing = await ctx.db

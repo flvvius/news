@@ -17,6 +17,7 @@ import { QueryBoundary } from "@/components/ui/query-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/state-views";
 import { useLocale, useT } from "@/contexts/locale-context";
+import { reliabilityBandKey } from "@news-app/backend/convex/lib/sourceReliability";
 import { cn } from "@/lib/cn";
 
 type SourceProfile = NonNullable<
@@ -44,13 +45,6 @@ function formatBiasLabel(label: string) {
     .join("-");
 }
 
-function formatOptional(value: string | undefined, fallback: string) {
-  if (!value) return fallback;
-  return value
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 function openExternal(url: string) {
   WebBrowser.openBrowserAsync(url).catch(() => {
@@ -176,29 +170,6 @@ function StatColumn({ value, label }: { value: string; label: string }) {
   );
 }
 
-function CredibilityRow({
-  label,
-  value,
-  detail,
-  isFirst = false,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  isFirst?: boolean;
-}) {
-  return (
-    <View
-      className={cn("gap-0.5 py-3", !isFirst && "border-t border-border/60")}
-    >
-      <Text className="text-xs text-muted-foreground">{label}</Text>
-      <Text className="text-[16px] font-medium text-foreground">{value}</Text>
-      {detail ? (
-        <Text className="text-sm text-muted-foreground">{detail}</Text>
-      ) : null}
-    </View>
-  );
-}
 
 function ArticleRow({
   article,
@@ -391,48 +362,29 @@ function SourceProfileView({ data }: { data: SourceProfile }) {
         />
       </View>
 
-      {/* Credibility */}
+      {/* Credibility: what the score means, then why it was given. The MBFC
+          rows were removed — those fields are unset on every source, so they
+          only ever rendered "not rated". `provenance` is internal analyst
+          shorthand (English, ticket refs) and is never shown; `readerNote` is
+          the reader-facing Romanian line. Matches the web source profile. */}
       <View className="gap-1">
         <Text className="text-base font-semibold tracking-tight text-foreground">
           {t("source.credibilityTitle")}
         </Text>
-        <View>
-          <CredibilityRow
-            label={t("source.mbfcCategory")}
-            value={formatOptional(source.mbfcCategory, t("source.notRated"))}
-            isFirst
-          />
-          <CredibilityRow
-            label={t("source.factualRating")}
-            value={formatOptional(source.mbfcFactual, t("source.notRated"))}
-          />
-          <CredibilityRow
-            label={t("source.credibilityLabel")}
-            value={formatOptional(source.mbfcCredibility, t("source.notRated"))}
-          />
-          <CredibilityRow
-            label={t("source.rollingSample")}
-            value={t("source.rollingArticles").replace(
-              "{count}",
-              String(source.rollingBiasSampleSize ?? 0),
-            )}
-            detail={
-              typeof source.rollingBiasMean === "number"
-                ? `${t("source.mean").replace(
-                    "{value}",
-                    source.rollingBiasMean.toFixed(1),
-                  )}${
-                    typeof source.rollingBiasStddev === "number"
-                      ? ` · ${t("source.stddev").replace(
-                          "{value}",
-                          source.rollingBiasStddev.toFixed(1),
-                        )}`
-                      : ""
-                  }`
-                : undefined
-            }
-          />
-        </View>
+        <Text className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
+          {t(reliabilityBandKey(source.reliabilityScore))}
+        </Text>
+        <Text className="text-sm text-muted-foreground">
+          {t("source.reliabilityScale").replace(
+            "{score}",
+            String(source.reliabilityScore),
+          )}
+        </Text>
+        {source.readerNote ? (
+          <Text className="mt-4 text-[15px] leading-6 text-foreground">
+            {source.readerNote}
+          </Text>
+        ) : null}
       </View>
 
       <Text className="text-base font-semibold tracking-tight text-foreground">

@@ -6,6 +6,7 @@ import type { FunctionReturnType } from "convex/server";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import BiasIndicator from "@/components/bias-indicator";
 import { Button } from "@/components/ui/button";
+import { reliabilityBandKey } from "@news-app/backend/convex/lib/sourceReliability";
 import { SectionTitle } from "@/components/ui/section-title";
 import { Snippet } from "@/components/ui/snippet";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
@@ -108,14 +109,6 @@ function formatBiasLabel(label: string) {
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("-");
-}
-
-function formatOptional(value: string | undefined, fallback: string) {
-  if (!value) return fallback;
-  return value
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function parseSourceId(value: string): Id<"sources"> | null {
@@ -292,27 +285,33 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
           </div>
         </div>
 
+        {/* Credibility: what the score means, then why it was given. The MBFC
+            category row was removed — it is unset on every source, so it only
+            ever rendered "not rated". `provenance` is internal analyst
+            shorthand (English, ticket refs) and is never shown; `readerNote`
+            is the reader-facing Romanian line. */}
         <section className="mt-10 border-t border-border pt-6">
           <SectionTitle>{t("source.credibilityTitle")}</SectionTitle>
-          <dl className="mt-4 space-y-1">
-            <dt className="text-sm text-muted-foreground">
-              {t("source.mbfcCategory")}
-            </dt>
-            <dd className="text-sm font-medium text-foreground">
-              {formatOptional(source.mbfcCategory, t("source.notRated"))}
-            </dd>
-          </dl>
-          <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
-            {t("source.ratingExplainer")}
+
+          <p className="mt-4 text-2xl font-semibold tracking-tight text-foreground">
+            {t(reliabilityBandKey(source.reliabilityScore))}
           </p>
-          {source.provenance && (
-            <p className="mt-2 max-w-[65ch] text-sm text-muted-foreground">
-              {source.provenance}
+          <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+            {t("source.reliabilityScale").replace(
+              "{score}",
+              String(source.reliabilityScore),
+            )}
+          </p>
+
+          {source.readerNote && (
+            <p className="mt-5 max-w-[55ch] text-sm text-foreground">
+              {source.readerNote}
             </p>
           )}
+
           <Link
             to="/sursele-noastre"
-            className="mt-3 inline-block text-sm text-primary hover:underline"
+            className="mt-5 inline-block text-sm text-primary hover:underline"
           >
             {t("sources.index.methodology")}
           </Link>

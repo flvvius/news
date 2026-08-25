@@ -51,6 +51,21 @@ describe("design-system enforcement (BIV-807)", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("internal source provenance is never rendered to readers", () => {
+    // `sources.provenance` is English analyst shorthand carrying ticket refs
+    // and process notes ("Tier C (BIV-806)", "never ingest as credible"). It
+    // shipped to Romanian readers verbatim on the source profile once. The
+    // reader-facing field is `readerNote`; this guards the regression.
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_DIR)) {
+      const content = readFileSync(file, "utf8");
+      if (/\bsource\.provenance\b/.test(content)) {
+        offenders.push(relative(SRC_DIR, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   test("every light color token has a dark-mode counterpart", () => {
     const css = readFileSync(join(SRC_DIR, "index.css"), "utf8");
     const rootBlock = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
