@@ -32,6 +32,42 @@ describe("Romanian source reputation seed (BIV-401)", () => {
     }
   });
 
+  test("every entry carries a reader-facing Romanian note", () => {
+    for (const entry of ROMANIAN_SOURCE_REPUTATION) {
+      expect(
+        entry.readerNote.length,
+        `${entry.domain} needs a readerNote`,
+      ).toBeGreaterThan(20);
+      expect(
+        entry.readerNote,
+        `${entry.domain}: readerNote must not reuse the internal provenance`,
+      ).not.toBe(entry.provenance);
+    }
+  });
+
+  test("reader notes never leak internal analyst shorthand", () => {
+    // `provenance` is English operator shorthand carrying ticket refs, tool
+    // names and process metadata ("never ingest as credible"). It shipped to
+    // Romanian readers verbatim once; this is the guard against that.
+    const internalMarkers = [
+      /BIV-\d+/i,
+      /\bMBFC\b/i,
+      /Hand-scored/i,
+      /\bTier [ABC]\b/i,
+      /never ingest/i,
+      /\bRSS\b/i,
+      /whitelist/i,
+    ];
+    for (const entry of ROMANIAN_SOURCE_REPUTATION) {
+      for (const marker of internalMarkers) {
+        expect(
+          marker.test(entry.readerNote),
+          `${entry.domain}: readerNote contains internal marker ${marker}`,
+        ).toBe(false);
+      }
+    }
+  });
+
   test("domains are unique", () => {
     const domains = ROMANIAN_SOURCE_REPUTATION.map((e) => e.domain);
     expect(new Set(domains).size).toBe(domains.length);

@@ -54,7 +54,12 @@ export default defineSchema({
     baseBias: v.number(), // -5 (reformist) to +5 (suveranist) — see docs/bias-axis-spec.md
     reliabilityScore: v.number(), // 1-10 (10 = wire service, 1 = tabloid)
     // One-line provenance for the manual bias/reliability ratings (BIV-401).
+    // INTERNAL: English analyst shorthand with ticket refs and process notes.
+    // Never render this to readers — see readerNote.
     provenance: v.optional(v.string()),
+    // Reader-facing Romanian line explaining the scores (plain language, no
+    // acronyms). This is what the source profile shows.
+    readerNote: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
 
     // Legacy MBFC (Media Bias/Fact Check) metadata. The RapidAPI integration
