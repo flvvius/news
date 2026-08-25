@@ -10,7 +10,6 @@ import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Loader2 } from "lucide-react";
 import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
@@ -108,17 +107,19 @@ export default function SignInForm({
   });
 
   return (
-    <Card className="border-border">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-2xl font-semibold tracking-tight">
+    <section>
+      {/* The form is the page's content, not a panel dropped onto it — the
+          heading and a hairline carry the framing the card used to. */}
+      <header className="border-b border-border pb-4">
+        <h2 className="text-xl font-semibold tracking-tight">
           {resolvedTitle}
-        </CardTitle>
-        <p className="text-muted-foreground text-sm mt-1">
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           {resolvedSubtitle}
         </p>
-      </CardHeader>
+      </header>
 
-      <CardContent className="pt-6">
+      <div className="pt-6">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -299,7 +300,7 @@ export default function SignInForm({
             </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

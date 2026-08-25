@@ -1,8 +1,15 @@
-import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n/LocaleContext";
 
+/**
+ * Full-page loading state.
+ *
+ * Skeletons mirror the geometry of the content they stand in for (feed-style
+ * rows on a plain background), so the page does not shift when the data lands
+ * — and so the loading screen does not promise card chrome the loaded page no
+ * longer has. `cardCount` keeps its name for call-site compatibility; it is
+ * the number of placeholder rows.
+ */
 export function PageLoadingState({
   title,
   description,
@@ -16,66 +23,31 @@ export function PageLoadingState({
   const resolvedTitle = title ?? t("common.loading.title");
   const resolvedDescription = description ?? t("common.loading.body");
   return (
-    <div
-      aria-busy="true"
-      className="bg-linear-to-b from-background via-background to-muted/35 min-h-[calc(100vh-4rem)]"
-    >
+    <div aria-busy="true" className="min-h-[calc(100vh-4rem)] bg-background">
       <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-        <div className="flex flex-col gap-6">
-          <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
-            <CardHeader className="gap-4 bg-linear-to-br from-background via-card to-muted/40">
-              <div className="flex items-center gap-3 text-primary">
-                <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                  <Loader2 className="size-5 animate-spin" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-8 w-56 max-w-full" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent
-              className="space-y-3 pt-6"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              <p className="text-sm font-medium text-foreground">
-                {resolvedTitle}
-              </p>
-              <p className="max-w-[52ch] text-sm text-muted-foreground">
-                {resolvedDescription}
-              </p>
-              <div className="grid gap-2 pt-1">
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-5/6" />
-                <Skeleton className="h-3 w-2/3" />
-              </div>
-            </CardContent>
-          </Card>
+        <div
+          className="border-b border-border pb-6"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <p className="text-sm font-medium text-foreground">
+            {resolvedTitle}
+          </p>
+          <p className="mt-1 max-w-[52ch] text-sm text-muted-foreground">
+            {resolvedDescription}
+          </p>
+        </div>
 
-          <div className="grid gap-4">
-            {Array.from({ length: cardCount }).map((_, index) => (
-              <Card
-                key={index}
-                className="border-border/70 bg-card/70 shadow-sm backdrop-blur-sm"
-              >
-                <CardContent className="space-y-4 p-6">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                    <Skeleton className="h-5 w-24 rounded-full" />
-                  </div>
-                  <Skeleton className="h-7 w-4/5" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-11/12" />
-                  <div className="flex gap-3 pt-2">
-                    <Skeleton className="h-9 w-28 rounded-full" />
-                    <Skeleton className="h-9 w-24 rounded-full" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: cardCount }).map((_, index) => (
+            <div key={index} className="space-y-3 py-5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-6 w-4/5" />
+              <Skeleton className="h-1 w-56" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+          ))}
         </div>
       </div>
     </div>

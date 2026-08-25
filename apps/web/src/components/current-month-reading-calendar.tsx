@@ -187,10 +187,12 @@ export function CurrentMonthReadingCalendar({
                   role="gridcell"
                   aria-label={label}
                   className={cn(
-                    "flex aspect-square min-h-10 flex-col items-center justify-center rounded-md border text-sm tabular-nums",
+                    // Filled cells, no outline: a month grid reads as a field
+                    // of tone, and 30 bordered squares was 30 little cards.
+                    "flex aspect-square min-h-10 flex-col items-center justify-center rounded-md text-sm tabular-nums",
                     isActive
-                      ? "border-primary/30 bg-primary/15 text-foreground"
-                      : "border-border bg-muted/35 text-muted-foreground",
+                      ? "bg-primary/15 text-foreground"
+                      : "bg-muted text-muted-foreground",
                     cell.isToday &&
                       "ring-2 ring-ring ring-offset-2 ring-offset-background",
                   )}
@@ -217,15 +219,15 @@ export function CurrentMonthReadingCalendar({
 
       <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-sm border border-border bg-muted/35" />
+          <span className="size-3 rounded-sm bg-muted" />
           {t("calendar.legend.emptyDay")}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-sm border border-primary/30 bg-primary/15" />
+          <span className="size-3 rounded-sm bg-primary/15" />
           {t("calendar.legend.readingDay")}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-sm border border-border ring-2 ring-ring ring-offset-1 ring-offset-background" />
+          <span className="size-3 rounded-sm bg-muted ring-2 ring-ring ring-offset-1 ring-offset-background" />
           {t("calendar.today")}
         </span>
       </div>

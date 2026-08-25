@@ -192,7 +192,7 @@ const ArticlesList = ({ eventId, articles }: ArticlesListProps) => {
           onClick={() =>
             setVisibleCount((count) => count + ARTICLE_INCREMENT)
           }
-          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           {nextBatchCount === 1
             ? t("articles.showMore.one")

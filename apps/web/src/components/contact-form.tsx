@@ -64,11 +64,7 @@ export function ContactForm() {
 
   if (sent) {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="rounded-lg border border-border bg-muted/30 p-4 text-sm"
-      >
+      <div role="status" aria-live="polite" className="text-sm">
         <p className="font-medium text-foreground">{t("contact.sent.title")}</p>
         <p className="mt-1 text-muted-foreground">{t("contact.sent.body")}</p>
         <Button

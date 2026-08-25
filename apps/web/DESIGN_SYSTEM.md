@@ -26,6 +26,8 @@ Key principles:
 - **Desaturated brand color** — a muted blue that conveys trust without political association.
 - **Non-political bias colors** — indigo/gray/amber instead of blue/red to avoid reinforcing partisan framing.
 - **Content-first typography** — readable line lengths, relaxed leading, clear hierarchy.
+- **No chrome for its own sake** — sections live on the page background; boxes,
+  tints and shadows are earned, not default.
 
 ---
 
@@ -120,9 +122,9 @@ Inter is loaded as the primary font. No secondary or monospace font is currently
 
 | Element              | Size                                               | Weight          | Extra                   |
 | -------------------- | -------------------------------------------------- | --------------- | ----------------------- |
-| Page title (h1)      | `text-3xl` to `text-4xl` (md: `text-6xl` for hero) | `font-bold`     | `tracking-tight`        |
-| Section heading (h2) | `text-2xl` to `text-3xl`                           | `font-bold`     | —                       |
-| Card title (h3)      | `text-lg`                                          | `font-semibold` | `leading-snug`          |
+| Page title (h1)      | `text-3xl` to `text-4xl` (md: `text-6xl` for hero) | `font-semibold` | `tracking-tight`        |
+| Zone heading (h2)    | `text-base` via `<SectionTitle>`                   | `font-semibold` | —                       |
+| Row title (h3)       | `text-lg`                                          | `font-semibold` | `leading-snug`          |
 | Body text            | `text-sm` to `text-base`                           | `font-normal`   | `leading-relaxed`       |
 | Helper/meta text     | `text-xs` to `text-sm`                             | `font-medium`   | `text-muted-foreground` |
 | Labels               | `text-sm`                                          | `font-medium`   | —                       |
@@ -133,11 +135,11 @@ Body text blocks should be constrained for readability:
 
 - **Prose / summaries**: `max-w-[65ch]`
 - **Subtitles / descriptions**: `max-w-[55ch]`
-- **Full-width layouts** (forms, cards): No `max-w` on the text itself — the container handles width.
+- **Full-width layouts** (forms, lists): No `max-w` on the text itself — the container handles width.
 
 ### Body Base
 
-The `<body>` has `leading-relaxed` applied globally via `@layer base` in `index.css`. You don't need to add it to every paragraph — only override when tighter leading is needed (e.g., `leading-snug` on card titles).
+The `<body>` has `leading-relaxed` applied globally via `@layer base` in `index.css`. You don't need to add it to every paragraph — only override when tighter leading is needed (e.g., `leading-snug` on row titles).
 
 ---
 
@@ -153,15 +155,60 @@ The `<body>` has `leading-relaxed` applied globally via `@layer base` in `index.
 
 Always use `container mx-auto` for horizontal centering.
 
-### Cards
+### Surfaces — sections are not cards
 
-Cards use the shadcn/ui `<Card>` component with these defaults:
+**Editorial calm.** Page content sits directly on `bg-background`. Typography,
+whitespace and hairlines carry the hierarchy; a section does not get a box
+around it to prove it is a section. This mirrors the native app's direction
+(`apps/native/DESIGN_LOG.md`) — the web app follows the same rules.
 
-- Background: `bg-card` (automatic via component)
-- Border radius: `rounded-xl` (automatic via component)
-- Padding: `px-6 py-6` (via `CardContent` / `CardHeader`)
-- Shadow: `shadow-sm` (automatic via component)
-- Section padding inside cards: Use `pt-6` on `<CardContent>` when there's no `<CardHeader>`.
+A **zone** is built like this:
+
+```tsx
+<section className="mt-10 border-t border-border pt-6">
+  <SectionTitle>Ce înseamnă asta</SectionTitle>
+  <p className="mt-1 text-sm text-muted-foreground">Supporting line</p>
+  <div className="mt-5">{content}</div>
+</section>
+```
+
+Repeated items inside a zone are **hairline-separated rows**
+(`divide-y divide-border`), the same anatomy the feed already uses — never a
+grid of bordered tiles.
+
+Figures are **typographic**, not tiles: a large `tabular-nums` numeral with a
+small muted label under it. No icon-in-a-tinted-square next to it.
+
+Empty states are **one line of muted text plus, at most, one action**. Dashed
+boxes and icon circles are banned.
+
+**A surface (`bg-card` + border + radius + shadow) is only for:**
+
+| Allowed                                       | Why                                     |
+| --------------------------------------------- | --------------------------------------- |
+| Overlays: dialog, popover, dropdown, toast     | They genuinely float above the page     |
+| Media frames: images, logos, thumbnails        | A border here frames media, not content |
+| Interactive controls: inputs, buttons, options | The border is the hit target/affordance |
+| `/admin/*` internal tooling                    | Dense operator screens, not the product |
+
+Everything else — summaries, settings blocks, stats, activity panels, auth
+forms, empty states, CTAs — renders on the page background. The `<Card>`
+component still exists for the admin routes; **do not** reach for it on a
+user-facing screen. The `design-system.test.ts` suite fails the build if a
+card surface reappears outside the allowed list.
+
+### Section separators
+
+- Between zones: `mt-8`/`mt-10` + `border-t border-border` + `pt-6`.
+- Between rows in a list: `divide-y divide-border`.
+- Prefer `border-b` / `border-t` over `<hr>` inside content areas.
+
+### Weight
+
+Titles are `font-semibold`, never `font-bold`. All-caps tracked eyebrows
+(`uppercase tracking-[0.2em]`) are reserved for the feed's topic kicker — a
+plain `text-sm text-muted-foreground` line does the same job elsewhere without
+shouting.
 
 ### Border Radius
 
@@ -171,10 +218,6 @@ Cards use the shadcn/ui `<Card>` component with these defaults:
 | `--radius-md` | `0.5rem` (8px)              | Buttons, inputs      |
 | `--radius-lg` | `calc(0.5rem + 2px)` (10px) | Cards inner elements |
 | `--radius-xl` | `calc(0.5rem + 6px)` (14px) | Modals, large cards  |
-
-### Section Separators
-
-Use `border-b` on `<section>` elements to create subtle dividers between landing page sections. Prefer `border-b` / `border-t` over `<hr>` inside content areas.
 
 ---
 
@@ -234,6 +277,8 @@ For pill-shaped filter buttons, add `className="rounded-full"`.
 
 ### Do
 
+- Render page sections on `bg-background` with a hairline + `SectionTitle`
+- Use `divide-y divide-border` for repeated rows
 - Use semantic token classes (`text-foreground`, `bg-muted`, `text-destructive`)
 - Use the `<BiasIndicator>` component for all bias visualization
 - Add `max-w-[65ch]` to prose blocks for readability
@@ -244,6 +289,9 @@ For pill-shaped filter buttons, add `className="rounded-full"`.
 
 ### Don't
 
+- Wrap a page section in `bg-card` / `border` / `shadow-sm` (see [Surfaces](#surfaces--sections-are-not-cards))
+- Use dashed-border empty states or icon-in-a-tinted-square decorations
+- Use `font-bold` for titles — `font-semibold` is the app's heaviest weight
 - Use raw Tailwind color classes (`text-gray-500`, `bg-red-500`, `bg-blue-600`)
 - Use red and blue to represent political left/right
 - Add custom hex or rgb colors inline
@@ -271,6 +319,6 @@ If you need a new semantic color (e.g., `--info`):
 | ----------------------------------- | -------------------------------------------------------- |
 | `src/index.css`                     | All CSS custom properties, theme config, base styles     |
 | `src/components/ui/button.tsx`      | Button variants (shadcn/ui)                              |
-| `src/components/ui/card.tsx`        | Card component (shadcn/ui)                               |
+| `src/components/ui/card.tsx`        | Card component (shadcn/ui) — admin routes only            |
 | `src/components/bias-indicator.tsx` | Bias spectrum visualization                              |
 | `components.json`                   | shadcn/ui configuration (style: new-york, base: neutral) |

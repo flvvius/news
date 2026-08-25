@@ -3,15 +3,10 @@ import { useQuery } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import type { Id } from "@news-app/backend/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import {
-  ArrowLeftIcon,
-  ExternalLinkIcon,
-  NewspaperIcon,
-  ShieldCheckIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import BiasIndicator from "@/components/bias-indicator";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTitle } from "@/components/ui/section-title";
 import { Snippet } from "@/components/ui/snippet";
 import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -187,13 +182,9 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   if (data === undefined) {
     return (
       <div className="container mx-auto max-w-5xl px-4 py-8">
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-xl border border-border/70 bg-card/70 px-5 py-8 text-sm text-muted-foreground"
-        >
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
           {t("source.loading")}
-        </div>
+        </p>
       </div>
     );
   }
@@ -207,217 +198,192 @@ function SourceProfileContent({ sourceId }: { sourceId: Id<"sources"> }) {
   const { source, stats, articles } = data;
 
   return (
-    <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-10">
-        <div className="flex flex-col gap-5 sm:gap-8">
-          <div className="flex items-center justify-between gap-4">
-            <Link
-              to="/"
-              className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeftIcon className="size-4" />
-              {t("source.backToFeed")}
-            </Link>
-            <Link
-              to="/surse"
-              className="text-sm font-medium text-muted-foreground underline transition-colors hover:text-foreground"
-            >
-              {t("sources.index.title")}
-            </Link>
-          </div>
+    <div className="bg-background">
+      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
+        <div className="flex items-center justify-between gap-4">
+          <Link
+            to="/"
+            className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeftIcon className="size-4" />
+            {t("source.backToFeed")}
+          </Link>
+          <Link
+            to="/surse"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {t("sources.index.title")}
+          </Link>
+        </div>
 
-          <section className="overflow-hidden rounded-[1.15rem] border border-border/80 bg-card/95 shadow-sm sm:rounded-[1.6rem]">
-            <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-8">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 gap-4">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/80 bg-background sm:h-20 sm:w-20">
-                    {source.logoUrl ? (
-                      <img
-                        src={source.logoUrl}
-                        alt={source.name}
-                        className="h-full w-full object-contain p-3"
-                      />
-                    ) : (
-                      <span className="text-xl font-semibold">
-                        {source.name.charAt(0)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="min-w-0 space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        {t("source.profile")}
-                      </p>
-                      <h1 className="mt-2 break-words text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
-                        {source.name}
-                      </h1>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <BiasIndicator
-                        bias={source.baseBias}
-                        size="md"
-                        thresholds={thresholds}
-                      />
-                      <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {formatBiasLabel(source.biasLabel)}
-                      </span>
-                      <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {t("source.reliability").replace(
-                          "{score}",
-                          String(source.reliabilityScore),
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <a
-                  href={`https://${source.domain}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border/80 bg-background/70 px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  {source.domain}
-                  <ExternalLinkIcon className="size-4" />
-                </a>
+        {/* Masthead. The logo keeps its frame — that is a media frame, not a
+            card — everything around it sits on the page. */}
+        <header className="mt-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 gap-4">
+            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+              {source.logoUrl ? (
+                <img
+                  src={source.logoUrl}
+                  alt={source.name}
+                  className="h-full w-full object-contain p-3"
+                />
+              ) : (
+                <span className="text-xl font-semibold">
+                  {source.name.charAt(0)}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 space-y-3">
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  {t("source.profile")}
+                </p>
+                <h1 className="mt-1 break-words text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  {source.name}
+                </h1>
               </div>
-
-              <div className="grid gap-3 border-t border-border/70 pt-5 sm:grid-cols-2">
-                <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.recentArticles")}
-                  </p>
-                  <p className="text-2xl font-semibold text-card-foreground">
-                    {stats.totalArticles}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-background/55 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.events")}
-                  </p>
-                  <p className="text-2xl font-semibold text-card-foreground">
-                    {stats.eventCount}
-                  </p>
-                </div>
+              {/* Metadata pills collapsed to one meta line (native
+                  DESIGN_LOG — source metadata pills → one meta line). */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
+                <BiasIndicator
+                  bias={source.baseBias}
+                  size="sm"
+                  thresholds={thresholds}
+                />
+                <span>{formatBiasLabel(source.biasLabel)}</span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {t("source.reliability").replace(
+                    "{score}",
+                    String(source.reliabilityScore),
+                  )}
+                </span>
               </div>
             </div>
-          </section>
+          </div>
 
-          <div className="grid gap-5 lg:grid-cols-[0.36fr_0.64fr]">
-            <Card className="h-fit overflow-hidden border-border/80 py-0">
-              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
-                  <ShieldCheckIcon className="size-5" />
-                  {t("source.credibilityTitle")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 px-5 py-5">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {t("source.mbfcCategory")}
-                  </p>
-                  <p className="font-medium text-card-foreground">
-                    {formatOptional(source.mbfcCategory, t("source.notRated"))}
-                  </p>
-                </div>
-                <div className="space-y-1 border-t border-border/70 pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    {t("source.ratingExplainer")}
-                  </p>
-                  {source.provenance && (
-                    <p className="text-sm text-muted-foreground">
-                      {source.provenance}
-                    </p>
-                  )}
-                  <Link
-                    to="/sursele-noastre"
-                    className="text-sm underline hover:text-foreground"
-                  >
-                    {t("sources.index.methodology")}
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
+          <a
+            href={`https://${source.domain}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            {source.domain}
+            <ExternalLinkIcon className="size-4" />
+          </a>
+        </header>
 
-            <Card className="overflow-hidden border-border/80 py-0">
-              <CardHeader className="border-b border-border/70 bg-muted/30 py-5">
-                <CardTitle className="flex items-center gap-2 text-xl tracking-tight">
-                  <NewspaperIcon className="size-5" />
-                  {t("source.recentReporting")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-5 py-5 sm:px-6">
-                <div className="space-y-4">
-                  {articles.map((article) => {
-                    const shownText = article.summary ?? article.rssSnippet;
-                    return (
-                      <article
-                        key={article._id}
-                        className="rounded-xl border border-border/70 bg-background/65 p-4"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          {article.imageUrl && (
-                            <img
-                              src={article.imageUrl}
-                              alt={article.imageAlt ?? article.title}
-                              className="aspect-video w-full rounded-lg object-cover sm:w-40"
-                              loading="lazy"
-                            />
-                          )}
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span
-                                title={formatAbsoluteTimestamp(
-                                  article.publishedAt,
-                                  locale,
-                                )}
-                              >
-                                {formatRelativeTimestamp(
-                                  article.publishedAt,
-                                  locale,
-                                )}
-                              </span>
-                            </div>
-                            <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-card-foreground">
-                              {article.title}
-                            </h2>
-                            {/* L2: third-party text renders only through
-                                <Snippet>; canonical link sits just below. */}
-                            <Snippet
-                              text={shownText}
-                              className="line-clamp-2 break-words text-sm text-muted-foreground"
-                            />
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              {article.event && (
-                                <Link
-                                  to="/event/$slug"
-                                  params={{ slug: article.event.slug }}
-                                  className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-muted"
-                                >
-                                  {t("source.relatedEvent")}
-                                  <ExternalLinkIcon className="size-3" />
-                                </Link>
-                              )}
-                              <a
-                                href={article.canonicalUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-muted"
-                              >
-                                {t("articles.readOriginal")}
-                                <ExternalLinkIcon className="size-3" />
-                              </a>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+        <div className="mt-8 grid grid-cols-2 gap-6 border-t border-border pt-6 sm:max-w-md">
+          <div>
+            <p className="text-2xl font-semibold tabular-nums text-foreground">
+              {stats.totalArticles}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("source.recentArticles")}
+            </p>
+          </div>
+          <div>
+            <p className="text-2xl font-semibold tabular-nums text-foreground">
+              {stats.eventCount}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("source.events")}
+            </p>
           </div>
         </div>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>{t("source.credibilityTitle")}</SectionTitle>
+          <dl className="mt-4 space-y-1">
+            <dt className="text-sm text-muted-foreground">
+              {t("source.mbfcCategory")}
+            </dt>
+            <dd className="text-sm font-medium text-foreground">
+              {formatOptional(source.mbfcCategory, t("source.notRated"))}
+            </dd>
+          </dl>
+          <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
+            {t("source.ratingExplainer")}
+          </p>
+          {source.provenance && (
+            <p className="mt-2 max-w-[65ch] text-sm text-muted-foreground">
+              {source.provenance}
+            </p>
+          )}
+          <Link
+            to="/sursele-noastre"
+            className="mt-3 inline-block text-sm text-primary hover:underline"
+          >
+            {t("sources.index.methodology")}
+          </Link>
+        </section>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>{t("source.recentReporting")}</SectionTitle>
+          {/* Article rows: the feed's anatomy, hairline-separated. */}
+          <div className="mt-2 divide-y divide-border">
+            {articles.map((article) => {
+              const shownText = article.summary ?? article.rssSnippet;
+              return (
+                <article
+                  key={article._id}
+                  className="flex flex-col gap-3 py-5 sm:flex-row sm:gap-4"
+                >
+                  {article.imageUrl && (
+                    <div className="aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-border bg-muted sm:order-last sm:aspect-auto sm:h-24 sm:w-40">
+                      <img
+                        src={article.imageUrl}
+                        alt={article.imageAlt ?? article.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p
+                      className="text-xs text-muted-foreground"
+                      title={formatAbsoluteTimestamp(
+                        article.publishedAt,
+                        locale,
+                      )}
+                    >
+                      {formatRelativeTimestamp(article.publishedAt, locale)}
+                    </p>
+                    <h3 className="break-words text-base font-semibold leading-snug tracking-tight text-foreground">
+                      {article.title}
+                    </h3>
+                    {/* L2: third-party text renders only through <Snippet>;
+                        canonical link sits just below. */}
+                    <Snippet
+                      text={shownText}
+                      className="line-clamp-2 break-words text-sm text-muted-foreground"
+                    />
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-sm">
+                      {article.event && (
+                        <Link
+                          to="/event/$slug"
+                          params={{ slug: article.event.slug }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {t("source.relatedEvent")}
+                        </Link>
+                      )}
+                      <a
+                        href={article.canonicalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {t("articles.readOriginal")}
+                        <ExternalLinkIcon className="size-3" />
+                      </a>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );

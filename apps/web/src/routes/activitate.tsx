@@ -3,8 +3,8 @@ import UserMenu from "@/components/user-menu";
 import BiasBalanceMeter from "@/components/bias-balance-meter";
 import { CurrentMonthReadingCalendar } from "@/components/current-month-reading-calendar";
 import { RecentReadingItem } from "@/components/activity/recent-reading-item";
-import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { SectionTitle } from "@/components/ui/section-title";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -12,13 +12,7 @@ import { api } from "@news-app/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useConvexAuth, useQuery } from "convex/react";
 import { formatRelativeTimestamp } from "@/lib/dates";
-import {
-  Bookmark,
-  ChevronRight,
-  Flame,
-  Newspaper,
-  Sparkles,
-} from "lucide-react";
+import { Bookmark, ChevronRight } from "lucide-react";
 import { QuizCta } from "@/components/quiz-cta";
 
 function getBiasSnapshotLabel(
@@ -136,319 +130,256 @@ function AuthorizedDashboard({
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background">
-      <div className="container mx-auto max-w-5xl px-4 py-8 sm:py-12">
-        <div className="flex flex-col gap-8">
-          {/* Header - Clean and minimal */}
-          <header className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
-                {userName.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  {t("activity.welcomeBack")}
-                </p>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  {userName.split(" ")[0]}
-                </h1>
-              </div>
-            </div>
-            <UserMenu />
-          </header>
+      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-12">
+        <header className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground">
+              {t("activity.welcomeBack")}
+            </p>
+            <h1 className="truncate text-3xl font-semibold tracking-tight">
+              {userName.split(" ")[0]}
+            </h1>
+          </div>
+          <UserMenu />
+        </header>
 
-          {/* Bento Grid - Main Stats */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {/* Streak - Prominent */}
-            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Flame className="size-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {readingStreak}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("activity.dayStreak")}
-                  </p>
-                </div>
-              </div>
-              {nextStreakMilestone && readingStreak > 0 && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {t("activity.daysToGoal")
+        {/* Stats read as figures, not as tiles. The numeral carries the
+            weight; the label sits under it in muted small text. */}
+        <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-8 border-t border-border pt-6 sm:grid-cols-4">
+          <Stat
+            value={readingStreak}
+            label={t("activity.dayStreak")}
+            hint={
+              nextStreakMilestone && readingStreak > 0
+                ? t("activity.daysToGoal")
                     .replace(
                       "{count}",
                       String(nextStreakMilestone - readingStreak),
                     )
-                    .replace("{milestone}", String(nextStreakMilestone))}
-                </p>
-              )}
-            </div>
+                    .replace("{milestone}", String(nextStreakMilestone))
+                : undefined
+            }
+          />
+          <Stat value={articlesRead} label={t("activity.articlesRead")} />
+          <Stat value={eventsExplored} label={t("activity.eventsExplored")} />
+          <Stat value={bookmarkCount} label={t("activity.bookmarked")} />
+        </div>
 
-            {/* Articles Read */}
-            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                  <Newspaper className="size-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {articlesRead}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("activity.articlesRead")}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Events Explored */}
-            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                  <Sparkles className="size-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {eventsExplored}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("activity.eventsExplored")}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Bookmarks */}
-            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                  <Bookmark className="size-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {bookmarkCount}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("activity.bookmarked")}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div className="mt-10">
           <QuizCta variant="activity" />
+        </div>
 
-          {/* Activity + Bias Row */}
-          <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-            {/* Activity Calendar */}
-            <div className="rounded-xl border border-border bg-card p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold">{t("activity.section")}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("activity.currentMonthReading")}
-                  </p>
-                </div>
-                <div className="flex gap-6 text-center">
-                  <div>
-                    <p className="text-lg font-bold tabular-nums">
-                      {readingStreak}
-                    </p>
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {t("activity.current")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold tabular-nums">
-                      {longestStreak}
-                    </p>
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {t("activity.best")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold tabular-nums">
-                      {activeReadingDays}
-                    </p>
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {t("activity.activeReadingDays")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5">
-                <CurrentMonthReadingCalendar days={readingCalendarDays} />
-              </div>
-            </div>
-
-            {/* Bias Balance */}
-            <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="font-semibold">{t("activity.biasBalance")}</h2>
-              <p className="text-sm text-muted-foreground">
-                {t("activity.biasMix")}
+        <section className="mt-10 border-t border-border pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
+            <div>
+              <SectionTitle>{t("activity.section")}</SectionTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("activity.currentMonthReading")}
               </p>
-              <div className="mt-5">
-                <BiasBalanceMeter value={biasBalance} />
-              </div>
-              {weeklyBiasReads > 0 && (
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {getBiasSnapshotLabel(weeklyBiasBalance, t)}{" "}
-                  {t("activity.biasReads").replace(
-                    "{count}",
-                    String(weeklyBiasReads),
-                  )}
-                </p>
+            </div>
+            <div className="flex gap-6">
+              <MiniStat
+                value={readingStreak}
+                label={t("activity.current")}
+              />
+              <MiniStat value={longestStreak} label={t("activity.best")} />
+              <MiniStat
+                value={activeReadingDays}
+                label={t("activity.activeReadingDays")}
+              />
+            </div>
+          </div>
+          <div className="mt-6">
+            <CurrentMonthReadingCalendar days={readingCalendarDays} />
+          </div>
+        </section>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>{t("activity.biasBalance")}</SectionTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("activity.biasMix")}
+          </p>
+          <div className="mt-6 max-w-xl">
+            <BiasBalanceMeter value={biasBalance} />
+          </div>
+          {weeklyBiasReads > 0 && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {getBiasSnapshotLabel(weeklyBiasBalance, t)}{" "}
+              {t("activity.biasReads").replace(
+                "{count}",
+                String(weeklyBiasReads),
               )}
-            </div>
-          </div>
+            </p>
+          )}
+        </section>
 
-          {/* Recent Activity */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {/* Reading History */}
-            <div className="rounded-xl border border-border bg-card">
-              <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
-                <div>
-                  <h2 className="font-semibold">{t("activity.recentReading")}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("activity.recentReadingBody")}
-                  </p>
-                </div>
-                <Button asChild variant="ghost" size="sm">
-                  <Link to="/" className="gap-1">
-                    {t("tabs.feed")}
-                    <ChevronRight className="size-4" />
-                  </Link>
-                </Button>
-              </div>
-              <div className="p-5">
-                {recentHistory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                    {t("activity.readingHistoryEmpty")}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recentHistory.slice(0, 4).map((entry) => (
-                      <RecentReadingItem key={entry.event._id} entry={entry} />
-                    ))}
-                  </div>
-                )}
-              </div>
+        <section className="mt-10 border-t border-border pt-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <SectionTitle>{t("activity.recentReading")}</SectionTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("activity.recentReadingBody")}
+              </p>
             </div>
-
-            {/* Salvate */}
-            <div className="rounded-xl border border-border bg-card">
-              <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
-                <div>
-                  <h2 className="font-semibold">{t("activity.savedLabel")}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("activity.savedSub")}
-                  </p>
-                </div>
-                <Button asChild variant="ghost" size="sm">
-                  <Link to="/salvate" className="gap-1">
-                    {t("activity.savedAll")}
-                    <ChevronRight className="size-4" />
-                  </Link>
-                </Button>
-              </div>
-              <div className="p-5">
-                {recentBookmarks.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                    {t("activity.savedEmpty")}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recentBookmarks.slice(0, 4).map((entry) => (
-                      <Link
-                        key={entry.event._id}
-                        to="/event/$slug"
-                        params={{ slug: entry.event.slug }}
-                        className="group flex gap-3 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
-                      >
-                        <div className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                          {entry.event.imageUrl ? (
-                            <img
-                              src={entry.event.imageUrl}
-                              alt=""
-                              className="size-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
-                              <Bookmark className="size-5" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
-                            {entry.event.title}
-                          </p>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>
-                              {formatRelativeTimestamp(
-                                entry.bookmarkedAt,
-                                locale,
-                              )}
-                            </span>
-                            <span>·</span>
-                            <span>
-                              {(entry.event.sourceCount ?? 0) === 1
-                                ? t("activity.sourcesOne")
-                                : t("activity.sourcesMany").replace(
-                                    "{count}",
-                                    String(entry.event.sourceCount ?? 0),
-                                  )}
-                            </span>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid gap-3 sm:grid-cols-2">
             <Link
               to="/"
-              className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-primary/5"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                <Newspaper className="size-6" />
-              </div>
-              <div>
-                <h3 className="font-semibold">{t("activity.feedCard")}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {t("activity.feedCardBody")}
-                </p>
-              </div>
-            </Link>
-
-            <Link
-              to="/salvate"
-              className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-primary/5"
-            >
-              <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                <Bookmark className="size-6" />
-              </div>
-              <div>
-                <h3 className="font-semibold">{t("activity.savedCard")}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {bookmarkCount === 1
-                    ? t("activity.savedOne")
-                    : t("activity.savedMany").replace(
-                        "{count}",
-                        String(bookmarkCount),
-                      )}
-                </p>
-              </div>
+              {t("tabs.feed")}
+              <ChevronRight className="size-4" />
             </Link>
           </div>
-        </div>
+          <div className="mt-5">
+            {recentHistory.length === 0 ? (
+              /* One quiet line — no dashed box (native DESIGN_LOG). */
+              <p className="text-sm text-muted-foreground">
+                {t("activity.readingHistoryEmpty")}
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {recentHistory.slice(0, 4).map((entry) => (
+                  <div key={entry.event._id} className="py-3 first:pt-0">
+                    <RecentReadingItem entry={entry} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <SectionTitle>{t("activity.savedLabel")}</SectionTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("activity.savedSub")}
+              </p>
+            </div>
+            <Link
+              to="/salvate"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t("activity.savedAll")}
+              <ChevronRight className="size-4" />
+            </Link>
+          </div>
+          <div className="mt-5">
+            {recentBookmarks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("activity.savedEmpty")}
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {recentBookmarks.slice(0, 4).map((entry) => (
+                  <Link
+                    key={entry.event._id}
+                    to="/event/$slug"
+                    params={{ slug: entry.event.slug }}
+                    className="group flex gap-3 py-3 first:pt-0"
+                  >
+                    <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+                      {entry.event.imageUrl ? (
+                        <img
+                          src={entry.event.imageUrl}
+                          alt=""
+                          className="size-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex size-full items-center justify-center text-muted-foreground">
+                          <Bookmark className="size-5" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm font-medium leading-snug transition-colors group-hover:text-primary">
+                        {entry.event.title}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatRelativeTimestamp(entry.bookmarkedAt, locale)} ·{" "}
+                        {(entry.event.sourceCount ?? 0) === 1
+                          ? t("activity.sourcesOne")
+                          : t("activity.sourcesMany").replace(
+                              "{count}",
+                              String(entry.event.sourceCount ?? 0),
+                            )}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Quick actions were two bordered panels with icon chips. They are
+            navigation, so they read as navigation: hairline rows. */}
+        <nav className="mt-10 divide-y divide-border border-t border-border">
+          <Link
+            to="/"
+            className="group flex items-center justify-between gap-4 py-4"
+          >
+            <div>
+              <p className="text-sm font-medium transition-colors group-hover:text-primary">
+                {t("activity.feedCard")}
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t("activity.feedCardBody")}
+              </p>
+            </div>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </Link>
+
+          <Link
+            to="/salvate"
+            className="group flex items-center justify-between gap-4 py-4"
+          >
+            <div>
+              <p className="text-sm font-medium transition-colors group-hover:text-primary">
+                {t("activity.savedCard")}
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {bookmarkCount === 1
+                  ? t("activity.savedOne")
+                  : t("activity.savedMany").replace(
+                      "{count}",
+                      String(bookmarkCount),
+                    )}
+              </p>
+            </div>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </nav>
       </div>
+    </div>
+  );
+}
+
+function Stat({
+  value,
+  label,
+  hint,
+}: {
+  value: number;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <p className="text-3xl font-semibold tabular-nums tracking-tight">
+        {value}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function MiniStat({ value, label }: { value: number; label: string }) {
+  return (
+    <div>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }

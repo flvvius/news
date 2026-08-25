@@ -339,24 +339,23 @@ export function EventDetailTabs({
         </section>
       )}
 
-      {/* "Ce înseamnă asta" is the one section that answers *why the reader
-          should care*, so it gets its own surface instead of being a fourth
-          identical paragraph. It is dropped entirely when the model had no
+      {/* "Ce înseamnă asta" answers *why the reader should care*. It used to
+          be boxed off in its own tinted surface; the zone title plus the
+          section hairline already separate it, and the box only made the page
+          read like a dashboard. It is dropped entirely when the model had no
           stated consequence to report: 35% of the impact sections live in
           production were the "no impact stated" fallback under a heading
           promising the opposite (BIV-820). */}
       {impactText && (
         <section className={`${sectionBreak} space-y-3`}>
           <SectionTitle>{t("event.meaning")}</SectionTitle>
-          <div className="rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
-            <SummaryBody
-              text={impactText}
-              field="globalImpact"
-              grounding={grounding}
-              className={bodyText}
-              leadCount={0}
-            />
-          </div>
+          <SummaryBody
+            text={impactText}
+            field="globalImpact"
+            grounding={grounding}
+            className={bodyText}
+            leadCount={0}
+          />
         </section>
       )}
 
@@ -372,15 +371,17 @@ export function EventDetailTabs({
 
   return (
     <Tabs defaultValue="perspectives" className="gap-5">
-      <TabsList className="grid h-11 w-full grid-cols-2 rounded-full bg-muted/70 p-1">
+      {/* Same underline treatment as the perspective tabs below — a pill
+          track floating on the page was a second, louder tab language. */}
+      <TabsList className="flex h-auto w-full flex-wrap justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
         <TabsTrigger
-          className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
+          className={`${underlineTrigger} data-[state=active]:border-foreground dark:data-[state=active]:border-foreground`}
           value="perspectives"
         >
           {t("event.perspectives")}
         </TabsTrigger>
         <TabsTrigger
-          className="h-full rounded-full border-0 py-0 text-sm font-medium after:hidden data-[state=active]:border-transparent data-[state=active]:bg-background data-[state=active]:shadow-sm dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-background/80"
+          className={`${underlineTrigger} data-[state=active]:border-foreground dark:data-[state=active]:border-foreground`}
           value="claims"
         >
           {t("event.claimBreakdown")}

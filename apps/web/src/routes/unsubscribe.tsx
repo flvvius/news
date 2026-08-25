@@ -4,7 +4,6 @@ import { useMutation } from "@tanstack/react-query";
 import { useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { z } from "zod";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
@@ -15,7 +14,6 @@ import {
   CheckCircle,
   Loader2,
   Mail,
-  MailX,
 } from "lucide-react";
 
 const searchSchema = z.object({
@@ -109,7 +107,7 @@ function UnsubscribePage() {
       return (
         <PageShell>
           <StatusIcon variant="error" />
-          <h1 className="text-2xl font-bold mt-6">
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">
             {t("unsubscribe.errorTitle")}
           </h1>
           <p className="text-muted-foreground mt-2 max-w-sm">
@@ -121,9 +119,7 @@ function UnsubscribePage() {
     if (!unsubscribeByToken.isSuccess) {
       return (
         <PageShell>
-          <div className="flex items-center justify-center size-16 rounded-2xl bg-primary/10">
-            <Loader2 className="size-8 text-primary animate-spin" />
-          </div>
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
           <p
             className="text-muted-foreground mt-6"
             role="status"
@@ -142,7 +138,7 @@ function UnsubscribePage() {
       return (
         <PageShell>
           <StatusIcon variant="error" />
-          <h1 className="text-2xl font-bold mt-6">
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">
             {t("unsubscribe.invalidTitle")}
           </h1>
           <p className="text-muted-foreground mt-2 max-w-sm">
@@ -154,7 +150,7 @@ function UnsubscribePage() {
     return (
       <PageShell>
         <StatusIcon variant="success" />
-        <h1 className="text-2xl font-bold mt-6">
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">
           {t("unsubscribe.successTitle")}
         </h1>
         <p className="text-muted-foreground mt-2 max-w-sm">
@@ -182,7 +178,7 @@ function UnsubscribePage() {
     return (
       <PageShell>
         <StatusIcon variant="error" />
-        <h1 className="text-2xl font-bold mt-6">
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">
           {t("unsubscribe.invalidTitle")}
         </h1>
         <p className="text-muted-foreground mt-2 max-w-sm">
@@ -198,9 +194,7 @@ function UnsubscribePage() {
   if (unsubscribe.isPending) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center size-16 rounded-2xl bg-primary/10">
-          <Loader2 className="size-8 text-primary animate-spin" />
-        </div>
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
         <p
           className="text-muted-foreground mt-6"
           role="status"
@@ -216,7 +210,7 @@ function UnsubscribePage() {
     return (
       <PageShell>
         <StatusIcon variant="error" />
-        <h1 className="text-2xl font-bold mt-6">
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">
           {t("unsubscribe.errorTitle")}
         </h1>
         <p className="text-muted-foreground mt-2 max-w-sm">
@@ -235,7 +229,7 @@ function UnsubscribePage() {
   return (
     <PageShell>
       <StatusIcon variant="success" />
-      <h1 className="text-2xl font-bold mt-6">
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
         {t("unsubscribe.successTitle")}
       </h1>
       <p className="text-muted-foreground mt-2 max-w-sm">
@@ -258,35 +252,21 @@ function UnsubscribePage() {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-muted/20 px-4 py-12">
-      <Card className="border-border shadow-lg max-w-md w-full">
-        <CardContent className="flex flex-col items-center text-center p-10">
-          {/* Logo */}
-          <BrandLogo className="h-8 mb-8" />
-          {children}
-        </CardContent>
-      </Card>
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background px-4 py-12">
+      <div className="flex w-full max-w-md flex-col items-center text-center">
+        <BrandLogo className="mb-8 h-8" />
+        {children}
+      </div>
     </div>
   );
 }
 
 function StatusIcon({ variant }: { variant: "success" | "error" }) {
+  // Plain glyph — the tinted rounded-square badge behind it was decoration
+  // that made a two-line confirmation look like an app dashboard.
   if (variant === "success") {
-    return (
-      <div className="relative">
-        <div className="flex items-center justify-center size-16 rounded-2xl bg-success/10">
-          <CheckCircle className="size-8 text-success" />
-        </div>
-        <div className="absolute -bottom-1 -right-1 flex items-center justify-center size-7 rounded-full bg-muted border-2 border-card">
-          <MailX className="size-3.5 text-muted-foreground" />
-        </div>
-      </div>
-    );
+    return <CheckCircle className="size-8 text-success" aria-hidden="true" />;
   }
 
-  return (
-    <div className="flex items-center justify-center size-16 rounded-2xl bg-destructive/10">
-      <AlertCircle className="size-8 text-destructive" />
-    </div>
-  );
+  return <AlertCircle className="size-8 text-destructive" aria-hidden="true" />;
 }

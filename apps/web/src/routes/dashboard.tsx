@@ -1,6 +1,7 @@
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { SectionTitle } from "@/components/ui/section-title";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
@@ -97,10 +98,10 @@ function DashboardAuthPage() {
         <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
           <div className="space-y-6">
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+              <p className="text-sm text-muted-foreground">
                 {t("auth.account")}
               </p>
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 {showSignIn
                   ? t("auth.welcomeBack")
                   : t("auth.createFreeAccount")}
@@ -134,42 +135,36 @@ function DashboardAuthPage() {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="text-lg font-semibold">{t("auth.unlockTitle")}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+          {/* Supporting copy, not a sidebar of panels: hairline zones with the
+              same rhythm as the rest of the app. */}
+          <div className="lg:pt-2">
+            <section className="border-t border-border pt-6">
+              <SectionTitle>{t("auth.unlockTitle")}</SectionTitle>
+              <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
                 {t("auth.unlockBody")}
               </p>
-              <ol className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <li className="flex gap-3">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    1
-                  </span>
-                  {t("auth.unlockOne")}
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    2
-                  </span>
-                  {t("auth.unlockTwo")}
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    3
-                  </span>
-                  {t("auth.unlockThree")}
-                </li>
+              <ol className="mt-4 space-y-3 text-sm text-muted-foreground">
+                {[
+                  t("auth.unlockOne"),
+                  t("auth.unlockTwo"),
+                  t("auth.unlockThree"),
+                ].map((step, index) => (
+                  <li key={index} className="flex gap-3">
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {index + 1}.
+                    </span>
+                    <span className="min-w-0 flex-1">{step}</span>
+                  </li>
+                ))}
               </ol>
-            </div>
+            </section>
 
-            <div className="rounded-xl border border-border bg-card p-6">
-              <h2 className="text-lg font-semibold">
-                {t("auth.verificationTitle")}
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
+            <section className="mt-8 border-t border-border pt-6">
+              <SectionTitle>{t("auth.verificationTitle")}</SectionTitle>
+              <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
                 {t("auth.verificationBody")}
               </p>
-            </div>
+            </section>
           </div>
         </div>
       </div>

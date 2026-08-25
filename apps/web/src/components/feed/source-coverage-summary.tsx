@@ -94,18 +94,16 @@ export default function SourceCoverageSummary({
             })}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          {/* Counts under the bar are figures, not three little boxes. */}
+          <div className="grid grid-cols-3 gap-4">
             {(["left", "center", "right"] as CoverageBucket[]).map(
               (bucket) => (
-                <div
-                  key={bucket}
-                  className="rounded-lg border border-border px-3 py-2"
-                >
+                <div key={bucket}>
+                  <p className="text-lg font-semibold tabular-nums text-foreground">
+                    {counts[bucket]}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {t(getCoverageLabel(bucket))}
-                  </p>
-                  <p className="text-lg font-semibold text-foreground">
-                    {counts[bucket]}
                   </p>
                 </div>
               ),
@@ -113,13 +111,14 @@ export default function SourceCoverageSummary({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* Source list: hairline-separated rows, same anatomy as the feed. */}
+        <div className="divide-y divide-border border-t border-border">
           {sources.map((source) => (
             <Link
               key={source._id}
               to="/source/$sourceId"
               params={{ sourceId: source._id }}
-              className="flex min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-3 transition-colors hover:bg-muted/50"
+              className="group flex min-w-0 items-center gap-3 py-3"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background">
                 {source.logoUrl ? (
@@ -137,10 +136,10 @@ export default function SourceCoverageSummary({
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex min-w-0 items-center justify-between gap-2">
-                  <p className="truncate text-sm font-medium text-foreground">
+                  <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
                     {source.name}
                   </p>
-                  <span className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {source.reliabilityScore}/10
                   </span>
                 </div>

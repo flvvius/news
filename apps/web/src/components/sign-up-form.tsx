@@ -9,7 +9,6 @@ import { getString } from "@/lib/i18n/strings";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Loader2 } from "lucide-react";
 import { AuthDivider, GoogleSignInButton } from "./auth-social";
 
@@ -128,17 +127,19 @@ export default function SignUpForm({
   });
 
   return (
-    <Card className="border-border">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-2xl font-semibold tracking-tight">
+    <section>
+      {/* The form is the page's content, not a panel dropped onto it — the
+          heading and a hairline carry the framing the card used to. */}
+      <header className="border-b border-border pb-4">
+        <h2 className="text-xl font-semibold tracking-tight">
           {resolvedTitle}
-        </CardTitle>
-        <p className="text-muted-foreground text-sm mt-1">
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           {resolvedSubtitle}
         </p>
-      </CardHeader>
+      </header>
 
-      <CardContent className="pt-6">
+      <div className="pt-6">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -256,7 +257,7 @@ export default function SignUpForm({
 
         {submittedEmail && (
           <div
-            className="mt-6 rounded-xl border border-border/70 bg-muted/35 px-4 py-3"
+            className="mt-6"
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -328,7 +329,7 @@ export default function SignUpForm({
             </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

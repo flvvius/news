@@ -10,7 +10,7 @@ import {
   MinusCircleIcon,
   ChevronDownIcon,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTitle } from "@/components/ui/section-title";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -221,32 +221,35 @@ function ClaimCard({
     : claim.variants.slice(0, 2);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-4 sm:px-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+    <div className="py-4">
+      <div>
+        {/* Status + weight as one meta line; the chip-and-panel treatment made
+            every claim look like a separate widget. */}
+        <div className="mb-2 flex items-start justify-between gap-3 text-xs text-muted-foreground">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
               <Icon className="size-3.5" />
               {getStatusLabel(t, status)}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span aria-hidden="true">·</span>
+            <span>
               {claim.importance}/5 {t("claim.importance")}
             </span>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
+          </span>
+          <span className="shrink-0">
             {sourceCount === 1
               ? t("claim.source.one")
               : t("claim.source.many").replace("{count}", String(sourceCount))}
           </span>
         </div>
 
-        <h4 className="text-base font-semibold leading-snug tracking-tight text-card-foreground">
+        <h4 className="text-base font-semibold leading-snug tracking-tight text-foreground">
           {claim.canonicalStatement}
         </h4>
       </div>
 
-      <div className="border-t border-border bg-muted/30 px-4 py-3 sm:px-5">
-        <div className="space-y-0 divide-y divide-border/50">
+      <div className="mt-3 border-l-2 border-border pl-4">
+        <div className="space-y-0 divide-y divide-border">
           {visibleVariants.map((variant, index) => (
             <ClaimVariantRow
               key={`${variant.articleId}-${variant.sourceFactIndex ?? index}-${index}`}
@@ -262,7 +265,7 @@ function ClaimCard({
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded(!isExpanded)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             {isExpanded
               ? t("claim.showLess")
@@ -301,17 +304,24 @@ function StatCard({
       type="button"
       aria-pressed={isActive}
       onClick={onClick}
-      className={cn(
-        "flex flex-col items-center justify-center rounded-xl border px-4 py-3 transition-all text-center",
-        isActive
-          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-          : "border-border bg-card hover:border-primary/30 hover:bg-accent",
-      )}
+      className="group text-left"
     >
-      <span className="text-2xl font-bold text-card-foreground tabular-nums">
+      <span
+        className={cn(
+          "block text-2xl font-semibold tabular-nums transition-colors",
+          isActive ? "text-primary" : "text-foreground",
+        )}
+      >
         {count}
       </span>
-      <span className="text-xs font-medium text-muted-foreground mt-0.5">
+      <span
+        className={cn(
+          "mt-0.5 block border-b-2 pb-0.5 text-xs font-medium transition-colors",
+          isActive
+            ? "border-primary text-primary"
+            : "border-transparent text-muted-foreground group-hover:text-foreground",
+        )}
+      >
         {label}
       </span>
     </button>
@@ -350,48 +360,32 @@ export default function EventClaimComparison({
 
   if (claims === undefined) {
     return (
-      <Card className="overflow-hidden border-border py-0">
-        <CardHeader className="border-b border-border bg-muted/30 py-5">
-          <CardTitle className="text-xl tracking-tight">
-            {t("claim.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 py-6 sm:px-6">
-          <div
-            className="flex items-center gap-3"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span className="text-sm text-muted-foreground">
-              {t("claim.loading")}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      <section>
+        <SectionTitle>{t("claim.title")}</SectionTitle>
+        <p
+          className="mt-4 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {t("claim.loading")}
+        </p>
+      </section>
     );
   }
 
   if (claims.length === 0) {
     return (
-      <Card className="overflow-hidden border-border py-0">
-        <CardHeader className="border-b border-border bg-muted/30 py-5">
-          <CardTitle className="text-xl tracking-tight">
-            {t("claim.title")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 py-6 sm:px-6">
-          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
-            <p className="text-sm font-medium text-card-foreground">
-              {t("claim.unavailable")}
-            </p>
-            <p className="mt-1.5 text-sm text-muted-foreground max-w-[55ch] mx-auto">
-              {t("claim.unavailableBody")}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <section>
+        <SectionTitle>{t("claim.title")}</SectionTitle>
+        {/* Typographic empty state — the dashed box is gone. */}
+        <p className="mt-4 text-sm font-medium text-foreground">
+          {t("claim.unavailable")}
+        </p>
+        <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+          {t("claim.unavailableBody")}
+        </p>
+      </section>
     );
   }
 
@@ -444,20 +438,17 @@ export default function EventClaimComparison({
   };
 
   return (
-    <Card className="overflow-hidden border-border py-0">
-      <CardHeader className="border-b border-border bg-muted/30 py-5">
-        <div className="flex flex-col gap-1">
-          <CardTitle className="text-xl tracking-tight">
-            {t("claim.title")}
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">{t("claim.subtitle")}</p>
-        </div>
-      </CardHeader>
+    <section>
+      <SectionTitle>{t("claim.title")}</SectionTitle>
+      <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+        {t("claim.subtitle")}
+      </p>
 
-      <CardContent className="p-0">
-        {/* Stats Grid - Clickable Filters */}
-        <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div>
+        {/* Counts double as filters, so they keep an interactive affordance —
+            but as a hairline-separated row of figures, not four tiles. */}
+        <div className="mt-6 border-y border-border py-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard
               label={t("claim.agreements")}
               count={summaryCounts.agreements}
@@ -496,21 +487,21 @@ export default function EventClaimComparison({
         </div>
 
         {/* Claims List */}
-        <div className="px-4 py-5 sm:px-6">
-          <div className="space-y-8">
+        <div className="pt-8">
+          <div className="space-y-10">
             {visibleStatuses.map((status) => {
               const statusClaims = claimsByStatus.get(status) ?? [];
               return (
                 <section key={status} className="space-y-4">
-                  <div className="border-l-2 border-primary pl-3">
-                    <h3 className="text-base font-semibold tracking-tight text-card-foreground">
+                  <div>
+                    <h3 className="text-base font-semibold tracking-tight text-foreground">
                       {getStatusHeading(t, status)}
                     </h3>
-                    <p className="text-sm text-muted-foreground max-w-[55ch]">
+                    <p className="max-w-[55ch] text-sm text-muted-foreground">
                       {getStatusBody(t, status)}
                     </p>
                   </div>
-                  <div className="grid gap-4">
+                  <div className="divide-y divide-border border-t border-border">
                     {statusClaims.map((claim) => (
                       <ClaimCard
                         key={claim._id}
@@ -526,7 +517,7 @@ export default function EventClaimComparison({
             })}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

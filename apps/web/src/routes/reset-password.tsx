@@ -1,7 +1,6 @@
 import { useMemo, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -108,22 +107,22 @@ function ResetPasswordRoute() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background">
-      <div className="container mx-auto flex max-w-xl px-4 py-10 sm:py-16">
-        <Card className="w-full border-border shadow-lg">
-          <CardHeader className="text-center pb-2">
-            <CardTitle className="text-2xl font-bold">
+      <div className="container mx-auto max-w-md px-4 py-10 sm:py-16">
+        <div className="w-full">
+          <header className="border-b border-border pb-4">
+            <h1 className="text-2xl font-semibold tracking-tight">
               {t("reset.title")}
-            </CardTitle>
-            <p className="text-muted-foreground text-sm mt-1">
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               {t("reset.body")}
             </p>
-          </CardHeader>
+          </header>
 
-          <CardContent className="pt-6">
+          <div className="pt-6">
             {errorMessage || !token ? (
               <div className="space-y-4 text-sm">
                 <p
-                  className="rounded-lg border border-border/70 bg-muted/35 px-4 py-3 text-muted-foreground"
+                  className="text-muted-foreground"
                   role="status"
                   aria-live="polite"
                 >
@@ -228,8 +227,8 @@ function ResetPasswordRoute() {
                 </div>
               </form>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

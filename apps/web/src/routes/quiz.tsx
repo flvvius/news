@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  HelpCircle,
   Share2,
   Trophy,
   XCircle,
@@ -18,7 +17,6 @@ import {
 import { toast } from "sonner";
 import { SignInPrompt } from "@/components/SignInPrompt";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { guardQuizRoute } from "@/lib/feature-flags";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
@@ -145,26 +143,22 @@ function QuizRoute() {
 
   if (!quiz) {
     return (
-      <div className="bg-linear-to-b from-background via-background to-muted/35">
+      <div className="bg-background">
         <div className="container mx-auto max-w-3xl px-4 py-10 sm:py-16">
-          <Card className="overflow-hidden border-border bg-card/95">
-            <CardContent className="flex flex-col items-center gap-5 px-6 py-10 text-center">
-              <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                <HelpCircle className="size-6" />
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-2xl font-bold tracking-tight">
-                  {t("quiz.empty.title")}
-                </h1>
-                <p className="mx-auto max-w-[55ch] text-sm text-muted-foreground">
-                  {t("quiz.empty.body")}
-                </p>
-              </div>
-              <Button asChild>
-                <Link to="/">{t("quiz.empty.action")}</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          {/* One typographic line + one action (native DESIGN_LOG). */}
+          <div className="flex flex-col items-start gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {t("quiz.empty.title")}
+              </h1>
+              <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+                {t("quiz.empty.body")}
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link to="/">{t("quiz.empty.action")}</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -332,47 +326,42 @@ function QuizExperience({
     currentIndex >= quiz.questions.length || Boolean(activeResult);
 
   return (
-    <div className="bg-linear-to-b from-background via-background to-muted/35">
-      <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
-        <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+    <div className="bg-background">
+      <div className="container mx-auto max-w-3xl px-4 py-6 sm:py-10">
+        <header className="flex flex-col gap-3 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              {t("quiz.kicker")}
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <p className="text-sm text-muted-foreground">{t("quiz.kicker")}</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               {t("quiz.title").replace("{count}", questionTotal)}
             </h1>
             <p className="max-w-[55ch] text-sm text-muted-foreground">
               {t("quiz.subtitle").replace("{count}", questionTotal)}
             </p>
           </div>
-          <div className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+          <p className="text-sm tabular-nums text-muted-foreground">
             {quiz.dateKey}
-          </div>
-        </div>
+          </p>
+        </header>
 
         {!showResults && currentQuestion ? (
-          <Card className="overflow-hidden border-border bg-card/95 py-0">
-            <div className="border-b border-border bg-muted/30 px-4 py-4 sm:px-6">
-              <div className="mb-3 flex items-center justify-between gap-4">
-                <span className="text-sm font-medium text-muted-foreground">
-                  {t("quiz.progress")
-                    .replace("{current}", String(currentIndex + 1))
-                    .replace("{total}", String(quiz.questions.length))}
-                </span>
-                <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {getTypeLabel(currentQuestion.type, t)}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-background">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${Math.max(progress, 8)}%` }}
-                />
-              </div>
+          <section className="pt-6">
+            <div className="mb-2 flex items-center justify-between gap-4 text-sm text-muted-foreground">
+              <span className="tabular-nums">
+                {t("quiz.progress")
+                  .replace("{current}", String(currentIndex + 1))
+                  .replace("{total}", String(quiz.questions.length))}
+              </span>
+              <span>{getTypeLabel(currentQuestion.type, t)}</span>
+            </div>
+            {/* A 2px rule, not a bar in a track. */}
+            <div className="h-0.5 w-full overflow-hidden bg-muted">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${Math.max(progress, 8)}%` }}
+              />
             </div>
 
-            <CardContent className="space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+            <div className="space-y-6 pt-8">
               <div className="space-y-3">
                 <h2 className="text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
                   {localize(currentQuestion.question, locale)}
@@ -432,9 +421,7 @@ function QuizExperience({
                   aria-live="polite"
                   role="status"
                   aria-atomic="true"
-                  className={cn(
-                    "rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground",
-                  )}
+                  className="border-l-2 border-primary/40 pl-4 text-sm text-foreground"
                 >
                   <p className="leading-relaxed text-muted-foreground">
                     {localize(currentFeedback.explanation, locale)}
@@ -480,41 +467,39 @@ function QuizExperience({
                   </Button>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         ) : (
-          <div className="grid gap-5">
-            <Card className="overflow-hidden border-border bg-card/95 py-0">
-              <CardContent className="grid gap-5 px-4 py-6 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6 sm:py-8">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    {t("quiz.result.kicker")}
-                  </p>
-                  <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                    {t("quiz.result.title")
-                      .replace("{score}", String(activeResult?.score ?? 0))
-                      .replace(
-                        "{max}",
-                        String(activeResult?.maxScore ?? quiz.questions.length),
-                      )}
-                  </h2>
-                  <p className="max-w-[55ch] text-sm text-muted-foreground">
-                    {activeResult?.saved
-                      ? t("quiz.result.saved")
-                      : t("quiz.result.public")}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <Button type="button" onClick={handleShare}>
-                    <Share2 className="size-4" />
-                    {t("quiz.share.action")}
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link to="/">{t("quiz.backToFeed")}</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="flex flex-col gap-8">
+            <section className="grid gap-5 pt-8 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  {t("quiz.result.kicker")}
+                </p>
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {t("quiz.result.title")
+                    .replace("{score}", String(activeResult?.score ?? 0))
+                    .replace(
+                      "{max}",
+                      String(activeResult?.maxScore ?? quiz.questions.length),
+                    )}
+                </h2>
+                <p className="max-w-[55ch] text-sm text-muted-foreground">
+                  {activeResult?.saved
+                    ? t("quiz.result.saved")
+                    : t("quiz.result.public")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <Button type="button" onClick={handleShare}>
+                  <Share2 className="size-4" />
+                  {t("quiz.share.action")}
+                </Button>
+                <Button asChild variant="outline">
+                  <Link to="/">{t("quiz.backToFeed")}</Link>
+                </Button>
+              </div>
+            </section>
 
             {!isAuthenticated && (
               <SignInPrompt
@@ -524,7 +509,7 @@ function QuizExperience({
               />
             )}
 
-            <div className="grid gap-4">
+            <div className="divide-y divide-border border-t border-border">
               {quiz.questions.map((question, index) => {
                 const review = reviewByQuestionId.get(question.id);
                 const selectedChoiceIdForQuestion =
@@ -533,11 +518,7 @@ function QuizExperience({
                   (choice) => choice.id === review?.correctChoiceId,
                 );
                 return (
-                  <Card
-                    key={question.id}
-                    className="overflow-hidden border-border bg-card/95 py-0"
-                  >
-                    <CardContent className="space-y-4 px-4 py-5 sm:px-6">
+                  <div key={question.id} className="space-y-4 py-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <span className="text-sm font-semibold text-muted-foreground">
                           {t("quiz.review.question").replace(
@@ -545,13 +526,14 @@ function QuizExperience({
                             String(index + 1),
                           )}
                         </span>
+                        {/* Verdict as plain coloured text, not a chip. */}
                         {review?.isCorrect ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
                             <CheckCircle2 className="size-3.5" />
                             {t("quiz.correct")}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-destructive">
                             <XCircle className="size-3.5" />
                             {t("quiz.incorrect")}
                           </span>
@@ -593,7 +575,7 @@ function QuizExperience({
                               )
                             : ""}
                       </p>
-                      <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <Button asChild variant="outline" size="sm">
                           <Link
                             to="/event/$slug"
@@ -616,8 +598,7 @@ function QuizExperience({
                           </Button>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
+                  </div>
                 );
               })}
             </div>

@@ -30,7 +30,7 @@ export function AiDisclosureLabel({
   return (
     <p
       data-ai-disclosure
-      className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground"
+      className="text-xs leading-relaxed text-muted-foreground"
     >
       {text}{" "}
       {reportDialog ? (

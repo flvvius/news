@@ -1,13 +1,5 @@
 import { useState } from "react";
-import {
-  CheckCircle2,
-  Download,
-  Globe2,
-  KeyRound,
-  LogOut,
-  Palette,
-  Trash2,
-} from "lucide-react";
+import { CheckCircle2, Download, KeyRound, LogOut, Trash2 } from "lucide-react";
 import { useConvex, useMutation } from "convex/react";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
@@ -16,13 +8,7 @@ import { ThemePicker } from "@/components/theme/ThemePicker";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { absoluteSiteUrl } from "@/lib/seo";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { SectionTitle } from "@/components/ui/section-title";
 import {
   Dialog,
   DialogClose,
@@ -175,206 +161,187 @@ export function AuthenticatedProfile({
 
   return (
     <div className="bg-background">
-      <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-10">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                  {avatarSrc ? (
-                    <img
-                      src={avatarSrc}
-                      alt={displayName}
-                      className="size-18 rounded-xl object-cover"
-                    />
-                  ) : (
-                    <div className="flex size-18 items-center justify-center rounded-xl bg-muted text-xl font-semibold text-foreground">
-                      {avatarFallback}
-                    </div>
-                  )}
+      <div className="container mx-auto max-w-2xl px-4 py-8 sm:py-12">
+        {/* Identity. The avatar and the name are the page title — they do not
+            need a surface to say so. */}
+        <header className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt={displayName}
+              className="size-16 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex size-16 items-center justify-center rounded-full bg-muted text-xl font-semibold text-foreground">
+              {avatarFallback}
+            </div>
+          )}
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {t("profile.account")}
+            </p>
+            <h1 className="break-words text-3xl font-semibold tracking-tight text-foreground">
+              {displayName}
+            </h1>
+          </div>
+        </header>
 
-                  <div className="min-w-0 space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      {t("profile.account")}
-                    </p>
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                      {displayName}
-                    </h1>
-                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                      <div>
-                        <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          {t("profile.emailLabel")}
-                        </dt>
-                        <dd className="mt-1 break-all text-card-foreground">
-                          {user.email}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          {t("profile.security")}
-                        </dt>
-                        <dd className="mt-1 text-card-foreground">
-                          {user.emailVerified
-                            ? t("profile.verified")
-                            : t("auth.checkEmailVerify")}
-                        </dd>
-                      </div>
-                    </dl>
-                    {user.emailVerified ? (
-                      <div className="inline-flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-                        <CheckCircle2 className="size-4 text-success" />
-                        <span>{t("profile.verified")}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        <dl className="mt-8 grid gap-5 border-t border-border pt-6 sm:grid-cols-2">
+          <div>
+            <dt className="text-sm text-muted-foreground">
+              {t("profile.emailLabel")}
+            </dt>
+            <dd className="mt-1 break-all text-sm text-foreground">
+              {user.email}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-muted-foreground">
+              {t("profile.security")}
+            </dt>
+            <dd className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
+              {user.emailVerified ? (
+                <>
+                  <CheckCircle2 className="size-4 shrink-0 text-success" />
+                  <span>{t("profile.verified")}</span>
+                </>
+              ) : (
+                <span>{t("auth.checkEmailVerify")}</span>
+              )}
+            </dd>
+          </div>
+        </dl>
 
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle>{t("profile.settings")}</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
-                        <Globe2 className="size-4 text-primary" />
-                        <span>{t("settings.language")}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {t("profile.settingsBody")}
-                      </p>
-                    </div>
-                    <LanguagePicker />
-                  </div>
+        {/* Settings rows: label + description on the left, control on the
+            right, separated by hairlines. */}
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>
+            {t("profile.settings")}
+          </SectionTitle>
+          <div className="mt-5 divide-y divide-border">
+            <div className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {t("settings.language")}
+                </p>
+                <p className="max-w-[55ch] text-sm text-muted-foreground">
+                  {t("profile.settingsBody")}
+                </p>
+              </div>
+              <LanguagePicker />
+            </div>
 
-                  <div className="border-t pt-5">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <div className="inline-flex items-center gap-2 text-sm font-medium text-card-foreground">
-                          <Palette className="size-4 text-primary" />
-                          <span>{t("profile.theme")}</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {t("profile.themeBody")}
-                        </p>
-                      </div>
-                      <ThemePicker />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col gap-4 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {t("profile.theme")}
+                </p>
+                <p className="max-w-[55ch] text-sm text-muted-foreground">
+                  {t("profile.themeBody")}
+                </p>
+              </div>
+              <ThemePicker />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>
+            {t("profile.security")}
+          </SectionTitle>
+          <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+            {t("profile.securityBody")}
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSendingReset}
+              onClick={() => void handleRequestPasswordReset()}
+            >
+              <KeyRound className="size-4" />
+              <span>
+                {isSendingReset
+                  ? t("auth.resetSendingStatus")
+                  : t("profile.changePassword")}
+              </span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isExporting}
+              onClick={() => void handleDownloadData()}
+            >
+              <Download className="size-4" />
+              <span>{t("profile.downloadData")}</span>
+            </Button>
+
+            <Button type="button" variant="ghost" onClick={handleSignOut}>
+              <LogOut className="size-4" />
+              <span>{t("auth.signOut")}</span>
+            </Button>
           </div>
 
-          <div className="space-y-6">
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle>{t("profile.security")}</CardTitle>
-                <CardDescription>{t("profile.securityBody")}</CardDescription>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="space-y-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full justify-between"
-                    disabled={isSendingReset}
-                    onClick={() => void handleRequestPasswordReset()}
-                  >
-                    <span>
-                      {isSendingReset
-                        ? t("auth.resetSendingStatus")
-                        : t("profile.changePassword")}
-                    </span>
-                    <KeyRound className="size-4" />
+          {/* Reset feedback: plain text, no banner box (native DESIGN_LOG —
+              boxed form notices removed). */}
+          {resetStatusMessage ? (
+            <p
+              className="mt-4 text-sm text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {resetStatusMessage}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="mt-10 border-t border-border pt-6">
+          <SectionTitle>
+            {t("profile.deleteAccount")}
+          </SectionTitle>
+          <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+            {t("profile.deleteConfirm")}
+          </p>
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="mt-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={isDeleting}
+              >
+                <Trash2 className="size-4" />
+                <span>{t("profile.deleteAccount")}</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("profile.deleteDialogTitle")}</DialogTitle>
+                <DialogDescription>
+                  {t("profile.deleteConfirm")}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" disabled={isDeleting}>
+                    {t("profile.deleteCancel")}
                   </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full justify-between"
-                    disabled={isExporting}
-                    onClick={() => void handleDownloadData()}
-                  >
-                    <span>{t("profile.downloadData")}</span>
-                    <Download className="size-4" />
-                  </Button>
-
-                  <Button
-                    variant="destructive"
-                    className="w-full justify-between"
-                    onClick={handleSignOut}
-                  >
-                    <span>{t("auth.signOut")}</span>
-                    <LogOut className="size-4" />
-                  </Button>
-
-                  <Dialog
-                    open={deleteDialogOpen}
-                    onOpenChange={setDeleteDialogOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full justify-between border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        disabled={isDeleting}
-                      >
-                        <span>{t("profile.deleteAccount")}</span>
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>
-                          {t("profile.deleteDialogTitle")}
-                        </DialogTitle>
-                        <DialogDescription>
-                          {t("profile.deleteConfirm")}
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter>
-                        <DialogClose asChild>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={isDeleting}
-                          >
-                            {t("profile.deleteCancel")}
-                          </Button>
-                        </DialogClose>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          disabled={isDeleting}
-                          onClick={() => void handleDeleteAccount()}
-                        >
-                          <Trash2 className="size-4" />
-                          <span>{t("profile.deleteAccount")}</span>
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-
-                {resetStatusMessage ? (
-                  <div
-                    className="mt-4 rounded-lg border border-border bg-muted/30 px-4 py-3"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <p className="text-sm text-muted-foreground">
-                      {resetStatusMessage}
-                    </p>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                </DialogClose>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeleting}
+                  onClick={() => void handleDeleteAccount()}
+                >
+                  <Trash2 className="size-4" />
+                  <span>{t("profile.deleteAccount")}</span>
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </section>
       </div>
     </div>
   );

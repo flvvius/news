@@ -5,7 +5,6 @@ import { Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { WAITLIST_CONSENT_TEXT } from "@news-app/backend/convex/lib/consent";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getClientIp } from "@/lib/getClientIp";
 
@@ -63,14 +62,18 @@ export default function EarlyAccessApplyCard({
   });
 
   return (
-    <Card className="border-border/70 bg-card/90">
-      <CardHeader className={compact ? "pb-3" : undefined}>
-        <CardTitle className={compact ? "text-lg" : "text-xl"}>
+    <section className="border-t border-border pt-6">
+      <div className="pb-4">
+        <h2
+          className={`font-semibold tracking-tight ${compact ? "text-lg" : "text-xl"}`}
+        >
           {title}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </CardHeader>
-      <CardContent>
+        </h2>
+        <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <div>
         <form
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
@@ -155,7 +158,7 @@ export default function EarlyAccessApplyCard({
             {message}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

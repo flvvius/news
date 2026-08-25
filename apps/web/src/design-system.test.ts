@@ -135,3 +135,80 @@ describe("section-title typography enforcement (BIV-818)", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * Sections are not cards.
+ *
+ * The web app had drifted into wrapping every content zone in a
+ * `bg-card` + border + shadow box, which made ordinary pages read like a
+ * generated dashboard. Hierarchy now comes from typography, whitespace and
+ * hairlines (DESIGN_SYSTEM.md "Surfaces — sections are not cards"), matching
+ * the native app's editorial-calm direction.
+ *
+ * Surfaces survive only where they mean something: overlays that genuinely
+ * float, media frames, interactive controls, and the internal /admin tooling.
+ */
+describe("surface enforcement — sections are not cards", () => {
+  // Overlays float; the shared Card primitive is kept for /admin; the skeleton
+  // primitive paints muted blocks by definition.
+  const SURFACE_EXEMPT = [
+    /^components\/ui\//,
+    /^routes\/admin\./,
+  ];
+
+  const isExempt = (path: string) =>
+    SURFACE_EXEMPT.some((pattern) => pattern.test(path));
+
+  test("no <Card> on user-facing screens", () => {
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_DIR)) {
+      const path = relative(SRC_DIR, file);
+      if (isExempt(path)) continue;
+      if (/<Card[\s/>]/.test(readFileSync(file, "utf8"))) {
+        offenders.push(path);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("no hand-rolled card surfaces (border + bg-card/bg-muted panel)", () => {
+    // A rounded box that also paints a surface colour AND draws a border is a
+    // card by any other name.
+    //
+    // `overflow-hidden` is the exemption: an element that clips its children
+    // is a media frame (the muted fill is the placeholder behind an image, the
+    // border is the frame). It is a heuristic, not a proof — but a content
+    // panel has no child to clip, so in practice only frames carry it.
+    const handRolledCard =
+      /className=\{?["'`][^"'`]*\brounded-(?:lg|xl|2xl)\b[^"'`]*\bborder\b[^"'`]*\bbg-(?:card|muted)\b[^"'`]*["'`]/g;
+    const reversed =
+      /className=\{?["'`][^"'`]*\bbg-(?:card|muted)\b[^"'`]*\brounded-(?:lg|xl|2xl)\b[^"'`]*\bborder\b[^"'`]*["'`]/g;
+
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_DIR)) {
+      const path = relative(SRC_DIR, file);
+      if (isExempt(path)) continue;
+      const content = readFileSync(file, "utf8");
+      const matches = [
+        ...(content.match(handRolledCard) ?? []),
+        ...(content.match(reversed) ?? []),
+      ].filter((match) => !match.includes("overflow-hidden"));
+      if (matches.length > 0) {
+        offenders.push(`${path}: ${matches.join(" | ")}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("no dashed-border empty states", () => {
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_DIR)) {
+      const path = relative(SRC_DIR, file);
+      if (isExempt(path)) continue;
+      if (/\bborder-dashed\b/.test(readFileSync(file, "utf8"))) {
+        offenders.push(path);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
