@@ -1504,3 +1504,63 @@ export const purgeSummaryJobBacklog = internalMutation({
     };
   },
 });
+
+/**
+ * RECOVERY — revive events the verbatim gate killed before it was made
+ * non-blocking (#69).
+ *
+ * While the L3 gate blocked publication, a surviving overlap marked the job
+ * `failed` with lastError "blocked_verbatim" AND stamped the event's
+ * `lastSummarySignature`. The stamp is what actually prevents regeneration:
+ * `shouldResummarize` sees an unchanged signature and skips the event forever,
+ * so deleting the job row alone would not bring it back. Both have to go.
+ *
+ * The gate no longer blocks, so these events can be summarized again and will
+ * publish. Only jobs whose recorded error is exactly "blocked_verbatim" are
+ * touched — jobs that failed for real reasons keep their terminal state.
+ *
+ * Bounded per call and dry-run by default. Repeat with dryRun:false until
+ * `isDone`:
+ *   npx convex run migrations:revivePreviouslyBlockedSummaries '{"dryRun":true}'
+ *   npx convex run migrations:revivePreviouslyBlockedSummaries '{"dryRun":false}'
+ */
+export const revivePreviouslyBlockedSummaries = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 500);
+
+    const failed = await ctx.db
+      .query("eventSummaryJobs")
+      .withIndex("by_status_updatedAt", (q) => q.eq("status", "failed"))
+      .take(limit);
+
+    const blocked = failed.filter(
+      (job) => (job.lastError ?? "") === "blocked_verbatim",
+    );
+
+    let signaturesCleared = 0;
+    for (const job of blocked) {
+      if (dryRun) continue;
+      const event = await ctx.db.get(job.eventId);
+      if (event && event.lastSummarySignature !== undefined) {
+        await ctx.db.patch(job.eventId, { lastSummarySignature: undefined });
+        signaturesCleared += 1;
+      }
+      await ctx.db.delete(job._id);
+    }
+
+    return {
+      dryRun,
+      scannedFailed: failed.length,
+      blockedVerbatim: blocked.length,
+      signaturesCleared,
+      skippedRealFailures: failed.length - blocked.length,
+      // A dry run deletes nothing, so this is only meaningful for real runs.
+      isDone: dryRun ? false : failed.length < limit,
+    };
+  },
+});
