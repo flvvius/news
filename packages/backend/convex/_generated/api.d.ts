@@ -60,6 +60,7 @@ import type * as lib_rateLimitError from "../lib/rateLimitError.js";
 import type * as lib_retentionPolicy from "../lib/retentionPolicy.js";
 import type * as lib_romanian from "../lib/romanian.js";
 import type * as lib_sourceBias from "../lib/sourceBias.js";
+import type * as lib_sourceReliability from "../lib/sourceReliability.js";
 import type * as lib_streaks from "../lib/streaks.js";
 import type * as lib_summaryArticleSelection from "../lib/summaryArticleSelection.js";
 import type * as lib_summaryText from "../lib/summaryText.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   "lib/retentionPolicy": typeof lib_retentionPolicy;
   "lib/romanian": typeof lib_romanian;
   "lib/sourceBias": typeof lib_sourceBias;
+  "lib/sourceReliability": typeof lib_sourceReliability;
   "lib/streaks": typeof lib_streaks;
   "lib/summaryArticleSelection": typeof lib_summaryArticleSelection;
   "lib/summaryText": typeof lib_summaryText;
