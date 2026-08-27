@@ -28,8 +28,16 @@ function buildRssXml(events: SyndicationEvent[]) {
   const feedDescription = getString("ro", "feed.meta.description");
   const selfHref = absoluteSiteUrl("/rss.xml");
   const homeHref = absoluteSiteUrl("/");
+  // The newest timestamp across the window, not events[0]'s: the feed is
+  // ordered by publication but an older event can be re-summarized later, and
+  // a lastBuildDate that moves backwards makes conditional-GET readers skip
+  // the refresh.
   const lastBuildDate = new Date(
-    events[0]?.firstPublishedAt ?? Date.now(),
+    events.reduce(
+      (newest, event) =>
+        Math.max(newest, event.lastUpdatedAt ?? event.firstPublishedAt),
+      0,
+    ) || Date.now(),
   ).toUTCString();
 
   const items = events
@@ -45,6 +53,10 @@ function buildRssXml(events: SyndicationEvent[]) {
         `<guid isPermaLink="true">${escapeXml(link)}</guid>`,
         `<pubDate>${pubDate}</pubDate>`,
         `<description>${escapeXml(description)}</description>`,
+        // Aggregation, not original reporting — stated per item so a
+        // republisher reading only the feed still sees the disclosure that the
+        // event page carries in visible text and structured data.
+        `<dc:creator>${escapeXml(SITE.name)}</dc:creator>`,
         "</item>",
       ].join("");
     })
@@ -52,7 +64,7 @@ function buildRssXml(events: SyndicationEvent[]) {
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">',
     "<channel>",
     `<title>${escapeXml(feedTitle)}</title>`,
     `<link>${escapeXml(homeHref)}</link>`,
@@ -60,6 +72,16 @@ function buildRssXml(events: SyndicationEvent[]) {
     "<language>ro</language>",
     `<atom:link href="${escapeXml(selfHref)}" rel="self" type="application/rss+xml"/>`,
     `<lastBuildDate>${lastBuildDate}</lastBuildDate>`,
+    // Readers and aggregators show the channel image next to the feed name;
+    // without it the feed renders as an unbranded row.
+    "<image>",
+    `<url>${escapeXml(SITE.ogImage)}</url>`,
+    `<title>${escapeXml(feedTitle)}</title>`,
+    `<link>${escapeXml(homeHref)}</link>`,
+    "</image>",
+    // Matches the 600s cache-control below, so a polite reader's poll interval
+    // and our edge cache agree.
+    "<ttl>10</ttl>",
     items,
     "</channel>",
     "</rss>",

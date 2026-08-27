@@ -31,6 +31,28 @@ export function absoluteSiteUrl(pathname: string): string {
 }
 
 /**
+ * Robots directive for every indexable page.
+ *
+ * Google's defaults cap news results at a thumbnail-sized image preview and a
+ * short snippet; `max-image-preview:large` is what makes an event eligible for
+ * the large-image treatment in Google News/Discover, and `max-snippet:-1`
+ * lifts the snippet cap so answer engines may quote the full summary. Pages
+ * that must stay out of indexes set their own `robots` meta instead and never
+ * merge this in.
+ */
+export const INDEXABLE_ROBOTS =
+  "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
+
+/**
+ * Stable @id anchors so every JSON-LD block on the site resolves to the *same*
+ * Organization / WebSite node instead of minting an anonymous duplicate per
+ * page. Search and answer engines merge nodes by @id, so entity signals
+ * (logo, sameAs, publisher-of relations) accumulate on one entity.
+ */
+export const ORGANIZATION_ID = `${SITE.url}/#organization`;
+export const WEBSITE_ID = `${SITE.url}/#website`;
+
+/**
  * Truncate text at a word boundary, never mid-word, appending an ellipsis when
  * (and only when) the text was actually cut. Trailing whitespace/punctuation
  * before the ellipsis is stripped so descriptions never read "…word ,…" or end
@@ -76,9 +98,15 @@ export function jsonLdScript(data: JsonLd) {
   return { type: "application/ld+json", children: JSON.stringify(data) };
 }
 
-function organizationEntity(): JsonLd {
+/**
+ * The publisher node, referenced from every page's structured data. Carries
+ * the shared @id so the per-page copies merge into one entity rather than
+ * competing duplicates.
+ */
+export function organizationEntity(): JsonLd {
   return {
     "@type": "NewsMediaOrganization",
+    "@id": ORGANIZATION_ID,
     name: SITE.name,
     url: SITE.url,
     // Structured-data logo must be a raster image (Google rejects SVG for the
@@ -88,8 +116,116 @@ function organizationEntity(): JsonLd {
   };
 }
 
+/**
+ * The full Organization node, emitted once (on the feed root). Every other
+ * page references it by @id through `organizationEntity()`, so the extra
+ * descriptive fields live here and are not repeated site-wide.
+ */
+function organizationEntityFull(): JsonLd {
+  return {
+    ...organizationEntity(),
+    description: SITE.description,
+    // Publisher, not reporter: stated in-band so an answer engine attributing
+    // a claim to us knows what kind of entity it is quoting.
+    knowsLanguage: ["ro", "en"],
+    areaServed: { "@type": "Country", name: "Romania" },
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "customer support",
+      url: absoluteSiteUrl("/contact"),
+      availableLanguage: ["ro", "en"],
+    },
+  };
+}
+
 export function organizationJsonLd(): JsonLd {
-  return { "@context": "https://schema.org", ...organizationEntity() };
+  return { "@context": "https://schema.org", ...organizationEntityFull() };
+}
+
+/**
+ * The WebSite node. Deliberately carries no `potentialAction`/SearchAction:
+ * feed search is client-side and has no addressable ?q= URL, so advertising
+ * one would point crawlers at a URL that does not exist.
+ */
+export function websiteJsonLd(description: string): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": WEBSITE_ID,
+    name: SITE.name,
+    url: SITE.url,
+    description,
+    inLanguage: "ro",
+    publisher: { "@id": ORGANIZATION_ID },
+  };
+}
+
+/**
+ * BreadcrumbList for a nested page. Answer engines use it to place a page in
+ * the site hierarchy; Google renders it in place of the raw URL. `items` is
+ * ordered root-first and every entry must correspond to a real, reachable URL.
+ */
+export function breadcrumbJsonLd(
+  items: Array<{ name: string; path: string }>,
+): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: absoluteSiteUrl(item.path),
+    })),
+  };
+}
+
+/**
+ * FAQPage for a page that really does answer those questions in visible body
+ * text. Google requires the answer text to be present on the page verbatim —
+ * callers must pass the same strings they render, never a paraphrase.
+ */
+export function faqPageJsonLd(
+  entries: ReadonlyArray<{ question: string; answer: string }>,
+  path: string,
+): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "@id": `${absoluteSiteUrl(path)}#faq`,
+    inLanguage: "ro",
+    mainEntity: entries.map((entry) => ({
+      "@type": "Question",
+      name: entry.question,
+      acceptedAnswer: { "@type": "Answer", text: entry.answer },
+    })),
+  };
+}
+
+/**
+ * ItemList for a directory page (e.g. the source index). Gives answer engines
+ * the enumerated set behind a "which publications does Miez track?" question
+ * without making them parse the rendered list.
+ */
+export function itemListJsonLd(args: {
+  name: string;
+  path: string;
+  items: Array<{ name: string; path: string }>;
+}): JsonLd {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "@id": `${absoluteSiteUrl(args.path)}#list`,
+    name: args.name,
+    numberOfItems: args.items.length,
+    itemListOrder: "https://schema.org/ItemListUnordered",
+    itemListElement: args.items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      url: absoluteSiteUrl(item.path),
+    })),
+  };
 }
 
 export function softwareApplicationJsonLd(description: string): JsonLd {
@@ -107,59 +243,70 @@ export function softwareApplicationJsonLd(description: string): JsonLd {
 }
 
 /**
- * Event pages are AI-generated aggregation, not original reporting, so they
- * get Article — never NewsArticle. Every field must match visible page text.
+ * The default share-card meta, for pages that do not bring their own image.
+ *
+ * `includeType` is off by default because of how head tags merge: TanStack
+ * dedupes meta by name/property with the deepest route winning, so anything
+ * the root declares and a child does not re-declare *leaks* onto that child.
+ * Event pages override og:image with a publisher photo of unknown MIME type,
+ * so a root-level `og:image:type: image/jpeg` would mislabel it. Pages that
+ * genuinely serve og-image.jpg (the static pages) opt the type back in.
  */
-export function eventArticleJsonLd(args: {
-  slug: string;
-  title: string;
-  description?: string;
-  imageUrl?: string;
-  datePublished: number;
-  dateModified: number;
-}): JsonLd {
-  const url = absoluteSiteUrl(`/event/${args.slug}`);
-  return {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    headline: args.title,
-    ...(args.description ? { description: args.description } : {}),
-    ...(args.imageUrl ? { image: [args.imageUrl] } : {}),
-    datePublished: new Date(args.datePublished).toISOString(),
-    dateModified: new Date(args.dateModified).toISOString(),
-    mainEntityOfPage: url,
-    url,
-    inLanguage: "ro",
-    publisher: organizationEntity(),
-  };
+export function defaultShareImageMeta(options?: { includeType?: boolean }) {
+  return [
+    { property: "og:image", content: SITE.ogImage },
+    ...(options?.includeType
+      ? [{ property: "og:image:type", content: SITE.ogImageType }]
+      : []),
+    { property: "og:image:width", content: String(SITE.ogImageWidth) },
+    { property: "og:image:height", content: String(SITE.ogImageHeight) },
+    { property: "og:image:alt", content: SITE.ogImageAlt },
+    { name: "twitter:image", content: SITE.ogImage },
+    { name: "twitter:image:alt", content: SITE.ogImageAlt },
+  ];
 }
 
 /**
  * head() payload for indexable static pages: unique title/description plus
- * self-canonical and OG/Twitter tags, all in the initial server HTML.
+ * self-canonical, the indexable robots directive, OG/Twitter tags and an
+ * optional JSON-LD block — all in the initial server HTML.
+ *
+ * The static pages are authored in Romanian (the product language), so
+ * og:locale is fixed to ro_RO here rather than following the UI chrome locale.
  */
 export function staticPageHead(args: {
   title: string;
   description: string;
   path: string;
+  /** Root-first breadcrumb trail; the page itself is appended automatically. */
+  breadcrumb?: Array<{ name: string; path: string }>;
+  /** Extra JSON-LD (FAQPage, ItemList, …) rendered alongside the breadcrumb. */
+  jsonLd?: JsonLd[];
 }) {
   const url = absoluteSiteUrl(args.path);
+  const scripts = [
+    ...(args.breadcrumb ? [jsonLdScript(breadcrumbJsonLd(args.breadcrumb))] : []),
+    ...(args.jsonLd ?? []).map(jsonLdScript),
+  ];
+
   return {
     meta: [
       { title: args.title },
       { name: "description", content: args.description },
+      { name: "robots", content: INDEXABLE_ROBOTS },
       { property: "og:title", content: args.title },
       { property: "og:description", content: args.description },
       { property: "og:site_name", content: SITE.name },
       { property: "og:type", content: "website" },
       { property: "og:url", content: url },
-      { property: "og:image", content: SITE.ogImage },
+      { property: "og:locale", content: "ro_RO" },
+      ...defaultShareImageMeta({ includeType: true }),
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: args.title },
       { name: "twitter:description", content: args.description },
-      { name: "twitter:image", content: SITE.ogImage },
     ],
     links: [{ rel: "canonical", href: url }],
+    ...(scripts.length > 0 ? { scripts } : {}),
   };
 }
 

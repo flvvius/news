@@ -13,7 +13,14 @@ import { formatAbsoluteTimestamp, formatRelativeTimestamp } from "@/lib/dates";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useLocale, useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  SITE,
+  WEBSITE_ID,
+  absoluteSiteUrl,
+  breadcrumbJsonLd,
+  defaultShareImageMeta,
+  jsonLdScript,
+} from "@/lib/seo";
 
 export const Route = createFileRoute("/source/$sourceId")({
   loader: async ({ context, params }) => {
@@ -77,28 +84,65 @@ export const Route = createFileRoute("/source/$sourceId")({
         )
       : getString(locale, "source.metaDescription");
 
+    const profileUrl = absoluteSiteUrl(`/source/${params.sourceId}`);
+
     return {
       meta: [
         { title },
         { name: "description", content: description },
         { property: "og:title", content: title },
         { property: "og:site_name", content: SITE.name },
-        { property: "og:type", content: "website" },
+        { property: "og:type", content: "profile" },
         { property: "og:description", content: description },
-        {
-          property: "og:url",
-          content: absoluteSiteUrl(`/source/${params.sourceId}`),
-        },
+        { property: "og:url", content: profileUrl },
+        { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
+        // This page declared summary_large_image without ever naming an
+        // image, so every share of a source profile rendered as a bare link.
+        // Source logos are third-party assets of unknown size, so fall back to
+        // the site's own 1200×630 card rather than hotlinking one.
+        ...defaultShareImageMeta({ includeType: true }),
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
       ],
-      links: [
-        {
-          rel: "canonical",
-          href: absoluteSiteUrl(`/source/${params.sourceId}`),
-        },
-      ],
+      links: [{ rel: "canonical", href: profileUrl }],
+      scripts: loaderData?.source
+        ? [
+            jsonLdScript({
+              "@context": "https://schema.org",
+              "@type": "ProfilePage",
+              "@id": `${profileUrl}#profile`,
+              url: profileUrl,
+              inLanguage: "ro",
+              // The page is *about* the publication; Miez is the page's
+              // publisher, not the publication's. Keeping mainEntity distinct
+              // from publisher is what stops an answer engine reading this as
+              // "Miez publishes <source>".
+              mainEntity: {
+                "@type": "NewsMediaOrganization",
+                "@id": `${profileUrl}#publication`,
+                name: loaderData.source.name,
+                ...(loaderData.source.domain
+                  ? { url: `https://${loaderData.source.domain}` }
+                  : {}),
+                ...(loaderData.source.logoUrl
+                  ? { logo: loaderData.source.logoUrl }
+                  : {}),
+              },
+              isPartOf: { "@id": WEBSITE_ID },
+            }),
+            jsonLdScript(
+              breadcrumbJsonLd([
+                { name: SITE.name, path: "/" },
+                { name: getString(locale, "sources.index.title"), path: "/surse" },
+                {
+                  name: sourceName ?? getString(locale, "source.metaTitle"),
+                  path: `/source/${params.sourceId}`,
+                },
+              ]),
+            ),
+          ]
+        : [],
     };
   },
   component: SourceProfilePage,

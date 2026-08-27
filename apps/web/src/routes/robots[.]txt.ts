@@ -17,6 +17,10 @@ Disallow: /unsubscribe
 
 Sitemap: ${absoluteSiteUrl("/sitemap.xml")}
 Sitemap: ${absoluteSiteUrl("/news-sitemap.xml")}
+
+# AEO: curated prose index for AI systems (llmstxt.org). Not a standard
+# robots directive — crawlers that do not know it ignore the line.
+# LLM-Index: ${absoluteSiteUrl("/llms.txt")}
 `;
 
 function buildRobotsHeaders() {

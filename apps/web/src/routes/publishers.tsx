@@ -10,18 +10,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/publishers")({
-  head: () => ({
-    meta: [
-      { title: `Pentru publicații — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content:
-          "Cere excluderea publicației tale din agregare sau eliminarea conținutului: formular de opt-out/takedown pentru publisheri.",
-      },
-    ],
-  }),
+  // Footer-linked and indexable, but it was the one such page emitting only a
+  // title and description: no canonical, no share card. staticPageHead gives
+  // it the same head contract as every other static page.
+  head: () =>
+    staticPageHead({
+      title: `Pentru publicații — ${BRAND_NAME}`,
+      description:
+        "Cere excluderea publicației tale din agregare sau eliminarea conținutului: formular de opt-out/takedown pentru publisheri.",
+      path: "/publishers",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Pentru publicații", path: "/publishers" },
+      ],
+    }),
   component: PublishersPage,
 });
 

@@ -364,6 +364,10 @@ const ro = {
   "feed.none": "Nicio știre nouă. Miezul se coace.",
   "feed.loadMore": "Încarcă mai mult",
   "feed.filter.clear": "Elimină filtrul",
+  // The feed's document heading. The interactive feed opens with the search
+  // field by design, so this is the page's only <h1> — rendered for assistive
+  // tech and crawlers, which both need one heading that names the page.
+  "feed.h1": "Știrile zilei din ambele tabere",
   "feed.archive.title": "Arhiva știrilor",
   "feed.archive.page": "Pagina {page}",
   "feed.archive.prev": "Pagina anterioară",
@@ -1172,6 +1176,7 @@ const en: { [K in keyof BaseStrings]: string } = {
   "feed.none": "No new stories yet. The core is still baking.",
   "feed.loadMore": "Load more",
   "feed.filter.clear": "Clear filter",
+  "feed.h1": "Today's news from both camps",
   "feed.archive.title": "News archive",
   "feed.archive.page": "Page {page}",
   "feed.archive.prev": "Previous page",

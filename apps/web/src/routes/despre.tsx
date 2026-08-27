@@ -9,6 +9,10 @@ export const Route = createFileRoute("/despre")({
       title: `Despre noi — ${BRAND_NAME}`,
       description: `Ce este ${BRAND_NAME}, de ce există și cum arătăm aceeași știre din perspective multiple, cu orientarea și fiabilitatea fiecărei surse la vedere.`,
       path: "/despre",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Despre noi", path: "/despre" },
+      ],
     }),
   component: DesprePage,
 });

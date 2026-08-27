@@ -10,20 +10,40 @@ const DEFAULT_SITE_URL = "https://www.miez.news";
 const DEFAULT_LIMIT = 5000;
 const SITEMAP_PAGE_SIZE = 1000;
 
-// Public indexable routes without per-row lastmod.
-const STATIC_PATHS = [
+// Public indexable routes without per-row lastmod. Must stay in sync with the
+// indexable static routes under apps/web/src/routes — a page that is
+// footer-linked and canonical but missing here is discoverable only by
+// crawling the footer. Routes that emit `noindex` (dashboard, admin, profil,
+// salvate, activitate, quiz, unsubscribe) must never be listed.
+export const STATIC_PATHS = [
   // The feed is served at the root (SEO-1); /feed only 308-redirects here, so
   // it must not appear as its own indexable URL.
   "/",
   "/surse",
   "/cum-functioneaza",
+  "/metodologie",
   "/sursele-noastre",
   "/despre",
+  "/finantare",
   "/parteneri",
   "/contact",
+  "/publishers",
+  "/bot",
   "/termeni",
   "/politica-confidentialitate",
 ];
+
+// The crawlable feed archive (/?page=N). "Load more" is a button, so these
+// fixed pages are how a crawler reaches events past the first screen; they
+// have to be enumerated or the deep archive is orphaned. Must match
+// ARCHIVE_PAGE_SIZE in apps/web/src/routes/index.tsx — a mismatch advertises
+// page numbers that 404.
+export const ARCHIVE_PAGE_SIZE = 20;
+// Hard ceiling: getPublishedEventsArchivePage refuses any page beyond
+// ARCHIVE_MAX_SCAN / pageSize (4000 / 20) and returns an empty page, which the
+// web loader turns into a 404. Advertising past that would put dead URLs in
+// the sitemap, so this must never exceed it.
+export const MAX_ARCHIVE_PAGES = 200;
 
 function escapeXml(value: string) {
   return value
@@ -141,8 +161,21 @@ export const rebuildPublicSitemapSnapshot = internalMutation({
             .order("desc")
             .take(Math.min(sourceLimit, SITEMAP_PAGE_SIZE));
 
+    // Counted from rows *scanned*, not from `events`: the archive lists every
+    // preview row, while `events` is already narrowed by the thin-page gate.
+    // Using the gated count would advertise fewer pages than the archive
+    // actually serves. readRows stops early once the event cap is hit, so this
+    // stays a lower bound — it can under-advertise, never point at a 404.
+    const archivePageCount = Math.min(
+      Math.ceil(readRows / ARCHIVE_PAGE_SIZE),
+      MAX_ARCHIVE_PAGES,
+    );
+
     const entries = [
       ...STATIC_PATHS.map((path) => toSitemapUrl(siteUrl, path)),
+      ...Array.from({ length: archivePageCount }, (_, index) =>
+        toSitemapUrl(siteUrl, `/?page=${index + 1}`),
+      ),
       ...events.map((event) =>
         toSitemapUrl(siteUrl, `/event/${event.slug}`, event.lastUpdatedAt),
       ),

@@ -29,10 +29,13 @@ import {
   type StringKey,
 } from "@/lib/i18n/strings";
 import {
+  ORGANIZATION_ID,
   SITE,
   absoluteSiteUrl,
+  breadcrumbJsonLd,
   deriveShortTitle,
   jsonLdScript,
+  organizationEntity,
   truncateAtWordBoundary,
 } from "@/lib/seo";
 
@@ -124,6 +127,27 @@ export const Route = createFileRoute("/event/$slug")({
       !!loaderData?.event &&
       !loaderData.event.perspectiveSummaries?.neutral?.trim();
 
+    const eventUrl = absoluteSiteUrl(`/event/${params.slug}`);
+    const fullSummary = rawDescription?.replace(/\s+/g, " ").trim();
+    // Cap at 25: the largest clusters carry 60+ articles and the whole block
+    // has to fit in the SSR <head> without bloating first byte.
+    const sourceArticles = (loaderData?.articles ?? [])
+      .slice(0, 25)
+      .filter((article) => Boolean(article.canonicalUrl))
+      .map((article) => ({
+        "@type": "NewsArticle",
+        url: article.canonicalUrl,
+        ...(article.title ? { headline: article.title } : {}),
+        ...(article.source?.name
+          ? {
+              publisher: {
+                "@type": "NewsMediaOrganization",
+                name: article.source.name,
+              },
+            }
+          : {}),
+      }));
+
     return {
       meta: [
         { title },
@@ -182,6 +206,13 @@ export const Route = createFileRoute("/event/$slug")({
                 content: loaderData?.event?.imageAlt ?? title,
               },
               { name: "twitter:image", content: imageUrl },
+              // Must be re-declared here: head tags merge deepest-route-first,
+              // so without it the event would inherit the root's default
+              // share-card alt while showing the publisher's photo.
+              {
+                name: "twitter:image:alt",
+                content: loaderData?.event?.imageAlt ?? title,
+              },
             ]
           : []),
       ],
@@ -204,13 +235,20 @@ export const Route = createFileRoute("/event/$slug")({
                 },
               ],
               "@type": "NewsArticle",
+              "@id": `${eventUrl}#article`,
               headline: loaderData.event.title,
               ...(description ? { description } : {}),
+              // The meta description is capped at ~155 chars for the SERP
+              // snippet; `abstract` carries the untruncated summary so an
+              // answer engine quoting this page gets the whole thing rather
+              // than a sentence ending in an ellipsis. Same text the page
+              // renders in the "core" tab, never a paraphrase.
+              ...(fullSummary ? { abstract: fullSummary } : {}),
               // Event summaries are authored in Romanian regardless of the UI
               // locale, so this marks the article-content language, not chrome.
               inLanguage: "ro",
-              url: absoluteSiteUrl(`/event/${params.slug}`),
-              mainEntityOfPage: absoluteSiteUrl(`/event/${params.slug}`),
+              url: eventUrl,
+              mainEntityOfPage: eventUrl,
               datePublished: new Date(
                 loaderData.event.firstPublishedAt,
               ).toISOString(),
@@ -223,26 +261,38 @@ export const Route = createFileRoute("/event/$slug")({
                 "AI-generated summary; not independently human-reviewed",
               digitalSourceType:
                 "https://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
-              author: {
-                "@type": "Organization",
-                name: SITE.name,
-                url: SITE.url,
-              },
-              publisher: {
-                "@type": "NewsMediaOrganization",
-                name: SITE.name,
-                url: SITE.url,
-                // Raster logo (512×512) — Google rejects an SVG here (SEO-7).
-                logo: absoluteSiteUrl("/logo-mark.png"),
-              },
+              author: { "@id": ORGANIZATION_ID },
+              // Same node as the site-wide Organization (@id merge) instead of
+              // a per-page duplicate, so publisher signals accumulate on one
+              // entity.
+              publisher: organizationEntity(),
               ...(loaderData.event.imageUrl
                 ? { image: [loaderData.event.imageUrl] }
                 : {}),
-              isBasedOn: (loaderData.articles ?? [])
-                .slice(0, 25)
-                .map((article) => article.canonicalUrl)
-                .filter(Boolean),
+              // The sources the summary is derived from, as real nodes rather
+              // than bare URLs: an answer engine reading this page can credit
+              // the originating publication by name without re-crawling.
+              ...(sourceArticles.length > 0
+                ? {
+                    isBasedOn: sourceArticles,
+                    // `citation` is the property Google and the LLM crawlers
+                    // actually read for "where did this come from"; isBasedOn
+                    // is the derivation relation. Both are correct here.
+                    citation: sourceArticles,
+                  }
+                : {}),
             }),
+            // Places the event under the feed root so the URL is not the only
+            // hierarchy signal a crawler has.
+            jsonLdScript(
+              breadcrumbJsonLd([
+                { name: SITE.name, path: "/" },
+                {
+                  name: shortTitle ?? getString(locale, "event.metaTitle"),
+                  path: `/event/${params.slug}`,
+                },
+              ]),
+            ),
           ]
         : [],
     };

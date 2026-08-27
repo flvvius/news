@@ -10,6 +10,10 @@ export const Route = createFileRoute("/contact")({
       title: `Contact — ${BRAND_NAME}`,
       description: `Cum poți contacta echipa ${BRAND_NAME}: întrebări, corecții, cereri legate de date personale sau propuneri de colaborare.`,
       path: "/contact",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Contact", path: "/contact" },
+      ],
     }),
   component: ContactPage,
 });

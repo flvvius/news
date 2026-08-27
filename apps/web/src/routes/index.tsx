@@ -52,9 +52,12 @@ import { cn } from "@/lib/utils";
 import {
   SITE,
   absoluteSiteUrl,
+  breadcrumbJsonLd,
+  defaultShareImageMeta,
   jsonLdScript,
   organizationJsonLd,
   softwareApplicationJsonLd,
+  websiteJsonLd,
 } from "@/lib/seo";
 
 // The event shape EventCard consumes. Loader/query results feed straight
@@ -115,12 +118,19 @@ export const Route = createFileRoute("/")({
       return { initialEvents: [] };
     }
   },
-  head: ({ matches, loaderData }) => {
+  head: ({ match, matches, loaderData }) => {
     const locale = getLocaleFromMatches(matches);
-    const archivePage =
+    // Sourced from the validated search param, not from loaderData: the loader
+    // returns `{ archive: null }` when Convex is unreachable, and reading the
+    // page number from there made a transient backend failure serve /?page=N
+    // with the *root feed's* title and a canonical pointing at "/" — two URLs
+    // claiming to be the same page. The URL is the identity; the head must
+    // describe it whether or not the data arrived.
+    const archivePage = match.search.page ?? null;
+    const archiveHasMore =
       loaderData && "archive" in loaderData
-        ? (loaderData.archive?.page ?? null)
-        : null;
+        ? Boolean(loaderData.archive?.hasMore)
+        : false;
     const baseTitle = getString(locale, "feed.meta.title");
     const title = archivePage
       ? `${baseTitle} — ${getString(locale, "feed.archive.page").replace("{page}", String(archivePage))}`
@@ -139,21 +149,50 @@ export const Route = createFileRoute("/")({
         { property: "og:site_name", content: SITE.name },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
-        { property: "og:image", content: SITE.ogImage },
-        { property: "og:image:alt", content: SITE.ogImageAlt },
-        { name: "twitter:image", content: SITE.ogImage },
+        ...defaultShareImageMeta({ includeType: true }),
         { property: "og:url", content: absoluteSiteUrl(canonicalPath) },
         { property: "og:type", content: "website" },
         { name: "twitter:card", content: "summary_large_image" },
         { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
       ],
-      links: [{ rel: "canonical", href: absoluteSiteUrl(canonicalPath) }],
-      // Org + app schema only on the landing page (the feed root), not on
-      // every paginated archive page.
+      links: [
+        { rel: "canonical", href: absoluteSiteUrl(canonicalPath) },
+        // rel=prev/next is no longer an indexing signal for Google, but Bing
+        // and several AI crawlers still use it to walk a paginated series in
+        // order instead of treating each page as an island.
+        ...(archivePage && archivePage > 1
+          ? [
+              {
+                rel: "prev",
+                href: absoluteSiteUrl(`/?page=${archivePage - 1}`),
+              },
+            ]
+          : []),
+        ...(archivePage && archiveHasMore
+          ? [{ rel: "next", href: absoluteSiteUrl(`/?page=${archivePage + 1}`) }]
+          : []),
+      ],
+      // Org + site + app schema only on the landing page (the feed root);
+      // archive pages get a breadcrumb back to it instead, so the series is
+      // not a set of unattached URLs.
       scripts: archivePage
-        ? []
+        ? [
+            jsonLdScript(
+              breadcrumbJsonLd([
+                { name: SITE.name, path: "/" },
+                {
+                  name: `${getString(locale, "feed.archive.title")} — ${getString(
+                    locale,
+                    "feed.archive.page",
+                  ).replace("{page}", String(archivePage))}`,
+                  path: `/?page=${archivePage}`,
+                },
+              ]),
+            ),
+          ]
         : [
             jsonLdScript(organizationJsonLd()),
+            jsonLdScript(websiteJsonLd(description)),
             jsonLdScript(softwareApplicationJsonLd(description)),
           ],
     };
@@ -397,7 +436,9 @@ function FeedArchive() {
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <div className="flex flex-col gap-6">
           <header className="flex flex-col gap-2 border-b border-border pb-4">
-            <SectionTitle>{t("feed.archive.title")}</SectionTitle>
+            {/* The archive's own page heading, so every URL in the series has
+                exactly one <h1> naming it. */}
+            <SectionTitle as="h1">{t("feed.archive.title")}</SectionTitle>
             <p className="text-sm text-muted-foreground">
               {t("feed.archive.page").replace("{page}", String(archive.page))}
             </p>
@@ -645,6 +686,11 @@ function FeedContent() {
           {/* Feed controls: flat, in-flow — no floating glass, no
               scroll-linked motion (BIV-807, native DESIGN_LOG). */}
           <header className="flex flex-col gap-3 border-b border-border pb-4">
+            {/* The feed opens on the search field by design — there is no
+                visible page title to promote — but a document with no <h1> is
+                both an accessibility failure and a page a crawler cannot name.
+                Visually hidden rather than invented chrome. */}
+            <h1 className="sr-only">{t("feed.h1")}</h1>
             <div className="relative">
               <Input
                 ref={searchInputRef}
@@ -871,6 +917,22 @@ function FeedContent() {
                 </p>
               )}
           </div>
+
+          {/* The archive is the only crawlable path to events past the first
+              page: "load more" is a button, and Googlebot does not click. One
+              real anchor here connects the whole /?page=N series to the root
+              instead of leaving it reachable only from the sitemap. */}
+          {!isSearching && (
+            <p className="pt-2 text-sm">
+              <Link
+                to="/"
+                search={{ page: 1 }}
+                className="text-muted-foreground underline hover:text-foreground"
+              >
+                {t("feed.archive.browse")}
+              </Link>
+            </p>
+          )}
 
           {!isSearching && (canLoadMore || isLoadingMore) && (
             <div className="flex flex-col items-center gap-3 py-2">

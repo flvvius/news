@@ -2,18 +2,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
+import { staticPageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/bot")({
-  head: () => ({
-    meta: [
-      { title: `MiezBot — ${BRAND_NAME}` },
-      {
-        name: "description",
-        content:
-          "Ce face crawler-ul MiezBot, cum se identifică și cum poate o publicație să refuze accesul (robots.txt, TDMRep, formular).",
-      },
-    ],
-  }),
+  // Named in MiezBot's own User-Agent string, so publishers reach it directly
+  // from their access logs — it needs a canonical and a share card like any
+  // other public page.
+  head: () =>
+    staticPageHead({
+      title: `MiezBot — ${BRAND_NAME}`,
+      description:
+        "Ce face crawler-ul MiezBot, cum se identifică și cum poate o publicație să refuze accesul (robots.txt, TDMRep, formular).",
+      path: "/bot",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "MiezBot", path: "/bot" },
+      ],
+    }),
   component: BotPage,
 });
 

@@ -9,6 +9,10 @@ export const Route = createFileRoute("/finantare")({
       title: `Cine finanțează ${BRAND_NAME} — ${BRAND_NAME}`,
       description: `De unde vin banii din spatele ${BRAND_NAME} și cum ne asigurăm că finanțarea nu influențează pozițiile afișate.`,
       path: "/finantare",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: `Cine finanțează ${BRAND_NAME}`, path: "/finantare" },
+      ],
     }),
   component: FinantarePage,
 });

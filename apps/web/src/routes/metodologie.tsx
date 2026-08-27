@@ -9,6 +9,10 @@ export const Route = createFileRoute("/metodologie")({
       title: `Metodologie — ${BRAND_NAME}`,
       description: `Cum așază ${BRAND_NAME} sursele pe axa reformist–suveranist: la nivel de publicație, nu de articol, separat de scorul de fiabilitate, și cum poate fi contestată o poziționare.`,
       path: "/metodologie",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Metodologie", path: "/metodologie" },
+      ],
     }),
   component: MetodologiePage,
 });

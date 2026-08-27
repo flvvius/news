@@ -11,7 +11,7 @@ import { BRAND_NAME } from "@/lib/i18n/strings";
 import { DesprePage } from "./despre";
 import { ContactPage } from "./contact";
 import { ParteneriPage } from "./parteneri";
-import { CumFunctioneazaPage } from "./cum-functioneaza";
+import { CumFunctioneazaPage, FAQ_ENTRIES } from "./cum-functioneaza";
 import { SurseleNoastrePage } from "./sursele-noastre";
 import { PoliticaConfidentialitatePage } from "./politica-confidentialitate";
 import { TermeniPage } from "./termeni";
@@ -78,4 +78,28 @@ describe("footer pages (BIV-803)", () => {
       );
     },
   );
+});
+
+// The FAQPage structured data on /cum-functioneaza is built from FAQ_ENTRIES.
+// Google requires each answer to appear verbatim in the page's visible text,
+// and a rich result built on text that is not there is a manual-action risk —
+// so the schema and the render must not be allowed to drift apart.
+describe("/cum-functioneaza FAQ structured data", () => {
+  test("every published question and answer is visible on the page", () => {
+    const text = renderPageText(CumFunctioneazaPage);
+    for (const entry of FAQ_ENTRIES) {
+      expect(text, `missing question: ${entry.question}`).toContain(
+        entry.question,
+      );
+      expect(text, `missing answer for: ${entry.question}`).toContain(
+        entry.answer,
+      );
+    }
+  });
+
+  test("publishes a non-empty set of entries with no duplicate questions", () => {
+    expect(FAQ_ENTRIES.length).toBeGreaterThan(0);
+    const questions = FAQ_ENTRIES.map((entry) => entry.question);
+    expect(new Set(questions).size).toBe(questions.length);
+  });
 });

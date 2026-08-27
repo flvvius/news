@@ -9,6 +9,10 @@ export const Route = createFileRoute("/parteneri")({
       title: `Parteneri — ${BRAND_NAME}`,
       description: `Colaborări ${BRAND_NAME}: publicații, organizații de educație media și cercetători interesați de pluralismul surselor de știri.`,
       path: "/parteneri",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Parteneri", path: "/parteneri" },
+      ],
     }),
   component: ParteneriPage,
 });

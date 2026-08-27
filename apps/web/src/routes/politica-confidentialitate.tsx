@@ -10,6 +10,10 @@ export const Route = createFileRoute("/politica-confidentialitate")({
       title: `Politica de confidențialitate — ${BRAND_NAME}`,
       description: `Ce date colectează ${BRAND_NAME}, cu ce scop, cine le procesează și ce drepturi ai asupra lor.`,
       path: "/politica-confidentialitate",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Politica de confidențialitate", path: "/politica-confidentialitate" },
+      ],
     }),
   component: PoliticaConfidentialitatePage,
 });

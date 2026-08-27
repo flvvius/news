@@ -9,6 +9,10 @@ export const Route = createFileRoute("/termeni")({
       title: `Termeni și condiții — ${BRAND_NAME}`,
       description: `Condițiile de utilizare a platformei ${BRAND_NAME}: ce oferă serviciul, ce reguli se aplică și care sunt limitele răspunderii.`,
       path: "/termeni",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Termeni și condiții", path: "/termeni" },
+      ],
     }),
   component: TermeniPage,
 });

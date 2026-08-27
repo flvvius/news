@@ -2,11 +2,53 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@news-app/backend/convex/_generated/api";
 import { StaticPage, StaticSection } from "@/components/layout/StaticPage";
 import { BRAND_NAME } from "@/lib/i18n/strings";
-import { staticPageHead } from "@/lib/seo";
+import { faqPageJsonLd, staticPageHead } from "@/lib/seo";
 
 // Manually bumped on every substantive edit of this page — a trust document
 // should say when it was last reviewed. Update alongside content changes.
 const LAST_REVIEWED = "10 iulie 2026";
+
+/**
+ * The Q&A pairs this page publishes as FAQPage structured data.
+ *
+ * Google requires a FAQPage answer to appear verbatim in the page's visible
+ * text, so these are not a parallel copy: the sections below render
+ * `question` as their heading and `answer` as their opening paragraph, and
+ * the schema is built from the same constant. Only sections whose answer is a
+ * single plain paragraph belong here — a paragraph carrying links or
+ * interpolated counts cannot be reproduced as a flat string without drifting
+ * from what is rendered, so those sections stay out of the schema rather than
+ * ship an approximation.
+ */
+export const FAQ_ENTRIES = [
+  {
+    question: "Cum sunt grupate articolele pe evenimente?",
+    answer:
+      "Articolele care relatează același fapt — aceeași decizie, același incident, aceeași declarație — sunt grupate automat într-un „eveniment”, pe baza similarității semantice a titlurilor și fragmentelor. Așa poți vedea dintr-o privire câte surse acoperă o poveste și cum diferă relatările între ele.",
+  },
+  {
+    question: "Cum este evaluată fiabilitatea — separat de orientare?",
+    answer:
+      "Pe lângă orientare, fiecare sursă primește un scor de fiabilitate de la 1 la 10: cât de consecvent publică informație factuală verificabilă. Cele două scoruri sunt independente — o publicație poate fi ferm orientată și totuși riguroasă cu faptele, sau „neutră” în ton și neglijentă cu ele. Sursele cu istoric documentat de dezinformare primesc scoruri de fiabilitate scăzute.",
+  },
+  {
+    question: "Cum sunt generate rezumatele?",
+    answer:
+      "Pentru fiecare eveniment, sistemul generează automat un rezumat neutru al nucleului factual și, unde acoperirea o permite, câte un rezumat al formulării fiecărei părți. Rezumatele sunt produse de un model de limbaj instruit să folosească exclusiv materialul din articolele grupate, să atribuie afirmațiile surselor și să semnaleze dezacordurile în loc să aleagă în tăcere o variantă.",
+  },
+  {
+    question: "Cum este ordonat feedul?",
+    answer:
+      "Fila „În tendințe” ordonează evenimentele după cât de multe surse și articole le acoperă, combinat cu recența; fila „Recente” arată strict cele mai noi actualizări. Nu ordonăm după emoție, engagement sau apartenență politică.",
+  },
+] as const;
+
+/** Look up an entry by its question so a renamed heading fails loudly. */
+function faq(question: (typeof FAQ_ENTRIES)[number]["question"]) {
+  const entry = FAQ_ENTRIES.find((candidate) => candidate.question === question);
+  if (!entry) throw new Error(`Unknown FAQ entry: ${question}`);
+  return entry;
+}
 
 export const Route = createFileRoute("/cum-functioneaza")({
   loader: async ({ context }) => {
@@ -25,6 +67,14 @@ export const Route = createFileRoute("/cum-functioneaza")({
       title: `Cum funcționează — ${BRAND_NAME}`,
       description: `Cum colectează ${BRAND_NAME} știrile, cum grupează articolele pe evenimente și cum atribuie scoruri de orientare și fiabilitate surselor.`,
       path: "/cum-functioneaza",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Cum funcționează", path: "/cum-functioneaza" },
+      ],
+      // The page is already written as questions with answers; publishing it
+      // as FAQPage is what lets an answer engine quote "how does Miez decide
+      // a source's leaning?" with attribution instead of paraphrasing it.
+      jsonLd: [faqPageJsonLd(FAQ_ENTRIES, "/cum-functioneaza")],
     }),
   component: CumFunctioneazaRoute,
 });
@@ -69,14 +119,8 @@ export function CumFunctioneazaPage({
         </p>
       </StaticSection>
 
-      <StaticSection heading="Cum sunt grupate articolele pe evenimente?">
-        <p>
-          Articolele care relatează același fapt — aceeași decizie, același
-          incident, aceeași declarație — sunt grupate automat într-un
-          „eveniment”, pe baza similarității semantice a titlurilor și
-          fragmentelor. Așa poți vedea dintr-o privire câte surse acoperă o
-          poveste și cum diferă relatările între ele.
-        </p>
+      <StaticSection heading={faq("Cum sunt grupate articolele pe evenimente?").question}>
+        <p>{faq("Cum sunt grupate articolele pe evenimente?").answer}</p>
       </StaticSection>
 
       <StaticSection
@@ -115,27 +159,19 @@ export function CumFunctioneazaPage({
         </p>
       </StaticSection>
 
-      <StaticSection heading="Cum este evaluată fiabilitatea — separat de orientare?">
+      <StaticSection
+        heading={faq("Cum este evaluată fiabilitatea — separat de orientare?").question}
+      >
         <p>
-          Pe lângă orientare, fiecare sursă primește un scor de{" "}
-          <strong>fiabilitate</strong> de la 1 la 10: cât de consecvent
-          publică informație factuală verificabilă. Cele două scoruri sunt
-          independente — o publicație poate fi ferm orientată și totuși
-          riguroasă cu faptele, sau „neutră” în ton și neglijentă cu ele.
-          Sursele cu istoric documentat de dezinformare primesc scoruri de
-          fiabilitate scăzute.
+          {faq("Cum este evaluată fiabilitatea — separat de orientare?").answer}
         </p>
       </StaticSection>
 
-      <StaticSection id="rezumate-ai" heading="Cum sunt generate rezumatele?">
-        <p>
-          Pentru fiecare eveniment, sistemul generează automat un rezumat
-          neutru al nucleului factual și, unde acoperirea o permite, câte un
-          rezumat al formulării fiecărei părți. Rezumatele sunt produse de un
-          model de limbaj instruit să folosească exclusiv materialul din
-          articolele grupate, să atribuie afirmațiile surselor și să
-          semnaleze dezacordurile în loc să aleagă în tăcere o variantă.
-        </p>
+      <StaticSection
+        id="rezumate-ai"
+        heading={faq("Cum sunt generate rezumatele?").question}
+      >
+        <p>{faq("Cum sunt generate rezumatele?").answer}</p>
         <p>
           <strong>Ce anume este generat de AI:</strong> rezumatul neutru,
           rezumatele celor două cadrări (reformistă și suveranistă) și
@@ -164,13 +200,8 @@ export function CumFunctioneazaPage({
         </p>
       </StaticSection>
 
-      <StaticSection heading="Cum este ordonat feedul?">
-        <p>
-          Fila „În tendințe” ordonează evenimentele după cât de multe surse și
-          articole le acoperă, combinat cu recența; fila „Recente” arată strict
-          cele mai noi actualizări. Nu ordonăm după emoție, engagement sau
-          apartenență politică.
-        </p>
+      <StaticSection heading={faq("Cum este ordonat feedul?").question}>
+        <p>{faq("Cum este ordonat feedul?").answer}</p>
       </StaticSection>
 
       <StaticSection heading={`Ce nu face ${BRAND_NAME}?`}>

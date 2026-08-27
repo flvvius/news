@@ -9,6 +9,10 @@ export const Route = createFileRoute("/sursele-noastre")({
       title: `Sursele noastre — ${BRAND_NAME}`,
       description: `Cum alege ${BRAND_NAME} publicațiile monitorizate și cum sunt atribuite scorurile de orientare și fiabilitate pentru fiecare sursă.`,
       path: "/sursele-noastre",
+      breadcrumb: [
+        { name: BRAND_NAME, path: "/" },
+        { name: "Sursele noastre", path: "/sursele-noastre" },
+      ],
     }),
   component: SurseleNoastrePage,
 });

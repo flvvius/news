@@ -6,7 +6,14 @@ import BiasIndicator from "@/components/bias-indicator";
 import { getLocaleFromMatches } from "@/lib/i18n/getLocaleFromMatches";
 import { useT } from "@/lib/i18n/LocaleContext";
 import { getString } from "@/lib/i18n/strings";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  SITE,
+  absoluteSiteUrl,
+  breadcrumbJsonLd,
+  defaultShareImageMeta,
+  itemListJsonLd,
+  jsonLdScript,
+} from "@/lib/seo";
 
 export const Route = createFileRoute("/surse")({
   loader: async ({ context }) => {
@@ -19,10 +26,21 @@ export const Route = createFileRoute("/surse")({
       return null;
     }
   },
-  head: ({ matches }) => {
+  head: ({ matches, loaderData }) => {
     const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "sources.index.metaTitle");
     const description = getString(locale, "sources.index.metaDescription");
+
+    // "Which Romanian publications does Miez track?" is exactly the kind of
+    // question an answer engine gets asked, and the answer is this list.
+    // Enumerating it in ItemList means the set is readable without parsing
+    // the rendered markup.
+    const sourceItems = (loaderData ?? [])
+      .filter((source) => Boolean(source?.name))
+      .map((source) => ({
+        name: source.name,
+        path: `/source/${source._id}`,
+      }));
 
     return {
       meta: [
@@ -33,13 +51,32 @@ export const Route = createFileRoute("/surse")({
         { property: "og:site_name", content: SITE.name },
         { property: "og:type", content: "website" },
         { property: "og:url", content: absoluteSiteUrl("/surse") },
-        { property: "og:image", content: SITE.ogImage },
+        { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
+        ...defaultShareImageMeta({ includeType: true }),
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
-        { name: "twitter:image", content: SITE.ogImage },
       ],
       links: [{ rel: "canonical", href: absoluteSiteUrl("/surse") }],
+      scripts: [
+        jsonLdScript(
+          breadcrumbJsonLd([
+            { name: SITE.name, path: "/" },
+            { name: getString(locale, "sources.index.title"), path: "/surse" },
+          ]),
+        ),
+        ...(sourceItems.length > 0
+          ? [
+              jsonLdScript(
+                itemListJsonLd({
+                  name: getString(locale, "sources.index.title"),
+                  path: "/surse",
+                  items: sourceItems,
+                }),
+              ),
+            ]
+          : []),
+      ],
     };
   },
   component: SourcesIndexPage,

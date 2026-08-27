@@ -1,6 +1,11 @@
 import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
-import { SITE, absoluteSiteUrl } from "@/lib/seo";
+import {
+  INDEXABLE_ROBOTS,
+  SITE,
+  absoluteSiteUrl,
+  defaultShareImageMeta,
+} from "@/lib/seo";
 import { Footer } from "@/components/layout/Footer";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
@@ -34,6 +39,17 @@ const fetchAuth = createServerFn({ method: "GET" }).handler(async () => {
   const token = await getToken();
   return { token };
 });
+
+/**
+ * Browser-chrome colour per theme: the light/dark `--background` tokens from
+ * index.css. Rendered as raw <head> children rather than through the route's
+ * `meta`, because HeadContent keys meta by name only and would keep just one
+ * of the two.
+ */
+const THEME_COLOR_META = [
+  { media: "(prefers-color-scheme: light)", content: "oklch(0.99 0.002 80)" },
+  { media: "(prefers-color-scheme: dark)", content: "oklch(0.14 0.008 270)" },
+] as const;
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -83,6 +99,19 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     const locale = getLocaleFromMatches(matches);
     const title = getString(locale, "seo.siteTitle");
     const description = getString(locale, "seo.siteDescription");
+    // Opening the Convex connection is on the critical path of every page (the
+    // live subscription fires the moment React hydrates), so warm the TLS
+    // handshake from the document head instead of paying for it after the
+    // bundle parses. Skipped when the URL is unset/malformed at build time.
+    const convexOrigin = (() => {
+      const raw = import.meta.env.VITE_CONVEX_URL;
+      if (!raw) return null;
+      try {
+        return new URL(raw).origin;
+      } catch {
+        return null;
+      }
+    })();
 
     return {
       meta: [
@@ -100,31 +129,40 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         { property: "og:type", content: "website" },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
-        { property: "og:image", content: SITE.ogImage },
-        { property: "og:image:type", content: SITE.ogImageType },
-        { property: "og:image:width", content: String(SITE.ogImageWidth) },
-        { property: "og:image:height", content: String(SITE.ogImageHeight) },
-        { property: "og:image:alt", content: title },
+        ...defaultShareImageMeta(),
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
-        { name: "twitter:image", content: SITE.ogImage },
-        { name: "twitter:image:alt", content: title },
-        // Browser chrome follows the active theme: light/dark `--background`
-        // tokens (index.css) rather than a single hard-coded colour.
-        {
-          name: "theme-color",
-          media: "(prefers-color-scheme: light)",
-          content: "oklch(0.99 0.002 80)",
-        },
-        {
-          name: "theme-color",
-          media: "(prefers-color-scheme: dark)",
-          content: "oklch(0.14 0.008 270)",
-        },
+        { property: "og:locale", content: locale === "ro" ? "ro_RO" : "en_US" },
+        // Site-wide indexing default. Bare `index, follow` is already the
+        // implicit default; the value here exists for the preview limits —
+        // `max-image-preview:large` is what makes an event eligible for the
+        // large-image treatment in Google News/Discover, and `max-snippet:-1`
+        // lets answer engines quote a full summary instead of ~160 chars.
+        // Routes that must stay unindexed emit their own `robots` meta, which
+        // TanStack dedupes by name so the last one (theirs) wins.
+        { name: "robots", content: INDEXABLE_ROBOTS },
+        // NOTE: the two media-scoped `theme-color` tags are NOT declared here.
+        // HeadContent dedupes meta by `name`/`property` alone and ignores
+        // `media`, so declaring both collapsed them to one — the light variant
+        // was dropped from every page and light-mode browser chrome rendered
+        // with the dark background. They are emitted directly in <head> from
+        // RootDocument instead; see THEME_COLOR_META.
       ],
       links: [
         { rel: "stylesheet", href: appCss },
+        ...(convexOrigin
+          ? [
+              {
+                rel: "preconnect",
+                href: convexOrigin,
+                // `as const`: inside a conditional spread TS widens the
+                // literal to `string`, which does not satisfy `CrossOrigin`.
+                crossOrigin: "anonymous" as const,
+              },
+              { rel: "dns-prefetch", href: convexOrigin },
+            ]
+          : []),
         { rel: "manifest", href: "/manifest.webmanifest" },
         // Site-wide RSS discovery (SEO-3): feed readers and crawlers pick this
         // up from any page.
@@ -133,6 +171,14 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
           type: "application/rss+xml",
           title: SITE.name,
           href: absoluteSiteUrl("/rss.xml"),
+        },
+        // AEO: llmstxt.org index, discoverable from any page rather than only
+        // by crawlers that guess /llms.txt.
+        {
+          rel: "alternate",
+          type: "text/plain",
+          title: `${SITE.name} llms.txt`,
+          href: absoluteSiteUrl("/llms.txt"),
         },
         // SVG mark first (modern browsers); PNG kept as the legacy fallback.
         { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -263,6 +309,14 @@ function RootDocument() {
               dangerouslySetInnerHTML={{ __html: themeNoFlashScript }}
               suppressHydrationWarning
             />
+            {THEME_COLOR_META.map((entry) => (
+              <meta
+                key={entry.media}
+                name="theme-color"
+                media={entry.media}
+                content={entry.content}
+              />
+            ))}
             <HeadContent />
           </head>
           <body className="min-h-svh flex flex-col antialiased">

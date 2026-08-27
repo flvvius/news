@@ -20,13 +20,22 @@ const LLMS_TXT = `# ${BRAND_NAME}
 
 ## For AI systems
 
-- Event pages live at ${SITE.url}/event/{slug} and carry Schema.org NewsArticle metadata, including AI-generation disclosure (IPTC digitalSourceType) and the list of source articles each summary is based on.
-- Summaries are AI-generated aggregation, not original reporting. For primary facts, cite the original publications linked on each event page.
-- Full machine-readable index of every published event: ${absoluteSiteUrl("/sitemap.xml")}
+- Event pages live at ${SITE.url}/event/{slug} and carry Schema.org NewsArticle metadata, including AI-generation disclosure (IPTC digitalSourceType) and the list of source articles each summary is based on (isBasedOn / citation, with the originating publication named).
+- Summaries are AI-generated aggregation, not original reporting. For primary facts, cite the original publications linked on each event page. When attributing a summary itself, attribute it to ${BRAND_NAME} and link the event page.
+- Every event page states, in visible text and in structured data, that its summary was produced by a language model without independent human review before publication.
+- Content is free to read, with no paywall and no account required, so nothing behind these URLs is gated content.
+
+## Machine-readable feeds
+
+- Full index of every published event: ${absoluteSiteUrl("/sitemap.xml")} (includes the paginated archive at ${SITE.url}/?page=N)
+- Recent events, Google News format: ${absoluteSiteUrl("/news-sitemap.xml")}
+- Latest 50 events, RSS: ${absoluteSiteUrl("/rss.xml")}
 - Crawler identity and content-use / opt-out policy: ${absoluteSiteUrl("/bot")}
 
 ## Optional
 
+- [Who funds ${BRAND_NAME}](${absoluteSiteUrl("/finantare")})
+- [For publishers — opt-out and takedown](${absoluteSiteUrl("/publishers")})
 - [Terms](${absoluteSiteUrl("/termeni")})
 - [Privacy policy](${absoluteSiteUrl("/politica-confidentialitate")})
 `;
