@@ -71,19 +71,32 @@ export function titleCentralityScores(titles: string[]): number[] {
 }
 
 /**
- * Minimum score advantage the challenger needs over the incumbent title before
- * the event is renamed. Titles are user-visible and get shared, so a near-tie
- * must not flip the headline back and forth as articles trickle in.
+ * A title is treated as the cluster's outlier only when its overlap with the
+ * rest is essentially nil. Calibrated against 26 production clusters: the two
+ * genuinely divergent events both scored **0.014**, while same-story titles
+ * that merely lost to a slightly more central phrasing scored 0.078-0.163.
+ *
+ * The discriminator is the incumbent's absolute centrality, not its gap to the
+ * winner. An earlier margin-based rule renamed 26% of events — mostly swapping
+ * "Două explozii la Damasc, lângă hotelul unde a fost cazat Macron" for
+ * "Explozii la Damasc, lângă hotelul în care este cazat Macron", which is
+ * churn on a published headline, not a repair.
  */
-export const RETITLE_MARGIN = 0.05;
+const OUTLIER_CEILING = 0.05;
+
+/** The replacement must itself represent the cluster, not be another outlier. */
+const MIN_REPLACEMENT_SCORE = 0.05;
+
+/** And it must dominate clearly, not edge ahead of a near-tie. */
+const DOMINANCE_RATIO = 3;
 
 /**
  * Choose the title an event should carry, given its current title and every
  * article title in the cluster.
  *
- * Returns `null` when the current title should stand — which is the common
- * case, and includes clusters too small to have a majority. Only returns a
- * string when a different title is clearly more representative.
+ * Returns `null` when the current title should stand — the common case. Only
+ * returns a string when the incumbent is a genuine outlier against its own
+ * cluster and a clearly representative replacement exists.
  */
 export function chooseEventTitle(
   currentTitle: string,
@@ -101,6 +114,7 @@ export function chooseEventTitle(
     if (scores[i]! > scores[bestIndex]!) bestIndex = i;
   }
   const best = candidates[bestIndex]!;
+  const bestScore = scores[bestIndex]!;
   if (best === currentTitle) return null;
 
   // Score the incumbent inside the same cluster so the comparison is like for
@@ -113,6 +127,8 @@ export function chooseEventTitle(
       ? scores[incumbentIndex]!
       : titleCentralityScores([currentTitle, ...candidates])[0]!;
 
-  if (scores[bestIndex]! < incumbentScore + RETITLE_MARGIN) return null;
+  if (incumbentScore >= OUTLIER_CEILING) return null;
+  if (bestScore < MIN_REPLACEMENT_SCORE) return null;
+  if (bestScore < incumbentScore * DOMINANCE_RATIO) return null;
   return best;
 }

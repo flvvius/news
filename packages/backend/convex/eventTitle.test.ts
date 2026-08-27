@@ -61,6 +61,19 @@ describe("chooseEventTitle (BIV: divergent title vs summary)", () => {
     expect(chooseEventTitle("A", [])).toBeNull();
   });
 
+  test("a same-story title that merely loses is left alone (no churn)", () => {
+    // Calibrated from production: these two headline the same Damascus story.
+    // The margin-based rule swapped them, which is churn on a published
+    // headline. The incumbent is central to its cluster, so it must stand.
+    const damascus = [
+      "Două explozii la Damasc, lângă hotelul unde a fost cazat președintele Franței, Emmanuel Macron",
+      "Explozii la Damasc, lângă hotelul în care este cazat Emmanuel Macron, aflat în vizită",
+      "Damasc: explozii puternice în apropierea hotelului lui Macron",
+      "Macron, în vizită la Damasc: explozii raportate lângă hotelul său",
+    ];
+    expect(chooseEventTitle(damascus[0]!, damascus)).toBeNull();
+  });
+
   test("near-ties do not flip the headline", () => {
     // Three unrelated titles: nothing is meaningfully central, so the margin
     // keeps the incumbent and the title cannot oscillate as articles arrive.

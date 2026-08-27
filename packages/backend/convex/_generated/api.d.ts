@@ -43,6 +43,7 @@ import type * as lib_botIdentity from "../lib/botIdentity.js";
 import type * as lib_compliance from "../lib/compliance.js";
 import type * as lib_consent from "../lib/consent.js";
 import type * as lib_eventClaimCoverage from "../lib/eventClaimCoverage.js";
+import type * as lib_eventTitle from "../lib/eventTitle.js";
 import type * as lib_feedSerialization from "../lib/feedSerialization.js";
 import type * as lib_googleNews from "../lib/googleNews.js";
 import type * as lib_grounding from "../lib/grounding.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   "lib/compliance": typeof lib_compliance;
   "lib/consent": typeof lib_consent;
   "lib/eventClaimCoverage": typeof lib_eventClaimCoverage;
+  "lib/eventTitle": typeof lib_eventTitle;
   "lib/feedSerialization": typeof lib_feedSerialization;
   "lib/googleNews": typeof lib_googleNews;
   "lib/grounding": typeof lib_grounding;
