@@ -1630,6 +1630,10 @@ export const retitleDivergentEvents = internalMutation({
       }
       if (!dryRun) {
         await ctx.db.patch(event._id, { title: next });
+        // The feed reads publicEventPreviews, which carries its own copy of
+        // the title. Patching the event alone renames it everywhere except
+        // the place readers actually look.
+        await syncPublicEventPreview(ctx, event._id);
       }
     }
 
@@ -1637,6 +1641,67 @@ export const retitleDivergentEvents = internalMutation({
       dryRun,
       scanned: page.page.length,
       renamed,
+      samples,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    };
+  },
+});
+
+/**
+ * RECOVERY — resync previews whose title drifted from their event.
+ *
+ * `publicEventPreviews` stores its own copy of the title (plus a folded copy
+ * for the search index) and the feed reads previews, not events. The first run
+ * of `retitleDivergentEvents` patched only `events.title`, so 159 renamed
+ * events kept their old headline everywhere a reader could see it. Those
+ * events cannot be repaired by re-running the retitle migration: their event
+ * title is already correct, so `chooseEventTitle` returns null and skips them.
+ *
+ * This walks previews and resyncs any whose title no longer matches its event.
+ * Idempotent, and useful after any direct write to `events.title`.
+ *
+ * Paginated: feed `continueCursor` back as `cursor` until `isDone`.
+ *   npx convex run migrations:resyncStalePreviewTitles '{"dryRun":true}'
+ *   npx convex run migrations:resyncStalePreviewTitles '{"dryRun":false}'
+ */
+export const resyncStalePreviewTitles = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    pageSize: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const pageSize = Math.min(Math.max(args.pageSize ?? 100, 1), 300);
+
+    const page = await ctx.db
+      .query("publicEventPreviews")
+      .paginate({ numItems: pageSize, cursor: args.cursor ?? null });
+
+    let resynced = 0;
+    const samples: Array<{ stale: string; correct: string }> = [];
+
+    for (const preview of page.page) {
+      const event = await ctx.db.get(preview.eventId);
+      if (!event || event.title === preview.title) continue;
+
+      resynced += 1;
+      if (samples.length < 5) {
+        samples.push({
+          stale: preview.title.slice(0, 70),
+          correct: event.title.slice(0, 70),
+        });
+      }
+      if (!dryRun) {
+        await syncPublicEventPreview(ctx, preview.eventId);
+      }
+    }
+
+    return {
+      dryRun,
+      scanned: page.page.length,
+      resynced,
       samples,
       isDone: page.isDone,
       continueCursor: page.isDone ? null : page.continueCursor,
