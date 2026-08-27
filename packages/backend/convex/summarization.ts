@@ -908,6 +908,9 @@ export const applyEventSummaryResult = internalMutation({
     suveranist: v.string(),
     globalImpact: v.string(),
     perspectiveApplicable: v.optional(v.boolean()),
+    // Headline recomputed from the cluster; absent when the current title
+    // still represents it. See lib/eventTitle.ts.
+    retitleTo: v.optional(v.string()),
     summarySignature: v.optional(v.string()),
     // L1 disclosure: the model that actually produced this summary (primary
     // or quota fallback). Optional for legacy callers; the stored row always
@@ -946,6 +949,7 @@ export const applyEventSummaryResult = internalMutation({
       suveranist,
       globalImpact,
       perspectiveApplicable,
+      retitleTo,
       summarySignature,
       modelUsed,
       overlapCheck,
@@ -996,6 +1000,11 @@ export const applyEventSummaryResult = internalMutation({
     const reformistText = stripPlaceholderPerspective(reformist.trim());
     const suveranistText = stripPlaceholderPerspective(suveranist.trim());
     await ctx.db.patch(eventId, {
+      // Title and summary are written together from the same article set, so
+      // a cluster dominated by a story other than its seed article's cannot
+      // keep a headline the summary contradicts. `slug` is deliberately left
+      // alone: it is the permanent URL and is already shared and indexed.
+      ...(retitleTo && retitleTo !== event.title ? { title: retitleTo } : {}),
       // CASE D stores only the neutral summary; the empty side fields stay
       // unset so the UI's note replaces the perspective split.
       perspectiveSummaries: applicable

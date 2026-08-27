@@ -18,6 +18,7 @@ import {
 } from "./prompts";
 
 import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from "./lib/modelRouting";
+import { chooseEventTitle } from "./lib/eventTitle";
 import {
   checkSummaryOverlap,
   MAX_VERBATIM_NGRAM,
@@ -1553,6 +1554,16 @@ export const processSummaryJob = internalAction({
           overlapCheck,
           grounding: groundingRecord,
           auditSources,
+          // Recompute the headline from the cluster while we already hold every
+          // article. The event's title is whichever article created it, which
+          // goes wrong when the cluster is later dominated by a different
+          // story — the summary follows the majority, the title does not. Null
+          // when the current title still represents the cluster.
+          retitleTo:
+            chooseEventTitle(
+              input.event.title,
+              input.articles.map((a: SummaryInputArticle) => a.title),
+            ) ?? undefined,
         },
       );
 

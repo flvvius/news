@@ -13,6 +13,7 @@ import { api, components, internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { syncTopicCatalogRows } from "./topics";
+import { chooseEventTitle } from "./lib/eventTitle";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
 import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
@@ -1561,6 +1562,84 @@ export const revivePreviouslyBlockedSummaries = internalMutation({
       skippedRealFailures: failed.length - blocked.length,
       // A dry run deletes nothing, so this is only meaningful for real runs.
       isDone: dryRun ? false : failed.length < limit,
+    };
+  },
+});
+
+/**
+ * RECOVERY — re-title events whose headline no longer matches their cluster.
+ *
+ * An event's title is the title of the article that created it, and nothing
+ * ever updated it as the cluster grew. When a cluster was seeded by one story
+ * and then dominated by another, the summary followed the majority and the
+ * title did not: production had an 18-article event titled "Adjuncta șefului
+ * cabinetului lui Zelenski a fost arestată" whose other 17 articles, and its
+ * summary, were about the CIA director's visit to Moscow.
+ *
+ * Summarization now recomputes the title from the cluster on every run
+ * (lib/eventTitle.ts), so new and re-summarized events are correct. This
+ * repairs the ones already stored, which would otherwise keep a wrong headline
+ * until something re-summarized them.
+ *
+ * `slug` is deliberately not touched — it is the permanent URL and is already
+ * shared and indexed. A repaired event keeps its old slug and gets a correct
+ * title.
+ *
+ * Paginated: each event scans its own articles, so keep pageSize modest. Feed
+ * `continueCursor` back as `cursor` until `isDone`.
+ *   npx convex run migrations:retitleDivergentEvents '{"dryRun":true}'
+ *   npx convex run migrations:retitleDivergentEvents '{"dryRun":false}'
+ */
+export const retitleDivergentEvents = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    pageSize: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const pageSize = Math.min(Math.max(args.pageSize ?? 50, 1), 200);
+
+    const page = await ctx.db
+      .query("events")
+      .paginate({ numItems: pageSize, cursor: args.cursor ?? null });
+
+    let renamed = 0;
+    const samples: Array<{ from: string; to: string; articles: number }> = [];
+
+    for (const event of page.page) {
+      const articles = await ctx.db
+        .query("articles")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      if (articles.length < 3) continue;
+
+      const next = chooseEventTitle(
+        event.title,
+        articles.map((article) => article.title),
+      );
+      if (!next) continue;
+
+      renamed += 1;
+      if (samples.length < 5) {
+        samples.push({
+          from: event.title.slice(0, 80),
+          to: next.slice(0, 80),
+          articles: articles.length,
+        });
+      }
+      if (!dryRun) {
+        await ctx.db.patch(event._id, { title: next });
+      }
+    }
+
+    return {
+      dryRun,
+      scanned: page.page.length,
+      renamed,
+      samples,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
     };
   },
 });
