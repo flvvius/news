@@ -358,12 +358,21 @@ function isQuotaError(error: unknown): boolean {
 }
 
 /**
- * gemini-3.5* are thinking models on the OpenAI-compat endpoint: thinking
- * spends from max_tokens before any JSON is emitted, so they need headroom
- * beyond the ~900 tokens the four Romanian fields actually take.
+ * Gemini 3.x are thinking models on the OpenAI-compat endpoint: thinking spends
+ * from max_tokens before any JSON is emitted, so they need headroom well beyond
+ * the ~900 tokens the four Romanian fields actually take.
+ *
+ * This deliberately matches the whole 3.x line rather than "gemini-3.5". The
+ * old prefix silently handed every *newer* model (3.6, 3.7, 3.8) the 1200-token
+ * budget meant for non-thinking models, so the first upgrade past 3.5 would
+ * have truncated essentially every summary — a second, independent failure
+ * waiting behind the 503s that currently block those models.
+ *
+ * max_tokens is a ceiling, not a reservation: billing follows tokens actually
+ * generated, so granting headroom to a model that does not use it is free.
  */
 function summaryMaxTokensFor(model: string): number {
-  return model.startsWith("gemini-3.5") ? 3000 : 1200;
+  return /^gemini-3\./.test(model) ? 3000 : 1200;
 }
 
 /**

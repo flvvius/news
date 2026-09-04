@@ -92,6 +92,32 @@ function sleep(ms: number): Promise<void> {
 }
 
 
+/**
+ * The provider stopped generating because the response hit `max_tokens`
+ * (`finish_reason: "length"`), so the body is a valid response cut mid-stream.
+ *
+ * This used to surface as a bare `SyntaxError` from `JSON.parse` — "Unterminated
+ * string in JSON at position 373" — which carries no HTTP status, so
+ * `isRetryableError` rejected it and the call failed outright, burning the
+ * request and its budget with no retry. Naming the condition lets the loop
+ * retry with more headroom instead, and makes the logs say what happened.
+ */
+class TruncatedOutputError extends Error {
+  constructor(limit: number | undefined) {
+    super(
+      `Model output truncated at max_tokens${limit ? ` (${limit})` : ""} — response was cut mid-JSON`,
+    );
+    this.name = "TruncatedOutputError";
+  }
+}
+
+function isTruncationError(error: unknown): boolean {
+  return error instanceof TruncatedOutputError;
+}
+
+/** Hard ceiling for the escalation below, so a pathological run cannot spiral. */
+const MAX_OUTPUT_TOKEN_CEILING = 8000;
+
 function isRetryableError(error: unknown): boolean {
   const status = errorStatus(error);
   return (
@@ -255,6 +281,12 @@ export async function callLLM<T>(
 
   let lastError: unknown;
   const maxRetries = Math.max(1, Math.floor(args.maxRetries ?? 3));
+  // Raised (not reset) when the provider reports a truncated response, so a
+  // retry gets room to finish its JSON. max_tokens is a ceiling, not a
+  // reservation — billing follows tokens actually generated — so a larger cap
+  // costs nothing on calls that never reach it.
+  let effectiveMaxTokens =
+    args.kind === "chat" ? args.maxTokens : undefined;
 
   try {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -308,7 +340,7 @@ export async function callLLM<T>(
               }
             : {}),
           ...buildChatTuningParams(args.model, {
-            maxTokens: args.maxTokens,
+            maxTokens: effectiveMaxTokens,
             temperature: args.temperature,
             reasoningEffort: args.reasoningEffort,
             promptCacheKey:
@@ -353,6 +385,12 @@ export async function callLLM<T>(
           reservationId = null;
         }
 
+        // Check before parsing: a truncated body is not malformed JSON from a
+        // confused model, it is a complete answer we cut off.
+        if (response.choices[0]?.finish_reason === "length") {
+          throw new TruncatedOutputError(effectiveMaxTokens);
+        }
+
         const content = response.choices[0]?.message?.content;
         if (!content) throw new Error("LLM returned empty response content");
 
@@ -361,6 +399,19 @@ export async function callLLM<T>(
         return { result: result as T, usage };
       } catch (error) {
         lastError = error;
+        if (isTruncationError(error) && attempt < maxRetries - 1) {
+          const raised = Math.min(
+            (effectiveMaxTokens ?? 1200) * 2,
+            MAX_OUTPUT_TOKEN_CEILING,
+          );
+          if (raised > (effectiveMaxTokens ?? 0)) {
+            console.warn(
+              `[aiCall] ${args.context.callType} truncated at ${effectiveMaxTokens} tokens; retrying at ${raised}`,
+            );
+            effectiveMaxTokens = raised;
+            continue;
+          }
+        }
         if (
           isFatalError(error) ||
           !isRetryableError(error) ||
