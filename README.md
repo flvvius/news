@@ -1,676 +1,317 @@
-# Biviant
+# Miez
 
-Current-state documentation for the `news-app` monorepo.
+Miez is a Romanian news aggregator that groups coverage of the same story from
+outlets across the political spectrum, then shows how those outlets differ.
+The repo is a pnpm/Turbo monorepo: a Convex backend, a TanStack Start web app,
+and an Expo mobile app.
 
-This README is intentionally written for both humans and AI agents. It describes what the repository actually contains today, what is wired end-to-end, what is only partially implemented, and where the important code lives.
+The product name is Miez. The workspace, packages and Convex functions are
+still named `news-app` / `@news-app/*`, and older tickets and comments use the
+previous name, Biviant.
 
-## What This Project Is
+## What it does today
 
-Biviant is a bias-aware news product with:
+- Ingests 18 hand-curated Romanian RSS feeds four times a day. `feeds.ts` has
+  three tiers; `sourceReputation.ts` rates 29 outlets, including ones rated but
+  never ingested.
+- Embeds each article, then clusters articles into `events` by a mix of vector
+  similarity and lexical overlap.
+- Publishes an event only once at least 2 articles from at least 2 distinct
+  sources cover it and a summary passes the grounding gate. Single-source and
+  unsummarized clusters stay invisible.
+- Writes perspective summaries per event on the reformist/suveranist axis, plus
+  a neutral one and a "global impact" line.
+- Shows per-source political lean and reliability, hand-curated in
+  `sourceReputation.ts`.
+- Serves the feed from denormalized read models and precomputed snapshots, not
+  from `events` directly, because Convex bills database I/O by bytes read.
+- Tracks reading streaks, a bias-balance meter, bookmarks and followed topics,
+  with guest activity merged into the account on signup.
 
-- A web app for a landing page, feed, event detail pages, auth, and bookmarks
-- A Convex backend for auth, data, ingestion, enrichment, config, email, and interaction logging
-- An Expo native app that currently acts as a lightweight auth/connectivity shell rather than a full mobile product
+Both apps are Romanian-first. UI strings live in one catalog,
+`packages/i18n/src/strings.ts`, with ro and en.
 
-The product direction is:
+## What is deliberately switched off
 
-- Group multiple sources around the same story
-- Show source bias and reliability metadata
-- Eventually support AI-generated summaries and richer event clustering
+Do not treat these as bugs or propose re-enabling them without asking. Each was
+turned off on purpose, mostly to keep the Convex bill under control.
 
-The current repo is in a transitional state:
+| Feature | Where it is off | Why |
+|---|---|---|
+| Claim divergence analysis | `claim_analysis_enabled = false`, commented-out cron, `FEATURE_FLAGS.claimAnalysis` | Paused for the Romanian launch (BIV-602) |
+| Daily quiz | commented-out cron, `FEATURE_FLAGS.quiz`, `/quiz` redirects to `/` | Built from claim data the paused pipeline no longer produces |
+| Bias outlier flagging | commented-out cron | Cost |
+| Custom event share images | `event_share_asset_generation_enabled = false` | Sharing uses the original event photo instead |
+| Summary body fetch | `event_summary_body_fetch_enabled = false` | Refetching bodies per summary was the most expensive operation in the app |
+| Morning push briefing | `BRIEFING_ENABLED` unset | Waits on push infrastructure |
 
-- The web app is the most complete surface
-- The backend has a meaningful ingestion/enrichment foundation
-- The native app exists but is still early
-- Real RSS ingestion exists
-- Real embedding generation exists
-- Real clustering into `events` from ingested articles does not exist yet
-- Seeded events are still the main way the feed renders useful content
+One invariant to know before touching any of this: either
+`article_fact_extraction_enabled` or `event_summary_body_fetch_enabled` must
+stay on. With both off, the grounding corpus shrinks to the article summary
+plus the RSS snippet, roughly 200 characters per article, and every summary is
+blocked as ungrounded. That combination stopped publishing entirely for about
+three weeks in August 2026. Fact extraction is the cheap side of that pair and
+is on.
 
-## Current Status At A Glance
+Article body text is fetched transiently and never persisted. That is a legal
+constraint, not a storage optimization. See `docs/compliance-storage-inventory.md`.
 
-### Working today
-
-- Monorepo with `pnpm` workspaces and Turbo
-- Web app with:
-  - Landing page
-  - Feed page
-  - Event detail page
-  - Auth page
-  - Bookmarks page
-- Better Auth + Convex auth integration
-- Convex schema for topics, sources, events, articles, users, interactions, config, AI usage, and pipeline metadata
-- RSS ingestion pipeline with:
-  - feed fetching
-  - lightweight RSS/Atom parsing
-  - canonical URL dedup
-  - source lookup/creation by domain
-  - ingestion health metadata
-  - retry behavior
-  - cron scheduling
-- Article embedding pipeline using OpenAI `text-embedding-3-small`
-- AI usage logging and budget enforcement
-- Bookmarking via interaction records
-- Verification email support via Resend
-- Seed data for demo/dev flows
-
-### Partially implemented
-
-- Source ratings are seeded manually from `sourceReputation.ts` (the authoritative source-metadata path; the old MBFC RapidAPI integration was removed)
-- Native app auth and Convex connection work, but the app is mostly scaffold/UI shell
-- Event model and event pages exist, but the current real-data pipeline does not yet create/publish events from ingested articles
-
-### Not implemented yet
-
-- True clustering from enriched articles into live events
-- Automatic creation/updating of `events` from ingested RSS articles
-- Automatic event publishing from real ingestion
-- AI event summarization pipeline for real ingested events
-- Production-grade admin UI for config/pipeline control
-- Meaningful native feature parity with the web app
-- A real automated test suite
-
-## Repo Layout
+## Repo layout
 
 ```text
 .
 ├── apps/
-│   ├── web/         # TanStack Start web app
-│   └── native/      # Expo / React Native app
+│   ├── web/            TanStack Start web app (Vercel)
+│   └── native/         Expo / React Native app
 ├── packages/
-│   ├── backend/     # Convex functions, schema, ingestion, auth, emails
-│   └── config/      # shared TS config
-├── roadmap.md       # roadmap / planning doc
-├── turbo.json       # Turbo task graph
-└── pnpm-workspace.yaml
+│   ├── backend/        Convex functions, schema, pipeline, auth, emails
+│   ├── i18n/           shared ro/en string catalog, brand name, date/plural helpers
+│   └── config/         shared TS config
+├── docs/               system overview, runbooks, compliance and tuning notes
+├── .claude/            repo reference notes and project skills
+├── eval/               offline scripts for clustering/claim evaluation
+└── turbo.json
 ```
 
-## Tech Stack
-
-- Package manager: `pnpm`
-- Monorepo/task runner: `turbo`
-- Web: TanStack Start, React 19, Vite, Tailwind CSS v4
-- Native: Expo, Expo Router, React Native 0.81, HeroUI Native
-- Backend: Convex
-- Auth: Better Auth with Convex adapter
-- AI: OpenAI embeddings
-- Email: Resend
-- Analytics instrumentation for AI calls: PostHog client integration in backend OpenAI wrapper
-
-## Package Overview
-
-### `apps/web`
-
-Primary product surface today.
-
-Important routes:
-
-- [`/`](./apps/web/src/routes/index.tsx): marketing landing page + auth CTA + preview events
-- [`/feed`](./apps/web/src/routes/feed.tsx): paginated published events feed with topic filters
-- [`/event/$slug`](./apps/web/src/routes/event.$slug.tsx): event detail view with summaries and source articles
-- [`/dashboard`](./apps/web/src/routes/dashboard.tsx): auth entry and lightweight authenticated dashboard
-- [`/bookmarks`](./apps/web/src/routes/bookmarks.tsx): authenticated bookmarked events
-- [`/api/auth/$`](./apps/web/src/routes/api/auth/$.ts): Better Auth HTTP route passthrough
-
-Important UI components:
-
-- [`EventCard`](./apps/web/src/components/feed/event-card.tsx)
-- [`ArticlesList`](./apps/web/src/components/feed/articles-list.tsx)
-- [`BookmarkButton`](./apps/web/src/components/bookmark-button.tsx)
-- auth forms in [`sign-in-form.tsx`](./apps/web/src/components/sign-in-form.tsx) and [`sign-up-form.tsx`](./apps/web/src/components/sign-up-form.tsx)
-
-### `apps/native`
-
-Early mobile shell.
-
-What it currently does:
-
-- Connects to Convex
-- Uses Better Auth client plugins for Expo
-- Shows backend connectivity status via `healthCheck`
-- Supports sign up / sign in / sign out
-- Contains drawer/tab scaffolding and placeholder screens
-
-What it does not currently do:
-
-- Render the news feed
-- Render event detail pages
-- Support bookmarks or other account-only web flows
-- Match the web feature set
-
-Important entry points:
-
-- [`app/_layout.tsx`](./apps/native/app/_layout.tsx)
-- [`app/(drawer)/index.tsx`](<./apps/native/app/(drawer)/index.tsx>)
-- [`components/sign-in.tsx`](./apps/native/components/sign-in.tsx)
-- [`components/sign-up.tsx`](./apps/native/components/sign-up.tsx)
-
-### `packages/backend`
-
-This is the Convex backend package and the most important backend logic in the repo.
-
-## Backend Module Map
-
-### Core data + queries
-
-- [`schema.ts`](./packages/backend/convex/schema.ts): canonical data model
-- [`events.ts`](./packages/backend/convex/events.ts): published event feed + event detail queries
-- [`topics.ts`](./packages/backend/convex/topics.ts): topic listing
-- [`user.ts`](./packages/backend/convex/user.ts): current user profile + updates
-- [`privateData.ts`](./packages/backend/convex/privateData.ts): minimal auth-protected demo/private query
-
-### Auth
-
-- [`auth.ts`](./packages/backend/convex/auth.ts): Better Auth + Convex integration, user lifecycle triggers
-- [`auth.config.ts`](./packages/backend/convex/auth.config.ts): Convex auth config
-- [`http.ts`](./packages/backend/convex/http.ts): registers Better Auth HTTP routes
-
-### Ingestion / enrichment
-
-- [`feeds.ts`](./packages/backend/convex/feeds.ts): curated RSS feed list and seeded source metadata
-- [`ingestion.ts`](./packages/backend/convex/ingestion.ts): RSS fetch/parse/dedup/source creation/article insert/pipeline locks
-- [`enrichment.ts`](./packages/backend/convex/enrichment.ts): article claiming and DB-side enrichment mutations
-- [`enrichmentNode.ts`](./packages/backend/convex/enrichmentNode.ts): OpenAI embedding generation
-- [`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts): manual Romanian source-reputation seed (authoritative source metadata)
-- [`crons.ts`](./packages/backend/convex/crons.ts): scheduled ingestion and enrichment jobs
-
-### Product support
-
-- [`interactions.ts`](./packages/backend/convex/interactions.ts): bookmark toggle, bookmark queries, generic interaction logging
-- [`emails.ts`](./packages/backend/convex/emails.ts): transactional email sending via Resend
-- [`config.ts`](./packages/backend/convex/config.ts): runtime config store and pipeline pause toggle
-- [`aiBudget.ts`](./packages/backend/convex/aiBudget.ts): AI spend checks and usage logging
-- [`healthCheck.ts`](./packages/backend/convex/healthCheck.ts): simple liveness query
-
-### Dev/support
-
-- [`seeds.ts`](./packages/backend/convex/seeds.ts): demo seed data
-- [`migrations.ts`](./packages/backend/convex/migrations.ts): currently present but not central to runtime behavior
-
-## Current Product Behavior
-
-### Web app behavior
-
-#### Landing page
-
-The landing page is both a marketing page and a thin product preview.
-
-It currently includes:
-
-- product positioning copy
-- auth call-to-action (sign in / sign up)
-- a preview of published events from Convex
-- SEO metadata and structured data
-
-The auth call-to-action routes to `/dashboard` for sign-in/sign-up; there is no waitlist gating.
-
-#### Feed page
-
-The feed page renders published events only.
-
-Data comes from:
-
-- `api.events.getPublishedEvents`
-- `api.topics.getTopics`
-- selected public config values such as feed page size and max source chips
-
-Important implication:
-
-- the feed is event-driven, not article-driven
-- if real ingestion does not produce `events`, the feed will still rely on seeded/demo events
-
-##### Trending vs Latest (BIV-801)
-
-The Trending tab ranks by `trendingScore` (in
-`packages/backend/convex/lib/publicEventPreviews.ts`), which combines
-corroboration and recency: `sources*10 + articles*3 + hoursSinceEpoch`.
-The corroboration terms prefer the claim-verified counts
-(`factualSourceCount`/`factualArticleCount`), but those only populate while
-the claim-analysis pipeline runs — and it is paused behind a feature flag
-(BIV-602). Without the raw-coverage fallback the score degenerated to the
-recency term alone and Trending was indistinguishable from Latest.
-Trending does **not** rank on user interactions, so an interaction-free dev
-database is not the cause of tab sameness. Note that existing
-`publicEventPreviews` rows keep their stored score until the next
-`syncPublicEventPreview` (pipeline update or
-`internal.clustering.backfillEventCandidacy` run), and the anonymous
-first-page snapshot refreshes via the `rebuild-public-feed-snapshots` cron.
-
-#### Event detail page
-
-The event page expects:
-
-- an `event`
-- associated `articles`
-- optional perspective summaries
-- optional global impact text
-
-This means the frontend is built for the later event-centric product shape, even though the real-data backend pipeline has not fully caught up.
-
-#### Dashboard and auth
-
-The dashboard currently functions as:
-
-- sign in / sign up entrypoint for unauthenticated users
-- a basic welcome screen for authenticated users
-- a proof that current user and private data access work
-
-It is not yet a full user dashboard.
-
-#### Bookmarks
-
-Bookmarks are implemented using the `interactions` table, not a dedicated bookmarks table.
-
-The bookmark system currently supports:
-
-- toggle bookmark / unbookmark
-- dedup/cooldown behavior to avoid excessive writes
-- bookmarked event listing for the current user
-
-## Backend Data Model
-
-The data model is centered around `events`, but the ingestion system currently produces `articles` first.
-
-Main tables:
-
-- `topics`
-- `sources`
-- `events`
-- `eventTopics`
-- `eventEmbeddings`
-- `articles`
-- `articleEmbeddings`
-- `users`
-- `userStats`
-- `userPrivateContext`
-- `userInsights`
-- `interactions`
-- `ingestionMeta`
-- `config`
-- `aiUsage`
-- `pipelineLocks`
-
-Important modeling notes:
-
-- `events` are the UI-facing unit for feed/detail pages
-- `articles` are the evidence/source layer under an event
-- embeddings are stored in separate tables, not inline on primary records
-- user profile, stats, and private context are structurally separated
-
-For exact fields and indexes, use [`packages/backend/convex/schema.ts`](./packages/backend/convex/schema.ts).
-
-## Real Data Pipeline
-
-This is the most important “current state” section for anyone trying to understand the repo.
-
-### What exists
-
-#### 1. RSS source curation
-
-[`feeds.ts`](./packages/backend/convex/feeds.ts) contains the curated feed list.
-
-Current state:
-
-- about two dozen feeds
-- each feed includes:
-  - feed URL
-  - display name
-  - domain
-  - manually curated MBFC-style metadata
-  - numeric bias score
-  - reliability score
-
-#### 2. Feed ingestion
-
-[`ingestion.ts`](./packages/backend/convex/ingestion.ts) does:
-
-- fetch RSS/Atom XML
-- parse feed items
-- strip/normalize snippets
-- canonicalize URLs
-- deduplicate against existing articles
-- resolve source by domain
-- create source if missing
-- insert new articles as `unprocessed`
-- update `ingestionMeta`
-- acquire/release a pipeline lock for the batch run
-- retry failed feeds once
-
-Article records inserted by ingestion currently contain:
-
-- `title`
-- `url`
-- `canonicalUrl`
-- `rssSnippet`
-- `publishedAt`
-- `sourceId`
-- `status: "unprocessed"`
-
-#### 3. Scheduled ingestion
-
-[`crons.ts`](./packages/backend/convex/crons.ts) schedules:
-
-- RSS ingestion every 60 minutes
-- article enrichment every 30 minutes
-
-#### 4. Article enrichment
-
-[`enrichmentNode.ts`](./packages/backend/convex/enrichmentNode.ts) currently:
-
-- claims unprocessed articles
-- builds embedding input from `title + snippet`
-- generates OpenAI embeddings with `text-embedding-3-small`
-- stores vectors in `articleEmbeddings`
-- copies source bias into `aiBiasScore`
-- marks articles as `enriched`
-- discards failed per-article embedding outputs
-- logs AI usage
-- checks daily budget before spending
-
-#### 5. Source metadata path
-
-Source bias/reliability ratings are seeded manually from
-[`sourceReputation.ts`](./packages/backend/convex/sourceReputation.ts)
-(hand-assigned axis scores + reliability + provenance notes, upserted via
-`seeds:seedRomanianSources`). This is the single documented source-metadata
-path; the old MBFC RapidAPI integration was removed in BIV-402. If the
-source list ever grows past what hand-curation can maintain, see the backlog
-note in `sourceReputation.ts` before adding an automated refresh.
-
-### What does not exist yet
-
-This is the biggest architectural gap in the repo today.
-
-There is no implemented pipeline that:
-
-- reads `enriched` articles
-- clusters them into story groups
-- creates or updates `events`
-- assigns `eventId` on articles
-- creates event embeddings for live data
-- publishes those events to the feed
-
-So the current real-data pipeline is:
-
-```text
-RSS feeds -> articles -> article embeddings
-```
-
-Not yet:
-
-```text
-RSS feeds -> articles -> embeddings -> events -> published feed
-```
-
-## Seed Data
-
-The repo includes a seed script for UI/demo development in [`seeds.ts`](./packages/backend/convex/seeds.ts).
-
-What it seeds:
-
-- 2 topics
-- 3 sources
-- 2 published events
-- event-topic links
-- placeholder event embeddings
-- 6 clustered articles
-
-This seeded content is currently the easiest way to see the web app in a meaningful state.
-
-Useful commands:
-
-```bash
-npx convex run seeds:seedDB
-npx convex run seeds:verifySeedData
-```
-
-There is also a `clearDB` helper in the same file.
-
-## Auth Model
-
-Auth is powered by Better Auth with Convex storage.
-
-Current auth capabilities:
-
-- email/password auth
-- Google auth
-- cross-domain client plugin support
-- Expo auth client support
-
-On user creation, backend triggers create:
-
-- a `users` row
-- a `userStats` row
-
-On update/delete, backend triggers sync or clean up related user data.
-
-Important files:
-
-- [`packages/backend/convex/auth.ts`](./packages/backend/convex/auth.ts)
-- [`apps/web/src/lib/auth-client.ts`](./apps/web/src/lib/auth-client.ts)
-- [`apps/native/lib/auth-client.ts`](./apps/native/lib/auth-client.ts)
-
-## Email System
-
-Email delivery uses Resend and currently supports verification and other transactional messages.
-
-Important files:
-
-- [`packages/backend/convex/auth.ts`](./packages/backend/convex/auth.ts)
-- [`packages/backend/convex/emails.ts`](./packages/backend/convex/emails.ts)
-
-## Runtime Config System
-
-The project already has a real config layer in Convex.
-
-It supports:
-
-- public client-readable config keys
-- admin-only config listing and updates
-- pipeline pause/resume
-- config defaults seeding
-
-Examples of config-driven behavior:
-
-- feed page size
-- landing preview count
-- event card source count
-- bookmark cooldown
-- pipeline pause flag
-
-Important file:
-
-- [`packages/backend/convex/config.ts`](./packages/backend/convex/config.ts)
-
-## AI Usage and Cost Controls
-
-The backend includes a practical AI budget layer.
-
-What it currently does:
-
-- checks daily spend before embedding generation
-- records usage by date/model/operation
-- calculates approximate cost
-- prevents new usage logging if the budget would be exceeded
-
-Important file:
-
-- [`packages/backend/convex/aiBudget.ts`](./packages/backend/convex/aiBudget.ts)
-
-## Cron Jobs
-
-Defined in [`packages/backend/convex/crons.ts`](./packages/backend/convex/crons.ts).
-
-Currently active:
-
-- `ingest-rss-feeds`: every 60 minutes
-- `enrich-articles`: every 30 minutes
-
-## Environment Variables
-
-This repo uses a mix of web env vars, native public env vars, and backend/server env vars.
-
-### Web client
-
-From [`apps/web/.env.example`](./apps/web/.env.example):
-
-```bash
-VITE_CONVEX_URL=
-VITE_CONVEX_SITE_URL=
-```
-
-### Important backend / auth env vars
-
-Required or commonly expected by the current code:
-
-- `CONVEX_URL`
-- `CONVEX_SITE_URL`
-- `SITE_URL` — Better Auth `baseURL`; on a **dev** deployment set it to
-  `http://localhost:3001` so OAuth redirects and email links point at the
-  local web app (`npx convex env set SITE_URL http://localhost:3001`)
-- `DEPLOY_ENV` — set to `development` on dev Convex deployments
-  (`npx convex env set DEPLOY_ENV development`). The Convex runtime reports
-  `NODE_ENV=production` on *every* deployment, dev included, so without this
-  flag a dev deployment behaves like production: localhost origins are not
-  trusted and all localhost auth fails with "Invalid origin" (BIV-808/809)
-- `ALLOWED_ORIGINS` (optional, comma-separated origins allowed for verification links)
-- `CONVEX_ALLOW_LOCALHOST` (optional escape hatch: trust localhost origins even in production)
-- `BETTER_AUTH_SECRET`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `NATIVE_APP_URL`
-- `ADMIN_EMAILS`
-
-### AI / ingestion / email env vars
-
-- `OPENAI_API_KEY` (embeddings + any gpt-* chat models)
-- `GEMINI_API_KEY` (gemini-* chat models — the default pipeline summarizer/bias scorer)
-- `POSTHOG_API_KEY` (optional)
-- `RESEND_API_KEY`
-
-### Native public env vars
-
-- `EXPO_PUBLIC_CONVEX_URL`
-- `EXPO_PUBLIC_CONVEX_SITE_URL`
-
-Note:
-
-- not every integration is required for local development
-- the easiest local path is usually seeded data + web app + Convex
-- Resend can be omitted if you do not need email flows locally
-
-## Local Development
-
-### Install
+## Tech stack
+
+- pnpm workspaces, Turbo
+- Convex for data, scheduled jobs, auth storage and file storage
+- TanStack Start, React 19, Tailwind v4, Radix on web
+- Expo Router, React Native, FlashList on native
+- Better Auth (email/password, Google, Apple) with the Convex adapter
+- OpenAI `text-embedding-3-small` at 512 dimensions for embeddings
+- `gemini-3.1-flash-lite` through Gemini's OpenAI-compatible API for chat work.
+  Model ids are runtime config: a `gemini-*` id routes to Gemini, anything else
+  to OpenAI (`lib/modelRouting.ts`)
+- Resend for email, PostHog for analytics and LLM call instrumentation
+
+## Local development
 
 ```bash
 pnpm install
-```
-
-### Start the whole workspace
-
-```bash
-pnpm dev
-```
-
-### Start pieces individually
-
-```bash
-pnpm dev:web
-pnpm dev:native
-pnpm dev:server
-pnpm dev:setup
-```
-
-### Build
-
-```bash
+pnpm dev            # everything
+pnpm dev:web        # web only, port 3001
+pnpm dev:server     # convex dev
+pnpm dev:setup      # convex dev --configure, first-time setup
+pnpm dev:native     # expo start --clear
 pnpm build
-```
-
-### Type checking
-
-```bash
 pnpm check-types
 ```
 
-## Recommended Local Workflow
+Two settings catch everyone out on a fresh dev deployment:
 
-If you want to see the app in a convincing state today:
+```bash
+npx convex env set DEPLOY_ENV development
+npx convex env set SITE_URL http://localhost:3001
+```
 
-1. Start Convex and the web app.
-2. Seed the database.
-3. Open the web app.
-4. Use the landing page, feed, event detail pages, auth, and bookmarks.
+Convex reports `NODE_ENV=production` on every deployment including dev, so
+without `DEPLOY_ENV` a dev backend refuses localhost origins and all local auth
+fails with "Invalid origin" (BIV-808/809). `SITE_URL` is Better Auth's
+`baseURL`, so without it OAuth redirects and email links point at production.
 
-If you want to inspect ingestion:
+Run Convex CLI commands from `packages/backend`. Running `npx convex dev` or a
+deploy from the repo root pushes an empty function set and wipes the
+deployment's functions.
 
-1. Configure Convex/backend env vars.
-2. Run Convex.
-3. Trigger or wait for ingestion/enrichment.
-4. Inspect `articles`, `sources`, `ingestionMeta`, and `articleEmbeddings`.
+Seeding a fresh deployment:
 
-Do not expect ingested articles to automatically become live feed events yet.
+```bash
+npx convex run seeds:seedRomanianSources   # sources with curated lean/reliability
+npx convex run config:seedDefaults         # runtime config defaults
+npx convex run seeds:seedDB                # demo topics/events/articles
+npx convex run seeds:verifySeedData
+```
 
-## Important Constraints And Caveats
+## Tests
 
-### Product/data caveats
+There is no root test script. Each package runs its own:
 
-- The UI is event-driven, but real ingestion currently stops at the article/enrichment layer.
-- Published feed data is still best represented by seeds, not by the real ingestion pipeline.
-- MBFC metadata is manually curated for the current feed set even though an API integration exists.
+```bash
+pnpm -F @news-app/backend test   # 40 convex-test suites
+pnpm -F web test                 # vitest + testing-library
+pnpm -F native test
+pnpm -F web test:e2e             # playwright
+```
 
-### Engineering caveats
+## The pipeline
 
-- There is no substantial automated test suite in this repo right now.
-- The native app is not feature-complete.
-- Some backend tables are designed for later phases and are not fully exercised by current runtime flows.
-- Legacy waitlist/unsubscribe code remains in the repo but is not part of the current product flow.
-- `packages/backend/convex/README.md` is still the default Convex starter doc and is not authoritative for this project.
+Everything runs from `packages/backend/convex/crons.ts`. Since PR #63 the chain
+runs in four batch windows a day instead of continuously, because Convex bills
+action compute by wall-clock time including time blocked on the network, and
+the always-on version cost about $41/mo against a sub-$10 budget.
 
-## For AI Agents
+Each window is phase-staggered so a story still moves end to end inside 45
+minutes:
 
-If you are modifying this repo, read this section first.
+```text
+:00  ingest-rss-feeds          ingestion.ts        fetch, parse, canonicalize, dedup, insert
+:15  enrich-articles           enrichmentNode.ts   extract body transiently, embed, score bias
+:30  cluster-enriched-articles clustering.ts        vector search, multi-signal matching gate
+:45  summarize-published-events summarizationNode.ts summaries, gates, and the actual publish
+```
 
-### Source of truth
+Windows start at 00, 06, 12 and 18 UTC. Worst case a story appears in the feed
+about 6 hours after publication. That trade was made on purpose.
 
-- Treat code as the source of truth over `roadmap.md`.
-- The most important current-state files are:
-  - [`packages/backend/convex/schema.ts`](./packages/backend/convex/schema.ts)
-  - [`packages/backend/convex/ingestion.ts`](./packages/backend/convex/ingestion.ts)
-  - [`packages/backend/convex/enrichmentNode.ts`](./packages/backend/convex/enrichmentNode.ts)
-  - [`packages/backend/convex/events.ts`](./packages/backend/convex/events.ts)
-  - [`apps/web/src/routes`](./apps/web/src/routes)
+Supporting jobs run daily or twice daily: near-duplicate event merging,
+singleton reclustering, stale singleton archiving, hot vector table pruning,
+budget and telemetry cleanup, retention purges, sitemap and feed snapshot
+rebuilds, and pipeline alert checks. Each has a comment above it explaining its
+cadence, including why several cadences that look arbitrary are not.
 
-### Current architectural reality
+Stages self-chain through the scheduler when they produce output, so the cron
+only has to start each window.
 
-- The web app expects `published` events.
-- The real ingestion pipeline currently produces `articles`, not `events`.
-- Seeds bridge that gap for development.
+Summarization is what actually publishes an event, so most "the feed is dead"
+reports are summarization incidents, not clustering ones. Two gates sit in
+front of a summary:
 
-### Safe assumptions
+- The verbatim gate (`lib/verbatimOverlap.ts`) catches long runs of copied
+  source wording. Since #69 it retries with a stronger paraphrase instruction
+  and records what survived in the audit trail instead of blocking publication.
+- The grounding gate (`lib/grounding.ts`) checks each sentence against the
+  sources, strips unsupported ones, and blocks the summary as
+  `blocked_ungrounded` if nothing survives.
 
-- Web is the primary product surface.
-- Native is still a scaffold.
-- Config-driven behavior already matters.
-- AI cost controls and pipeline pause logic are intentional and should be preserved.
+Throughput ceiling is 4 runs a day times `event_summary_batch_size`, so about
+48 summaries a day. Healthy observed output is 15 to 17 events a day, which is
+news volume rather than capacity. Keep `event_summary_enqueue_limit` at or
+below `event_summary_batch_size`: a higher enqueue limit grows the queue every
+run and buries fresh events behind backlog.
 
-### Easy mistakes to avoid
+## Key backend files
 
-- Do not assume clustering exists just because the schema has `events` and `eventEmbeddings`.
-- Do not assume MBFC API is active just because `mbfc.ts` exists.
-- Do not remove seed support unless you also finish the real event pipeline.
-- Do not document article embeddings as inline on `articles`; they are stored in `articleEmbeddings`.
+| File | What lives there |
+|---|---|
+| `schema.ts` | every table, index and vector index |
+| `crons.ts` | what runs when, and why at that cadence |
+| `ingestion.ts` | RSS fetch, parse, canonical URL and content-fingerprint dedup |
+| `enrichmentNode.ts` | transient body extraction, embeddings, bias scoring |
+| `clustering.ts` | candidate retrieval, the matching gate, publish gate, merge and recluster passes |
+| `summarizationNode.ts` | the durable summary job queue |
+| `prompts.ts` | every model prompt |
+| `events.ts` | feed and event-detail queries |
+| `config.ts` | runtime config, kill switch, defaults |
+| `aiBudget.ts`, `vectorSearchBudget.ts` | reserve-then-settle spend guards |
+| `pipeline.ts`, `pipelineDiagnostics.ts` | run logs, alerts, admin telemetry |
+| `retention.ts` | legal minimization plus storage-cost purges |
 
-## Suggested Next Documentation Targets
+## Web surface
 
-If this repo keeps evolving, the next useful docs would be:
+The feed is at `/`. `/feed` is a permanent 308 redirect that preserves query
+params, kept for previously indexed URLs (SEO-1).
 
-- a dedicated setup guide with exact env examples
-- a data-flow doc for ingestion/enrichment/clustering
-- an auth doc for web/native/cross-domain behavior
-- an operator doc for config keys and pipeline controls
+Reader routes: `/`, `/event/$slug`, `/source/$sourceId`, `/surse`, `/salvate`,
+`/activitate`, `/profil`, `/dashboard`, `/publishers`, `/contact`,
+`/reset-password`, `/unsubscribe`.
+
+Content and legal pages: `/despre`, `/cum-functioneaza`, `/metodologie`,
+`/sursele-noastre`, `/parteneri`, `/finantare`, `/termeni`,
+`/politica-confidentialitate`, `/bot`.
+
+Crawler routes: `/robots.txt`, `/sitemap.xml`, `/news-sitemap.xml`, `/rss.xml`,
+`/llms.txt`.
+
+Admin routes are gated on `ADMIN_EMAILS`: `/admin/pipeline`, `/admin/review`,
+`/admin/reports`, `/admin/publishers`, `/admin/contact`.
+
+## Native surface
+
+The Expo app is a real product surface now, not the shell the old README
+described. It has tabs for feed, activity, saved and profile, plus event
+detail, source detail and a topic-picking onboarding flow. It shares the
+backend API and the i18n catalog with web.
+
+## Environment variables
+
+Backend variables are set on the Convex deployment with `npx convex env set`.
+
+Auth and identity: `SITE_URL`, `DEPLOY_ENV`, `BETTER_AUTH_SECRET`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`,
+`APPLE_CLIENT_SECRET`, `APPLE_APP_BUNDLE_IDENTIFIER`, `NATIVE_APP_URL`,
+`ADMIN_EMAILS`, and optionally `ALLOWED_ORIGINS` and `CONVEX_ALLOW_LOCALHOST`.
+
+Models, email and analytics: `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+`RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, `EMAIL_REPLY_TO`, `POSTHOG_API_KEY`,
+`POSTHOG_HOST`, `BRIEFING_ENABLED`.
+
+Web (`apps/web/.env.example`): `VITE_CONVEX_URL`, `VITE_CONVEX_SITE_URL`.
+
+Native (`apps/native/.env.example`): `EXPO_PUBLIC_CONVEX_URL`,
+`EXPO_PUBLIC_CONVEX_SITE_URL`, `EXPO_PUBLIC_POSTHOG_KEY`,
+`EXPO_PUBLIC_POSTHOG_HOST`, `EXPO_PUBLIC_SENTRY_DSN`,
+`EXPO_PUBLIC_NOTIFICATIONS_ENABLED`, `EXPO_PUBLIC_INTERNAL_DEVICE`.
+
+PostHog is an EU project. Do not point these at the US endpoint.
+
+## Operating it
+
+`pipeline_paused = true` is the global kill switch. Every job checks it first.
+
+```bash
+npx convex run config:togglePipeline
+npx convex run config:list
+npx convex env list
+```
+
+Dozens of thresholds are runtime config rather than constants: clustering
+similarity gates, publish minimums, per-model ids, budgets, retention windows,
+cooldowns. Change behavior there before changing code. `/admin/pipeline` shows
+run logs and alerts.
+
+There is one Convex deployment, `quirky-panda-609`, and `CONVEX_DEPLOY_KEY`
+selects it. `npx convex run --prod` prints "Ignoring --prod" and uses the key's
+deployment anyway, and `convex logs` labels it a dev deployment even though it
+serves live data. `convex logs` is a live tail, so sample it for a minute or
+two rather than expecting history.
+
+## Deployment
+
+Deploy the backend from `packages/backend` with `npx convex deploy -y`.
+
+Vercel builds the web app with `pnpm turbo run build --filter=web...` and
+serves `apps/web/.vercel/output`. Two Vercel projects build `apps/web`,
+`news-web` and `news`, on different teams. One failing while the other succeeds
+on the same commit is a project-config problem, not a code problem.
+
+Deploy the backend first whenever a change touches both. The web build imports
+generated API types, so shipping web against an older backend breaks the build
+or the queries.
+
+## Docs
+
+- `.claude/repo-reference.md` is the shortest path to the operational facts:
+  measured module sizes, gate layers, config invariants, cost traps, and the
+  data conventions that a test will fail you for breaking.
+- `docs/SYSTEM-OVERVIEW.md` is the deep dive on the pipeline, the clustering
+  algorithm and every table. It is the best thing to read next. Note it
+  predates the cost-mode change, so its cron cadences and its "Biviant" naming
+  are stale even though the mechanics are accurate.
+- `docs/pipeline-operations-runbook.md` covers day-to-day operations.
+- `docs/clustering-romanian-tuning.md` and `docs/bias-axis-spec.md` cover the
+  tuning decisions behind clustering thresholds and the bias axis.
+- `docs/compliance-*.md` cover image policy, storage inventory and the
+  third-party text audit.
+- `roadmap.md` and `optimization-plan.md` are historical planning documents.
+  Code wins over both.
+
+## Notes for anyone editing this repo
+
+- Code is the source of truth. Several markdown files in the repo describe an
+  earlier state of the product.
+- Never persist scraped article body text.
+- Cost controls, leases, budget reservations and the pause flag are load-bearing.
+  Removing one to "simplify" a job reintroduces a bill or a double-processing bug.
+- `sources.provenance` is internal analyst shorthand in English, with ticket
+  refs and notes like "never ingest as credible". Never render it. A
+  design-system test fails the build if a web source file touches it.
+- The feed reads `publicEventPreviews` and snapshots. Adding a field to `events`
+  does not put it on a card until `syncPublicEventPreview` writes it, and stored
+  scores stay stale until the next preview sync.
+- `packages/backend/convex/README.md` is the default Convex starter doc and says
+  nothing about this project.
 
 ## License
 
