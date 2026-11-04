@@ -81,9 +81,11 @@ constraint, not a storage optimization. See `docs/compliance-storage-inventory.m
 - Expo Router, React Native, FlashList on native
 - Better Auth (email/password, Google, Apple) with the Convex adapter
 - OpenAI `text-embedding-3-small` at 512 dimensions for embeddings
-- `gemini-3.1-flash-lite` through Gemini's OpenAI-compatible API for chat work.
-  Model ids are runtime config: a `gemini-*` id routes to Gemini, anything else
-  to OpenAI (`lib/modelRouting.ts`)
+- `gemini-3.1-flash-lite` for chat work, called through the Vercel AI SDK
+  (`ai` v7, `@ai-sdk/google`, `@ai-sdk/openai`). Model ids are runtime config:
+  a `gemini-*` id routes to Gemini, anything else to OpenAI
+  (`lib/modelRouting.ts`, `lib/llmProviders.ts`). Every call goes through
+  `callLLM` in `lib/aiCall.ts`, which handles budget, retries and usage logging
 - Resend for email, PostHog for analytics and LLM call instrumentation
 
 ## Local development

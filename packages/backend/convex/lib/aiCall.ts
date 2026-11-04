@@ -3,9 +3,25 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import {
+  APICallError,
+  embedMany,
+  generateText,
+  jsonSchema,
+  NoObjectGeneratedError,
+  Output,
+  type LanguageModelUsage,
+} from "ai";
+
 import { calculateCost, calculateCostWithCachedInput } from "../aiBudget";
-import { getLLMClient, isPostHogInstrumented } from "./openai";
-import { buildChatTuningParams, providerForModel } from "./modelRouting";
+import { captureLLMEvent } from "./llmAnalytics";
+import { embeddingModelFor, languageModelFor } from "./llmProviders";
+import {
+  buildCallSettings,
+  providerForModel,
+  type GeminiThinkingLevel,
+  type ReasoningEffort,
+} from "./modelRouting";
 // Rate-limit detection lives in a dependency-free module so non-"use node"
 // modules (e.g. migrations.ts) can share it without dragging the Node-only
 // SDK imports above into the V8 bundle.
@@ -45,17 +61,29 @@ type ChatMessage = {
   content: string;
 };
 
+/**
+ * OpenAI-style structured output spec. The pipeline's schemas are written in
+ * this shape; callLLM hands `json_schema.schema` to the AI SDK, which sends it
+ * as a strict json_schema (OpenAI) or responseJsonSchema (Gemini).
+ */
+type JsonSchemaResponseFormat = {
+  type: "json_schema";
+  json_schema: { name: string; strict?: boolean; schema: Record<string, unknown> };
+};
+
 type ChatArgs = {
   kind: "chat";
   model: string;
   messages: ChatMessage[];
-  responseFormat?: unknown;
+  /** When set, the result is the parsed JSON object; otherwise the raw text. */
+  responseFormat?: JsonSchemaResponseFormat;
   maxTokens?: number;
   temperature?: number;
-  parseJson?: boolean;
   promptCacheKey?: string;
   promptCacheRetention?: "24h";
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
+  /** Gemini only. "default"/unset leaves thinking at the model's default. */
+  thinkingLevel?: GeminiThinkingLevel;
   context: AICallContext;
   runtime: ActionCtx;
   maxRetries?: number;
@@ -258,6 +286,122 @@ async function reserveBudget(
   return { reservationId: reservation.reservationId };
 }
 
+type ChatOutcome = {
+  value: unknown;
+  usage: LanguageModelUsage | undefined;
+  finishReason: string | undefined;
+  /** Output the provider returned (and billed) but we could not use. */
+  error?: Error;
+};
+
+/**
+ * One chat call through the AI SDK. Parse failures come back as an outcome,
+ * not a throw, because the provider already billed the tokens and callLLM must
+ * log them. Provider/HTTP errors still throw.
+ */
+async function generateChat(
+  args: ChatArgs,
+  maxTokens: number | undefined,
+): Promise<ChatOutcome> {
+  const settings = buildCallSettings(args.model, {
+    maxTokens,
+    temperature: args.temperature,
+    reasoningEffort: args.reasoningEffort,
+    thinkingLevel: args.thinkingLevel,
+    promptCacheKey: args.promptCacheKey ?? `biviant:${args.context.callType}`,
+    promptCacheRetention: args.promptCacheRetention,
+  });
+  const common = {
+    model: languageModelFor(args.model),
+    messages: args.messages,
+    // Call sites put the system prompt first in `messages`.
+    allowSystemInMessages: true,
+    // Retries stay in callLLM, next to the budget bookkeeping. The SDK's own
+    // retry would sleep in-process, which Convex bills as action time.
+    maxRetries: 0,
+    ...settings,
+  };
+
+  try {
+    if (!args.responseFormat) {
+      const result = await generateText(common);
+      return {
+        value: result.text,
+        usage: result.usage,
+        finishReason: result.finishReason,
+      };
+    }
+
+    const spec = args.responseFormat.json_schema;
+    const result = await generateText({
+      ...common,
+      output: Output.object({
+        schema: jsonSchema<unknown>(spec.schema as Parameters<typeof jsonSchema>[0]),
+        name: spec.name,
+      }),
+    });
+    // A truncated response with no text has no output to read (the getter
+    // throws), so report the finish reason first.
+    if (result.finishReason === "length") {
+      return {
+        value: undefined,
+        usage: result.usage,
+        finishReason: result.finishReason,
+      };
+    }
+    return {
+      value: result.output,
+      usage: result.usage,
+      finishReason: result.finishReason,
+    };
+  } catch (error) {
+    if (NoObjectGeneratedError.isInstance(error)) {
+      return {
+        value: undefined,
+        usage: error.usage,
+        finishReason: error.finishReason,
+        error,
+      };
+    }
+    throw error;
+  }
+}
+
+function chatUsage(
+  model: string,
+  usage: LanguageModelUsage | undefined,
+  startedAt: number,
+): AICallUsage {
+  const inputTokens = usage?.inputTokens ?? 0;
+  // Gemini's count includes thinking tokens, which Google bills as output.
+  const outputTokens = usage?.outputTokens ?? 0;
+  const cachedInputTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0;
+  return {
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    costUsd: calculateCostWithCachedInput(
+      model,
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+    ),
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+/**
+ * Error text handed back to callers and stored as job `lastError`. Provider
+ * errors lead with the HTTP status ("429 ...") because isRateLimitError and
+ * the requeue migration match on that text after the error object is gone.
+ */
+function describeError(error: unknown): string {
+  if (APICallError.isInstance(error) && error.statusCode != null) {
+    return `${error.statusCode} ${error.message}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function callLLM<T>(
   args: ChatArgs | EmbeddingArgs,
 ): Promise<AICallResult<T>> {
@@ -291,18 +435,18 @@ export async function callLLM<T>(
   try {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const client = await getLLMClient(
-          args.kind === "embedding" ? "openai" : providerForModel(args.model),
-        );
         const startedAt = Date.now();
 
         if (args.kind === "embedding") {
-          const response = await client.embeddings.create({
-            model: args.model,
-            input: args.input,
+          // maxRetries: 0 — retries stay in this loop, next to the budget
+          // bookkeeping. The SDK's own retry sleeps in-process (billed time).
+          const response = await embedMany({
+            model: embeddingModelFor(args.model),
+            values: args.input,
             ...(args.dimensions ? { dimensions: args.dimensions } : {}),
+            maxRetries: 0,
           });
-          const inputTokens = response.usage.total_tokens ?? 0;
+          const inputTokens = response.usage.tokens ?? 0;
           const usage = {
             inputTokens,
             outputTokens: 0,
@@ -310,6 +454,16 @@ export async function callLLM<T>(
             costUsd: calculateCost(args.model, inputTokens, 0),
             latencyMs: Date.now() - startedAt,
           };
+          captureLLMEvent({
+            kind: "embedding",
+            callType: args.context.callType,
+            model: args.model,
+            provider: "openai",
+            ...usage,
+            httpStatus: 200,
+            eventId: args.context.eventId,
+            articleId: args.context.articleId,
+          });
           const logged = await logUsage(
             args.runtime,
             args.context,
@@ -321,84 +475,70 @@ export async function callLLM<T>(
             usageLogged = true;
             reservationId = null;
           }
-          return { result: response.data as T, usage };
+          // Embeddings come back in input order.
+          return { result: response.embeddings as T, usage };
         }
 
-        // The PostHog wrapper defaults $ai_provider to "openai"; label routed
-        // Gemini traffic so provider analytics stay accurate. Only the
-        // wrapped client strips posthog* params before sending, so never
-        // attach them to a plain client.
         const provider = providerForModel(args.model);
-        const response = await client.chat.completions.create({
+        const outcome = await generateChat(args, effectiveMaxTokens);
+        const usage = chatUsage(args.model, outcome.usage, startedAt);
+        captureLLMEvent({
+          kind: "generation",
+          callType: args.context.callType,
           model: args.model,
-          ...(provider === "gemini" && isPostHogInstrumented()
-            ? {
-                posthogProperties: {
-                  $ai_provider: "gemini",
-                  llm_provider: "gemini",
-                },
-              }
-            : {}),
-          ...buildChatTuningParams(args.model, {
-            maxTokens: effectiveMaxTokens,
-            temperature: args.temperature,
-            reasoningEffort: args.reasoningEffort,
-            promptCacheKey:
-              args.promptCacheKey ?? `biviant:${args.context.callType}`,
-            promptCacheRetention: args.promptCacheRetention,
-          }),
-          ...(args.responseFormat
-            ? { response_format: args.responseFormat as never }
-            : {}),
-          messages: args.messages,
-        } as never);
-
-        const inputTokens = response.usage?.prompt_tokens ?? 0;
-        const outputTokens = response.usage?.completion_tokens ?? 0;
-        const cachedInputTokens =
-          (
-            response.usage as
-              | { prompt_tokens_details?: { cached_tokens?: number } }
-              | undefined
-          )?.prompt_tokens_details?.cached_tokens ?? 0;
-        const usage = {
-          inputTokens,
-          outputTokens,
-          cachedInputTokens,
-          costUsd: calculateCostWithCachedInput(
+          provider,
+          ...usage,
+          reasoningTokens: outcome.usage?.outputTokenDetails.reasoningTokens,
+          httpStatus: 200,
+          error: outcome.error ? describeError(outcome.error) : undefined,
+          eventId: args.context.eventId,
+          articleId: args.context.articleId,
+        });
+        if (outcome.usage) {
+          const logged = await logUsage(
+            args.runtime,
+            args.context,
             args.model,
-            inputTokens,
-            cachedInputTokens,
-            outputTokens,
-          ),
-          latencyMs: Date.now() - startedAt,
-        };
-        const logged = await logUsage(
-          args.runtime,
-          args.context,
-          args.model,
-          usage,
-          reservationId ?? undefined,
-        );
-        if (logged) {
-          usageLogged = true;
-          reservationId = null;
+            usage,
+            reservationId ?? undefined,
+          );
+          if (logged) {
+            usageLogged = true;
+            reservationId = null;
+          }
         }
 
-        // Check before parsing: a truncated body is not malformed JSON from a
-        // confused model, it is a complete answer we cut off.
-        if (response.choices[0]?.finish_reason === "length") {
+        // Check before anything else: a truncated body is not malformed JSON
+        // from a confused model, it is a complete answer we cut off.
+        if (outcome.finishReason === "length") {
           throw new TruncatedOutputError(effectiveMaxTokens);
         }
+        if (outcome.error) throw outcome.error;
 
-        const content = response.choices[0]?.message?.content;
-        if (!content) throw new Error("LLM returned empty response content");
-
-        const shouldParseJson = args.parseJson ?? Boolean(args.responseFormat);
-        const result = shouldParseJson ? JSON.parse(content) : content;
-        return { result: result as T, usage };
+        if (outcome.value === undefined || outcome.value === "") {
+          throw new Error("LLM returned empty response content");
+        }
+        return { result: outcome.value as T, usage };
       } catch (error) {
         lastError = error;
+        if (APICallError.isInstance(error)) {
+          captureLLMEvent({
+            kind: args.kind === "embedding" ? "embedding" : "generation",
+            callType: args.context.callType,
+            model: args.model,
+            provider:
+              args.kind === "embedding" ? "openai" : providerForModel(args.model),
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            costUsd: 0,
+            latencyMs: 0,
+            httpStatus: error.statusCode ?? 0,
+            error: describeError(error),
+            eventId: args.context.eventId,
+            articleId: args.context.articleId,
+          });
+        }
         if (isTruncationError(error) && attempt < maxRetries - 1) {
           const raised = Math.min(
             (effectiveMaxTokens ?? 1200) * 2,
@@ -438,8 +578,7 @@ export async function callLLM<T>(
     }
   }
 
-  const message =
-    lastError instanceof Error ? lastError.message : "Unknown LLM error";
+  const message = lastError ? describeError(lastError) : "Unknown LLM error";
   console.error(`[aiCall] ${args.context.callType} failed: ${message}`);
   return {
     result: null,

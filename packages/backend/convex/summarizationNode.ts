@@ -6,7 +6,7 @@ import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { shutdownPostHog } from "./lib/openai";
+import { shutdownPostHog } from "./lib/llmAnalytics";
 import { callLLM, isRateLimitError } from "./lib/aiCall";
 import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
@@ -17,7 +17,12 @@ import {
   type EventSummaryOutput,
 } from "./prompts";
 
-import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from "./lib/modelRouting";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_EMBEDDING_MODEL,
+  parseGeminiThinkingLevel,
+  type GeminiThinkingLevel,
+} from "./lib/modelRouting";
 import { chooseEventTitle } from "./lib/eventTitle";
 import {
   checkSummaryOverlap,
@@ -91,6 +96,8 @@ const SUMMARY_WORD_LIMITS = {
 type SummarySettings = {
   model: string;
   fallbackModel?: string;
+  // Gemini thinking level for the summary call ("default" = model default).
+  thinkingLevel: GeminiThinkingLevel;
   enqueueLimit: number;
   batchSize: number;
   maxAttempts: number;
@@ -383,6 +390,7 @@ function summaryMaxTokensFor(model: string): number {
 async function generateSummaryWithModel(
   ctx: ActionCtx,
   model: string,
+  thinkingLevel: GeminiThinkingLevel,
   prompt: { system: string; user: string },
   eventId: Id<"events">,
   eventTitle: string,
@@ -403,6 +411,7 @@ async function generateSummaryWithModel(
       model,
       temperature: 0.2,
       maxTokens: summaryMaxTokensFor(model),
+      thinkingLevel,
       responseFormat: {
         type: "json_schema",
         json_schema: EVENT_SUMMARY_JSON_SCHEMA,
@@ -471,6 +480,7 @@ async function loadSummarySettings(
     keys: [
       "event_summary_model",
       "event_summary_model_fallback",
+      "event_summary_thinking_level",
       "event_summary_enqueue_limit",
       "event_summary_batch_size",
       "event_summary_max_attempts",
@@ -496,6 +506,7 @@ async function loadSummarySettings(
   return {
     model: safeString(cfg.event_summary_model, DEFAULT_MODEL),
     fallbackModel: fallbackModel === "none" ? undefined : fallbackModel,
+    thinkingLevel: parseGeminiThinkingLevel(cfg.event_summary_thinking_level),
     enqueueLimit: safeInteger(
       args.enqueueLimit ?? cfg.event_summary_enqueue_limit,
       DEFAULT_ENQUEUE_LIMIT,
@@ -1355,6 +1366,7 @@ export const processSummaryJob = internalAction({
         generated = await generateSummaryWithModel(
           ctx,
           settings.model,
+          settings.thinkingLevel,
           prompt,
           input.event._id,
           input.event.title,
@@ -1376,6 +1388,7 @@ export const processSummaryJob = internalAction({
         generated = await generateSummaryWithModel(
           ctx,
           settings.fallbackModel,
+          settings.thinkingLevel,
           prompt,
           input.event._id,
           input.event.title,
@@ -1426,6 +1439,7 @@ export const processSummaryJob = internalAction({
         generated = await generateSummaryWithModel(
           ctx,
           modelUsed,
+          settings.thinkingLevel,
           prompt,
           input.event._id,
           input.event.title,

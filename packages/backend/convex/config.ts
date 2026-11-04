@@ -685,13 +685,19 @@ export const seedDefaults = internalMutation({
         key: "event_summary_model",
         value: "gemini-3.1-flash-lite",
         description:
-          "Chat model used for event perspective summaries (gemini-* routes via Gemini's OpenAI-compatible API; anything else via OpenAI).",
+          "Chat model used for event perspective summaries (gemini-* routes to Google's Gemini API; anything else to OpenAI).",
       },
       {
         key: "event_summary_model_fallback",
         value: "gemini-3.1-flash-lite",
         description:
           "Model used when the primary event_summary_model is rate/quota limited (429) — lets a low-quota premium model cover the first events of the day and degrade gracefully. Set to \"none\" to disable.",
+      },
+      {
+        key: "event_summary_thinking_level",
+        value: "default",
+        description:
+          "Gemini thinking level for the event summary call: \"default\" (send nothing; the model's own default), \"minimal\", \"low\", \"medium\" or \"high\". Lower levels cut thinking tokens (billed as output) and latency (billed as Convex action time), but can change summary quality, so run the Romanian eval before lowering it. Ignored for non-Gemini models.",
       },
       {
         key: "event_summary_enqueue_limit",

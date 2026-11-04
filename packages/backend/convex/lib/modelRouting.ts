@@ -7,10 +7,12 @@
  * and falls back to DEFAULT_CHAT_MODEL. Changing a config key (or this single
  * constant) is the whole switch — no per-call-site model ids.
  *
- * Model ids are routed to a provider by prefix. Gemini models are served
- * through Google's OpenAI-compatible endpoint, so the same OpenAI SDK client
- * shape (and the PostHog instrumentation + budget/usage logging around it)
- * works for both providers.
+ * Model ids are routed to a provider by prefix. Both providers go through the
+ * AI SDK (lib/llmProviders.ts), so the budget/usage logging and PostHog events
+ * in lib/aiCall.ts work the same for either.
+ *
+ * This module stays dependency-free so V8-runtime modules (config.ts) can
+ * import the model constants.
  */
 
 /**
@@ -25,10 +27,6 @@ export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 
 export type LLMProvider = "openai" | "gemini";
 
-/** Base URL for Gemini's OpenAI-compatible API. */
-export const GEMINI_OPENAI_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/openai/";
-
 export function providerForModel(model: string): LLMProvider {
   return model.startsWith("gemini") ? "gemini" : "openai";
 }
@@ -38,49 +36,88 @@ export function isGpt5FamilyModel(model: string): boolean {
   return model.startsWith("gpt-5");
 }
 
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
+/**
+ * Gemini thinking level. "default" sends no thinking config, so the model uses
+ * its own default (what the pipeline has always done).
+ */
+export type GeminiThinkingLevel = "default" | ReasoningEffort;
+
+export const GEMINI_THINKING_LEVELS: readonly GeminiThinkingLevel[] = [
+  "default",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+];
+
+export function parseGeminiThinkingLevel(value: unknown): GeminiThinkingLevel {
+  return typeof value === "string" &&
+    (GEMINI_THINKING_LEVELS as readonly string[]).includes(value)
+    ? (value as GeminiThinkingLevel)
+    : "default";
+}
+
 export type ChatTuning = {
   maxTokens?: number;
   temperature?: number;
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
+  thinkingLevel?: GeminiThinkingLevel;
   promptCacheKey?: string;
   promptCacheRetention?: "24h";
 };
 
+/** AI SDK call settings (the subset of generateText options we tune). */
+export type ChatCallSettings = {
+  maxOutputTokens?: number;
+  temperature?: number;
+  providerOptions?: {
+    openai?: {
+      reasoningEffort?: ReasoningEffort;
+      promptCacheKey?: string;
+      promptCacheRetention?: "24h";
+    };
+    google?: { thinkingConfig: { thinkingLevel: ReasoningEffort } };
+  };
+};
+
 /**
- * Provider/family-specific chat parameters:
- *  - GPT-5 family: reasoning_effort + max_completion_tokens (no temperature).
- *  - Gemini (OpenAI-compat endpoint): temperature + max_tokens; the
- *    prompt_cache_* keys are OpenAI-only and must be omitted.
- *  - Other OpenAI models: temperature + max_tokens + prompt cache keys.
+ * Provider/family-specific call settings for the AI SDK:
+ *  - GPT-5 family: reasoning effort, no temperature. The OpenAI provider sends
+ *    maxOutputTokens as max_completion_tokens for reasoning models.
+ *  - Gemini: temperature + maxOutputTokens, plus a thinking level when one is
+ *    set. The prompt_cache_* keys are OpenAI-only and are omitted.
+ *  - Other OpenAI models: temperature + maxOutputTokens + prompt cache keys.
  */
-export function buildChatTuningParams(
+export function buildCallSettings(
   model: string,
   tuning: ChatTuning,
-): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
+): ChatCallSettings {
+  const settings: ChatCallSettings = {};
   const gpt5 = isGpt5FamilyModel(model);
   const provider = providerForModel(model);
 
-  if (gpt5) {
-    params.reasoning_effort = tuning.reasoningEffort ?? "minimal";
-  } else {
-    params.temperature = tuning.temperature ?? 0.1;
-  }
+  if (!gpt5) settings.temperature = tuning.temperature ?? 0.1;
+  if (tuning.maxTokens) settings.maxOutputTokens = tuning.maxTokens;
 
-  if (tuning.maxTokens) {
-    if (gpt5) {
-      params.max_completion_tokens = tuning.maxTokens;
-    } else {
-      params.max_tokens = tuning.maxTokens;
+  if (provider === "gemini") {
+    if (tuning.thinkingLevel && tuning.thinkingLevel !== "default") {
+      settings.providerOptions = {
+        google: { thinkingConfig: { thinkingLevel: tuning.thinkingLevel } },
+      };
     }
+    return settings;
   }
 
-  if (provider === "openai" && tuning.promptCacheKey) {
-    params.prompt_cache_key = tuning.promptCacheKey;
+  const openai: NonNullable<ChatCallSettings["providerOptions"]>["openai"] = {};
+  if (gpt5) openai.reasoningEffort = tuning.reasoningEffort ?? "minimal";
+  if (tuning.promptCacheKey) {
+    openai.promptCacheKey = tuning.promptCacheKey;
     if (tuning.promptCacheRetention) {
-      params.prompt_cache_retention = tuning.promptCacheRetention;
+      openai.promptCacheRetention = tuning.promptCacheRetention;
     }
   }
-
-  return params;
+  if (Object.keys(openai).length > 0) settings.providerOptions = { openai };
+  return settings;
 }
