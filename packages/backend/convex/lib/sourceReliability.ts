@@ -24,6 +24,8 @@ export function reliabilityBand(score: number): ReliabilityBand {
 }
 
 /** i18n key for the band label, e.g. "source.reliabilityBand.high". */
-export function reliabilityBandKey(score: number): string {
+export function reliabilityBandKey(
+  score: number,
+): `source.reliabilityBand.${ReliabilityBand}` {
   return `source.reliabilityBand.${reliabilityBand(score)}`;
 }

@@ -9,100 +9,110 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
-import { Route as TermeniRouteImport } from './routes/termeni'
-import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
-import { Route as SurseRouteImport } from './routes/surse'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as SalvateRouteImport } from './routes/salvate'
-import { Route as RssDotxmlRouteImport } from './routes/rss[.]xml'
-import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as QuizRouteImport } from './routes/quiz'
-import { Route as PublishersRouteImport } from './routes/publishers'
-import { Route as ProfilRouteImport } from './routes/profil'
-import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
-import { Route as ParteneriRouteImport } from './routes/parteneri'
-import { Route as NewsSitemapDotxmlRouteImport } from './routes/news-sitemap[.]xml'
-import { Route as MetodologieRouteImport } from './routes/metodologie'
-import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
-import { Route as FinantareRouteImport } from './routes/finantare'
-import { Route as FeedRouteImport } from './routes/feed'
-import { Route as DespreRouteImport } from './routes/despre'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as CumFunctioneazaRouteImport } from './routes/cum-functioneaza'
-import { Route as ContactRouteImport } from './routes/contact'
-import { Route as BotRouteImport } from './routes/bot'
-import { Route as BookmarksRouteImport } from './routes/bookmarks'
-import { Route as ActivitateRouteImport } from './routes/activitate'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
-import { Route as EventSlugRouteImport } from './routes/event.$slug'
-import { Route as AdminReviewRouteImport } from './routes/admin.review'
-import { Route as AdminReportsRouteImport } from './routes/admin.reports'
-import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
-import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
+import { Route as ActivitateRouteImport } from './routes/activitate'
+import { Route as BookmarksRouteImport } from './routes/bookmarks'
+import { Route as BotRouteImport } from './routes/bot'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as CumFunctioneazaRouteImport } from './routes/cum-functioneaza'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DespreRouteImport } from './routes/despre'
+import { Route as FeedRouteImport } from './routes/feed'
+import { Route as FinantareRouteImport } from './routes/finantare'
+import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
+import { Route as MetodologieRouteImport } from './routes/metodologie'
+import { Route as NewsSitemapDotxmlRouteImport } from './routes/news-sitemap[.]xml'
+import { Route as ParteneriRouteImport } from './routes/parteneri'
+import { Route as PoliticaConfidentialitateRouteImport } from './routes/politica-confidentialitate'
+import { Route as ProfilRouteImport } from './routes/profil'
+import { Route as PublishersRouteImport } from './routes/publishers'
+import { Route as QuizRouteImport } from './routes/quiz'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as RssDotxmlRouteImport } from './routes/rss[.]xml'
+import { Route as SalvateRouteImport } from './routes/salvate'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SurseRouteImport } from './routes/surse'
+import { Route as SurseleNoastreRouteImport } from './routes/sursele-noastre'
+import { Route as TermeniRouteImport } from './routes/termeni'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as AdminContactRouteImport } from './routes/admin.contact'
+import { Route as AdminPipelineRouteImport } from './routes/admin.pipeline'
+import { Route as AdminPublishersRouteImport } from './routes/admin.publishers'
+import { Route as AdminReportsRouteImport } from './routes/admin.reports'
+import { Route as AdminReviewRouteImport } from './routes/admin.review'
+import { Route as EventSlugRouteImport } from './routes/event.$slug'
+import { Route as SourceSourceIdRouteImport } from './routes/source.$sourceId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
-const UnsubscribeRoute = UnsubscribeRouteImport.update({
-  id: '/unsubscribe',
-  path: '/unsubscribe',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TermeniRoute = TermeniRouteImport.update({
-  id: '/termeni',
-  path: '/termeni',
+const ActivitateRoute = ActivitateRouteImport.update({
+  id: '/activitate',
+  path: '/activitate',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SurseleNoastreRoute = SurseleNoastreRouteImport.update({
-  id: '/sursele-noastre',
-  path: '/sursele-noastre',
+const BookmarksRoute = BookmarksRouteImport.update({
+  id: '/bookmarks',
+  path: '/bookmarks',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SurseRoute = SurseRouteImport.update({
-  id: '/surse',
-  path: '/surse',
+const BotRoute = BotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SalvateRoute = SalvateRouteImport.update({
-  id: '/salvate',
-  path: '/salvate',
+const CumFunctioneazaRoute = CumFunctioneazaRouteImport.update({
+  id: '/cum-functioneaza',
+  path: '/cum-functioneaza',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RssDotxmlRoute = RssDotxmlRouteImport.update({
-  id: '/rss.xml',
-  path: '/rss.xml',
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
-  id: '/robots.txt',
-  path: '/robots.txt',
+const DespreRoute = DespreRouteImport.update({
+  id: '/despre',
+  path: '/despre',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
+const FeedRoute = FeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
-const QuizRoute = QuizRouteImport.update({
-  id: '/quiz',
-  path: '/quiz',
+const FinantareRoute = FinantareRouteImport.update({
+  id: '/finantare',
+  path: '/finantare',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PublishersRoute = PublishersRouteImport.update({
-  id: '/publishers',
-  path: '/publishers',
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProfilRoute = ProfilRouteImport.update({
-  id: '/profil',
-  path: '/profil',
+const MetodologieRoute = MetodologieRouteImport.update({
+  id: '/metodologie',
+  path: '/metodologie',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsSitemapDotxmlRoute = NewsSitemapDotxmlRouteImport.update({
+  id: '/news-sitemap.xml',
+  path: '/news-sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ParteneriRoute = ParteneriRouteImport.update({
+  id: '/parteneri',
+  path: '/parteneri',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PoliticaConfidentialitateRoute =
@@ -111,99 +121,69 @@ const PoliticaConfidentialitateRoute =
     path: '/politica-confidentialitate',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ParteneriRoute = ParteneriRouteImport.update({
-  id: '/parteneri',
-  path: '/parteneri',
+const ProfilRoute = ProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NewsSitemapDotxmlRoute = NewsSitemapDotxmlRouteImport.update({
-  id: '/news-sitemap.xml',
-  path: '/news-sitemap.xml',
+const PublishersRoute = PublishersRouteImport.update({
+  id: '/publishers',
+  path: '/publishers',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MetodologieRoute = MetodologieRouteImport.update({
-  id: '/metodologie',
-  path: '/metodologie',
+const QuizRoute = QuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
-  id: '/llms.txt',
-  path: '/llms.txt',
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FinantareRoute = FinantareRouteImport.update({
-  id: '/finantare',
-  path: '/finantare',
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FeedRoute = FeedRouteImport.update({
-  id: '/feed',
-  path: '/feed',
+const RssDotxmlRoute = RssDotxmlRouteImport.update({
+  id: '/rss.xml',
+  path: '/rss.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DespreRoute = DespreRouteImport.update({
-  id: '/despre',
-  path: '/despre',
+const SalvateRoute = SalvateRouteImport.update({
+  id: '/salvate',
+  path: '/salvate',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CumFunctioneazaRoute = CumFunctioneazaRouteImport.update({
-  id: '/cum-functioneaza',
-  path: '/cum-functioneaza',
+const SurseRoute = SurseRouteImport.update({
+  id: '/surse',
+  path: '/surse',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
+const SurseleNoastreRoute = SurseleNoastreRouteImport.update({
+  id: '/sursele-noastre',
+  path: '/sursele-noastre',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BotRoute = BotRouteImport.update({
-  id: '/bot',
-  path: '/bot',
+const TermeniRoute = TermeniRouteImport.update({
+  id: '/termeni',
+  path: '/termeni',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BookmarksRoute = BookmarksRouteImport.update({
-  id: '/bookmarks',
-  path: '/bookmarks',
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ActivitateRoute = ActivitateRouteImport.update({
-  id: '/activitate',
-  path: '/activitate',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SourceSourceIdRoute = SourceSourceIdRouteImport.update({
-  id: '/source/$sourceId',
-  path: '/source/$sourceId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EventSlugRoute = EventSlugRouteImport.update({
-  id: '/event/$slug',
-  path: '/event/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminReviewRoute = AdminReviewRouteImport.update({
-  id: '/admin/review',
-  path: '/admin/review',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminReportsRoute = AdminReportsRouteImport.update({
-  id: '/admin/reports',
-  path: '/admin/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminPublishersRoute = AdminPublishersRouteImport.update({
-  id: '/admin/publishers',
-  path: '/admin/publishers',
+const AdminContactRoute = AdminContactRouteImport.update({
+  id: '/admin/contact',
+  path: '/admin/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPipelineRoute = AdminPipelineRouteImport.update({
@@ -211,9 +191,29 @@ const AdminPipelineRoute = AdminPipelineRouteImport.update({
   path: '/admin/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminContactRoute = AdminContactRouteImport.update({
-  id: '/admin/contact',
-  path: '/admin/contact',
+const AdminPublishersRoute = AdminPublishersRouteImport.update({
+  id: '/admin/publishers',
+  path: '/admin/publishers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminReportsRoute = AdminReportsRouteImport.update({
+  id: '/admin/reports',
+  path: '/admin/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminReviewRoute = AdminReviewRouteImport.update({
+  id: '/admin/review',
+  path: '/admin/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventSlugRoute = EventSlugRouteImport.update({
+  id: '/event/$slug',
+  path: '/event/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SourceSourceIdRoute = SourceSourceIdRouteImport.update({
+  id: '/source/$sourceId',
+  path: '/source/$sourceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -488,179 +488,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/unsubscribe': {
-      id: '/unsubscribe'
-      path: '/unsubscribe'
-      fullPath: '/unsubscribe'
-      preLoaderRoute: typeof UnsubscribeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/termeni': {
-      id: '/termeni'
-      path: '/termeni'
-      fullPath: '/termeni'
-      preLoaderRoute: typeof TermeniRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sursele-noastre': {
-      id: '/sursele-noastre'
-      path: '/sursele-noastre'
-      fullPath: '/sursele-noastre'
-      preLoaderRoute: typeof SurseleNoastreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/surse': {
-      id: '/surse'
-      path: '/surse'
-      fullPath: '/surse'
-      preLoaderRoute: typeof SurseRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/salvate': {
-      id: '/salvate'
-      path: '/salvate'
-      fullPath: '/salvate'
-      preLoaderRoute: typeof SalvateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/rss.xml': {
-      id: '/rss.xml'
-      path: '/rss.xml'
-      fullPath: '/rss.xml'
-      preLoaderRoute: typeof RssDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/robots.txt': {
-      id: '/robots.txt'
-      path: '/robots.txt'
-      fullPath: '/robots.txt'
-      preLoaderRoute: typeof RobotsDottxtRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/quiz': {
-      id: '/quiz'
-      path: '/quiz'
-      fullPath: '/quiz'
-      preLoaderRoute: typeof QuizRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/publishers': {
-      id: '/publishers'
-      path: '/publishers'
-      fullPath: '/publishers'
-      preLoaderRoute: typeof PublishersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profil': {
-      id: '/profil'
-      path: '/profil'
-      fullPath: '/profil'
-      preLoaderRoute: typeof ProfilRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/politica-confidentialitate': {
-      id: '/politica-confidentialitate'
-      path: '/politica-confidentialitate'
-      fullPath: '/politica-confidentialitate'
-      preLoaderRoute: typeof PoliticaConfidentialitateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/parteneri': {
-      id: '/parteneri'
-      path: '/parteneri'
-      fullPath: '/parteneri'
-      preLoaderRoute: typeof ParteneriRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/news-sitemap.xml': {
-      id: '/news-sitemap.xml'
-      path: '/news-sitemap.xml'
-      fullPath: '/news-sitemap.xml'
-      preLoaderRoute: typeof NewsSitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/metodologie': {
-      id: '/metodologie'
-      path: '/metodologie'
-      fullPath: '/metodologie'
-      preLoaderRoute: typeof MetodologieRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/llms.txt': {
-      id: '/llms.txt'
-      path: '/llms.txt'
-      fullPath: '/llms.txt'
-      preLoaderRoute: typeof LlmsDottxtRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/finantare': {
-      id: '/finantare'
-      path: '/finantare'
-      fullPath: '/finantare'
-      preLoaderRoute: typeof FinantareRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/feed': {
-      id: '/feed'
-      path: '/feed'
-      fullPath: '/feed'
-      preLoaderRoute: typeof FeedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/despre': {
-      id: '/despre'
-      path: '/despre'
-      fullPath: '/despre'
-      preLoaderRoute: typeof DespreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cum-functioneaza': {
-      id: '/cum-functioneaza'
-      path: '/cum-functioneaza'
-      fullPath: '/cum-functioneaza'
-      preLoaderRoute: typeof CumFunctioneazaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/bot': {
-      id: '/bot'
-      path: '/bot'
-      fullPath: '/bot'
-      preLoaderRoute: typeof BotRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/bookmarks': {
-      id: '/bookmarks'
-      path: '/bookmarks'
-      fullPath: '/bookmarks'
-      preLoaderRoute: typeof BookmarksRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/activitate': {
@@ -670,46 +502,186 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ActivitateRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/bookmarks': {
+      id: '/bookmarks'
+      path: '/bookmarks'
+      fullPath: '/bookmarks'
+      preLoaderRoute: typeof BookmarksRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/source/$sourceId': {
-      id: '/source/$sourceId'
-      path: '/source/$sourceId'
-      fullPath: '/source/$sourceId'
-      preLoaderRoute: typeof SourceSourceIdRouteImport
+    '/bot': {
+      id: '/bot'
+      path: '/bot'
+      fullPath: '/bot'
+      preLoaderRoute: typeof BotRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/event/$slug': {
-      id: '/event/$slug'
-      path: '/event/$slug'
-      fullPath: '/event/$slug'
-      preLoaderRoute: typeof EventSlugRouteImport
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/review': {
-      id: '/admin/review'
-      path: '/admin/review'
-      fullPath: '/admin/review'
-      preLoaderRoute: typeof AdminReviewRouteImport
+    '/cum-functioneaza': {
+      id: '/cum-functioneaza'
+      path: '/cum-functioneaza'
+      fullPath: '/cum-functioneaza'
+      preLoaderRoute: typeof CumFunctioneazaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/reports': {
-      id: '/admin/reports'
-      path: '/admin/reports'
-      fullPath: '/admin/reports'
-      preLoaderRoute: typeof AdminReportsRouteImport
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/publishers': {
-      id: '/admin/publishers'
-      path: '/admin/publishers'
-      fullPath: '/admin/publishers'
-      preLoaderRoute: typeof AdminPublishersRouteImport
+    '/despre': {
+      id: '/despre'
+      path: '/despre'
+      fullPath: '/despre'
+      preLoaderRoute: typeof DespreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed': {
+      id: '/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finantare': {
+      id: '/finantare'
+      path: '/finantare'
+      fullPath: '/finantare'
+      preLoaderRoute: typeof FinantareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metodologie': {
+      id: '/metodologie'
+      path: '/metodologie'
+      fullPath: '/metodologie'
+      preLoaderRoute: typeof MetodologieRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/news-sitemap.xml': {
+      id: '/news-sitemap.xml'
+      path: '/news-sitemap.xml'
+      fullPath: '/news-sitemap.xml'
+      preLoaderRoute: typeof NewsSitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/parteneri': {
+      id: '/parteneri'
+      path: '/parteneri'
+      fullPath: '/parteneri'
+      preLoaderRoute: typeof ParteneriRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politica-confidentialitate': {
+      id: '/politica-confidentialitate'
+      path: '/politica-confidentialitate'
+      fullPath: '/politica-confidentialitate'
+      preLoaderRoute: typeof PoliticaConfidentialitateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profil': {
+      id: '/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof ProfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/publishers': {
+      id: '/publishers'
+      path: '/publishers'
+      fullPath: '/publishers'
+      preLoaderRoute: typeof PublishersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quiz': {
+      id: '/quiz'
+      path: '/quiz'
+      fullPath: '/quiz'
+      preLoaderRoute: typeof QuizRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rss.xml': {
+      id: '/rss.xml'
+      path: '/rss.xml'
+      fullPath: '/rss.xml'
+      preLoaderRoute: typeof RssDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/salvate': {
+      id: '/salvate'
+      path: '/salvate'
+      fullPath: '/salvate'
+      preLoaderRoute: typeof SalvateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/surse': {
+      id: '/surse'
+      path: '/surse'
+      fullPath: '/surse'
+      preLoaderRoute: typeof SurseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sursele-noastre': {
+      id: '/sursele-noastre'
+      path: '/sursele-noastre'
+      fullPath: '/sursele-noastre'
+      preLoaderRoute: typeof SurseleNoastreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/termeni': {
+      id: '/termeni'
+      path: '/termeni'
+      fullPath: '/termeni'
+      preLoaderRoute: typeof TermeniRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/contact': {
+      id: '/admin/contact'
+      path: '/admin/contact'
+      fullPath: '/admin/contact'
+      preLoaderRoute: typeof AdminContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/pipeline': {
@@ -719,11 +691,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/contact': {
-      id: '/admin/contact'
-      path: '/admin/contact'
-      fullPath: '/admin/contact'
-      preLoaderRoute: typeof AdminContactRouteImport
+    '/admin/publishers': {
+      id: '/admin/publishers'
+      path: '/admin/publishers'
+      fullPath: '/admin/publishers'
+      preLoaderRoute: typeof AdminPublishersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/reports': {
+      id: '/admin/reports'
+      path: '/admin/reports'
+      fullPath: '/admin/reports'
+      preLoaderRoute: typeof AdminReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/review': {
+      id: '/admin/review'
+      path: '/admin/review'
+      fullPath: '/admin/review'
+      preLoaderRoute: typeof AdminReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/event/$slug': {
+      id: '/event/$slug'
+      path: '/event/$slug'
+      fullPath: '/event/$slug'
+      preLoaderRoute: typeof EventSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/source/$sourceId': {
+      id: '/source/$sourceId'
+      path: '/source/$sourceId'
+      fullPath: '/source/$sourceId'
+      preLoaderRoute: typeof SourceSourceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
