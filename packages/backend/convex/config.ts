@@ -700,6 +700,18 @@ export const seedDefaults = internalMutation({
           "Gemini thinking level for the event summary call: \"default\" (send nothing; the model's own default), \"minimal\", \"low\", \"medium\" or \"high\". Lower levels cut thinking tokens (billed as output) and latency (billed as Convex action time), but can change summary quality, so run the Romanian eval before lowering it. Ignored for non-Gemini models.",
       },
       {
+        key: "event_summary_batch_enabled",
+        value: false,
+        description:
+          "When true, each summarization run submits its due jobs as one Gemini Batch API job instead of live calls (summaryBatchNode.ts). Batch tokens cost about half, and no action waits on the model. Trade-off: results arrive in minutes to hours (Google targets 24h), and summaries gate publishing, so events go public later. Needs a Gemini event_summary_model and event_summary_body_fetch_enabled off; otherwise runs stay live. Grounding checks and word-cap/overlap retries still run live once a batch lands.",
+      },
+      {
+        key: "event_summary_batch_max_wait_hours",
+        value: 24,
+        description:
+          "How long a submitted summary batch may stay pending before it is cancelled and its jobs return to the live path (1-47). Submitted jobs are held out of the live queue for this long.",
+      },
+      {
         key: "event_summary_enqueue_limit",
         value: 12,
         description:

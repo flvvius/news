@@ -79,3 +79,11 @@ export function embeddingModelFor(
 ): EmbeddingModel {
   return openaiProvider(apiKeyFor("openai", keys)).embedding(model);
 }
+
+/**
+ * The Gemini provider itself, for the Batch API (`experimental_startBatch` and
+ * friends take a provider, not a model).
+ */
+export function geminiBatchProvider(keys?: ProviderKeys) {
+  return googleProvider(apiKeyFor("gemini", keys));
+}

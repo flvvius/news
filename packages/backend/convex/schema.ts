@@ -453,6 +453,37 @@ export default defineSchema({
     .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   // =========================================================================
+  // 3d.1b. SUMMARY BATCHES (Gemini Batch API submissions)
+  // =========================================================================
+  // One row per provider batch submitted by summaryBatchNode. Jobs listed here
+  // stay "queued" with nextAttemptAt pushed out until the batch is collected
+  // (results feed processSummaryJob) or given up on (jobs made due again).
+  summaryBatches: defineTable({
+    provider: v.string(),
+    batchId: v.string(),
+    model: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("collected"),
+      v.literal("failed"),
+    ),
+    jobs: v.array(
+      v.object({
+        jobId: v.id("eventSummaryJobs"),
+        eventId: v.id("events"),
+        summarySignature: v.string(),
+      }),
+    ),
+    submittedAt: v.number(),
+    deadlineAt: v.number(),
+    lastPolledAt: v.optional(v.number()),
+    rawStatus: v.optional(v.string()),
+    succeededCount: v.optional(v.number()),
+    failedCount: v.optional(v.number()),
+    error: v.optional(v.string()),
+  }).index("by_status_submittedAt", ["status", "submittedAt"]),
+
+  // =========================================================================
   // 3d.2. SUMMARY GROUNDING (L4 — per-sentence support records)
   // =========================================================================
   // One row per event (latest check wins): every sentence of the published

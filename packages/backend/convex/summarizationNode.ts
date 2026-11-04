@@ -93,11 +93,15 @@ const SUMMARY_WORD_LIMITS = {
   globalImpact: 100,
 };
 
-type SummarySettings = {
+export type SummarySettings = {
   model: string;
   fallbackModel?: string;
   // Gemini thinking level for the summary call ("default" = model default).
   thinkingLevel: GeminiThinkingLevel;
+  // Batch mode: the main summary call goes through the provider Batch API
+  // (summaryBatchNode.ts) instead of a live request.
+  batchEnabled: boolean;
+  batchMaxWaitMs: number;
   enqueueLimit: number;
   batchSize: number;
   maxAttempts: number;
@@ -132,7 +136,7 @@ type SummaryQueueHealthResult = {
   };
 };
 
-type SummaryInputArticle = {
+export type SummaryInputArticle = {
   _id: string;
   title: string;
   source?: {
@@ -146,7 +150,7 @@ type SummaryInputArticle = {
   atomicFacts: string[];
   canonicalUrl: string;
 };
-const EVENT_SUMMARY_JSON_SCHEMA = {
+export const EVENT_SUMMARY_JSON_SCHEMA = {
   name: "EventSummary",
   strict: true,
   schema: {
@@ -259,7 +263,7 @@ function cleanOptionalField(value: unknown): string {
   return stripPlaceholderPerspective(cleaned);
 }
 
-function parseSummaryOutput(
+export function parseSummaryOutput(
   raw: unknown,
   eventTitle: string,
 ): EventSummaryOutput {
@@ -303,7 +307,7 @@ function countWords(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
+export function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   const violations: string[] = [];
   for (const [field, maxWords] of Object.entries(SUMMARY_WORD_LIMITS) as Array<
     [keyof typeof SUMMARY_WORD_LIMITS, number]
@@ -318,7 +322,7 @@ function validateSummaryWordCaps(summary: EventSummaryOutput): string[] {
   return violations;
 }
 
-function buildSummarySignature(input: {
+export function buildSummarySignature(input: {
   event: { _id: string; title: string };
   articles: Array<{
     _id: string;
@@ -378,7 +382,7 @@ function isQuotaError(error: unknown): boolean {
  * max_tokens is a ceiling, not a reservation: billing follows tokens actually
  * generated, so granting headroom to a model that does not use it is free.
  */
-function summaryMaxTokensFor(model: string): number {
+export function summaryMaxTokensFor(model: string): number {
   return /^gemini-3\./.test(model) ? 3000 : 1200;
 }
 
@@ -472,7 +476,35 @@ async function generateSummaryWithModel(
   throw new Error("Model did not produce a usable event summary");
 }
 
-async function loadSummarySettings(
+/**
+ * The summary prompt for one event. Shared by the live path (processSummaryJob)
+ * and batch submission (summaryBatchNode), so both send the same prompt.
+ */
+export function buildSummaryPromptForInput(
+  input: {
+    event: { title: string };
+    articles: SummaryInputArticle[];
+  },
+  transientBodies: Map<string, string>,
+): { system: string; user: string } {
+  return buildEventSummaryPrompt({
+    eventTitle: input.event.title,
+    articles: input.articles.map((article) => ({
+      title: article.title,
+      sourceName: article.source?.name ?? "Unknown source",
+      sourceBiasLabel: article.source?.biasLabel ?? "unknown",
+      sourceReliability: article.source?.reliabilityScore ?? 0,
+      publishedAt: new Date(article.publishedAt).toISOString(),
+      summary: article.summary,
+      rssSnippet: article.rssSnippet,
+      atomicFacts: article.atomicFacts,
+      bodyText: transientBodies.get(article._id),
+      canonicalUrl: article.canonicalUrl,
+    })),
+  });
+}
+
+export async function loadSummarySettings(
   ctx: ActionCtx,
   args: { enqueueLimit?: number; processLimit?: number },
 ): Promise<SummarySettings> {
@@ -481,6 +513,8 @@ async function loadSummarySettings(
       "event_summary_model",
       "event_summary_model_fallback",
       "event_summary_thinking_level",
+      "event_summary_batch_enabled",
+      "event_summary_batch_max_wait_hours",
       "event_summary_enqueue_limit",
       "event_summary_batch_size",
       "event_summary_max_attempts",
@@ -507,6 +541,12 @@ async function loadSummarySettings(
     model: safeString(cfg.event_summary_model, DEFAULT_MODEL),
     fallbackModel: fallbackModel === "none" ? undefined : fallbackModel,
     thinkingLevel: parseGeminiThinkingLevel(cfg.event_summary_thinking_level),
+    batchEnabled: safeBoolean(cfg.event_summary_batch_enabled, false),
+    batchMaxWaitMs:
+      safeInteger(cfg.event_summary_batch_max_wait_hours, 24, 1, 47) *
+      60 *
+      60 *
+      1000,
     enqueueLimit: safeInteger(
       args.enqueueLimit ?? cfg.event_summary_enqueue_limit,
       DEFAULT_ENQUEUE_LIMIT,
@@ -959,6 +999,17 @@ async function verifySummaryGrounding(
   return { action: "publish", fields: strippedFields, grounding };
 }
 
+/** Why batch mode cannot run with these settings, or null when it can. */
+export function summaryBatchBlocker(settings: SummarySettings): string | null {
+  if (!settings.model.startsWith("gemini")) {
+    return `event_summary_model ${settings.model} is not a Gemini model`;
+  }
+  if (settings.bodyFetchEnabled) {
+    return "event_summary_body_fetch_enabled is on";
+  }
+  return null;
+}
+
 export const summarizeQueuedEvents = internalAction({
   args: {
     enqueueLimit: v.optional(v.number()),
@@ -1005,6 +1056,40 @@ export const summarizeQueuedEvents = internalAction({
         limit: settings.batchSize,
       },
     );
+
+    // Batch mode hands the whole due set to one Batch API submission. It
+    // needs a Gemini model (the only provider wired for batches here) and body
+    // fetch off: bodies may only live in memory, and a batch outlives the
+    // action that fetched them.
+    if (settings.batchEnabled && dueJobs.length > 0) {
+      const blocker = summaryBatchBlocker(settings);
+      if (!blocker) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.summaryBatchNode.submitSummaryBatch,
+          {
+            jobs: dueJobs.map((job) => ({
+              jobId: job._id,
+              eventId: job.eventId,
+            })),
+          },
+        );
+        console.log(
+          `[summarization] Submitting ${dueJobs.length} job(s) as a batch; ${enqueueResult.queued} queued`,
+        );
+        return {
+          enqueued: enqueueResult.queued,
+          processed: dueJobs.length,
+          succeeded: 0,
+          failed: 0,
+          skipped: 0,
+          budgetExhausted: false,
+        };
+      }
+      console.warn(
+        `[summarization] event_summary_batch_enabled is on but ${blocker} — using live calls`,
+      );
+    }
 
     // Stagger the jobs instead of firing them all at once: concurrent
     // summary calls burst past Gemini's rate limit (observed 429s), and each
@@ -1214,13 +1299,86 @@ export const runPhase5Backfill = internalAction({
   },
 });
 
+/**
+ * The batch result for this job, if it is still usable: same event content
+ * (signature) as when it was submitted, parseable, and within the word caps.
+ * Anything else returns null and the job generates live, as before.
+ */
+export function batchedSummary(
+  batched:
+    | {
+        model: string;
+        summarySignature: string;
+        outputJson: string;
+        inputTokens: number;
+        outputTokens: number;
+      }
+    | undefined,
+  summarySignature: string,
+  eventTitle: string,
+): {
+  model: string;
+  generated: {
+    summary: EventSummaryOutput;
+    inputTokens: number;
+    outputTokens: number;
+  };
+} | null {
+  if (!batched) return null;
+  if (batched.summarySignature !== summarySignature) {
+    console.log(
+      "[summarization] Event changed since batch submission — generating live",
+    );
+    return null;
+  }
+  try {
+    const summary = parseSummaryOutput(
+      JSON.parse(batched.outputJson),
+      eventTitle,
+    );
+    const violations = validateSummaryWordCaps(summary);
+    if (violations.length > 0) {
+      console.warn(
+        `[summarization] Batch summary exceeded word caps (${violations.join("; ")}) — generating live`,
+      );
+      return null;
+    }
+    return {
+      model: batched.model,
+      generated: {
+        summary,
+        inputTokens: batched.inputTokens,
+        outputTokens: batched.outputTokens,
+      },
+    };
+  } catch (error) {
+    console.warn(
+      `[summarization] Batch summary unusable (${
+        error instanceof Error ? error.message : String(error)
+      }) — generating live`,
+    );
+    return null;
+  }
+}
+
 export const processSummaryJob = internalAction({
   args: {
     jobId: v.id("eventSummaryJobs"),
+    // Set by summaryBatchNode.collect: the main summary call already ran in a
+    // provider batch. Used only when the event has not changed since then.
+    batched: v.optional(
+      v.object({
+        model: v.string(),
+        summarySignature: v.string(),
+        outputJson: v.string(),
+        inputTokens: v.number(),
+        outputTokens: v.number(),
+      }),
+    ),
   },
   handler: async (
     ctx,
-    { jobId },
+    { jobId, batched },
   ): Promise<{
     processed: boolean;
     succeeded: boolean;
@@ -1340,21 +1498,7 @@ export const processSummaryJob = internalAction({
         await fetchTransientArticleBodies(ctx, input.articles, settings);
       const bodyFetchedAt = Date.now();
 
-      const prompt = buildEventSummaryPrompt({
-        eventTitle: input.event.title,
-        articles: input.articles.map((article: SummaryInputArticle) => ({
-          title: article.title,
-          sourceName: article.source?.name ?? "Unknown source",
-          sourceBiasLabel: article.source?.biasLabel ?? "unknown",
-          sourceReliability: article.source?.reliabilityScore ?? 0,
-          publishedAt: new Date(article.publishedAt).toISOString(),
-          summary: article.summary,
-          rssSnippet: article.rssSnippet,
-          atomicFacts: article.atomicFacts,
-          bodyText: transientBodies.get(article._id),
-          canonicalUrl: article.canonicalUrl,
-        })),
-      });
+      const prompt = buildSummaryPromptForInput(input, transientBodies);
 
       let generated: {
         summary: EventSummaryOutput;
@@ -1362,38 +1506,48 @@ export const processSummaryJob = internalAction({
         outputTokens: number;
       };
       let modelUsed = settings.model;
-      try {
-        generated = await generateSummaryWithModel(
-          ctx,
-          settings.model,
-          settings.thinkingLevel,
-          prompt,
-          input.event._id,
-          input.event.title,
-        );
-      } catch (error) {
-        // Free-tier quota strategy: the primary model's daily quota covers
-        // the first events of the day; once it 429s, the job runs on the
-        // fallback model instead of failing.
-        if (
-          !isQuotaError(error) ||
-          !settings.fallbackModel ||
-          settings.fallbackModel === settings.model
-        ) {
-          throw error;
+      const fromBatch = batchedSummary(
+        batched,
+        summarySignature,
+        input.event.title,
+      );
+      if (fromBatch) {
+        generated = fromBatch.generated;
+        modelUsed = fromBatch.model;
+      } else {
+        try {
+          generated = await generateSummaryWithModel(
+            ctx,
+            settings.model,
+            settings.thinkingLevel,
+            prompt,
+            input.event._id,
+            input.event.title,
+          );
+        } catch (error) {
+          // Free-tier quota strategy: the primary model's daily quota covers
+          // the first events of the day; once it 429s, the job runs on the
+          // fallback model instead of failing.
+          if (
+            !isQuotaError(error) ||
+            !settings.fallbackModel ||
+            settings.fallbackModel === settings.model
+          ) {
+            throw error;
+          }
+          console.warn(
+            `[summarization] ${settings.model} quota/rate limited — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
+          );
+          generated = await generateSummaryWithModel(
+            ctx,
+            settings.fallbackModel,
+            settings.thinkingLevel,
+            prompt,
+            input.event._id,
+            input.event.title,
+          );
+          modelUsed = settings.fallbackModel;
         }
-        console.warn(
-          `[summarization] ${settings.model} quota/rate limited — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
-        );
-        generated = await generateSummaryWithModel(
-          ctx,
-          settings.fallbackModel,
-          settings.thinkingLevel,
-          prompt,
-          input.event._id,
-          input.event.title,
-        );
-        modelUsed = settings.fallbackModel;
       }
 
       // L3 — verbatim-overlap gate: the summary must not reproduce ≥N
