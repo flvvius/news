@@ -90,6 +90,8 @@ import type * as sourceReputation from "../sourceReputation.js";
 import type * as sources from "../sources.js";
 import type * as summarization from "../summarization.js";
 import type * as summarizationNode from "../summarizationNode.js";
+import type * as summaryBatchNode from "../summaryBatchNode.js";
+import type * as summaryBatches from "../summaryBatches.js";
 import type * as topicCatalog from "../topicCatalog.js";
 import type * as topics from "../topics.js";
 import type * as user from "../user.js";
@@ -185,6 +187,8 @@ declare const fullApi: ApiFromModules<{
   sources: typeof sources;
   summarization: typeof summarization;
   summarizationNode: typeof summarizationNode;
+  summaryBatchNode: typeof summaryBatchNode;
+  summaryBatches: typeof summaryBatches;
   topicCatalog: typeof topicCatalog;
   topics: typeof topics;
   user: typeof user;

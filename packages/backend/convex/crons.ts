@@ -139,6 +139,19 @@ crons.cron(
 );
 
 // ---------------------------------------------------------------------------
+// Summary Batch Polling — Hourly (:15)
+// ---------------------------------------------------------------------------
+// Collects Gemini Batch API results submitted by summarize-published-events
+// when event_summary_batch_enabled is on. With no pending batch this is one
+// index read and returns, so it costs next to nothing while the flag is off.
+crons.cron(
+  "poll-summary-batches",
+  "15 * * * *",
+  internal.summaryBatchNode.pollSummaryBatches,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Summary Queue Health — Daily (05:30 UTC)
 // ---------------------------------------------------------------------------
 // Warns in logs when queued jobs duplicate the same event or queue depth
