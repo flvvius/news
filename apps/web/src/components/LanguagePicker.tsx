@@ -17,7 +17,7 @@ function validateLocale(input: unknown): Locale {
 }
 
 const setLocaleCookie = createServerFn({ method: "POST" })
-  .inputValidator(validateLocale)
+  .validator(validateLocale)
   .handler(({ data }) => {
     setCookie("bv_locale", data, {
       path: "/",

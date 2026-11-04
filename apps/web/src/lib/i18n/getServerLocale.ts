@@ -20,7 +20,7 @@ function validateInput(input: unknown): GetServerLocaleInput {
 }
 
 export const getServerLocale = createServerFn({ method: "GET" })
-  .inputValidator(validateInput)
+  .validator(validateInput)
   .handler(({ data }): Locale => {
     const requestUrl = getRequestUrl({
       xForwardedHost: true,
