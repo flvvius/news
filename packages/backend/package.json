@@ -31,20 +31,22 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
+    "@ai-sdk/google": "4.0.111",
+    "@ai-sdk/openai": "4.0.108",
     "@better-auth/expo": "catalog:",
     "@convex-dev/better-auth": "catalog:",
-    "@posthog/ai": "^7.9.3",
     "@resvg/resvg-js": "^2.6.2",
+    "ai": "7.0.162",
     "better-auth": "catalog:",
     "convex": "catalog:",
     "decode-ico": "^0.4.1",
     "expo": "~56.0.0-preview.9",
     "jsdom": "^26.0.0",
-    "openai": "^6.25.0",
     "posthog-node": "^5.26.0",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "resend": "^6.9.2",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "zod": "^4.1.8"
   }
 }

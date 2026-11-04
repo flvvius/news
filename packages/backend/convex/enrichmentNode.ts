@@ -4,7 +4,7 @@
  * Article Enrichment Pipeline — Phase 3.3 (Node.js Action)
  *
  * This file runs in the Node.js runtime because it imports posthog-node
- * (via lib/openai) which depends on Node.js builtins.
+ * (via lib/llmAnalytics) which depends on Node.js builtins.
  *
  * Queries & mutations live in enrichment.ts (default V8 runtime).
  *
@@ -17,7 +17,7 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
-import { shutdownPostHog } from "./lib/openai";
+import { shutdownPostHog } from "./lib/llmAnalytics";
 import { randomUUID } from "node:crypto";
 import {
   demoteRepeatedSourceBodies,
@@ -256,21 +256,18 @@ type BiasDetectionSettings = {
 };
 
 // ---------------------------------------------------------------------------
-// OpenAI Embedding Generation (via PostHog-instrumented client)
+// OpenAI Embedding Generation (via callLLM / AI SDK)
 // ---------------------------------------------------------------------------
 
 /**
- * Generate embeddings for a batch of texts via OpenAI SDK.
- * When POSTHOG_API_KEY is set, token usage, cost, and latency are
- * automatically tracked in PostHog LLM Analytics.
+ * Generate embeddings for a batch of texts. callLLM logs usage to aiUsage and,
+ * when POSTHOG_API_KEY is set, sends a PostHog $ai_embedding event.
  */
 async function generateEmbeddings(
   ctx: ActionCtx,
   texts: string[],
 ): Promise<{ embeddings: Array<number[] | null>; tokensUsed: number }> {
-  const response = await callLLM<
-    Array<{ index: number; embedding: number[] }>
-  >({
+  const response = await callLLM<number[][]>({
     kind: "embedding",
     model: EMBEDDING_MODEL,
     input: texts,
@@ -282,11 +279,10 @@ async function generateEmbeddings(
     throw new Error(response.error ?? "Embedding generation failed");
   }
 
-  // Map back to input order
-  const embeddings: Array<number[] | null> = new Array(texts.length).fill(null);
-  for (const item of response.result) {
-    embeddings[item.index] = item.embedding;
-  }
+  // callLLM returns embeddings in input order.
+  const embeddings: Array<number[] | null> = texts.map(
+    (_, index) => response.result?.[index] ?? null,
+  );
 
   return { embeddings, tokensUsed: response.usage.inputTokens };
 }

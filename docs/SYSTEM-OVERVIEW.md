@@ -19,13 +19,13 @@ The whole content pipeline is **autonomous**: a set of Convex cron jobs run cont
 - **Web: TanStack Start + React 19 + Tailwind v4** (`apps/web`).
 - **Native: Expo / React Native** (`apps/native`) — now a real product surface (feed, event detail, claims, quiz, streaks), not just a shell.
 - **Auth: Better Auth** with a Convex storage adapter (email/password + Google + Apple, cross-domain + Expo plugins).
-- **AI: Gemini + OpenAI** — `text-embedding-3-small` (OpenAI) for embeddings (512 dims), and **`gemini-3.1-flash-lite`** (via Gemini's OpenAI-compatible API) as the default chat model for reasoning tasks (bias scoring, summaries; fact extraction/claim divergence are paused). Every model id is **runtime-configurable** via the `config` table — gemini-* ids route to Gemini, everything else to OpenAI (`lib/modelRouting.ts`).
-- **Email: Resend**. **Analytics: PostHog** (instruments every LLM call for token/cost/latency tracking).
+- **AI: Gemini + OpenAI** — `text-embedding-3-small` (OpenAI) for embeddings (512 dims), and **`gemini-3.1-flash-lite`** (Gemini API via the Vercel AI SDK) as the default chat model for reasoning tasks (bias scoring, summaries; fact extraction/claim divergence are paused). Every model id is **runtime-configurable** via the `config` table — gemini-* ids route to Gemini, everything else to OpenAI (`lib/modelRouting.ts`).
+- **Email: Resend**. **Analytics: PostHog** (`callLLM` sends a `$ai_generation`/`$ai_embedding` event per model call with token/cost/latency; no prompt or output text).
 
 ### Convex function types you'll see everywhere
 - **`query`** — read-only, reactive, runs in Convex's deterministic V8 runtime.
 - **`mutation`** — transactional writes, V8 runtime, no network/`fetch`.
-- **`action`** — can do I/O (`fetch`, OpenAI). Cannot touch the DB directly; it calls queries/mutations via `ctx.runQuery`/`ctx.runMutation`. Files ending in `Node.ts` (`enrichmentNode`, `summarizationNode`, etc.) declare `"use node"` so they run in the **Node.js runtime** (needed for the OpenAI SDK, PostHog, `crypto`).
+- **`action`** — can do I/O (`fetch`, model calls). Cannot touch the DB directly; it calls queries/mutations via `ctx.runQuery`/`ctx.runMutation`. Files ending in `Node.ts` (`enrichmentNode`, `summarizationNode`, etc.) declare `"use node"` so they run in the **Node.js runtime** (needed for `posthog-node`, `crypto`, jsdom).
 - **`internal*`** variants are not exposed to clients; the pipeline is built almost entirely from `internalAction`/`internalMutation`/`internalQuery`.
 
 The recurring architectural pattern: **an action orchestrates** (fetch, call OpenAI, decide), and **delegates all DB reads/writes to internal queries/mutations**, so the side-effecting steps are small, transactional, and idempotent.

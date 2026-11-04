@@ -14,7 +14,13 @@
 
 export function errorStatus(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null) return undefined;
-  const candidate = error as { status?: unknown; code?: unknown };
+  // AI SDK APICallError carries `statusCode`; older SDK errors used `status`.
+  const candidate = error as {
+    statusCode?: unknown;
+    status?: unknown;
+    code?: unknown;
+  };
+  if (typeof candidate.statusCode === "number") return candidate.statusCode;
   if (typeof candidate.status === "number") return candidate.status;
   if (typeof candidate.code === "number") return candidate.code;
   return undefined;

@@ -6,7 +6,7 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
-import { shutdownPostHog } from "./lib/openai";
+import { shutdownPostHog } from "./lib/llmAnalytics";
 import { callLLM } from "./lib/aiCall";
 import {
   buildClaimAnalysisPrompt,

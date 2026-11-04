@@ -14,7 +14,9 @@
 // Run small batches by default (live API spend):
 //   pnpm exec tsx eval/romanian/run-eval.ts --limit 10
 //   pnpm exec tsx eval/romanian/run-eval.ts --limit 10 --offset 10   # next batch
-//   flags: --limit N (default 10) --offset N --model <id> --judge <id> --dry-run
+//   flags: --limit N (default 10) --offset N --model <id> --judge <id>
+//          --thinking default|minimal|low|medium|high (Gemini summary model)
+//          --dry-run
 //
 // Requires GEMINI_API_KEY (gemini-* models) / OPENAI_API_KEY (gpt-*) in env
 // or eval/romanian/.env.local. Baseline + pass/fail bars: see README.md.
@@ -22,7 +24,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import OpenAI from "openai";
+import {
+  generateText,
+  jsonSchema,
+  NoObjectGeneratedError,
+  Output,
+  type JSONSchema7,
+} from "ai";
 
 import {
   buildEventSummaryPrompt,
@@ -31,10 +39,11 @@ import {
 import { isPlaceholderPerspective } from "../../packages/backend/convex/lib/perspectiveText";
 import {
   DEFAULT_CHAT_MODEL,
-  GEMINI_OPENAI_BASE_URL,
-  buildChatTuningParams,
-  providerForModel,
+  buildCallSettings,
+  parseGeminiThinkingLevel,
+  type GeminiThinkingLevel,
 } from "../../packages/backend/convex/lib/modelRouting";
+import { languageModelFor } from "../../packages/backend/convex/lib/llmProviders";
 import { looksRomanian } from "../../packages/backend/convex/lib/romanian";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -62,18 +71,40 @@ const LIMIT = Math.max(1, parseInt(argValue("--limit", "10"), 10));
 const OFFSET = Math.max(0, parseInt(argValue("--offset", "0"), 10));
 const MODEL = argValue("--model", DEFAULT_CHAT_MODEL);
 const JUDGE_MODEL = argValue("--judge", "gemini-3.5-flash");
+const THINKING = parseGeminiThinkingLevel(argValue("--thinking", "default"));
 const DRY_RUN = has("--dry-run");
 
-function clientFor(model: string): OpenAI {
-  const provider = providerForModel(model);
-  if (provider === "gemini") {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY required for gemini models");
-    return new OpenAI({ apiKey, baseURL: GEMINI_OPENAI_BASE_URL });
+type JsonSchemaSpec = {
+  json_schema: { name: string; schema: Record<string, unknown> };
+};
+
+/**
+ * One structured-output call through the AI SDK (same providers as the
+ * pipeline). Returns the raw JSON text, so the caller scores schema validity
+ * itself: unparseable output comes back as text instead of a throw.
+ */
+async function generateJsonText(
+  model: string,
+  spec: JsonSchemaSpec,
+  prompt: { system: string; user: string },
+  tuning: { maxTokens: number; thinkingLevel?: GeminiThinkingLevel },
+): Promise<string> {
+  try {
+    const result = await generateText({
+      model: languageModelFor(model),
+      ...buildCallSettings(model, tuning),
+      output: Output.object({
+        schema: jsonSchema(spec.json_schema.schema as JSONSchema7),
+        name: spec.json_schema.name,
+      }),
+      system: prompt.system,
+      prompt: prompt.user,
+    });
+    return JSON.stringify(result.output);
+  } catch (error) {
+    if (NoObjectGeneratedError.isInstance(error)) return error.text ?? "";
+    throw error;
   }
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY required for gpt models");
-  return new OpenAI({ apiKey });
 }
 
 const SUMMARY_SCHEMA = {
@@ -330,7 +361,7 @@ async function main() {
   };
   const batch = sample.slice(OFFSET, OFFSET + LIMIT);
   console.log(
-    `Evaluating events ${OFFSET + 1}-${OFFSET + batch.length} of ${sample.length} — model=${MODEL} judge=${JUDGE_MODEL}${DRY_RUN ? " (dry run)" : ""}`,
+    `Evaluating events ${OFFSET + 1}-${OFFSET + batch.length} of ${sample.length} — model=${MODEL} thinking=${THINKING} judge=${JUDGE_MODEL}${DRY_RUN ? " (dry run)" : ""}`,
   );
   if (DRY_RUN) {
     for (const event of batch) {
@@ -345,9 +376,6 @@ async function main() {
     return;
   }
 
-  const generator = clientFor(MODEL);
-  const judge = clientFor(JUDGE_MODEL);
-
   const results: any[] = [];
   for (const event of batch) {
     const prompt = buildEventSummaryPrompt({
@@ -355,16 +383,10 @@ async function main() {
       articles: event.articles,
     });
 
-    const generation = await generator.chat.completions.create({
-      model: MODEL,
-      ...buildChatTuningParams(MODEL, { maxTokens: 1500 }),
-      response_format: SUMMARY_SCHEMA,
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-    } as never);
-    const rawContent = generation.choices[0]?.message?.content ?? "";
+    const rawContent = await generateJsonText(MODEL, SUMMARY_SCHEMA, prompt, {
+      maxTokens: 1500,
+      thinkingLevel: THINKING,
+    });
 
     let output: EventSummaryOutput | null = null;
     let schemaValid = false;
@@ -408,18 +430,13 @@ async function main() {
       event.articles,
       output,
     );
-    const judgement = await judge.chat.completions.create({
-      model: JUDGE_MODEL,
-      ...buildChatTuningParams(JUDGE_MODEL, { maxTokens: 1200 }),
-      response_format: JUDGE_SCHEMA,
-      messages: [
-        { role: "system", content: judgePrompt.system },
-        { role: "user", content: judgePrompt.user },
-      ],
-    } as never);
-    const verdict = JSON.parse(
-      judgement.choices[0]?.message?.content ?? "{}",
-    ) as {
+    const judgement = await generateJsonText(
+      JUDGE_MODEL,
+      JUDGE_SCHEMA,
+      judgePrompt,
+      { maxTokens: 1200 },
+    );
+    const verdict = JSON.parse(judgement || "{}") as {
       unsupportedClaims: string[];
       totalClaimsChecked: number;
       entityErrors: string[];
@@ -493,6 +510,7 @@ async function main() {
   const summary = {
     generatedAt: new Date().toISOString(),
     model: MODEL,
+    thinkingLevel: THINKING,
     judgeModel: JUDGE_MODEL,
     offset: OFFSET,
     events: results.length,

@@ -6,7 +6,8 @@ import { internal } from "./_generated/api";
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_EMBEDDING_MODEL,
-  buildChatTuningParams,
+  buildCallSettings,
+  parseGeminiThinkingLevel,
   isGpt5FamilyModel,
   providerForModel,
 } from "./lib/modelRouting";
@@ -33,42 +34,67 @@ describe("LLM provider routing (BIV-201)", () => {
   });
 });
 
-describe("chat tuning parameters per provider (BIV-201)", () => {
-  test("gemini models get temperature/max_tokens and no OpenAI cache keys", () => {
-    const params = buildChatTuningParams("gemini-3.1-flash-lite", {
+describe("AI SDK call settings per provider (BIV-201)", () => {
+  test("gemini models get temperature/maxOutputTokens and no OpenAI cache keys", () => {
+    const settings = buildCallSettings("gemini-3.1-flash-lite", {
       maxTokens: 900,
       promptCacheKey: "biviant:event_summary",
       promptCacheRetention: "24h",
     });
-    expect(params).toEqual({ temperature: 0.1, max_tokens: 900 });
+    expect(settings).toEqual({ temperature: 0.1, maxOutputTokens: 900 });
   });
 
-  test("gpt-5 family gets reasoning_effort/max_completion_tokens", () => {
-    const params = buildChatTuningParams("gpt-5-nano", {
+  test("gemini thinking level is sent only when set", () => {
+    expect(
+      buildCallSettings("gemini-3.5-flash", { thinkingLevel: "default" }),
+    ).toEqual({ temperature: 0.1 });
+    expect(
+      buildCallSettings("gemini-3.5-flash", { thinkingLevel: "minimal" }),
+    ).toEqual({
+      temperature: 0.1,
+      providerOptions: {
+        google: { thinkingConfig: { thinkingLevel: "minimal" } },
+      },
+    });
+  });
+
+  test("gpt-5 family gets reasoning effort and no temperature", () => {
+    const settings = buildCallSettings("gpt-5-nano", {
       maxTokens: 900,
       reasoningEffort: "low",
       promptCacheKey: "biviant:event_summary",
     });
-    expect(params).toEqual({
-      reasoning_effort: "low",
-      max_completion_tokens: 900,
-      prompt_cache_key: "biviant:event_summary",
+    expect(settings).toEqual({
+      maxOutputTokens: 900,
+      providerOptions: {
+        openai: { reasoningEffort: "low", promptCacheKey: "biviant:event_summary" },
+      },
     });
   });
 
   test("other OpenAI models keep temperature + prompt cache keys", () => {
-    const params = buildChatTuningParams("gpt-4o-mini", {
+    const settings = buildCallSettings("gpt-4o-mini", {
       maxTokens: 500,
       temperature: 0.2,
       promptCacheKey: "biviant:bias_scoring",
       promptCacheRetention: "24h",
     });
-    expect(params).toEqual({
+    expect(settings).toEqual({
       temperature: 0.2,
-      max_tokens: 500,
-      prompt_cache_key: "biviant:bias_scoring",
-      prompt_cache_retention: "24h",
+      maxOutputTokens: 500,
+      providerOptions: {
+        openai: {
+          promptCacheKey: "biviant:bias_scoring",
+          promptCacheRetention: "24h",
+        },
+      },
     });
+  });
+
+  test("unknown thinking levels fall back to the model default", () => {
+    expect(parseGeminiThinkingLevel("low")).toBe("low");
+    expect(parseGeminiThinkingLevel("turbo")).toBe("default");
+    expect(parseGeminiThinkingLevel(undefined)).toBe("default");
   });
 });
 
