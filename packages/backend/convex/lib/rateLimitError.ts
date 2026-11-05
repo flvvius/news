@@ -49,3 +49,25 @@ export function isRateLimitError(error: unknown): boolean {
     /\b429\b|RESOURCE_EXHAUSTED|rate[ _-]?limit|quota/i.test(message)
   );
 }
+
+/**
+ * True for a provider 503: the model is overloaded ("This model is currently
+ * experiencing high demand", status UNAVAILABLE). Like a 429, the request never
+ * reached the model, so a different model can still serve it.
+ *
+ * Same input shapes as isRateLimitError: a live SDK error or the flattened
+ * `"503 ..."` message callLLM returns.
+ */
+export function isProviderOverloadError(error: unknown): boolean {
+  if (errorStatus(error) === 503) return true;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return (
+    message.length > 0 &&
+    /^503\b|\bUNAVAILABLE\b|high demand|overloaded/i.test(message)
+  );
+}

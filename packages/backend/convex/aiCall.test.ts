@@ -16,7 +16,9 @@ vi.mock("./lib/llmProviders", () => ({
 }));
 
 const { callLLM } = await import("./lib/aiCall");
-const { isRateLimitError } = await import("./lib/rateLimitError");
+const { isProviderOverloadError, isRateLimitError } = await import(
+  "./lib/rateLimitError"
+);
 
 type MutationCall = { args: Record<string, unknown> };
 
@@ -216,6 +218,36 @@ describe("callLLM on the AI SDK", () => {
     expect(isRateLimitError(response.error)).toBe(true);
     // reserveBudget, then releaseReservation (no usage to record).
     expect(calls[calls.length - 1]?.args).toEqual({ reservationId: "reservation_1" });
+  });
+
+  test("a 503 overload comes back in a shape the summary fallback recognizes", async () => {
+    models.chat = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new APICallError({
+          message:
+            "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.",
+          url: "https://generativelanguage.googleapis.com",
+          requestBodyValues: {},
+          statusCode: 503,
+        });
+      },
+    });
+    const { runtime } = fakeRuntime();
+
+    const response = await callLLM({
+      kind: "chat",
+      model: "gemini-3.5-flash-lite",
+      messages: MESSAGES,
+      responseFormat: SCHEMA,
+      context: { callType: "event_summary" },
+      runtime,
+      maxRetries: 1,
+    });
+
+    expect(response.result).toBeNull();
+    expect(response.error).toMatch(/^503 /);
+    expect(isProviderOverloadError(response.error)).toBe(true);
+    expect(isRateLimitError(response.error)).toBe(false);
   });
 
   test("Gemini thinking level reaches the provider options", async () => {
