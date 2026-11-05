@@ -17,6 +17,7 @@ import { chooseEventTitle } from "./lib/eventTitle";
 import { normalizeArticleSnippet, normalizeArticleTitle } from "./ingestion";
 import { buildEventShareRenderSignature } from "./shareAssets";
 import { namedAxisBias, normalizedPerspectives } from "./lib/biasAxis";
+import { GLOBAL_IMPACT_FALLBACK } from "./lib/summaryText";
 import { foldDiacriticsToAscii } from "./lib/romanian";
 import {
   ensureUserProfileForAuthUser,
@@ -1352,6 +1353,55 @@ export const requeueRateLimitedSummaryJobs = internalMutation({
       requeued,
       remaining: Math.max(candidates.length - requeued, 0),
       skippedRealFailures: failed.length - candidates.length,
+    };
+  },
+});
+
+/**
+ * Give summarized published events with a blank globalImpact the fallback.
+ *
+ * Grounding used to store "" when it stripped every globalImpact sentence.
+ * shouldResummarize treats a blank globalImpact as an unfinished run, so each
+ * of these events was re-queued every cron and then skipped as unchanged
+ * (see stripUnsupportedSentences in summarizationNode.ts). Dry-run by default.
+ */
+export const fillBlankGlobalImpact = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    cursor: v.optional(v.string()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const numItems = Math.min(Math.max(Math.floor(args.pageSize ?? 500), 1), 2000);
+    const page = await ctx.db
+      .query("events")
+      .withIndex("by_status_recency", (q) => q.eq("status", "published"))
+      .paginate({ cursor: args.cursor ?? null, numItems });
+
+    let filled = 0;
+    for (const event of page.page) {
+      const neutral = normalizedPerspectives(event.perspectiveSummaries)?.neutral;
+      if (
+        !event.lastSummarizedAt ||
+        !neutral?.trim() ||
+        event.globalImpact?.trim()
+      ) {
+        continue;
+      }
+      if (!dryRun) {
+        await ctx.db.patch(event._id, { globalImpact: GLOBAL_IMPACT_FALLBACK });
+        await syncPublicEventPreview(ctx, event._id);
+      }
+      filled++;
+    }
+
+    return {
+      dryRun,
+      scanned: page.page.length,
+      filled,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
     };
   },
 });

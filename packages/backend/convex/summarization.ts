@@ -62,7 +62,7 @@ function safeInteger(
   return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
-function shouldResummarize(event: Doc<"events">): boolean {
+export function shouldResummarize(event: Doc<"events">): boolean {
   // No status gate: `processing` events awaiting their first summary are
   // eligible too (a successful summary is what promotes them to `published`).
   // Count/source thresholds are enforced separately in getEventEligibility.

@@ -168,6 +168,13 @@ describe("Romanian-first event summary prompt (BIV-202)", () => {
     expect(prompt.system).toContain("unități monetare");
   });
 
+  test("v9.2: globalImpact only states consequences an article states", () => {
+    expect(prompt.system).toContain("doar când un articol le afirmă");
+    expect(prompt.system).toContain("NU deduce și NU prezice consecințe");
+    expect(prompt.system).not.toContain("consider-o validă");
+    expect(prompt.system).not.toContain("o consecință specifică ulterioară");
+  });
+
   test("v9: globalImpact is consequence-first and capped at 2-3 lines", () => {
     expect(prompt.system).toContain("pe cine schimbă asta și cum");
     expect(prompt.system).toContain(
