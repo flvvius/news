@@ -1357,6 +1357,40 @@ export const requeueRateLimitedSummaryJobs = internalMutation({
 });
 
 /**
+ * Resolve pipeline alerts that were acknowledged but never resolved.
+ *
+ * Before acknowledging also resolved an alert (see acknowledgedAlertPatch in
+ * pipeline.ts), an acknowledged alert stayed unresolved forever and blocked
+ * upsertPipelineAlert from raising its code again. Unacknowledged alerts are
+ * left alone: they are still waiting for an operator.
+ */
+export const resolveAcknowledgedAlerts = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const unresolved = await ctx.db
+      .query("pipelineAlerts")
+      .withIndex("by_resolved_created_at", (q) => q.eq("resolvedAt", undefined))
+      .take(1000);
+    const acknowledged = unresolved.filter(
+      (alert) => alert.acknowledgedAt !== undefined,
+    );
+    if (!dryRun) {
+      for (const alert of acknowledged) {
+        await ctx.db.patch(alert._id, { resolvedAt: alert.acknowledgedAt });
+      }
+    }
+    return {
+      dryRun,
+      scannedUnresolved: unresolved.length,
+      resolved: acknowledged.length,
+      codes: [...new Set(acknowledged.map((alert) => alert.code))],
+      stillOpen: unresolved.length - acknowledged.length,
+    };
+  },
+});
+
+/**
  * COST MODE — reclaim orphaned Convex file storage.
  *
  * Prod file storage sits at ~992 MB against a 1 GB free allowance, but

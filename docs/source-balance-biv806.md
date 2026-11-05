@@ -70,3 +70,15 @@ appear in `ALL_FEEDS`.
   (A ≤ 4, B ≤ 3, C ≤ 1).
 - `feeds.smoke.test.ts`: live feed-parse smoke test for each tier-3 URL,
   opt-in via `FEED_SMOKE=1` (network-dependent, skipped in the normal suite).
+
+## Later changes
+
+The live mix is **8:4:5** (reformist:neutral:suveranist).
+
+- Agerpres (neutral wire) was dropped from the feeds, which took the mix from
+  8:5:6 to 8:4:6.
+- **2026-11-05:** Național (national.ro) was dropped, leaving 8:4:5. Its
+  Cloudflare has answered the Convex fetchers with HTTP 403 since about
+  2026-09-20. The same request works from a residential IP, so it blocks the
+  datacenter range, not our user agent. It keeps its reputation row. It can
+  come back if national.ro allowlists MiezBot.

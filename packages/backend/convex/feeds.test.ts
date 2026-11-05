@@ -25,13 +25,14 @@ describe("Romanian feed list (BIV-101)", () => {
     const reformist = ALL_FEEDS.filter((f) => f.baseBias < 0).length;
     const neutral = ALL_FEEDS.filter((f) => f.baseBias === 0).length;
     const suveranist = ALL_FEEDS.filter((f) => f.baseBias > 0).length;
-    // BIV-806 landed 8:5:6; dropping Agerpres (a neutral wire feed) leaves
-    // 8:4:6. A future deliberate rebalance must update this test AND
-    // docs/source-balance-biv806.md together.
+    // BIV-806 landed 8:5:6; dropping Agerpres (a neutral wire feed) left
+    // 8:4:6, and dropping Național (blocked us with HTTP 403 since
+    // 2026-09-20) leaves 8:4:5. A future deliberate rebalance must update this
+    // test AND docs/source-balance-biv806.md together.
     expect({ reformist, neutral, suveranist }).toEqual({
       reformist: 8,
       neutral: 4,
-      suveranist: 6,
+      suveranist: 5,
     });
     // Invariant behind the numbers: never equal or inverted.
     expect(reformist).toBeGreaterThan(suveranist);
@@ -65,7 +66,8 @@ describe("Romanian feed list (BIV-101)", () => {
 
   test("tier-3 balance feeds carry honest (low/moderate) reliability (BIV-806)", () => {
     const tier3 = ALL_FEEDS.filter((f) => f.tier === 3);
-    expect(tier3.length).toBeGreaterThanOrEqual(4);
+    // 4 at BIV-806; 3 since Național was dropped (HTTP 403, 2026-11-05).
+    expect(tier3.length).toBeGreaterThanOrEqual(3);
     for (const feed of tier3) {
       expect(feed.baseBias, `${feed.domain} must be suveranist-leaning`)
         .toBeGreaterThan(0);

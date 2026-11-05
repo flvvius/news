@@ -219,13 +219,11 @@ const TIER_3: FeedDefinition[] = [
     tier: 3,
     mbfc: { category: "right", factual: "low", credibility: "low" },
   },
-  {
-    url: "https://www.national.ro/feed",
-    name: "Național",
-    domain: "national.ro",
-    tier: 3,
-    mbfc: { category: "right", factual: "mixed", credibility: "low" },
-  },
+  // Național (national.ro) removed 2026-11-05: its Cloudflare has answered
+  // the Convex fetchers with HTTP 403 since ~2026-09-20 (the same request
+  // succeeds from a residential IP, so it's the datacenter range, not our
+  // user agent). The reputation row stays, so a national.ro article arriving
+  // through Google News still resolves to a rated source.
 ];
 
 function withReputation(definition: FeedDefinition): FeedEntry {
