@@ -8,6 +8,7 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { shutdownPostHog } from "./lib/llmAnalytics";
 import { callLLM, isRateLimitError } from "./lib/aiCall";
+import { isProviderOverloadError } from "./lib/rateLimitError";
 import { fetchArticleBodyText } from "./lib/articleExtraction";
 import {
   buildEventSummaryPrompt,
@@ -360,12 +361,14 @@ function retryDelayMs(attempts: number): number {
 }
 
 /**
- * Rate/quota rejection from the model API (Gemini free tier surfaces both
- * per-minute and per-day exhaustion as 429 RESOURCE_EXHAUSTED). These are
- * the errors worth retrying on the fallback model rather than failing.
+ * Errors worth retrying on the fallback model rather than failing: rate/quota
+ * rejections (Gemini free tier surfaces both per-minute and per-day exhaustion
+ * as 429 RESOURCE_EXHAUSTED) and 503 overloads ("high demand"). Both are about
+ * the primary model's capacity, not the request, and the fallback model has
+ * its own quota and capacity.
  */
-function isQuotaError(error: unknown): boolean {
-  return isRateLimitError(error);
+export function shouldFallBackToModel(error: unknown): boolean {
+  return isRateLimitError(error) || isProviderOverloadError(error);
 }
 
 /**
@@ -1526,17 +1529,17 @@ export const processSummaryJob = internalAction({
           );
         } catch (error) {
           // Free-tier quota strategy: the primary model's daily quota covers
-          // the first events of the day; once it 429s, the job runs on the
-          // fallback model instead of failing.
+          // the first events of the day; once it 429s (or 503s under load),
+          // the job runs on the fallback model instead of failing.
           if (
-            !isQuotaError(error) ||
+            !shouldFallBackToModel(error) ||
             !settings.fallbackModel ||
             settings.fallbackModel === settings.model
           ) {
             throw error;
           }
           console.warn(
-            `[summarization] ${settings.model} quota/rate limited — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
+            `[summarization] ${settings.model} rate limited or overloaded — falling back to ${settings.fallbackModel} for event ${job.eventId}`,
           );
           generated = await generateSummaryWithModel(
             ctx,
