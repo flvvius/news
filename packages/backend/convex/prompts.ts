@@ -155,6 +155,13 @@ function trimField(value: string | undefined, maxLength: number): string {
  *    self-contained-first-sentence rule directly above it. The lead now has an
  *    explicit 16-word / 120-character budget tied to that clamp.
  *
+ * v9.2 = globalImpact may only state consequences an article states. The
+ * grounding gate stripped 40 of 79 globalImpact sentences in a 2026-11-05
+ * sample and emptied the whole field in 154 of 389 summaries: the old rules
+ * ranked "a specific later consequence" first and said "if unsure, treat it
+ * as valid", which invited predictions ("traffic will drop") that no article
+ * supports. Same no-bump reasoning as v9.1 below.
+ *
  * Deliberately NOT a SUMMARY_PROMPT_VERSION bump. `shouldResummarize` re-queues
  * every event whose stored version differs, so bumping would re-summarize all
  * ~1160 existing events: ~24-32 days of the summarization budget spent on
@@ -333,9 +340,9 @@ export function buildEventSummaryPrompt(input: EventSummaryPromptInput): {
       "- FIECARE propoziție începe cu cine sau ce este afectat — oameni, prețuri, o instituție, o regiune, un buget — și continuă cu consecința. Nu începe cu o reluare a evenimentului.",
       "- Fiecare propoziție este o consecință distinctă. Dacă ai o singură consecință reală, scrie o singură propoziție: mai bine una clară decât trei umpluturi.",
       "- globalImpact NU repetă rezumatul neutral. Nu re-povesti evenimentul: dacă o informație apare deja în neutral, aici apare doar consecința ei, nu faptul în sine.",
-      "- Forme valide de impact, în ordinea priorității: o consecință specifică ulterioară; un efect deja declarat (reacții de piață, victime, diplomație, sancțiuni, prețuri); sau mize directe numite de un articol.",
+      "- Forme valide de impact, doar când un articol le afirmă: un efect deja raportat (reacții de piață, victime, diplomație, sancțiuni, prețuri); o consecință anunțată explicit de un articol (o lege care intră în vigoare, un termen, o decizie așteptată); sau o miză numită direct de un articol.",
       "- O miză există când orice articol menționează un risc specific pentru o persoană, un grup, o piață, o regiune, un tratat, alegeri, aprovizionare, prețuri sau o instituție.",
-      "- Dacă nu ești sigur că o mențiune este o miză concretă, consider-o validă și scrie impactul.",
+      '- Fiecare propoziție de impact trebuie susținută de un articol. NU deduce și NU prezice consecințe pe care articolele nu le afirmă (de ex. „traficul va scădea", „prețurile vor crește"): o verificare automată șterge orice propoziție nesusținută.',
       "- Citează numele sursei când exprimi impactul.",
       `- Folosește exact "${GLOBAL_IMPACT_FALLBACK}" doar când articolele sunt pur procedurale sau informative și nu conțin niciun risc, efect, consecință sau miză.`,
       "",

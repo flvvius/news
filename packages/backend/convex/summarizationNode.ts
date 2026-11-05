@@ -744,7 +744,7 @@ type GroundingOutcome =
   | { action: "publish"; fields: SummaryFields; grounding: GroundingRecord }
   | { action: "blocked"; grounding: GroundingRecord };
 
-type SummaryFields = Record<SummaryFieldName, string>;
+export type SummaryFields = Record<SummaryFieldName, string>;
 
 type GroundingRecord = {
   model: string;
@@ -791,6 +791,43 @@ const GROUNDING_JSON_SCHEMA = {
  * sentences are stripped; too many failures (or an empty neutral) block the
  * summary entirely.
  */
+/**
+ * Keep only the supported sentences of each field.
+ *
+ * A globalImpact with every sentence stripped becomes GLOBAL_IMPACT_FALLBACK,
+ * not "". shouldResummarize reads a blank globalImpact as an unfinished run,
+ * so a stored "" re-queued the event on every cron, and the signature check
+ * then skipped it: 51 published events sat in that loop on 2026-11-05, using
+ * ~40% of all summary job slots. The UI already hides the fallback text, and
+ * grounding never checks it (it's our own text, not a claim).
+ */
+export function stripUnsupportedSentences(
+  fields: SummaryFields,
+  results: Array<{ field: string; sentence: string; supported: boolean }>,
+): SummaryFields {
+  const strippedFields: SummaryFields = { ...fields };
+  for (const fieldName of [
+    "neutral",
+    "reformist",
+    "suveranist",
+    "globalImpact",
+  ] as const) {
+    const fieldSentences = results.filter(
+      (entry) => entry.field === fieldName,
+    );
+    if (fieldSentences.length === 0) continue;
+    const kept = fieldSentences
+      .filter((entry) => entry.supported)
+      .map((entry) => entry.sentence)
+      .join(" ");
+    strippedFields[fieldName] =
+      fieldName === "globalImpact" && !kept.trim()
+        ? GLOBAL_IMPACT_FALLBACK
+        : kept;
+  }
+  return strippedFields;
+}
+
 async function verifySummaryGrounding(
   ctx: ActionCtx,
   settings: SummarySettings,
@@ -978,23 +1015,7 @@ async function verifySummaryGrounding(
     return { action: "publish", fields, grounding };
   }
 
-  // Strip unsupported sentences; keep field text = supported sentences only.
-  const strippedFields: SummaryFields = { ...fields };
-  for (const fieldName of [
-    "neutral",
-    "reformist",
-    "suveranist",
-    "globalImpact",
-  ] as const) {
-    const fieldSentences = results.filter(
-      (entry) => entry.field === fieldName,
-    );
-    if (fieldSentences.length === 0) continue;
-    strippedFields[fieldName] = fieldSentences
-      .filter((entry) => entry.supported)
-      .map((entry) => entry.sentence)
-      .join(" ");
-  }
+  const strippedFields = stripUnsupportedSentences(fields, results);
   if (!strippedFields.neutral.trim()) {
     // The factual core itself is unsupported — nothing publishable remains.
     return { action: "blocked", grounding: { ...grounding, passed: false } };
