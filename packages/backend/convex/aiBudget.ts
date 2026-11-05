@@ -108,6 +108,9 @@ export function calculateCostWithCachedInput(
 const DEFAULT_DAILY_BUDGET_USD = 1.0;
 const SOFT_THRESHOLD = 0.8;
 
+// Half a unit of roundUsd's 6-decimal precision.
+const USD_ROUNDING_TOLERANCE = 0.0000005;
+
 function roundUsd(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
@@ -218,7 +221,13 @@ async function adjustBudgetShard(
     Math.max(0, (total?.reservedUsd ?? 0) + appliedReserved),
   );
 
-  if (rawSpent < 0 || rawReserved < 0) {
+  // Shards store roundUsd() values while releases subtract the unrounded
+  // reservation, so a fully released shard can land a few millionths of a cent
+  // below zero. Clamping that is expected; only warn on a real deficit.
+  if (
+    rawSpent < -USD_ROUNDING_TOLERANCE ||
+    rawReserved < -USD_ROUNDING_TOLERANCE
+  ) {
     console.warn("[aiBudget.adjustBudgetShard] Clamped negative shard total", {
       date: args.date,
       shard: args.shard,

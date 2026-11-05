@@ -830,6 +830,18 @@ export const getPipelineIoRollups = query({
   },
 });
 
+/**
+ * Acknowledging an alert also resolves it. upsertPipelineAlert skips a code
+ * while an unresolved alert with that code exists, and nothing else sets
+ * resolvedAt, so an acknowledged-but-unresolved alert muted its code for good:
+ * the July 2026 alerts kept every one of those rules silent until November.
+ * Now acknowledging clears it, and the rule fires again on its next check if
+ * the problem is still there.
+ */
+export function acknowledgedAlertPatch(email: string, now: number) {
+  return { acknowledgedBy: email, acknowledgedAt: now, resolvedAt: now };
+}
+
 export const acknowledgeAlert = mutation({
   args: { alertId: v.id("pipelineAlerts") },
   handler: async (ctx, args) => {
@@ -838,10 +850,10 @@ export const acknowledgeAlert = mutation({
     if (!alert) {
       throw new Error("Alert not found");
     }
-    await ctx.db.patch(args.alertId, {
-      acknowledgedBy: user.email,
-      acknowledgedAt: Date.now(),
-    });
+    await ctx.db.patch(
+      args.alertId,
+      acknowledgedAlertPatch(user.email, Date.now()),
+    );
     return { acknowledged: true };
   },
 });

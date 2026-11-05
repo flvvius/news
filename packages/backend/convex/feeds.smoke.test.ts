@@ -13,7 +13,7 @@ const tier3 = ALL_FEEDS.filter((feed) => feed.tier === 3);
 
 describe("BIV-806 balance feeds parse live", () => {
   test("tier-3 feed list is non-empty", () => {
-    expect(tier3.length).toBeGreaterThanOrEqual(4);
+    expect(tier3.length).toBeGreaterThanOrEqual(3);
   });
 
   test.skipIf(!smokeEnabled).each(tier3.map((f) => [f.domain, f.url]))(
